@@ -34,6 +34,10 @@ path = "examples/mistral.rs"
 name = "embed-many"
 path = "examples/embed-many.rs"
 
+[[bin]]
+name = "summarize-many"
+path = "examples/summarize-many.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = ["isolation"] }
 

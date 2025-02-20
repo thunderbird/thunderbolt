@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "mozilla-assist"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -12,6 +13,22 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "mozilla_assist_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "mozilla-assist"
+path = "src/main.rs"
+
+[[bin]]
+name = "imap"
+path = "examples/imap.rs"
+
+[[bin]]
+name = "embed"
+path = "examples/embed.rs"
+
+[[bin]]
+name = "mistral"
+path = "examples/mistral.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = ["isolation"] }
@@ -24,6 +41,14 @@ serde_json = "1"
 imap = "2.4.1"
 native-tls = "0.2.14"
 dotenv = "0.15.0"
+candle-nn = "0.8.3"
+candle-core = { version = "0.8.3", features = ["metal"] }
+candle-transformers = "0.8.3"
+hf-hub = "0.4.1"
+tokenizers = "0.21.0"
+anyhow = "1.0.96"
+mistralrs = { path = "workspace/mistral.rs/mistralrs", features = ["metal"] }
+tokio = "1.43.0"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

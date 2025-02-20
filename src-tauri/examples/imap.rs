@@ -1,8 +1,4 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-mod embedding;
-mod imap_client;
+use mozilla_assist_lib::imap_client;
 
 fn main() {
     // Handle the Result and Option types
@@ -11,5 +7,4 @@ fn main() {
         Ok(None) => println!("No message found"),
         Err(e) => eprintln!("Error: {}", e),
     }
-    mozilla_assist_lib::run()
 }

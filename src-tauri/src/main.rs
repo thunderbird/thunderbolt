@@ -6,6 +6,10 @@ mod embedding;
 mod imap_client;
 
 use anyhow::Result;
+use sea_orm::ActiveModelTrait;
+use sea_orm::ActiveValue::Set;
+
+use entity::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -16,10 +20,20 @@ async fn main() -> Result<()> {
         Err(e) => eprintln!("Error: {}", e),
     }
 
-    match db::init_db().await {
-        Ok(_db) => println!("Database initialized"),
-        Err(e) => eprintln!("Error: {}", e),
-    }
+    let db = db::init_db().await?;
+
+    let message = message::ActiveModel {
+        id: Set(1),
+        date: Set(chrono::Utc::now()),
+        subject: Set("Test Subject".to_owned()),
+        body: Set("This is the message body".to_owned()),
+        snippet: Set("This is the snippet".to_owned()),
+        clean_text: Set("This is the clean text".to_owned()),
+        clean_text_tokens_in: Set(0),
+        clean_text_tokens_out: Set(0),
+    };
+
+    let inserted_message: message::Model = message.insert(&db).await?;
 
     mozilla_assist_lib::run();
 

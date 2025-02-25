@@ -37,6 +37,16 @@ cargo build --bin embed --release
 ```
 
 
+## Generate Entities (Database Models)
+
+This will generate the SeaORM entities (e.g., database models / schemas) from the current schema of the SQLite database.
+
+```sh
+cd src-tauri
+
+sea-orm-cli generate entity -o entity/src
+```
+
 ## Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)

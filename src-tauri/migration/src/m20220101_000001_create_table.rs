@@ -9,11 +9,27 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Post::Table)
+                    .table(Message::Table)
                     .if_not_exists()
-                    .col(pk_auto(Post::Id))
-                    .col(string(Post::Title))
-                    .col(string(Post::Text))
+                    .col(pk_auto(Message::Id))
+                    .col(timestamp(Message::Date))
+                    .col(string(Message::Subject))
+                    .col(text(Message::Body))
+                    .col(string(Message::Snippet))
+                    .col(text(Message::CleanText))
+                    .col(integer(Message::CleanTextTokensIn))
+                    .col(integer(Message::CleanTextTokensOut))
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("Message_pkey")
+                    .table(Message::Table)
+                    .col(Message::Id)
+                    .unique()
                     .to_owned(),
             )
             .await
@@ -21,15 +37,25 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Post::Table).to_owned())
+            .drop_index(Index::drop().name("Message_pkey").to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(Message::Table).to_owned())
             .await
     }
 }
 
+/// Represents the "Message" table
 #[derive(DeriveIden)]
-enum Post {
+enum Message {
     Table,
     Id,
-    Title,
-    Text,
+    Date,
+    Subject,
+    Body,
+    Snippet,
+    CleanText,
+    CleanTextTokensIn,
+    CleanTextTokensOut,
 }

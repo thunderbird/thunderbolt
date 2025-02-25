@@ -42,6 +42,10 @@ path = "examples/embed-many.rs"
 name = "summarize-many"
 path = "examples/summarize-many.rs"
 
+[[bin]]
+name = "seaorm"
+path = "examples/seaorm.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = ["isolation"] }
 
@@ -62,6 +66,11 @@ anyhow = "1.0.96"
 mistralrs = { path = "workspace/mistral.rs/mistralrs", features = ["metal"] }
 tokio = "1.43.0"
 mailparse = "0.16.0"
+sea-orm = { version = "1.1.0", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros"
+] }
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

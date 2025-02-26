@@ -1,5 +1,6 @@
 use std::env;
 
+use html2text::from_read;
 use mailparse::MailHeaderMap;
 
 use anyhow::Result;
@@ -34,9 +35,14 @@ pub fn parse_email_to_message(mail_body: &str, id: Option<i32>) -> Result<messag
     // Create a snippet (first 100 chars of body)
     let snippet = body.chars().take(100).collect::<String>();
 
-    // For clean_text, we could do more sophisticated processing,
-    // but for now just use the body text
-    let clean_text = body.clone();
+    // Extract clean text based on content type
+    let clean_text = if parsed_mail.ctype.mimetype.starts_with("text/html") {
+        // Convert HTML to plain text
+        from_read(body.as_bytes(), 80)?
+    } else {
+        // Already plain text
+        body.clone()
+    };
 
     // Create the message model
     let mut message = message::ActiveModel::new();

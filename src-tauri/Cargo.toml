@@ -81,6 +81,7 @@ sea-orm = { version = "1.1.6", features = [
 ] }
 chrono = "0.4.39"
 uuid = "1.14.0"
+html2text = "0.14.0"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

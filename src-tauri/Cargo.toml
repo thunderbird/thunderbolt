@@ -10,7 +10,6 @@ default-run = "mozilla-assist"
 
 [workspace]
 members = ["migration", "entity"]
-exclude = ["external/**/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -85,37 +84,6 @@ candle-core = { version = "0.8.3", default-features = false }
 candle-transformers = { version = "0.8.3", default-features = false }
 mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862", default-features = false }
 
-# Metal features for non-iOS platforms (macOS, etc)
-[target.'cfg(not(target_os = "ios"))'.dependencies]
-candle-nn = { version = "0.8.3", features = ["metal"] }
-candle-core = { version = "0.8.3", features = ["metal"] }
-candle-transformers = { version = "0.8.3", features = ["metal"] }
-mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862", features = [
-    "metal"
-] }
-
-# Metal features for physical iOS devices only (not simulators)
-[target.'cfg(all(target_os = "ios", target_env = "os"))'.dependencies]
-candle-nn = { version = "0.8.3", features = [
-    "metal"
-], default-features = false }
-candle-core = { version = "0.8.3", features = [
-    "metal"
-], default-features = false }
-candle-transformers = { version = "0.8.3", features = [
-    "metal"
-], default-features = false }
-mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862", features = [
-    "metal"
-], default-features = false }
-
-# Add a specific target for iOS devices with CPU feature flags disabled
-[target.'cfg(target_os = "ios")'.dependencies]
-gemm-common = { version = "*", default-features = false }
-gemm-f16 = { version = "*", default-features = false }
-
-# iOS simulator builds without Metal
-# This intentionally has no Metal features
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
 rustflags = ["-C", "target-feature=+fp16,+fhm"]
@@ -133,8 +101,8 @@ debug = false
 # Always run candle in release mode - it will hang in debug mode.
 [profile.dev.package.candle-transformers]
 opt-level = 3
+debug = false
 
-# debug = false
 # Always run mistralrs in release mode - it will hang in debug mode.
 [profile.dev.package.mistralrs]
 opt-level = 3

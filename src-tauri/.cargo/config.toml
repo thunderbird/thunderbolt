@@ -1,5 +1,2 @@
 [build]
 rustc-wrapper = "sccache"
-
-[target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))']
-rustflags = ["-C", "target-feature=+fp16"]

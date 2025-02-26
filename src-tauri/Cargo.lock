@@ -733,12 +733,10 @@ version = "0.8.0"
 source = "git+https://github.com/EricLBuehler/candle.git?rev=8d3ea29#8d3ea29db6b4a9523a796e92feb541fe167be0d4"
 dependencies = [
  "byteorder",
- "candle-metal-kernels 0.8.0",
  "float8",
  "gemm 0.17.1",
  "half",
  "memmap2",
- "metal 0.27.0",
  "num-traits",
  "num_cpus",
  "rand 0.8.5",
@@ -757,11 +755,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef79e00300acaaa6b0b33168e2ed5050f06125d1add87e7103c40a119083581"
 dependencies = [
  "byteorder",
- "candle-metal-kernels 0.8.3",
  "gemm 0.17.1",
  "half",
  "memmap2",
- "metal 0.27.0",
  "num-traits",
  "num_cpus",
  "rand 0.8.5",
@@ -770,7 +766,6 @@ dependencies = [
  "safetensors",
  "thiserror 1.0.69",
  "ug",
- "ug-metal",
  "yoke",
  "zip",
 ]
@@ -797,37 +792,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "candle-metal-kernels"
-version = "0.8.0"
-source = "git+https://github.com/EricLBuehler/candle.git?rev=8d3ea29#8d3ea29db6b4a9523a796e92feb541fe167be0d4"
-dependencies = [
- "metal 0.27.0",
- "once_cell",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "candle-metal-kernels"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2395aa0bb5101ceee667018ee896cf6183ed97539dbf745ed5ae398a54b83d7e"
-dependencies = [
- "metal 0.27.0",
- "once_cell",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
 name = "candle-nn"
 version = "0.8.0"
 source = "git+https://github.com/EricLBuehler/candle.git?rev=8d3ea29#8d3ea29db6b4a9523a796e92feb541fe167be0d4"
 dependencies = [
  "candle-core 0.8.0",
- "candle-metal-kernels 0.8.0",
  "half",
- "metal 0.27.0",
  "num-traits",
  "rayon",
  "safetensors",
@@ -842,9 +812,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e56763529af17e3483297e40fddeb2992117485498ec56a7c410c8a7825b7fee"
 dependencies = [
  "candle-core 0.8.3",
- "candle-metal-kernels 0.8.3",
  "half",
- "metal 0.27.0",
  "num-traits",
  "rayon",
  "safetensors",
@@ -1086,7 +1054,7 @@ dependencies = [
  "bitflags 2.8.0",
  "block",
  "core-foundation 0.10.0",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "libc",
  "objc",
 ]
@@ -1191,19 +1159,8 @@ checksum = "fa95a34622365fa5bbf40b20b75dba8dfa8c94c734aea8ac9a5ca38af14316f1"
 dependencies = [
  "bitflags 2.8.0",
  "core-foundation 0.10.0",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "foreign-types 0.5.0",
- "libc",
-]
-
-[[package]]
-name = "core-graphics-types"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
-dependencies = [
- "bitflags 1.3.2",
- "core-foundation 0.9.4",
  "libc",
 ]
 
@@ -3880,36 +3837,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metal"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c43f73953f8cbe511f021b58f18c3ce1c3d1ae13fe953293e13345bf83217f25"
-dependencies = [
- "bitflags 2.8.0",
- "block",
- "core-graphics-types 0.1.3",
- "foreign-types 0.5.0",
- "log",
- "objc",
- "paste",
-]
-
-[[package]]
-name = "metal"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ecfd3296f8c56b7c1f6fbac3c71cefa9d78ce009850c45000015f206dc7fa21"
-dependencies = [
- "bitflags 2.8.0",
- "block",
- "core-graphics-types 0.1.3",
- "foreign-types 0.5.0",
- "log",
- "objc",
- "paste",
-]
-
-[[package]]
 name = "migration"
 version = "0.1.0"
 dependencies = [
@@ -4037,13 +3964,10 @@ dependencies = [
  "itertools 0.13.0",
  "llguidance",
  "lrtable",
- "metal 0.27.0",
  "minijinja",
  "minijinja-contrib",
- "mistralrs-paged-attn",
  "mistralrs-quant",
  "mistralrs-vision",
- "objc",
  "once_cell",
  "radix_trie",
  "rand 0.8.5",
@@ -4077,20 +4001,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mistralrs-paged-attn"
-version = "0.4.0"
-source = "git+https://github.com/EricLBuehler/mistral.rs.git?rev=e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862#e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862"
-dependencies = [
- "anyhow",
- "candle-core 0.8.0",
- "float8",
- "half",
- "metal 0.27.0",
- "once_cell",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mistralrs-quant"
 version = "0.4.0"
 source = "git+https://github.com/EricLBuehler/mistral.rs.git?rev=e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862#e2f9648cbb6e4b8a6ac1d9e44df5900210fa5862"
@@ -4102,7 +4012,6 @@ dependencies = [
  "half",
  "lazy_static",
  "memmap2",
- "metal 0.27.0",
  "once_cell",
  "paste",
  "rayon",
@@ -4156,8 +4065,6 @@ dependencies = [
  "chrono",
  "dotenv",
  "entity",
- "gemm-common 0.18.2",
- "gemm-f16 0.18.2",
  "hf-hub 0.4.1",
  "html2text",
  "imap",
@@ -4448,7 +4355,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "915b1b472bc21c53464d6c8461c9d3af805ba1ef837e1cac254428f4a77177b1"
 dependencies = [
  "malloc_buf",
- "objc_exception",
 ]
 
 [[package]]
@@ -4667,15 +4573,6 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
-]
-
-[[package]]
-name = "objc_exception"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad970fb455818ad6cba4c122ad012fae53ae8b4795f86378bce65e4f6bab2ca4"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -7938,20 +7835,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "yoke",
-]
-
-[[package]]
-name = "ug-metal"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a02ddc17bf32f7dcaaf016b6735f7198082b82f122df7b3ca15d8ead5911ccef"
-dependencies = [
- "half",
- "metal 0.29.0",
- "objc",
- "serde",
- "thiserror 1.0.69",
- "ug",
 ]
 
 [[package]]

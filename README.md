@@ -60,3 +60,16 @@ sea-orm-cli generate entity -o entity/src
 ## Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+
+## Building for Devices
+
+```sh
+rustup toolchain install nightly
+rustup override set nightly
+rustup target add aarch64-apple-ios-sim # Add your device architecture (replace "aarch64-apple-ios-sim" with the desired device architecture)
+bun run tauri ios dev --force-ip-prompt
+bun run tauri ios dev --force-ip-prompt --open --host
+```
+
+- https://tauri.app/develop/#developing-your-mobile-application
+- https://github.com/sarah-quinones/gemm/issues/31#issuecomment-2395557397

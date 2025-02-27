@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
+import { analyzer } from 'vite-bundle-analyzer'
 import solid from 'vite-plugin-solid'
 
 // @ts-expect-error process is a nodejs global
@@ -7,7 +8,13 @@ const host = process.env.TAURI_DEV_HOST
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [tailwindcss(), solid()],
+  plugins: [
+    tailwindcss(),
+    solid(),
+    analyzer({
+      analyzerMode: 'static',
+    }),
+  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

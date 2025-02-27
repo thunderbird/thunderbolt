@@ -17,8 +17,7 @@
         "width": 1400,
         "height": 1000,
         "minHeight": 600,
-        "minWidth": 600,
-        "titleBarStyle": "Transparent"
+        "minWidth": 600
       }
     ],
     "security": {

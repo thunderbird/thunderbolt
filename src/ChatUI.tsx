@@ -16,26 +16,38 @@ export default function ChatUI({ chatHelpers }: ChatUIProps) {
         <For each={messages()}>
           {(message, i) =>
             message.role === 'assistant' ? (
-              <div class={`p-4 rounded-lg max-w-3/4 bg-white border border-gray-200 shadow-sm mr-auto`}>
+              <div class="p-4 space-y-2 rounded-tl-lg rounded-tr-lg rounded-br-lg max-w-3/4 bg-white border border-gray-200 mr-auto">
                 <For each={message.parts.filter((part) => part.type === 'tool-invocation')}>
                   {(part) => {
                     const { toolName, toolCallId, args } = part.toolInvocation
-                    return (
-                      <div class="space-y-2">
-                        <div class="font-semibold text-indigo-600 text-sm uppercase">{message.role}</div>
-                        <div class="text-gray-700 leading-relaxed">{args.text}</div>
-                        {/* <div>{JSON.stringify(args)}</div> */}
-                      </div>
-                    )
+
+                    switch (toolName) {
+                      case 'answer':
+                        return (
+                          <div class="space-y-2">
+                            <div class="text-gray-700 leading-relaxed">{args.text}</div>
+                          </div>
+                        )
+                      case 'search':
+                        return (
+                          <div class="space-y-2">
+                            <div class="bg-blue-50 border border-blue-200 p-2 rounded-md text-gray-700 leading-relaxed italic flex items-center">Searching for "{args.query}"...</div>
+                          </div>
+                        )
+                      default:
+                        return (
+                          <div class="space-y-2">
+                            <div class="text-gray-700 leading-relaxed">{args.text}</div>
+                          </div>
+                        )
+                    }
                   }}
                 </For>
               </div>
             ) : (
-              <div class={`p-4 rounded-lg max-w-3/4 bg-indigo-100 text-gray-800 ml-auto`}>
+              <div class="p-4 rounded-tl-lg rounded-tr-lg rounded-bl-lg max-w-3/4 bg-indigo-100 text-gray-800 ml-auto">
                 <div class="space-y-2">
-                  <div class="font-semibold text-indigo-600 text-sm uppercase">{message.role}</div>
                   <div class="text-gray-700 leading-relaxed">{message.content}</div>
-                  {/* <div>{JSON.stringify(args)}</div> */}
                 </div>
               </div>
             )

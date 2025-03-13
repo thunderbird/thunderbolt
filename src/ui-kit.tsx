@@ -1,4 +1,4 @@
-import { ArrowLeft, Paperclip } from 'lucide-react'
+import { ArrowLeft, PanelLeft, PanelRight, Paperclip, SquarePen } from 'lucide-react'
 import { Link } from 'react-router'
 import { Sidebar } from './components/sidebar'
 import { Button } from './components/ui/button'
@@ -111,8 +111,17 @@ export default function UiKitPage() {
         <h2 className="text-2xl font-bold mb-4">Button</h2>
         <Button variant="outline">Outline Button</Button>
         <Button variant="file">
-          <Paperclip className="size-5 " />
+          <Paperclip className="size-5" />
           example.pdf
+        </Button>
+        <Button variant="ghost" className="w-fit pr-1 pl-1">
+          <PanelLeft className="size-5" />
+        </Button>
+        <Button variant="ghost" className="w-fit pr-1 pl-1">
+          <PanelRight className="size-5" />
+        </Button>
+        <Button variant="ghost" className="w-fit pr-1 pl-1">
+          <SquarePen className="size-5" />
         </Button>
         <Button>Default Button</Button>
         <Button variant="ghost">Ghost Button</Button>

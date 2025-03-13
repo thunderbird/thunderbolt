@@ -6,6 +6,7 @@ import { ChatNavButton } from './components/ui/chat-nav-button'
 import { MailCard, MailCardList } from './components/ui/mail-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select'
 import { UserNavButton } from './components/ui/user-nav-button'
+import { MailThreadButton } from './components/ui/mail-thread-button'
 
 export default function UiKitPage() {
   const fruitOptions = [
@@ -128,6 +129,7 @@ export default function UiKitPage() {
         </Button>
         <Button>Default Button</Button>
         <Button variant="ghost">Ghost Button</Button>
+        <MailThreadButton mailTitle="Mail Title Display" />
         <div className="h-px bg-gray-200 dark:bg-gray-700 my-10" />
         <h2 className="text-2xl font-bold">Mail Card List</h2>
         <MailCardList>

@@ -20,7 +20,7 @@ export default function ChatUI({ chatHelpers }: ChatUIProps) {
   }, [chatHelpers.messages])
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
+    <div className="flex flex-col h-full bg-white overflow-hidden max-w-[760px] mx-auto">
       <div className="flex-1 p-4 overflow-y-auto space-y-4">
         {chatHelpers.messages.map((message, i) => {
           if (message.role === 'assistant') {
@@ -48,24 +48,22 @@ export default function ChatUI({ chatHelpers }: ChatUIProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-200 p-4 bg-white">
-        <form onSubmit={chatHelpers.handleSubmit} className="flex gap-2">
-          <input
-            autoFocus
-            value={chatHelpers.input}
-            onChange={chatHelpers.handleInputChange}
-            placeholder="Say something..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
-          <Button variant="outline" className="h-10 w-10 rounded-full p-0 flex items-center justify-center">
-            <Plus className="size-4" />
-          </Button>
-          <Button variant="outline" className="h-10 w-10 rounded-full p-0 flex items-center justify-center">
-            <Mic className="size-4" />
-          </Button>
-          <Button type="submit" variant="default" className="h-10 w-10 rounded-full p-0 flex items-center justify-center">
-            <ArrowUp className="size-4" />
-          </Button>
+      <div className=" p-4">
+        <form onSubmit={chatHelpers.handleSubmit} className="flex flex-col gap-2 bg-secondary p-4 rounded-md">
+          <input autoFocus value={chatHelpers.input} onChange={chatHelpers.handleInputChange} placeholder="Say something..." className="flex-1 px-4 py-2   " />
+          <div className="flex gap-2 justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" className={`h-8 w-8 rounded-full p-0 flex items-center justify-center`}>
+                <Plus className="size-4" />
+              </Button>
+              <Button variant="outline" className={`h-8 w-8 rounded-full p-0 flex items-center justify-center`}>
+                <Mic className="size-4" />
+              </Button>
+            </div>
+            <Button type="submit" variant="default" className="h-8 w-8 rounded-full p-0 flex items-center justify-center">
+              <ArrowUp className="size-4" />
+            </Button>
+          </div>
         </form>
       </div>
     </div>

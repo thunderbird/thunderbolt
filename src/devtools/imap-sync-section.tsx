@@ -17,7 +17,7 @@ export default function ImapSyncSection() {
   const handleSync = async () => {
     setIsLoading(true)
     try {
-      await imapSync.syncMailbox('INBOX')
+      await imapSync.syncMailbox('All Mail', 100)
       fetchMessageCount()
     } catch (error) {
       console.error('Error syncing mailbox:', error)

@@ -49,7 +49,7 @@ impl ImapSync {
 
         // Insert into database
         let query = r#"
-            INSERT INTO email_messages (id, message_id, html_body, text_body, parts, subject, date, from, in_reply_to)
+            INSERT INTO email_messages (id, message_id, html_body, text_body, parts, subject, date, "from", in_reply_to)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (message_id) DO NOTHING
         "#;
@@ -92,27 +92,41 @@ impl ImapSync {
         start_index: usize,
         count: usize,
         since: Option<DateTime<Utc>>,
-    ) -> Result<usize> {
+    ) -> Result<(usize, bool)> {
+        println!("Syncing messages from {} (index {})", mailbox, start_index);
+
         // Fetch messages from mailbox
         let messages = self
             .imap_client
             .fetch_inbox(mailbox, Some(start_index), Some(count))
             .with_context(|| format!("Failed to fetch messages from {}", mailbox))?;
 
+        println!("Retrieved {} messages", messages.len());
+
+        // Filter out messages that are older than the since date
+        let messages = if let Some(since_date) = since {
+            messages
+                .into_iter()
+                .filter(|message| {
+                    if let Some(message_date) = Self::parse_message_date(message) {
+                        message_date >= since_date
+                    } else {
+                        true // Keep messages with no date
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            messages
+        };
+
+        println!("After filtering: {} messages to process", messages.len());
+
+        // Check if we retrieved any messages
+        let has_more_messages = messages.len() == count;
         let mut saved_count = 0;
 
         // Process each message
         for message in messages {
-            // Check if message is newer than the since date
-            if let Some(since_date) = since {
-                if let Some(message_date) = Self::parse_message_date(&message) {
-                    if message_date < since_date {
-                        // Skip older messages
-                        continue;
-                    }
-                }
-            }
-
             // Save the message
             if let Err(e) = self.save_message(&message).await {
                 // Log error but continue with other messages
@@ -123,7 +137,9 @@ impl ImapSync {
             saved_count += 1;
         }
 
-        Ok(saved_count)
+        println!("Saved {} messages", saved_count);
+
+        Ok((saved_count, has_more_messages))
     }
 
     /// Sync an entire mailbox with pagination
@@ -134,30 +150,30 @@ impl ImapSync {
         since: Option<DateTime<Utc>>,
     ) -> Result<usize> {
         let mut total_saved = 0;
-        let mut current_page = 1;
+
+        // Note that IMAP indexes start at 1
+        let mut current_index = 1;
 
         loop {
-            let start_index = (current_page - 1) * page_size + 1;
-
-            let saved = self
-                .sync_messages(mailbox, start_index, page_size, since)
+            let (saved, has_more_messages) = self
+                .sync_messages(mailbox, current_index, page_size, since)
                 .await
                 .with_context(|| {
                     format!(
-                        "Failed to sync messages from {} (page {})",
-                        mailbox, current_page
+                        "Failed to sync messages from {} (index {})",
+                        mailbox, current_index
                     )
                 })?;
 
             total_saved += saved;
 
-            // If we didn't save any messages on this page, we're done
-            if saved == 0 {
+            // If there are no more messages to fetch, we're done
+            if !has_more_messages {
                 break;
             }
 
             // Move to the next page
-            current_page += 1;
+            current_index += page_size;
         }
 
         Ok(total_saved)

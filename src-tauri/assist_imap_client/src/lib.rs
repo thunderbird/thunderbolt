@@ -74,7 +74,7 @@ impl ImapClient {
         if let Some(debug) = self.options.debug {
             imap_session.debug = debug;
         } else {
-            imap_session.debug = true; // Default behavior for backward compatibility
+            imap_session.debug = false;
         }
 
         *session_guard = Some(imap_session);

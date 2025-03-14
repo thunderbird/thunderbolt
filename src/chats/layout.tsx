@@ -55,6 +55,9 @@ export function ChatLayout() {
             <Button asChild variant="ghost" className="justify-start">
               <Link to="/ui-kit">UI Kit</Link>
             </Button>
+            <Button asChild variant="ghost" className="justify-start">
+              <Link to="/devtools">Dev Tools</Link>
+            </Button>
           </div>
           <div className="flex flex-col gap-2">
             {chatThreads.map((thread) => (

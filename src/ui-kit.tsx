@@ -4,9 +4,9 @@ import { Sidebar } from './components/sidebar'
 import { Button } from './components/ui/button'
 import { ChatNavButton } from './components/ui/chat-nav-button'
 import { MailCard, MailCardList } from './components/ui/mail-card'
+import { MailThreadButton } from './components/ui/mail-thread-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select'
 import { UserNavButton } from './components/ui/user-nav-button'
-import { MailThreadButton } from './components/ui/mail-thread-button'
 
 export default function UiKitPage() {
   const fruitOptions = [
@@ -78,6 +78,12 @@ export default function UiKitPage() {
             </Button>
             <Button asChild variant="ghost" className="justify-start">
               <Link to="/settings/models">Models</Link>
+            </Button>
+            <Button asChild variant="ghost" className="justify-start font-medium text-primary">
+              <Link to="/ui-kit">UI Kit</Link>
+            </Button>
+            <Button asChild variant="ghost" className="justify-start pl-6">
+              <Link to="/devtools">Dev Tools</Link>
             </Button>
           </div>
           <ChatNavButton chatTitle="Chat Title Display" />

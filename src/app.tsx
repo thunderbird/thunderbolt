@@ -12,6 +12,7 @@ import { getSettings } from './dal'
 import { initializeDrizzleDatabase } from './db/database'
 import { migrate } from './db/migrate'
 import { DrizzleProvider } from './db/provider'
+import DevToolsPage from './devtools'
 import ImapClient from './imap/imap'
 import { ImapProvider } from './imap/provider'
 import Layout from './layout'
@@ -97,6 +98,7 @@ export const App = () => {
                     </Route>
 
                     <Route path="ui-kit" element={<UiKitPage />} />
+                    <Route path="devtools" element={<DevToolsPage />} />
                   </Route>
                 </Routes>
               </BrowserRouter>

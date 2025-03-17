@@ -4,7 +4,7 @@ import { UserNavButton } from '@/components/ui/user-nav-button'
 import { useDrizzle } from '@/db/provider'
 import { chatThreadsTable } from '@/db/schema'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { SquarePen } from 'lucide-react'
+import { PanelLeft, SquarePen } from 'lucide-react'
 import { Link, Outlet, useNavigate, useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -48,11 +48,18 @@ export function ChatLayout() {
         <SidebarContent className="flex flex-col h-full">
           <div className="flex-1">
             <SidebarGroup>
-              <SidebarGroupContent>
+              <SidebarGroupContent className="flex justify-between w-full flex-1">
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square" tooltip="New Chat">
+                    <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square items-center justify-center" tooltip="New Chat">
                       <SquarePen className="size-5" />
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square items-center justify-center" tooltip="New Chat">
+                      <PanelLeft className="size-5" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

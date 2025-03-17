@@ -32,13 +32,13 @@ export function ChatNavButton({ chatTitle, threadId, className, asChild = false,
   }
 
   return (
-    <Comp className={cn('relative w-full', className)} {...props}>
-      <div className="group w-full h-full flex space-x-2 items-center">
-        <div className="group h-9 relative">
-          <div className="w-1 h-[100%] bg-gray-200 group-hover:opacity-100 opacity-0 rounded-r-sm" />
+    <Comp className={cn('relative w-full group/chat', className)} {...props}>
+      <div className="w-full h-full flex space-x-2 items-center">
+        <div className="h-9 relative">
+          <div className="w-1 h-[100%] bg-gray-200 group-hover/chat:opacity-100 opacity-0 rounded-r-sm" />
         </div>
         <div className="flex items-center w-full">
-          <Button variant="ghost" className="flex items-center justify-between gap-2 h-10 px-3 group w-full" onClick={handleButtonClick}>
+          <Button variant="ghost" className="flex items-center justify-between gap-2 h-10 px-3 w-full" onClick={handleButtonClick}>
             <div className="flex items-center gap-2">
               <div className="hidden md:block text-left">
                 <p className="text-sm font-base">{chatTitle}</p>
@@ -48,7 +48,7 @@ export function ChatNavButton({ chatTitle, threadId, className, asChild = false,
             <Popover>
               <PopoverTrigger asChild>
                 <div onClick={(e) => e.stopPropagation()} className="ml-auto">
-                  <Ellipsis className="size-4 text-muted-foreground transition-transform group-hover:opacity-100 opacity-0 cursor-pointer" />
+                  <Ellipsis className="size-4 text-muted-foreground transition-transform group-hover/chat:opacity-100 opacity-0 cursor-pointer" />
                 </div>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-0" onClick={(e) => e.stopPropagation()}>

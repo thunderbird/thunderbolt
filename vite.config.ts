@@ -21,7 +21,10 @@ export default defineConfig(async () => ({
     },
     tailwindcss(),
     react(),
-    analyzer(),
+    analyzer({
+      analyzerMode: 'static',
+      openAnalyzer: false,
+    }),
   ],
 
   resolve: {

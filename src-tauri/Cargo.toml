@@ -24,14 +24,6 @@ name = "mozilla-assist"
 path = "src/main.rs"
 
 [[bin]]
-name = "imap"
-path = "examples/imap.rs"
-
-[[bin]]
-name = "imap-idle"
-path = "examples/imap-idle.rs"
-
-[[bin]]
 name = "embed"
 path = "examples/embed.rs"
 

@@ -1,17 +1,32 @@
-import { ChatNavButton } from '@/components/ui/chat-nav-button'
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar'
-import { UserNavButton } from '@/components/ui/user-nav-button'
+import { SidebarFooter } from '@/components/sidebar-footer'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { useDrizzle } from '@/db/provider'
 import { chatThreadsTable } from '@/db/schema'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PanelLeft, SquarePen } from 'lucide-react'
+import { MoreHorizontal, SquarePen } from 'lucide-react'
 import { Link, Outlet, useNavigate, useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 
-export function ChatLayout() {
+export default function Page() {
   const navigate = useNavigate()
   const { db } = useDrizzle()
   const queryClient = useQueryClient()
+  const { open, setOpen } = useSidebar()
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
@@ -41,28 +56,15 @@ export function ChatLayout() {
 
   return (
     <>
-      <div>
-        <SidebarTrigger />
-      </div>
-      <Sidebar>
-        <SidebarContent className="flex flex-col h-full">
-          <div className="flex-1">
+      <SidebarProvider open={open} onOpenChange={setOpen}>
+        <Sidebar>
+          <SidebarContent className="flex flex-col h-full">
             <SidebarGroup>
               <SidebarGroupContent className="flex justify-between w-full flex-1">
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square items-center justify-center" tooltip="New Chat">
-                      <SquarePen className="size-5" />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square items-center justify-center" tooltip="New Chat">
-                      <PanelLeft className="size-5" />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
+                <SidebarTrigger className="cursor-pointer" />
+                <SidebarMenuButton onClick={createNewChat} className="w-fit pr-0 pl-0 aspect-square items-center justify-center" tooltip="New Chat">
+                  <SquarePen className="size-5" />
+                </SidebarMenuButton>
               </SidebarGroupContent>
             </SidebarGroup>
 
@@ -88,31 +90,38 @@ export function ChatLayout() {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <SidebarGroup>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {chatThreads.map((thread) => (
-                    <SidebarMenuItem key={thread.id}>
-                      <ChatNavButton chatTitle={thread.title ?? 'New Chat'} threadId={thread.id} />
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </div>
+            <SidebarSeparator className="m-0" />
 
-          <SidebarMenu className="mt-auto">
-            <SidebarMenuItem>
-              <UserNavButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarContent>
-      </Sidebar>
-      <div className="flex flex-col w-full">
-        <Outlet />
-      </div>
+            <SidebarGroup className="flex-1 overflow-y-auto">
+              <SidebarMenu>
+                {chatThreads.map((thread) => (
+                  <DropdownMenu key={thread.title}>
+                    <SidebarMenuItem>
+                      <Link to={`/chats/${thread.id}`}>
+                        <DropdownMenuTrigger asChild>
+                          <SidebarMenuButton className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+                            {thread.title} <MoreHorizontal className="ml-auto" />
+                          </SidebarMenuButton>
+                        </DropdownMenuTrigger>
+                      </Link>
+                      <DropdownMenuContent side="right" align="start" className="min-w-56 rounded-lg">
+                        <DropdownMenuItem>Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </SidebarMenuItem>
+                  </DropdownMenu>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+
+            <SidebarFooter />
+          </SidebarContent>
+          <SidebarRail />
+        </Sidebar>
+        <SidebarInset>
+          <div className="flex h-12 w-full items-center px-4">{open ? null : <SidebarTrigger className="cursor-pointer" />}</div>
+          <Outlet />
+        </SidebarInset>
+      </SidebarProvider>
     </>
   )
 }
-
-export default ChatLayout

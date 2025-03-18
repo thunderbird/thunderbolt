@@ -3,7 +3,7 @@ import './index.css'
 
 export default function Layout() {
   return (
-    <main className="flex h-screen w-screen">
+    <main className="flex flex-col h-screen w-screen">
       <Outlet />
     </main>
   )

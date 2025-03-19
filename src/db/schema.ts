@@ -67,3 +67,11 @@ export const emailMessagesTable = sqliteTable('email_messages', {
   // @todo this will become a foreign key to the email_messages table
   in_reply_to: text('in_reply_to'),
 })
+
+export const embeddingsTable = sqliteTable('embeddings', {
+  id: text('id').primaryKey().notNull().unique(),
+  email_message_id: text('email_message_id')
+    .unique()
+    .references(() => emailMessagesTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  embedding: float32Array('embedding', { dimensions: 768 }),
+})

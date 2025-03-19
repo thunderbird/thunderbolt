@@ -205,6 +205,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0f477b951e452a0b6b4a10b53ccd569042d1d01729b519e02074a9c0958a063"
 
 [[package]]
+name = "assist_embeddings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "candle-core 0.8.3",
+ "candle-nn 0.8.3",
+ "candle-transformers",
+ "hf-hub",
+ "libsql",
+ "serde",
+ "serde_json",
+ "tokenizers",
+ "tokio",
+ "uuid 1.16.0",
+]
+
+[[package]]
 name = "assist_imap_client"
 version = "0.1.0"
 dependencies = [
@@ -232,7 +249,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "uuid 1.15.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -987,7 +1004,7 @@ checksum = "d38f2da7a0a2c4ccf0065be06397cc26a81f4e528be095826eee9d4adbb8c60f"
 dependencies = [
  "byteorder",
  "fnv",
- "uuid 1.15.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -3865,7 +3882,7 @@ dependencies = [
  "tower 0.4.13",
  "tower-http",
  "tracing",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "zerocopy",
 ]
 
@@ -3959,7 +3976,7 @@ dependencies = [
  "tokio-util",
  "tonic 0.11.0",
  "tracing",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "zerocopy",
 ]
 
@@ -4352,7 +4369,7 @@ dependencies = [
  "tqdm",
  "tracing",
  "tracing-subscriber",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "variantly",
  "vob",
 ]
@@ -4431,6 +4448,7 @@ name = "mozilla-assist"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assist_embeddings",
  "assist_imap_client",
  "assist_imap_sync",
  "base64 0.22.1",
@@ -6252,7 +6270,7 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
- "uuid 1.15.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -7020,7 +7038,7 @@ dependencies = [
  "tray-icon",
  "url",
  "urlpattern",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "webkit2gtk",
  "webview2-com",
  "window-vibrancy",
@@ -7073,7 +7091,7 @@ dependencies = [
  "thiserror 2.0.12",
  "time",
  "url",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "walkdir",
 ]
 
@@ -7155,7 +7173,7 @@ dependencies = [
  "thiserror 2.0.12",
  "toml",
  "url",
- "uuid 1.15.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -7295,7 +7313,7 @@ dependencies = [
  "toml",
  "url",
  "urlpattern",
- "uuid 1.15.1",
+ "uuid 1.16.0",
  "walkdir",
 ]
 
@@ -8210,9 +8228,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.15.1"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f540e3240398cce6128b64ba83fdbdd86129c16a3aa1a3a252efd66eb3d587"
+checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
 dependencies = [
  "getrandom 0.3.1",
  "serde",

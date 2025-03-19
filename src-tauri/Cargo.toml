@@ -17,7 +17,13 @@ name = "mozilla_assist_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
-members = ["assist_imap_client", "assist_imap_sync"]
+members = ["assist_imap_client", "assist_imap_sync", "assist_embeddings"]
+
+[workspace.dependencies]
+libsql = { version = "0.6.0", features = ["encryption"] }
+anyhow = "1.0.97"
+serde = { version = "1.0.219", features = ["derive"] }
+mozilla-assist-lib = { path = "." }
 
 [[bin]]
 name = "mozilla-assist"
@@ -38,6 +44,10 @@ path = "examples/embed-many.rs"
 [[bin]]
 name = "summarize-many"
 path = "examples/summarize-many.rs"
+
+[[bin]]
+name = "debug-embeddings"
+path = "examples/debug_embeddings.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.0.6", features = ["isolation"] }
@@ -83,6 +93,7 @@ bytes = "1.10.1"
 mail-parser = { version = "0.10.2", features = ["serde_support"] }
 assist_imap_client = { path = "./assist_imap_client" }
 assist_imap_sync = { path = "./assist_imap_sync" }
+assist_embeddings = { path = "./assist_embeddings" }
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

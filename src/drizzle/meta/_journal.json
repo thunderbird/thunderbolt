@@ -15,6 +15,20 @@
       "when": 1741911932231,
       "tag": "0001_flimsy_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1742403387055,
+      "tag": "0002_bouncy_zaran",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1742404199228,
+      "tag": "0003_first_exiles",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `embeddings` DROP COLUMN `created_at`;

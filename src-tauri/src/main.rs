@@ -5,6 +5,7 @@ mod libsql;
 mod state;
 
 use anyhow::Result;
+use assist_embeddings;
 use assist_imap_client::{messages_to_json_values, ImapClient, ImapCredentials};
 use assist_imap_sync::ImapSync;
 use chrono::{DateTime, Utc};
@@ -218,6 +219,26 @@ async fn sync_mailbox(
     result
 }
 
+#[command]
+async fn generate_embeddings(
+    app_handle: tauri::AppHandle,
+    batch_size: usize,
+) -> Result<usize, String> {
+    let state = app_handle.state::<Mutex<AppState>>();
+    let state = state.lock().await;
+
+    // Get database connection
+    let conn = state
+        .libsql
+        .as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    // Generate embeddings for all messages
+    assist_embeddings::generate_all(conn, batch_size)
+        .await
+        .map_err(|e| format!("Failed to generate embeddings: {}", e))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // This should be called as early in the execution of the app as possible
@@ -241,7 +262,8 @@ async fn main() -> Result<()> {
             init_imap_sync,
             fetch_inbox,
             list_mailboxes,
-            sync_mailbox
+            sync_mailbox,
+            generate_embeddings
         ]);
 
     #[cfg(debug_assertions)]

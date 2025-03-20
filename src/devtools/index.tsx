@@ -1,4 +1,5 @@
 import GenerateEmbeddingsSection from './generate-embeddings'
+import GenerateEmbeddingsFrontendSection from './generate-embeddings-frontend'
 import ImapMailboxesSection from './imap-mailboxes-section'
 import ImapSyncSection from './imap-sync-section'
 import SearchSection from './search'
@@ -13,6 +14,7 @@ export default function DevToolsPage() {
         <div className="grid gap-6">
           <ImapSyncSection />
           <ImapMailboxesSection />
+          <GenerateEmbeddingsFrontendSection />
           <GenerateEmbeddingsSection />
           <SearchSection />
         </div>

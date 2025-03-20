@@ -15,7 +15,7 @@ pub struct Embedder {
 static EMBEDDER: OnceLock<Embedder> = OnceLock::new();
 
 impl Embedder {
-    fn new() -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         // Initialize Metal device instead of CPU
         let device = candle::Device::new_metal(0)?;
 
@@ -58,34 +58,37 @@ impl Embedder {
         })
     }
 
-    fn get_embedding(&self, text: &str) -> anyhow::Result<Tensor> {
-        // Tokenize input
-        let tokens = self
-            .tokenizer
-            .encode(text, true)
-            .map_err(E::msg)?
-            .get_ids()
-            .to_vec();
-        let token_ids = Tensor::new(&tokens[..], &self.device)?.unsqueeze(0)?;
+    pub fn get_embedding(&self, text: &str) -> anyhow::Result<Tensor> {
+        // Tokenize input with truncation
+        let encoding = self.tokenizer.encode(text, true).map_err(E::msg)?;
+        let max_tokens = 8192; // Maximum context window for Jina embeddings model
+
+        // Always truncate to max length for simplicity and consistency
+        let token_ids = if encoding.get_ids().len() > max_tokens {
+            encoding.get_ids()[0..max_tokens].to_vec()
+        } else {
+            encoding.get_ids().to_vec()
+        };
+
+        let token_ids = Tensor::new(&token_ids[..], &self.device)?.unsqueeze(0)?;
 
         // Get embeddings
         let embeddings = self.model.forward(&token_ids)?;
-
         let (_n_sentence, n_tokens, _hidden_size) = embeddings.dims3()?;
         let embeddings = (embeddings.sum(1)? / (n_tokens as f64))?;
 
-        // Normalize embeddings
+        // Normalize and flatten embeddings
         let normalized = normalize_l2(&embeddings).map_err(E::msg)?;
-
-        // Flatten the tensor to make it 1-dimensional before returning
-        let flattened = normalized.flatten_all()?;
-
-        Ok(flattened)
+        normalized.flatten_all().map_err(E::msg)
     }
 }
 
 pub fn get_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
     let embedder = EMBEDDER.get_or_init(|| Embedder::new().unwrap());
+    get_embedding_with_embedder(embedder, text)
+}
+
+pub fn get_embedding_with_embedder(embedder: &Embedder, text: &str) -> anyhow::Result<Vec<f32>> {
     let tensor = embedder.get_embedding(text)?;
 
     // Convert tensor to Vec<f32> and map the error type to anyhow
@@ -93,5 +96,6 @@ pub fn get_embedding(text: &str) -> anyhow::Result<Vec<f32>> {
 }
 
 fn normalize_l2(v: &Tensor) -> candle::Result<Tensor> {
+    // Simple normalization that works with the expected tensor shape
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }

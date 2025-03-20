@@ -4,11 +4,26 @@ import { invoke } from '@tauri-apps/api/core'
 import { eq, sql } from 'drizzle-orm'
 
 /**
+ * Generates embeddings for a batch of email messages in the database
+ * @param batchSize The number of messages to process in this batch
+ * @returns A promise that resolves to the number of messages processed
+ */
+export async function generateBatch(batchSize: number = 10): Promise<number> {
+  try {
+    const processedCount = await invoke('generate_batch', { batchSize })
+    return processedCount as number
+  } catch (error) {
+    console.error('Failed to generate batch embeddings:', error)
+    throw error
+  }
+}
+
+/**
  * Generates embeddings for email messages in the database
  * @param batchSize The number of messages to process in each batch
  * @returns A promise that resolves when the operation is complete
  */
-export async function generateEmbeddings(batchSize: number = 100): Promise<void> {
+export async function generateEmbeddings(batchSize: number = 10): Promise<void> {
   try {
     await invoke('generate_embeddings', { batchSize })
   } catch (error) {

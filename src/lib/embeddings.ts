@@ -41,6 +41,22 @@ export async function getEmbedding(text: string): Promise<number[]> {
     throw error
   }
 }
+
+/**
+ * Gets embeddings for multiple texts at once using batch processing
+ * @param texts Array of texts to embed
+ * @returns A promise that resolves to an array of embeddings (array of number arrays)
+ */
+export async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  try {
+    const result = await invoke('get_embeddings', { texts })
+    return result as number[][]
+  } catch (error) {
+    console.error('Failed to get embeddings in batch:', error)
+    throw error
+  }
+}
+
 /**
  * Searches for similar email messages based on text similarity
  * @param searchText The text to search for

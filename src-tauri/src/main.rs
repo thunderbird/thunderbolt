@@ -7,7 +7,9 @@ mod state;
 
 use anyhow::Result;
 use assist_embeddings;
-use assist_embeddings::embedding::{get_embedding_with_embedder, Embedder};
+use assist_embeddings::embedding::{
+    get_embedding_with_embedder, get_embeddings_with_embedder, Embedder,
+};
 use assist_imap_client::{messages_to_json_values, ImapClient, ImapCredentials};
 use assist_imap_sync::ImapSync;
 use chrono::{DateTime, Utc};
@@ -348,6 +350,29 @@ async fn init_embedder(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[command]
+async fn get_embeddings(
+    app_handle: tauri::AppHandle,
+    texts: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    // Get state to access the embedder
+    let state = app_handle.state::<Mutex<AppState>>();
+    let state_guard = state.lock().await;
+
+    // Get the embedder from state
+    let embedder = state_guard
+        .embedder
+        .as_ref()
+        .ok_or_else(|| "Embedder not initialized. Call init_embedder first.".to_string())?;
+
+    // Process all texts in optimized batches
+    let embeddings = get_embeddings_with_embedder(embedder, &texts)
+        .map_err(|e| format!("Failed to generate embeddings: {}", e))?;
+
+    // Convert result to JSON array
+    serde_json::to_value(embeddings).map_err(|e| format!("Failed to serialize embeddings: {}", e))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // This should be called as early in the execution of the app as possible
@@ -375,7 +400,8 @@ async fn main() -> Result<()> {
             generate_embeddings,
             get_embedding,
             generate_batch,
-            init_embedder
+            init_embedder,
+            get_embeddings
         ]);
 
     #[cfg(debug_assertions)]

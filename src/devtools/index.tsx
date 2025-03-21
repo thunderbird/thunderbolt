@@ -1,8 +1,11 @@
 import EmbedderSettingsSection from './embedder-settings'
 import GenerateEmbeddingsSection from './generate-embeddings'
 import GenerateEmbeddingsFrontendSection from './generate-embeddings-frontend'
+import GenerateEmbeddingsFrontendNoDatabaseSection from './generate-embeddings-no-database'
+import GenerateEmbeddingsOptimizedSection from './generate-embeddings-optimized'
 import ImapMailboxesSection from './imap-mailboxes-section'
 import ImapSyncSection from './imap-sync-section'
+import ResetEmailMessagesSection from './reset-email-messages'
 import SearchSection from './search'
 
 export default function DevToolsPage() {
@@ -15,7 +18,10 @@ export default function DevToolsPage() {
         <div className="grid gap-6">
           <ImapSyncSection />
           <ImapMailboxesSection />
+          <ResetEmailMessagesSection />
+          <GenerateEmbeddingsOptimizedSection />
           <EmbedderSettingsSection />
+          <GenerateEmbeddingsFrontendNoDatabaseSection />
           <GenerateEmbeddingsFrontendSection />
           <GenerateEmbeddingsSection />
           <SearchSection />

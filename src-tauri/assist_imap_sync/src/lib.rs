@@ -3,6 +3,7 @@ use assist_imap_client::ImapClient;
 use chrono::{DateTime, TimeZone, Utc};
 use libsql::Connection;
 use mail_parser::Message;
+use regex::Regex;
 use serde_json;
 use uuid::Uuid;
 
@@ -36,6 +37,9 @@ impl ImapSync {
         // Extract message bodies
         let (html_body, text_body) = Self::extract_bodies(message);
 
+        // Clean the text body by removing quoted text
+        let cleaned_text_body = Self::clean_text(&text_body);
+
         // Convert message parts to JSON
         let parts_json =
             serde_json::to_string(&message).context("Failed to serialize message parts")?;
@@ -59,7 +63,7 @@ impl ImapSync {
             libsql::Value::Text(id),
             libsql::Value::Text(message_id),
             libsql::Value::Text(html_body),
-            libsql::Value::Text(text_body),
+            libsql::Value::Text(cleaned_text_body),
             libsql::Value::Text(parts_json),
             libsql::Value::Text(subject.unwrap_or_default()),
             libsql::Value::Text(date),
@@ -177,6 +181,26 @@ impl ImapSync {
         }
 
         Ok(total_saved)
+    }
+
+    /// Remove quoted text from an email body
+    pub fn clean_text(email_text: &str) -> String {
+        let re =
+            Regex::new(r"^([\s\S]*?)(?:From:|On\s+.*\s+wrote:|\n>)[\s\S]*$").unwrap_or_else(|_| {
+                // If regex compilation fails, return a default regex that won't match anything
+                Regex::new(r"^$").unwrap()
+            });
+
+        match re.captures(email_text) {
+            Some(caps) => {
+                if let Some(m) = caps.get(1) {
+                    m.as_str().trim().to_string()
+                } else {
+                    email_text.to_string()
+                }
+            }
+            None => email_text.to_string(),
+        }
     }
 
     // Helper methods to extract data from messages

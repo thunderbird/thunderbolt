@@ -91,3 +91,61 @@ fn normalize_l2(v: &Tensor) -> candle::Result<Tensor> {
     // Simple normalization that works with the expected tensor shape
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
+
+pub fn get_embeddings_with_embedder(
+    embedder: &Embedder,
+    texts: &[String],
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    // Use the whole vector as input, with a reasonable maximum batch size
+    // to prevent memory issues with extremely large vectors
+    let max_batch_size = 50;
+    let mut results = Vec::with_capacity(texts.len());
+
+    // Process in reasonable chunks if the input is very large
+    for chunk in texts.chunks(max_batch_size) {
+        if chunk.len() == 1 {
+            // Single item case, use the existing function to avoid complexity
+            let embedding = get_embedding_with_embedder(embedder, &chunk[0])?;
+            results.push(embedding);
+            continue;
+        }
+
+        // Tokenize all texts in batch
+        let mut token_ids_batch = Vec::with_capacity(chunk.len());
+        let max_tokens = 8192; // Maximum context window for model
+
+        for text in chunk {
+            // Tokenize with truncation for each text - using as_str() to fix the trait bound issue
+            let encoding = embedder
+                .tokenizer
+                .encode(text.as_str(), true)
+                .map_err(E::msg)?;
+            let token_ids = if encoding.get_ids().len() > max_tokens {
+                encoding.get_ids()[0..max_tokens].to_vec()
+            } else {
+                encoding.get_ids().to_vec()
+            };
+            token_ids_batch.push(token_ids);
+        }
+
+        // Process each tokenized input separately but more efficiently than individual calls
+        for token_ids in token_ids_batch {
+            let token_tensor = Tensor::new(&token_ids[..], &embedder.device)?.unsqueeze(0)?;
+
+            // Get embeddings
+            let embeddings = embedder.model.forward(&token_tensor)?;
+            let (_n_sentence, n_tokens, _hidden_size) = embeddings.dims3()?;
+            let embeddings = (embeddings.sum(1)? / (n_tokens as f64))?;
+
+            // Normalize and flatten embeddings
+            let normalized = normalize_l2(&embeddings).map_err(E::msg)?;
+            let flattened = normalized.flatten_all().map_err(E::msg)?;
+
+            // Convert to Vec<f32> and store
+            let embedding_vec = flattened.to_vec1().map_err(|e| anyhow::Error::new(e))?;
+            results.push(embedding_vec);
+        }
+    }
+
+    Ok(results)
+}

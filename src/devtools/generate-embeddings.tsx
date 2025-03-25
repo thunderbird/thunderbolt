@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { useDrizzle } from '@/db/provider'
 import { Indexer } from '@/lib/indexer'
+import { useTray } from '@/lib/tray'
 import { EmailMessage } from '@/types'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@radix-ui/react-accordion'
 import { Switch } from '@radix-ui/react-switch'
@@ -11,6 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsSection() {
   const { db } = useDrizzle()
+  const { tray } = useTray()
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(1)
   const [status, setStatus] = useState<string>('')
@@ -25,6 +27,13 @@ export default function GenerateEmbeddingsSection() {
   const [slowBatches, setSlowBatches] = useState<Array<{ batchNumber: number; time: number; emails: EmailMessage[] }>>([])
   const [currentOffset, setCurrentOffset] = useState<number>(0)
   const [slowThreads, setSlowThreads] = useState<string[]>([])
+
+  // Update tray title when progress changes
+  useEffect(() => {
+    if (tray) {
+      tray.setTitle(isGenerating ? `${progress.processed} / ${progress.total}` : 'Paused')
+    }
+  }, [tray, isGenerating, progress.processed, progress.total])
 
   useEffect(() => {
     // Initialize the indexer

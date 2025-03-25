@@ -1,4 +1,6 @@
 import { Message, ReasoningUIPart, SourceUIPart, TextUIPart, ToolInvocationUIPart } from '@ai-sdk/ui-utils'
+import { TrayIcon } from '@tauri-apps/api/tray'
+import { Window } from '@tauri-apps/api/window'
 import { InferSelectModel } from 'drizzle-orm'
 import { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import * as schema from './db/schema'
@@ -14,6 +16,8 @@ export type InitData = {
   settings: SettingsType
   imap: ImapClient
   imapSync: ImapSyncClient
+  tray: TrayIcon | undefined
+  window: Window | undefined
 }
 
 export type ChatMessagePart = TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart

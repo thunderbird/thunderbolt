@@ -1,8 +1,8 @@
+import { SaveMessagesFunction } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { appendResponseMessages, Message, streamText, ToolInvocation } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { toolset } from './ai-tools'
-import { SaveMessagesFunction } from '@/types'
 // @todo replace with the actual message type
 export type EmailMessage = {
   id: string

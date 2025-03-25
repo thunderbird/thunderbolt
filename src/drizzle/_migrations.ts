@@ -1,6 +1,6 @@
 /**
  * This file is auto-generated. Do not edit directly.
- * Generated on: 2025-03-25T05:25:32.275Z
+ * Generated on: 2025-03-25T19:34:40.554Z
  */
 
 export interface Migration {

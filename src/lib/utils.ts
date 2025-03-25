@@ -46,3 +46,7 @@ export function getSubjectFromParsedEmail(parsedEmail: ParsedEmail): string | un
 export function getMessageIdFromParsedEmail(parsedEmail: ParsedEmail): string | undefined {
   return getHeadersFromParsedEmail(parsedEmail).find((header) => typeof header.name === 'string' && header.name.toLocaleLowerCase() === 'message_id')?.value.Text
 }
+
+export function getFromFromParsedEmail(parsedEmail: ParsedEmail): string | undefined {
+  return getHeadersFromParsedEmail(parsedEmail).find((header) => typeof header.name === 'string' && header.name.toLocaleLowerCase() === 'from')?.value.Text
+}

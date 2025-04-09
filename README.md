@@ -1,6 +1,21 @@
 # Mozilla Assist
 
-Stack: Tauri + Solid + Typescript
+Stack:
+* TypeScript
+* Rust
+* Tauri - for creating the desktop / mobile application
+* React - for the UI
+* Tailwind - for styling
+* Shadcn - for UI components
+* React Router - for navigation / route handling
+* libsql - for local data storage, vector store, and encryption at rest
+* Drizzle - for ORM / migrations (eventually hoping to migrate this to SQLx / SeaORM in Rust)
+* Vercel AI SDK - for handling the chat thread state, streaming LLM responses, and handling LLM tool calls
+* Mistral + Candle - for running embedding, and possibly LLMs, on-device via Hugging Face
+* Zod - for JSON schema validation
+* Vite - frontend package bundler
+* UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
+* Rust: imap, mail-parser, html2text - for syncing and parsing emails
 
 ## Rust Setup
 

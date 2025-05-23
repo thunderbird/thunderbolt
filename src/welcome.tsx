@@ -21,6 +21,7 @@ export default function WelcomePage() {
   const [showAllTodos, setShowAllTodos] = useState(false)
 
   const { value: lastGeneratedTodos, setValue: setLastGeneratedTodos, isLoading: isLoadingLastGeneratedTodos } = useSetting<number>('last_generated_todos_from_inbox')
+  const { value: preferredName } = useSetting<string>('preferred_name')
 
   const hours = new Date().getHours()
   const timeOfDay = hours < 12 ? 'Morning' : hours < 18 ? 'Afternoon' : 'Evening'
@@ -80,9 +81,7 @@ export default function WelcomePage() {
   return (
     <div className="h-full w-full p-8 flex flex-col gap-6 bg-gradient-to-br from-background to-secondary/20">
       <div className="max-w-4xl mx-auto w-full">
-        <h1 className="text-4xl font-bold tracking-tight mb-2 text-primary">
-          Good {timeOfDay}, <span className="text-primary">Chris</span>
-        </h1>
+        <h1 className="text-4xl font-bold tracking-tight mb-2 text-primary">{preferredName ? `Good ${timeOfDay}, ${preferredName}` : `Good ${timeOfDay}`}</h1>
         <p className="text-muted-foreground text-lg">{date}</p>
 
         {/* To-Do List Section */}

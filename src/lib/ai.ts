@@ -1,34 +1,40 @@
+import { getDrizzleDatabase } from '@/db/singleton'
+import { settingsTable } from '@/db/tables'
 import { Model, SaveMessagesFunction } from '@/types'
 import { createDeepInfra } from '@ai-sdk/deepinfra'
 import { createFireworks } from '@ai-sdk/fireworks'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { convertToModelMessages, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel } from 'ai'
+import { eq } from 'drizzle-orm'
 import { toolset } from './tools'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
   result: T
 }
 
-const user = {
-  first_name: 'John',
-  last_name: 'Doe',
-  email: 'john.doe@example.com',
+type PromptParams = {
+  preferredName: string
+  location: {
+    name?: string
+    lat?: number
+    lng?: number
+  }
 }
 
-const p1 = `
-    You are a helpful executive assistant.
-    
-    The current date and time is ${new Date().toISOString()}.
-  
-    The current user is ${user.first_name} ${user.last_name} (${user.email}).
+const createPrompt = ({ preferredName, location }: PromptParams) => {
+  const prompt = [
+    `You are a helpful executive assistant.`,
+    `The current date and time is ${new Date().toISOString()}.`,
+    preferredName ? `The current's name is ${preferredName}.` : '',
+    location ? `The user's location is ${location.name} (${location.lat}, ${location.lng}).` : '',
+    `You can use the available tools to answer the user's question.`,
+    `If you are unable to answer the user's question based on the available information, just say so. Do not make up an answer.`,
+    `Respond to the user's question in a helpful, concise and friendly manner. Always reply to the user in plain text - do not reply in markdown or mention JSON or anything about tools`,
+  ]
 
-    You can use the available tools to answer the user's question.
-    
-    If you are unable to answer the user's question based on the available information, just say so. Do not make up an answer.
-
-    Respond to the user's question in a helpful, concise and friendly manner. Always reply to the user in plain text - do not reply in markdown or mention JSON or anything about tools
-`
+  return prompt.filter(Boolean).join('\n')
+}
 
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -120,9 +126,23 @@ export const aiFetchStreamingResponse = async ({ init, saveMessages, model: mode
 
     console.log('Using model', modelConfig.provider, modelConfig.model)
 
+    const { db } = await getDrizzleDatabase()
+
+    const locationNameResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name')).get()
+    const locationLatResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat')).get()
+    const locationLngResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng')).get()
+    const preferredNameResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name')).get()
+
     const result = streamText({
       model,
-      system: p1,
+      system: createPrompt({
+        preferredName: preferredNameResult?.value as string,
+        location: {
+          name: locationNameResult?.value as string,
+          lat: parseFloat(locationLatResult?.value as string),
+          lng: parseFloat(locationLngResult?.value as string),
+        },
+      }),
       messages: convertToModelMessages(messages),
       toolCallStreaming: true,
       tools: toolset,

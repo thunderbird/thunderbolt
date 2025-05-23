@@ -1,0 +1,11 @@
+[project]
+name = "thunderbolt"
+version = "0.1.0"
+description = "Backend for Thunderbolt"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi[standard]>=0.115.12",
+    "litellm[proxy]>=1.70.2",
+    "pydantic-settings>=2.9.1",
+]

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Thunderbolt Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <img src="../icons/icon-32.png" alt="Thunderbolt" class="logo">
+      Thunderbolt Bridge
+    </h1>
+    
+    <div class="status-section">
+      <div class="status-indicator" id="statusIndicator"></div>
+      <span class="status-text" id="statusText">Checking status...</span>
+    </div>
+    
+    <div class="toggle-section">
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableToggle">
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Enable Bridge</span>
+    </div>
+    
+    <div class="info-section">
+      <p class="info-text">
+        When enabled, this extension allows AI assistants to access your Thunderbird data including emails, contacts, and accounts.
+      </p>
+    </div>
+    
+    <div class="footer">
+      <span class="version">Version 1.0.0</span>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

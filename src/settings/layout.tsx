@@ -73,6 +73,14 @@ export default function SettingsLayout() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={currentPath.includes('/settings/thunderbolt-bridge')}>
+                      <Link to="/settings/thunderbolt-bridge">
+                        <span>Thunderbolt Bridge</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

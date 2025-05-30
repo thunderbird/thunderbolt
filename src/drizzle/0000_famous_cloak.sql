@@ -11,9 +11,7 @@ CREATE UNIQUE INDEX `accounts_id_unique` ON `accounts` (`id`);--> statement-brea
 CREATE TABLE `chat_messages` (
 	`id` text PRIMARY KEY NOT NULL,
 	`content` text NOT NULL,
-	`attachments` text,
 	`role` text NOT NULL,
-	`annotations` text,
 	`parts` text,
 	`chat_thread_id` text NOT NULL,
 	FOREIGN KEY (`chat_thread_id`) REFERENCES `chat_threads`(`id`) ON UPDATE cascade ON DELETE cascade
@@ -92,9 +90,23 @@ CREATE TABLE `embeddings` (
 CREATE UNIQUE INDEX `embeddings_id_unique` ON `embeddings` (`id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `embeddings_email_message_id_unique` ON `embeddings` (`email_message_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `embeddings_email_thread_id_unique` ON `embeddings` (`email_thread_id`);--> statement-breakpoint
+CREATE TABLE `mcp_servers` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`type` text DEFAULT 'http' NOT NULL,
+	`url` text,
+	`command` text,
+	`args` text,
+	`enabled` integer DEFAULT 1 NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()),
+	`updated_at` integer DEFAULT (unixepoch())
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `mcp_servers_id_unique` ON `mcp_servers` (`id`);--> statement-breakpoint
 CREATE TABLE `models` (
 	`id` text PRIMARY KEY NOT NULL,
 	`provider` text NOT NULL,
+	`name` text NOT NULL,
 	`model` text NOT NULL,
 	`url` text,
 	`api_key` text,

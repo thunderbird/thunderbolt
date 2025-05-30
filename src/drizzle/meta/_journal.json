@@ -1,33 +1,12 @@
 {
-  "version": "7",
+  "version": "1",
   "dialect": "sqlite",
   "entries": [
     {
       "idx": 0,
       "version": "6",
-      "when": 1743797714425,
-      "tag": "0000_fluffy_serpent_society",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1743805404452,
-      "tag": "0001_many_zemo",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1748018476896,
-      "tag": "0002_legal_falcon",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1748550692772,
-      "tag": "0003_brief_skrulls",
+      "when": 1748596213198,
+      "tag": "0000_famous_cloak",
       "breakpoints": true
     }
   ]

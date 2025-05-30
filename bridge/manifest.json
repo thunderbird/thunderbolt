@@ -1,0 +1,49 @@
+{
+  "manifest_version": 2,
+  "name": "Thunderbolt Bridge",
+  "version": "1.0.0",
+  "description": "Bridge between Thunderbird and Thunderbolt for AI integration",
+  
+  "applications": {
+    "gecko": {
+      "id": "thunderbolt-bridge@thunderbolt.app",
+      "strict_min_version": "78.0"
+    }
+  },
+  
+  "permissions": [
+    "storage",
+    "accountsRead",
+    "addressBooks",
+    "messagesRead",
+    "messagesMove",
+    "messagesDelete",
+    "messagesTags",
+    "tabs",
+    "compose",
+    "compose.send"
+  ],
+  
+  "background": {
+    "scripts": ["background/background.js"],
+    "persistent": true
+  },
+  
+  "browser_action": {
+    "default_title": "Thunderbolt Bridge",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

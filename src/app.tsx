@@ -12,6 +12,7 @@ import ModelDetailPage from '@/settings/models/detail'
 import ModelsLayout from '@/settings/models/layout'
 import NewModelPage from '@/settings/models/new'
 import PreferencesSettingsPage from '@/settings/preferences'
+import ThunderboltBridgeSettingsPage from '@/settings/thunderbolt-bridge'
 import { useEffect, useState } from 'react'
 import { seedAccounts, seedMcpServers, seedModels, seedSettings } from './dal'
 import { initializeDrizzleDatabase } from './db/database'
@@ -63,6 +64,7 @@ function AppContent({ initData }: { initData: InitData }) {
             </Route>
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="accounts" element={<AccountsSettingsPage />} />
+            <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />
           </Route>
 
           <Route path="ui-kit" element={<UiKitPage />} />

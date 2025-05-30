@@ -243,6 +243,52 @@ fn get_env(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+#[command]
+async fn init_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use std::sync::Arc;
+    use thunderbolt_bridge::{BridgeConfig, BridgeServer};
+    
+    let state = app_handle.state::<Mutex<AppState>>();
+    let mut state_guard = state.lock().await;
+    
+    // Create bridge server with default config
+    let config = BridgeConfig::default();
+    let bridge_server = BridgeServer::new(config);
+    
+    state_guard.bridge_server = Some(Arc::new(Mutex::new(bridge_server)));
+    
+    Ok(())
+}
+
+#[command]
+async fn set_bridge_enabled(app_handle: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let state = app_handle.state::<Mutex<AppState>>();
+    let state_guard = state.lock().await;
+    
+    if let Some(bridge_server) = &state_guard.bridge_server {
+        let mut server = bridge_server.lock().await;
+        server.set_enabled(enabled).await
+            .map_err(|e| format!("Failed to set bridge state: {}", e))?;
+    } else {
+        return Err("Bridge not initialized. Call init_bridge first.".to_string());
+    }
+    
+    Ok(())
+}
+
+#[command]
+async fn get_bridge_status(app_handle: tauri::AppHandle) -> Result<bool, String> {
+    let state = app_handle.state::<Mutex<AppState>>();
+    let state_guard = state.lock().await;
+    
+    if let Some(bridge_server) = &state_guard.bridge_server {
+        let server = bridge_server.lock().await;
+        Ok(server.is_enabled().await)
+    } else {
+        Ok(false)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // This should be called as early in the execution of the app as possible
@@ -253,6 +299,8 @@ async fn main() -> Result<()> {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));
             Ok(())
@@ -270,7 +318,10 @@ async fn main() -> Result<()> {
             sync_mailbox,
             embedding::generate_embeddings,
             embedding::init_embedder,
-            get_env
+            get_env,
+            init_bridge,
+            set_bridge_enabled,
+            get_bridge_status
         ]);
 
     #[cfg(debug_assertions)]

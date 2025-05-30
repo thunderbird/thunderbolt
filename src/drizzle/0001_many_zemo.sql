@@ -1,1 +1,0 @@
-ALTER TABLE `models` ADD `name` text NOT NULL;

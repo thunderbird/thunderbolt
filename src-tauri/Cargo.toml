@@ -17,7 +17,7 @@ name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
-members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embeddings"]
+members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embeddings", "thunderbolt_bridge"]
 
 [workspace.dependencies]
 libsql = { version = "0.6.0", features = ["encryption"] }
@@ -36,6 +36,7 @@ tauri-build = { version = "2.0.6", features = ["isolation"] }
 [dependencies]
 tauri = { version = "2.3.1", features = ["isolation", "tray-icon", "devtools"] }
 tauri-plugin-opener = "2.2.6"
+tauri-plugin-shell = "2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 imap = "3.0.0-alpha.15"
@@ -68,6 +69,7 @@ mail-parser = { version = "0.10.2", features = ["serde_support"] }
 thunderbolt_imap_client = { path = "./thunderbolt_imap_client" }
 thunderbolt_imap_sync = { path = "./thunderbolt_imap_sync" }
 thunderbolt_embeddings = { path = "./thunderbolt_embeddings" }
+thunderbolt_bridge = { path = "./thunderbolt_bridge" }
 # MCP Server dependencies
 axum = "0.7.4"
 tower = "0.4.13"

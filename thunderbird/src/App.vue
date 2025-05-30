@@ -60,19 +60,20 @@
               
               <div v-if="currentStep === 3" class="setup-instructions">
                 <p>Click the button below to generate your configuration:</p>
-                <button @click="openConfigInTab" class="btn btn-primary">
+                <button @click="generateClaudeConfig" class="btn btn-primary">
                   Generate Configuration
                 </button>
                 
                 <div v-if="claudeConfig" class="config-display">
                   <p>Add this to your Claude Desktop config file:</p>
                   <p class="config-path"><strong>{{ configPath }}</strong></p>
-                  <div class="command-box">
-                    <code>{{ claudeConfig }}</code>
+                  <div class="command-box config-json">
+                    <pre><code>{{ claudeConfig }}</code></pre>
                     <button @click="copyConfig" class="copy-btn">
                       {{ configCopied ? '✓ Copied!' : 'Copy' }}
                     </button>
                   </div>
+                  <p v-if="pathInstructions" class="path-instructions">{{ pathInstructions }}</p>
                 </div>
               </div>
             </div>
@@ -110,6 +111,15 @@
           <div class="status-indicator" :class="{ active: serverStatus.running }">
             <span class="dot"></span>
             <span>{{ serverStatus.running ? 'Running' : 'Stopped' }}</span>
+          </div>
+          
+          <!-- Connection Status -->
+          <div class="connection-overview">
+            <div class="connection-item" :class="{ active: nativeMessagingWorking }">
+              <span class="connection-dot"></span>
+              <span>Native Messaging {{ nativeMessagingWorking ? 'Connected' : 'Disconnected' }}</span>
+              <span v-if="testingConnection" class="testing-indicator">Testing...</span>
+            </div>
           </div>
           
           <div v-if="serverStatus.running" class="server-info">
@@ -195,6 +205,7 @@ const configPath = ref('');
 const osName = ref('');
 const osInstructions = ref('');
 const setupCommand = ref('');
+const pathInstructions = ref('');
 
 const resources = ref([
   {
@@ -255,9 +266,7 @@ async function detectOS() {
         configPath.value = 'your Claude Desktop config file';
     }
     
-    // Generate the setup command based on extension location
-    const extensionId = (window as any).browser.runtime.id;
-    
+    // Generate the setup command
     // For now, provide the manual setup command
     // In production, this would download a setup script from your repository
     if (info.os === 'mac') {
@@ -329,6 +338,7 @@ async function generateClaudeConfig() {
       // Get the proper path for the extension
       const response = await (window as any).browser.runtime.sendMessage({ action: 'getExtensionPath' });
       const bridgePath = response.path || `<extension-folder>/claude-desktop-bridge.js`;
+      const pathInstructions = response.instructions || '';
       
       const config = {
         mcpServers: {
@@ -342,6 +352,11 @@ async function generateClaudeConfig() {
       };
       
       claudeConfig.value = JSON.stringify(config, null, 2);
+      
+      // Store the instructions for display
+      if (response.instructions) {
+        pathInstructions.value = response.instructions;
+      }
       
       // If user wants to open in a new tab, do it here
       if (window.location.search.includes('tab=true')) {
@@ -394,33 +409,20 @@ async function completeOnboarding() {
   showOnboarding.value = false;
 }
 
-async function openConfigInTab() {
-  if (isExtension) {
-    // Send message to background script to open in a new tab
-    try {
-      await (window as any).browser.runtime.sendMessage({ 
-        action: 'openConfigTab',
-        step: 3 
-      });
-      // Close the popup
-      window.close();
-    } catch (error) {
-      console.error('Failed to open config tab:', error);
-      // Fallback: just generate config in popup
-      generateClaudeConfig();
-    }
-  } else {
-    generateClaudeConfig();
-  }
-}
+// Removed openConfigInTab - now using generateClaudeConfig directly
 
 async function checkOnboardingStatus() {
   if (isExtension) {
     const result = await (window as any).browser.storage.local.get('onboardingCompleted');
     if (result.onboardingCompleted) {
       showOnboarding.value = false;
-      // Still check if native messaging is working
-      testNativeMessaging();
+      // Auto-test connection when popup opens if onboarding is done
+      await testNativeMessaging();
+    } else {
+      // If still in onboarding, test connection on step 2
+      if (currentStep.value === 2) {
+        await testNativeMessaging();
+      }
     }
   }
 }
@@ -496,8 +498,9 @@ watchEffect(() => {
   }
 });
 
-onMounted(() => {
-  detectOS();
+onMounted(async () => {
+  await detectOS();
+  await getServerStatus();
   
   // Check if we're in tab mode
   const urlParams = new URLSearchParams(window.location.search);
@@ -516,10 +519,8 @@ onMounted(() => {
       }, 500);
     }
   } else {
-    checkOnboardingStatus();
+    await checkOnboardingStatus();
   }
-  
-  getServerStatus();
 });
 </script>
 
@@ -634,6 +635,53 @@ h1 {
   overflow-x: auto;
 }
 
+.command-box.config-json {
+  background: #282828;
+  border: 2px solid #404040;
+  padding: 16px;
+  padding-right: 80px; /* Space for copy button */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.command-box.config-json pre {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.command-box.config-json code {
+  color: #f8f8f2;
+  font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  display: block;
+  font-weight: 500;
+}
+
+/* Better contrast for light mode */
+@media (prefers-color-scheme: light) {
+  .command-box.config-json {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .command-box.config-json code {
+    color: #212529;
+  }
+}
+
+/* Always use dark theme for JSON in popup for better readability */
+.container .command-box.config-json {
+  background: #2d3748;
+  border: 2px solid #4a5568;
+}
+
+.container .command-box.config-json code {
+  color: #e2e8f0;
+}
+
 .copy-btn {
   position: absolute;
   top: 8px;
@@ -696,6 +744,18 @@ h1 {
   margin: 10px 0;
 }
 
+.path-instructions {
+  margin-top: 15px;
+  padding: 12px;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #1565c0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .onboarding-footer {
   display: flex;
   justify-content: space-between;
@@ -734,6 +794,44 @@ h2 {
 
 .status-indicator.active .dot {
   background: #28a745;
+}
+
+.connection-overview {
+  margin: 15px 0;
+  padding: 15px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.connection-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+.connection-item.active {
+  color: #28a745;
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc3545;
+  flex-shrink: 0;
+}
+
+.connection-item.active .connection-dot {
+  background: #28a745;
+}
+
+.testing-indicator {
+  font-size: 12px;
+  color: #007bff;
+  font-style: italic;
 }
 
 .server-info {

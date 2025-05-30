@@ -139,7 +139,10 @@ export const accountsTable = sqliteTable('accounts', {
 export const mcpServersTable = sqliteTable('mcp_servers', {
   id: text('id').primaryKey().notNull().unique(),
   name: text('name').notNull(),
-  url: text('url').notNull(),
+  type: text('type', { enum: ['http', 'stdio'] }).notNull().default('http'),
+  url: text('url'),
+  command: text('command'),
+  args: text('args', { mode: 'json' }).$type<string[]>(),
   enabled: integer('enabled').default(1).notNull(),
   createdAt: integer('created_at').default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),

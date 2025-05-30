@@ -148,13 +148,30 @@ async function configureClaudeDesktop() {
         throw new Error('Unsupported platform');
     }
     
-    // Create the configuration snippet
+    // Create the configuration snippet - point to the native messaging host
+    let hostCommand;
+    switch (platform) {
+      case 'mac':
+        hostCommand = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+        break;
+      case 'win':
+        hostCommand = '%USERPROFILE%\\thunderbird-mcp\\thunderbird\\native-messaging\\mcp-host.bat';
+        break;
+      case 'linux':
+        hostCommand = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+        break;
+      default:
+        hostCommand = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+    }
+    
     const configSnippet = {
-      thunderbird: {
-        command: 'node',
-        args: [extensionPath],
-        env: {},
-        alwaysAllow: ['read']
+      mcpServers: {
+        thunderbird: {
+          command: hostCommand,
+          args: [],
+          env: {},
+          alwaysAllow: ['read']
+        }
       }
     };
     
@@ -450,28 +467,42 @@ async function testNativeMessaging() {
 // Get extension path for configuration
 async function getExtensionPath() {
   try {
-    const extensionId = browser.runtime.id;
     const platform = await getPlatform();
-    let extensionPath;
+    
+    // Return the native messaging host path for Claude Desktop config
+    let hostPath;
+    let instructions = '';
     
     switch (platform) {
       case 'mac':
-        extensionPath = `~/Library/Thunderbird/Profiles/*/extensions/${extensionId}/claude-desktop-bridge.js`;
+        hostPath = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+        instructions = 'Replace "~/thunderbird-mcp" with the actual path where you downloaded/cloned the Thunderbird MCP files.\n\nExample: If you cloned to ~/Documents/thunderbird-mcp, use:\n~/Documents/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
         break;
       case 'win':
-        extensionPath = `%APPDATA%\\Thunderbird\\Profiles\\*\\extensions\\${extensionId}\\claude-desktop-bridge.js`;
+        hostPath = '%USERPROFILE%\\thunderbird-mcp\\thunderbird\\native-messaging\\mcp-host.bat';
+        instructions = 'Replace "thunderbird-mcp" with the actual folder where you downloaded the extension files. You may need to create a .bat wrapper script for Windows.';
         break;
       case 'linux':
-        extensionPath = `~/.thunderbird/*/extensions/${extensionId}/claude-desktop-bridge.js`;
+        hostPath = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+        instructions = 'Replace "~/thunderbird-mcp" with the actual path where you downloaded/cloned the Thunderbird MCP files.';
         break;
       default:
-        extensionPath = `<extension-folder>/claude-desktop-bridge.js`;
+        hostPath = '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh';
+        instructions = 'Replace "~/thunderbird-mcp" with the actual path where you downloaded the extension files.';
     }
     
-    return { path: extensionPath };
+    return { 
+      path: hostPath,
+      instructions: instructions,
+      extensionId: browser.runtime.id
+    };
   } catch (error) {
     console.error('Failed to get extension path:', error);
-    return { path: '<extension-folder>/claude-desktop-bridge.js' };
+    return { 
+      path: '~/thunderbird-mcp/thunderbird/native-messaging/mcp-host.sh',
+      instructions: 'Update the path to match where you downloaded the Thunderbird MCP extension files.',
+      extensionId: 'unknown'
+    };
   }
 }
 

@@ -5,34 +5,56 @@ import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { z } from 'zod'
 
-// @todo cache this
+// Cache for the ky instance to avoid recreating it
+let cachedKyInstance: typeof ky | null = null
+let cachedAnonymousId: string | null = null
+
 const getOrCreateKyInstance = async () => {
   const { db } = await getDrizzleDatabase()
 
   const anonymousIdSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'anonymous_id')).get()
   const anonymousId = anonymousIdSetting?.value as string
 
-  const kyInstance = ky.create({
+  // Return cached instance if anonymous ID hasn't changed
+  if (cachedKyInstance && cachedAnonymousId === anonymousId) {
+    return cachedKyInstance
+  }
+
+  // Create new instance and cache it
+  cachedKyInstance = ky.create({
     headers: {
       Authorization: `Bearer ${anonymousId}`,
     },
   })
+  cachedAnonymousId = anonymousId
 
-  return kyInstance
+  return cachedKyInstance
 }
 
-// @todo cache this
+// Cache for the weather client to avoid recreating it
+let cachedWeatherClient: WeatherClient | null = null
+let cachedCloudUrl: string | null = null
+
 export const getOrCreateWeatherClient = async () => {
   const { db } = await getDrizzleDatabase()
 
   const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
   const cloudUrl = cloudUrlSetting?.value as string
 
-  return new WeatherClient({
+  // Return cached client if cloud URL hasn't changed
+  if (cachedWeatherClient && cachedCloudUrl === cloudUrl) {
+    return cachedWeatherClient
+  }
+
+  // Create new client and cache it
+  cachedWeatherClient = new WeatherClient({
     apiKey: 'none',
     apiBaseUrl: `${cloudUrl}/proxy/weather`,
     ky: await getOrCreateKyInstance(),
   })
+  cachedCloudUrl = cloudUrl
+
+  return cachedWeatherClient
 }
 
 export const getForecast = {

@@ -12,7 +12,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import axios from '@/lib/axios'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -117,23 +116,42 @@ export default function PreferencesSettingsPage() {
   // Debounced search for locations
   React.useEffect(() => {
     const searchTimeout = setTimeout(async () => {
-      if (searchQuery.trim().length > 1) {
+      if (searchQuery.trim().length > 1 && settings?.cloudUrl) {
         setIsSearching(true)
         try {
-          const response = await axios.get(`/locations?search=${encodeURIComponent(searchQuery)}`)
-          if (response.data.success) {
-            setLocations(response.data.data)
+          // Use cloud_url from database settings as base URL
+          const baseUrl = settings.cloudUrl as string
+          const response = await fetch(`${baseUrl}/locations?query=${encodeURIComponent(searchQuery)}`)
+
+          if (response.ok) {
+            const data = await response.json()
+            // Transform the WeatherAPI response to match our LocationData interface
+            const transformedLocations: LocationData[] = data.map((location: any) => ({
+              name: `${location.name}, ${location.region}, ${location.country}`,
+              city: location.name,
+              coordinates: {
+                lat: location.lat,
+                lng: location.lon,
+              },
+            }))
+            setLocations(transformedLocations)
+          } else {
+            console.error('Error searching locations:', response.statusText)
+            setLocations([])
           }
         } catch (error) {
           console.error('Error searching locations:', error)
+          setLocations([])
         } finally {
           setIsSearching(false)
         }
+      } else {
+        setLocations([])
       }
     }, 300)
 
     return () => clearTimeout(searchTimeout)
-  }, [searchQuery])
+  }, [searchQuery, settings?.cloudUrl])
 
   // Save name mutation
   const saveNameMutation = useMutation({

@@ -22,7 +22,6 @@ import DevToolsPage from './devtools'
 import ImapClient from './imap/imap'
 import { ImapProvider } from './imap/provider'
 import Layout from './layout'
-import { initializeAxios } from './lib/axios'
 import { createAppDataDir } from './lib/fs'
 import { MCPProvider } from './lib/mcp-provider'
 import { TrayManager, TrayProvider } from './lib/tray'
@@ -84,8 +83,6 @@ const init = async (): Promise<InitData> => {
   await seedModels(db)
   await seedSettings(db)
   await seedMcpServers(db)
-
-  await initializeAxios(db)
 
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()

@@ -25,6 +25,7 @@ THUNDERBOLT_MODEL_WHITELIST = {
     "llama-v3p1-405b-instruct",
     "qwen3-235b-a22b",
     "qwen2p5-72b-instruct",
+    # "deepseek-r1-0528", # @todo suffering from a bug where it just stops after awhile during reasoning when tool calling.
 }
 
 

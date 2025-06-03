@@ -306,7 +306,7 @@ export default function ModelsPage() {
             { id: 'llama-v3p1-405b-instruct', name: 'Llama 3.1 405B' },
             { id: 'qwen3-235b-a22b', name: 'Qwen 3 235B' },
             { id: 'qwen2p5-72b-instruct', name: 'Qwen 2.5 72B' },
-            { id: 'deepseek-r1-0528', name: 'DeepSeek R1 671B' },
+            // { id: 'deepseek-r1-0528', name: 'DeepSeek R1 671B' },
           ])
           setIsLoadingModels(false)
           return

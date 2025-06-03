@@ -45,14 +45,14 @@ export const seedModels = async (db: DrizzleContextType['db']) => {
         isSystem: 0,
         enabled: 1,
       },
-      {
-        id: uuidv7(),
-        name: 'DeepSeek R1 671B',
-        provider: 'thunderbolt' as const,
-        model: 'deepseek-r1-0528',
-        isSystem: 0,
-        enabled: 1,
-      },
+      // {
+      //   id: uuidv7(),
+      //   name: 'DeepSeek R1 671B',
+      //   provider: 'thunderbolt' as const,
+      //   model: 'deepseek-r1-0528',
+      //   isSystem: 0,
+      //   enabled: 1,
+      // },
       {
         id: uuidv7(),
         name: 'Llama 3.2 3B',

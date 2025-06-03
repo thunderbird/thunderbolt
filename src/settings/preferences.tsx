@@ -6,13 +6,13 @@ import { eq, sql } from 'drizzle-orm'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import React from 'react'
 
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ThemeToggle } from '@/components/theme-toggle'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -232,7 +232,7 @@ export default function PreferencesSettingsPage() {
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Theme</label>
             <ThemeToggle />
-            <p className="text-sm text-muted-foreground">Choose your preferred theme. System will use your device's system preference.</p>
+            <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
           </div>
         </CardContent>
       </Card>

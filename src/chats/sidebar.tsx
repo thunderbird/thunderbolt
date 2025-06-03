@@ -49,9 +49,14 @@ export default function ChatSidebar() {
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
       await db.delete(chatThreadsTable)
+      // Create a new thread immediately after deletion
+      const chatThreadId = await getOrCreateChatThread(db)
+      return chatThreadId
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+    onSuccess: async (chatThreadId) => {
+      // Invalidate queries after the new thread is created
+      await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+      navigate(`/chats/${chatThreadId}`)
     },
   })
 

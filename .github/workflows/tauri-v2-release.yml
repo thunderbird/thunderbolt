@@ -75,8 +75,9 @@ jobs:
       - name: Build Tauri app for macOS
         if: matrix.os == 'macos-latest'
         run: |
+          rustup target add x86_64-apple-darwin
           bun install
-          bun tauri build
+          bun tauri build --bundles app,dmg --target universal-apple-darwin
         env:
           RUSTFLAGS: ""
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

@@ -103,7 +103,7 @@ const init = async (): Promise<InitData> => {
     })
   }
 
-  const tray = await TrayManager.init()
+  const tray = await TrayManager.initIfSupported()
 
   const url = new URL(window.location.href)
   const sideviewParam = url.searchParams.get('sideview')
@@ -136,10 +136,25 @@ const init = async (): Promise<InitData> => {
 
 export const App = () => {
   const [initData, setInitData] = useState<InitData>()
+  const [initError, setInitError] = useState<Error>()
 
   useEffect(() => {
-    init().then(setInitData)
+    init()
+      .then(setInitData)
+      .catch((error) => {
+        console.error('Failed to initialize app:', error)
+        setInitError(error)
+      })
   }, [])
+
+  if (initError) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
+        <div className="text-red-500 text-center mb-4">Failed to initialize app</div>
+        <div className="text-sm text-gray-500 text-center">{initError.message}</div>
+      </div>
+    )
+  }
 
   if (!initData) {
     return <Loading />

@@ -4,6 +4,7 @@ import { TrayIcon } from '@tauri-apps/api/tray'
 import { getCurrentWindow, Window } from '@tauri-apps/api/window'
 import { exit } from '@tauri-apps/plugin-process'
 import { createContext, ReactNode, useContext, useState } from 'react'
+import { isDesktop } from './platform'
 
 interface TrayContextType {
   tray: TrayIcon | undefined
@@ -53,6 +54,14 @@ export class TrayManager {
     }
   }
 
+  static async initIfSupported(): Promise<{ tray: TrayIcon | undefined; window: Window | undefined }> {
+    if (isDesktop()) {
+      return TrayManager.init()
+    }
+    // Return empty tray/window for mobile platforms
+    return { tray: undefined, window: getCurrentWindow() }
+  }
+
   getTray(): TrayIcon | undefined {
     return this.tray
   }
@@ -64,7 +73,9 @@ export class TrayManager {
   async showWindow() {
     if (!this.appWindow) return
 
-    await invoke('toggle_dock_icon', { show: true })
+    if (isDesktop()) {
+      await invoke('toggle_dock_icon', { show: true })
+    }
 
     await this.appWindow.show()
     await this.appWindow.setFocus()
@@ -88,35 +99,40 @@ export class TrayManager {
       await this.appWindow.hide()
       await this.appWindow.setSkipTaskbar(true)
 
-      await invoke('toggle_dock_icon', { show: false })
+      if (isDesktop()) {
+        await invoke('toggle_dock_icon', { show: false })
+      }
     })
   }
 
   private async initialize() {
     this.appWindow = getCurrentWindow()
 
-    await this.setupWindowBehavior()
+    // Only set up tray-related features on desktop platforms
+    if (isDesktop()) {
+      await this.setupWindowBehavior()
 
-    const menu = await Menu.new({
-      items: [
-        {
-          id: 'show',
-          text: 'Show',
-          action: this.handleShowClick.bind(this),
-        },
-        {
-          id: 'quit',
-          text: 'Quit',
-          action: this.handleQuitClick.bind(this),
-        },
-      ],
-    })
+      const menu = await Menu.new({
+        items: [
+          {
+            id: 'show',
+            text: 'Show',
+            action: this.handleShowClick.bind(this),
+          },
+          {
+            id: 'quit',
+            text: 'Quit',
+            action: this.handleQuitClick.bind(this),
+          },
+        ],
+      })
 
-    this.tray = await TrayIcon.new({
-      title: 'Thunderbolt',
-      tooltip: 'Thunderbolt',
-      menu,
-    })
+      this.tray = await TrayIcon.new({
+        title: 'Thunderbolt',
+        tooltip: 'Thunderbolt',
+        menu,
+      })
+    }
 
     return {
       tray: this.tray,

@@ -21,6 +21,7 @@
     ],
     "security": {
       "csp": null,
+      "dangerousDisableAssetCspModification": ["script-src", "style-src"],
       "pattern": {
         "use": "isolation",
         "options": {

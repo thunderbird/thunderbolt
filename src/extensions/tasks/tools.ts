@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
 export const addTasks = {
-  name: 'tasks.addTasks',
+  name: 'addTasks',
   description: "Add a task to the user's task (to do) list.",
   verb: 'Adding tasks',
   parameters: z.object({
@@ -27,7 +27,7 @@ export const addTasks = {
 }
 
 export const getTasks = {
-  name: 'tasks.getTasks',
+  name: 'getTasks',
   description: "Get the user's task (to do) list.",
   verb: 'Getting tasks',
   parameters: z.object({}),
@@ -39,7 +39,7 @@ export const getTasks = {
 }
 
 export const deleteTasks = {
-  name: 'tasks.deleteTasks',
+  name: 'deleteTasks',
   description: "Delete a task from the user's task (to do) list.",
   verb: 'Deleting tasks',
   parameters: z.object({

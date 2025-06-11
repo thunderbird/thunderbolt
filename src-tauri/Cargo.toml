@@ -30,11 +30,11 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.2.0", features = ["isolation"] }
+tauri-build = { version = "2.2.0", features = [] }
 
 # Common dependencies (no Metal features)
 [dependencies]
-tauri = { version = "2.5.1", features = ["isolation", "tray-icon", "devtools"] }
+tauri = { version = "2.5.1", features = [ "tray-icon", "devtools"] }
 tauri-plugin-opener = "2.2.7"
 tauri-plugin-shell = "2.2.1"
 tauri-plugin-os = "2"

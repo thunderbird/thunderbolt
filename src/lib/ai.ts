@@ -7,9 +7,9 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 
 import { convertToModelMessages, experimental_createMCPClient, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel, type ToolSet } from 'ai'
 import { eq } from 'drizzle-orm'
-import { createToolset, tools } from './tools'
-import { getCloudUrl } from './config'
 import { createFlower, isFlowerModel } from './ai-providers/flower'
+import { getCloudUrl } from './config'
+import { createToolset, tools } from './tools'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
   result: T
@@ -217,6 +217,7 @@ export const aiFetchStreamingResponse = async ({ init, saveMessages, model: mode
       tools: supportsTools ? toolset : undefined,
       // continueUntil: hasToolCall('answer'),
       // continueUntil: maxSteps(5),
+      maxSteps: 10,
     })
 
     return result.toUIMessageStreamResponse({

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ArrowLeft, Bot, PanelLeftIcon, Server, SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
 export default function SettingsLayout() {
@@ -54,10 +54,20 @@ export default function SettingsLayout() {
 function SettingsSidebar({ currentPath }: { currentPath: string }) {
   const { state, toggleSidebar } = useSidebar()
   const isCollapsed = state === 'collapsed'
+  const [isTransitioning, setIsTransitioning] = useState(false)
+
+  // Track transition state to prevent tooltips during animations
+  useEffect(() => {
+    setIsTransitioning(true)
+    const timer = setTimeout(() => setIsTransitioning(false), 200) // Match CSS transition duration
+    return () => clearTimeout(timer)
+  }, [isCollapsed])
+
+  const showTooltips = isCollapsed && !isTransitioning
 
   return (
     <Sidebar collapsible="icon">
-      <TooltipProvider>
+      <TooltipProvider delayDuration={700} skipDelayDuration={300}>
         <SidebarContent className="flex flex-col h-full">
           <SidebarGroup>
             <SidebarGroupContent className="flex flex-col gap-1">
@@ -69,7 +79,7 @@ function SettingsSidebar({ currentPath }: { currentPath: string }) {
                         <PanelLeftIcon className="size-4" />
                       </SidebarMenuButton>
                     </TooltipTrigger>
-                    {isCollapsed && (
+                    {showTooltips && (
                       <TooltipContent side="right">
                         <p>Toggle Sidebar</p>
                       </TooltipContent>
@@ -86,7 +96,7 @@ function SettingsSidebar({ currentPath }: { currentPath: string }) {
                         </Link>
                       </SidebarMenuButton>
                     </TooltipTrigger>
-                    {isCollapsed && (
+                    {showTooltips && (
                       <TooltipContent side="right">
                         <p>Back to Chat</p>
                       </TooltipContent>
@@ -113,7 +123,7 @@ function SettingsSidebar({ currentPath }: { currentPath: string }) {
                         </Link>
                       </SidebarMenuButton>
                     </TooltipTrigger>
-                    {isCollapsed && (
+                    {showTooltips && (
                       <TooltipContent side="right">
                         <p>Preferences</p>
                       </TooltipContent>
@@ -131,7 +141,7 @@ function SettingsSidebar({ currentPath }: { currentPath: string }) {
                         </Link>
                       </SidebarMenuButton>
                     </TooltipTrigger>
-                    {isCollapsed && (
+                    {showTooltips && (
                       <TooltipContent side="right">
                         <p>Models</p>
                       </TooltipContent>
@@ -149,7 +159,7 @@ function SettingsSidebar({ currentPath }: { currentPath: string }) {
                         </Link>
                       </SidebarMenuButton>
                     </TooltipTrigger>
-                    {isCollapsed && (
+                    {showTooltips && (
                       <TooltipContent side="right">
                         <p>MCP Servers</p>
                       </TooltipContent>

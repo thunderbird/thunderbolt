@@ -1,12 +1,12 @@
 import { useDrizzle } from '@/db/provider'
 import { settingsTable } from '@/db/tables'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
+import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import React from 'react'
-import { useDebounce } from '@/hooks/use-debounce'
-import ky from 'ky'
 
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
@@ -35,10 +35,9 @@ const nameFormSchema = z.object({
 
 const locationFormSchema = z.object({
   locationName: z.string().min(1, { message: 'Location is required.' }),
-  locationLat: z.string().min(1, { message: 'Latitude is required.' }),
-  locationLng: z.string().min(1, { message: 'Longitude is required.' }),
+  locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
+  locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
 })
-
 
 export default function PreferencesSettingsPage() {
   const { db } = useDrizzle()
@@ -82,7 +81,6 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-
   // Update forms when data is loaded
   React.useEffect(() => {
     if (settings) {
@@ -92,10 +90,9 @@ export default function PreferencesSettingsPage() {
 
       locationForm.reset({
         locationName: settings.locationName as string,
-        locationLat: settings.locationLat as string,
-        locationLng: settings.locationLng as string,
+        locationLat: typeof settings.locationLat === 'string' ? settings.locationLat : String(settings.locationLat || ''),
+        locationLng: typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
-
     }
   }, [settings, nameForm, locationForm])
 
@@ -116,22 +113,26 @@ export default function PreferencesSettingsPage() {
         // Get cloud_url from database settings
         const cloudUrlData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
         const cloudUrl = cloudUrlData[0]?.value
-        
+
         if (!cloudUrl) {
           console.error('Cloud URL not configured')
           setLocations([])
           return
         }
-        
-        const data = await ky.get(`${cloudUrl}/locations`, {
-          searchParams: { query: debouncedSearchQuery }
-        }).json<Array<{
-          name: string
-          region: string
-          country: string
-          lat: number
-          lon: number
-        }>>()
+
+        const data = await ky
+          .get(`${cloudUrl}/locations`, {
+            searchParams: { query: debouncedSearchQuery },
+          })
+          .json<
+            Array<{
+              name: string
+              region: string
+              country: string
+              lat: number
+              lon: number
+            }>
+          >()
         // Transform the WeatherAPI response to match our LocationData interface
         const transformedLocations: LocationData[] = data.map((location) => ({
           name: `${location.name}, ${location.region}, ${location.country}`,
@@ -157,11 +158,12 @@ export default function PreferencesSettingsPage() {
   const saveNameMutation = useMutation({
     mutationFn: async (values: z.infer<typeof nameFormSchema>) => {
       // Upsert the setting
-      await db.insert(settingsTable)
+      await db
+        .insert(settingsTable)
         .values({ key: 'preferred_name', value: values.preferredName })
         .onConflictDoUpdate({
           target: settingsTable.key,
-          set: { value: values.preferredName }
+          set: { value: values.preferredName },
         })
     },
     onSuccess: () => {
@@ -172,33 +174,40 @@ export default function PreferencesSettingsPage() {
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
-      // Upsert all location settings in parallel
-      await Promise.all([
-        db.insert(settingsTable)
+      try {
+        // Save each setting sequentially with individual error handling
+        await db
+          .insert(settingsTable)
           .values({ key: 'location_name', value: values.locationName })
           .onConflictDoUpdate({
             target: settingsTable.key,
-            set: { value: values.locationName }
-          }),
-        db.insert(settingsTable)
+            set: { value: values.locationName },
+          })
+
+        await db
+          .insert(settingsTable)
           .values({ key: 'location_lat', value: values.locationLat })
           .onConflictDoUpdate({
             target: settingsTable.key,
-            set: { value: values.locationLat }
-          }),
-        db.insert(settingsTable)
+            set: { value: values.locationLat },
+          })
+
+        await db
+          .insert(settingsTable)
           .values({ key: 'location_lng', value: values.locationLng })
           .onConflictDoUpdate({
             target: settingsTable.key,
-            set: { value: values.locationLng }
+            set: { value: values.locationLng },
           })
-      ])
+      } catch (error) {
+        console.error('Error saving location settings:', error)
+        throw error
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
     },
   })
-
 
   const handleNameBlur = async (value: string) => {
     // Save the value directly
@@ -206,12 +215,26 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleLocationSave = async (location: LocationData) => {
-    // Save directly with location data
-    await saveLocationMutation.mutateAsync({
+    // Validate the data before saving
+    if (!location.name || location.name.trim() === '') {
+      return
+    }
+
+    if (typeof location.coordinates.lat !== 'number' || isNaN(location.coordinates.lat)) {
+      return
+    }
+
+    if (typeof location.coordinates.lng !== 'number' || isNaN(location.coordinates.lng)) {
+      return
+    }
+
+    const values = {
       locationName: location.name,
-      locationLat: String(location.coordinates.lat),
-      locationLng: String(location.coordinates.lng),
-    })
+      locationLat: location.coordinates.lat,
+      locationLng: location.coordinates.lng,
+    }
+
+    await saveLocationMutation.mutateAsync(values)
   }
 
   const handleSelectLocation = (location: LocationData) => {
@@ -236,7 +259,7 @@ export default function PreferencesSettingsPage() {
       </SectionCard>
 
       <div className="h-6" />
-      
+
       <SectionCard title="Personal Information">
         <Form {...nameForm}>
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
@@ -247,9 +270,9 @@ export default function PreferencesSettingsPage() {
                 <FormItem>
                   <FormLabel>Preferred Name</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Your name" 
-                      {...field} 
+                    <Input
+                      placeholder="Your name"
+                      {...field}
                       onBlur={(e) => {
                         field.onBlur()
                         handleNameBlur(e.target.value)
@@ -266,7 +289,7 @@ export default function PreferencesSettingsPage() {
       </SectionCard>
 
       <div className="h-6" />
-      
+
       <SectionCard title="Location">
         <Form {...locationForm}>
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
@@ -276,14 +299,17 @@ export default function PreferencesSettingsPage() {
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Location</FormLabel>
-                  <Popover open={open} onOpenChange={(newOpen) => {
-                    setOpen(newOpen)
-                    if (!newOpen) {
-                      // Clear search when closing
-                      setSearchQuery('')
-                      setLocations([])
-                    }
-                  }}>
+                  <Popover
+                    open={open}
+                    onOpenChange={(newOpen) => {
+                      setOpen(newOpen)
+                      if (!newOpen) {
+                        // Clear search when closing
+                        setSearchQuery('')
+                        setLocations([])
+                      }
+                    }}
+                  >
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}>
@@ -304,21 +330,14 @@ export default function PreferencesSettingsPage() {
                               </div>
                             </div>
                           )}
-                          {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
-                            <CommandEmpty>No locations found.</CommandEmpty>
-                          )}
+                          {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
                           {!isSearching && locations.length > 0 && (
                             <CommandGroup>
-                                {locations.map((location) => (
-                                  <CommandItem 
-                                    key={`${location.coordinates.lat}-${location.coordinates.lng}`} 
-                                    value={location.name} 
-                                    onSelect={() => handleSelectLocation(location)}
-                                    className="pl-2"
-                                  >
-                                    {location.name}
-                                  </CommandItem>
-                                ))}
+                              {locations.map((location) => (
+                                <CommandItem key={`${location.coordinates.lat}-${location.coordinates.lng}`} value={location.name} onSelect={() => handleSelectLocation(location)} className="pl-2">
+                                  {location.name}
+                                </CommandItem>
+                              ))}
                             </CommandGroup>
                           )}
                         </CommandList>

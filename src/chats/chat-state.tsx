@@ -1,6 +1,7 @@
 import ChatUI from '@/components/chat/chat-ui'
-import { useDrizzle } from '@/db/provider'
-import { modelsTable, settingsTable } from '@/db/tables'
+import { getSelectedModel } from '@/dal'
+import { settingsTable } from '@/db/tables'
+import { useDatabase } from '@/hooks/use-database'
 import { aiFetchStreamingResponse } from '@/lib/ai'
 import { useMCP } from '@/lib/mcp-provider'
 import { Model, SaveMessagesFunction } from '@/types'
@@ -8,7 +9,6 @@ import { useChat } from '@ai-sdk/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { defaultChatStore, UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
-import { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import { v7 as uuidv7 } from 'uuid'
 
 interface ChatStateProps {
@@ -18,34 +18,15 @@ interface ChatStateProps {
   saveMessages: SaveMessagesFunction
 }
 
-const getSelectedModel = async (db: SqliteRemoteDatabase) => {
-  const selectedModelId = await db.select().from(settingsTable).where(eq(settingsTable.key, 'selected_model')).get()
-  if (selectedModelId) {
-    const model = await db
-      .select()
-      .from(modelsTable)
-      .where(eq(modelsTable.id, selectedModelId.value as string))
-      .get()
-    if (model) {
-      return model
-    }
-  }
-  const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
-  if (!systemModel) {
-    throw new Error('No system model found')
-  }
-  return systemModel
-}
-
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
   const queryClient = useQueryClient()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const { getEnabledClients } = useMCP()
 
   const { data: selectedModel } = useQuery<Model>({
     queryKey: ['settings', 'selected_model'],
     queryFn: async () => {
-      return await getSelectedModel(db as unknown as SqliteRemoteDatabase)
+      return await getSelectedModel()
     },
     initialData: models[0],
   })
@@ -81,7 +62,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
           throw new Error('No init found')
         }
 
-        const model = await getSelectedModel(db as unknown as SqliteRemoteDatabase)
+        const model = await getSelectedModel()
 
         // All models now use the standard AI SDK flow
         // Flower models will use the custom provider with encryption support
@@ -107,6 +88,10 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
         id,
         messages: [message],
       })
+    },
+    onError: (error) => {
+      console.error('Chat error:', error)
+      // The error will be available in chatHelpers.error for the UI to display
     },
   })
 

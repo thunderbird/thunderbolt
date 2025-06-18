@@ -22,7 +22,7 @@ export const float32Array = customType<{
 
 export const settingsTable = sqliteTable('settings', {
   key: text('key').primaryKey(),
-  value: text('value', { mode: 'json' }),
+  value: text('value'),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
 })
 
@@ -148,7 +148,7 @@ export const mcpServersTable = sqliteTable('mcp_servers', {
     .default('http'),
   url: text('url'),
   command: text('command'),
-  args: text('args', { mode: 'json' }).$type<string[]>(),
+  args: text('args'),
   enabled: integer('enabled').default(1).notNull(),
   createdAt: integer('created_at').default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),

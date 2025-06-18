@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { chatThreadsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { desc, eq } from 'drizzle-orm'
@@ -27,7 +27,7 @@ import { v7 as uuidv7 } from 'uuid'
 
 export default function Page() {
   const navigate = useNavigate()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const { open, setOpen } = useSidebar()
   const isMobile = useIsMobile()

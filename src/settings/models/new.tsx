@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { modelsTable } from '@/db/tables'
 import { Model } from '@/types'
 
@@ -52,7 +52,7 @@ const formSchema = z
 
 export default function NewModelPage() {
   const navigate = useNavigate()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
 
   const createModelMutation = useMutation({

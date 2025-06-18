@@ -1,5 +1,6 @@
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailAddressesTable, emailMessagesTable, emailMessagesToAddressesTable, emailThreadsTable } from '@/db/tables'
-import { DrizzleContextType, ImapEmailMessage, ParsedEmail } from '@/types'
+import { ImapEmailMessage, ParsedEmail } from '@/types'
 import { count, eq, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import ImapClient, { ImapEmailAddress } from './imap'
@@ -11,7 +12,7 @@ import ImapClient, { ImapEmailAddress } from './imap'
  * It fetches messages from a specified mailbox and stores them in the database.
  */
 export class ImapSyncer {
-  private db: DrizzleContextType['db']
+  private db: AnyDrizzleDatabase
   private mailbox: string
   private pageSize: number
   private isSyncing: boolean
@@ -28,7 +29,7 @@ export class ImapSyncer {
    * @param mailbox The mailbox to sync (default: 'All Mail')
    * @param pageSize Number of messages to fetch in each batch (default: 50)
    */
-  constructor(db: DrizzleContextType['db'], mailbox: string = 'All Mail', pageSize: number = 50) {
+  constructor(db: AnyDrizzleDatabase, mailbox: string = 'All Mail', pageSize: number = 50) {
     this.db = db
     this.mailbox = mailbox
     this.pageSize = pageSize

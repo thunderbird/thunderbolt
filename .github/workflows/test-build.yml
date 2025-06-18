@@ -1,0 +1,87 @@
+name: Test Build
+run-name: Test build of ${{ inputs.platform }} by ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options:
+          - windows-arm
+          - windows-x64
+          - macos-silicon
+          - macos-intel
+          - linux
+
+jobs:
+  build:
+    runs-on: ${{ fromJSON('{"windows-arm":"windows-latest","windows-x64":"windows-latest","macos-silicon":"macos-latest","macos-intel":"macos-latest","linux":"ubuntu-22.04"}')[inputs.platform] }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      
+      - uses: oven-sh/setup-bun@v2
+      
+      - name: Install nightly toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          cache: false
+          rustflags: ''
+
+      - name: Install Linux dependencies
+        if: inputs.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+
+      - name: Build
+        run: |
+          bun install
+          
+          case "${{ inputs.platform }}" in
+            "linux")
+              bun tauri build
+              ;;
+            "windows-x64")
+              bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
+              ;;
+            "windows-arm")
+              rustup target add aarch64-pc-windows-msvc
+              bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
+              ;;
+            "macos-silicon")
+              bun tauri build --bundles app,dmg --target aarch64-apple-darwin
+              ;;
+            "macos-intel")
+              rustup target add x86_64-apple-darwin
+              rm -rf src-tauri/target/x86_64-apple-darwin
+              bun tauri build --bundles app,dmg --target x86_64-apple-darwin
+              ;;
+          esac
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ inputs.platform == 'macos-intel' && '-C target-cpu=x86-64' || '' }}
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          LIBSQL_BUNDLED: ${{ inputs.platform == 'windows-arm' && '1' || '' }}
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          # Intel macOS cross-compilation settings
+          CC_x86_64_apple_darwin: ${{ inputs.platform == 'macos-intel' && 'clang -target x86_64-apple-darwin' || '' }}
+          CXX_x86_64_apple_darwin: ${{ inputs.platform == 'macos-intel' && 'clang++ -target x86_64-apple-darwin' || '' }}
+          AR_x86_64_apple_darwin: ${{ inputs.platform == 'macos-intel' && 'ar' || '' }}
+          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: ${{ inputs.platform == 'macos-intel' && 'clang' || '' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.platform }}-build
+          path: |
+            src-tauri/target/*/release/bundle/**/*.{deb,AppImage,rpm,msi,exe,dmg,app.tar.gz}
+          retention-days: 7

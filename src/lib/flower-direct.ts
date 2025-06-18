@@ -1,4 +1,4 @@
-import { getDrizzleDatabase } from '@/db/singleton'
+import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 
@@ -18,7 +18,7 @@ type Message = {
 
 export async function getFlowerApiKey(): Promise<string | undefined> {
   try {
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
     const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
 
@@ -45,8 +45,10 @@ export async function initializeFlowerIntelligence(): Promise<any> {
   try {
     if (!flowerInstance) {
       // Use eval to avoid TypeScript compile-time module resolution
-      // eslint-disable-next-line no-eval
-      const { FlowerIntelligence } = await (eval('import("../../flower/intelligence/ts/dist/flowerintelligence.es.js")') as Promise<any>)
+      // In production, this will load from the public directory
+      // Using bundled version for browser compatibility
+      const moduleUrl = '/flower/intelligence/ts/dist/flowerintelligence.bundled.es.js'
+      const { FlowerIntelligence } = await (eval(`import("${moduleUrl}")`) as Promise<any>)
       flowerInstance = (FlowerIntelligence as any).instance
     }
 
@@ -54,7 +56,7 @@ export async function initializeFlowerIntelligence(): Promise<any> {
     flowerInstance.remoteHandoff = true
 
     // Get cloud URL from settings
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
     const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
 

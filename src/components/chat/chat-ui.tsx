@@ -91,7 +91,7 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
 
     let timeout: NodeJS.Timeout
     const inputElement = formRef.current?.querySelector('input')
-    
+
     const handleFocus = (e: FocusEvent) => {
       if (e.target === inputElement) {
         setIsKeyboardVisible(true)
@@ -101,7 +101,7 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
         }, 300)
       }
     }
-    
+
     const handleBlur = () => {
       clearTimeout(timeout)
       // Delay hiding to prevent flicker
@@ -138,10 +138,7 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
   }
 
   return (
-    <div className={cn(
-      "flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]",
-      isMobile && isKeyboardVisible && "pb-0"
-    )}>
+    <div className={cn('flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]', isMobile && isKeyboardVisible && 'pb-0')}>
       <AnimatePresence>
         {hasMessages && (
           <motion.div ref={scrollContainerRef} {...scrollHandlers} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 p-4 overflow-y-auto space-y-4">
@@ -188,16 +185,21 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
             {/* Show loading indicator when waiting for server response */}
             {chatHelpers.status === 'submitted' && <ChatLoadingIndicator />}
 
+            {/* Show error message if there's an error */}
+            {chatHelpers.error && (
+              <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto">
+                <p className="text-destructive font-medium mb-1">Error</p>
+                <p className="text-destructive/80 text-sm">{chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}</p>
+              </div>
+            )}
+
             <div ref={scrollTargetRef} />
           </motion.div>
         )}
       </AnimatePresence>
 
       <motion.div
-        className={cn(
-          "p-4",
-          isMobile && isKeyboardVisible && "fixed bottom-0 left-0 right-0 bg-background z-50"
-        )}
+        className={cn('p-4', isMobile && isKeyboardVisible && 'fixed bottom-0 left-0 right-0 bg-background z-50')}
         style={{
           display: 'flex',
           flex: !hasMessages && !(isMobile && isKeyboardVisible) ? '1' : 'none',

@@ -80,7 +80,7 @@ cargo run --manifest-path=src-tauri/thunderbolt_embeddings/Cargo.toml --example 
 This example will:
 
 1. Test the embedding generation functionality with a sample text
-2. Connect to the local database at `src-tauri/data/local.db`
+2. Connect to the local database at `src-tauri/data/thunderbolt.db`
 3. Process a single batch of messages (up to 10)
 4. Process all remaining messages without embeddings
 

@@ -4,6 +4,7 @@ import typescriptParser from '@typescript-eslint/parser'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import prettier from 'eslint-config-prettier'
+import globals from 'globals'
 
 export default [
   js.configs.recommended,
@@ -19,6 +20,15 @@ export default [
         ecmaFeatures: {
           jsx: true,
         },
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        React: 'readonly',
+        // TypeScript types
+        NodeJS: 'readonly',
+        RequestInfo: 'readonly',
+        RequestInit: 'readonly',
       },
     },
     plugins: {

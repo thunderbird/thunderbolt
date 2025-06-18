@@ -1,4 +1,4 @@
-import { getDrizzleDatabase } from '@/db/singleton'
+import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { Model, SaveMessagesFunction } from '@/types'
 import { createFireworks } from '@ai-sdk/fireworks'
@@ -34,6 +34,9 @@ const createPrompt = ({ preferredName, location }: PromptParams) => {
     `The current date and time is ${new Date().toISOString()}.`,
     preferredName ? `The user's name is ${preferredName}.` : '',
     location.name ? `The user's location is ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}.` : '',
+    location.name
+      ? `Please use units that are appropriate for the user's location. For example, if the user's location is in the United States, use miles and Fahrenheit and miles per hour. If the user's location is in Canada, use kilometers and Celsius and kilometers per hour.`
+      : '',
 
     // —— Live-data discipline ——
     `❖ You MIGHT have access to tools that give you access to real-time or external data. They also might be disabled.`,
@@ -112,7 +115,7 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModel> =>
         return flower(modelConfig.model) as LanguageModel
       } else {
         // Fallback to OpenAI compatible for unknown models
-        const { db } = await getDrizzleDatabase()
+        const db = DatabaseSingleton.instance.db
         const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
         const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
 
@@ -177,7 +180,7 @@ export const aiFetchStreamingResponse = async ({ init, saveMessages, model: mode
 
     console.log('Using model', modelConfig.provider, modelConfig.model)
 
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
 
     const locationNameResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name')).get()
     const locationLatResult = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat')).get()

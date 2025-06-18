@@ -20,7 +20,8 @@ CREATE TABLE `chat_messages` (
 CREATE UNIQUE INDEX `chat_messages_id_unique` ON `chat_messages` (`id`);--> statement-breakpoint
 CREATE TABLE `chat_threads` (
 	`id` text PRIMARY KEY NOT NULL,
-	`title` text
+	`title` text,
+	`is_encrypted` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `chat_threads_id_unique` ON `chat_threads` (`id`);--> statement-breakpoint
@@ -110,7 +111,10 @@ CREATE TABLE `models` (
 	`model` text NOT NULL,
 	`url` text,
 	`api_key` text,
-	`is_system` integer DEFAULT 0
+	`is_system` integer DEFAULT 0,
+	`enabled` integer DEFAULT 1 NOT NULL,
+	`tool_usage` integer DEFAULT 1 NOT NULL,
+	`is_confidential` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `models_id_unique` ON `models` (`id`);--> statement-breakpoint

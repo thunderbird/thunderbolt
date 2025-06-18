@@ -1,12 +1,12 @@
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, emailThreadsTable, embeddingsTable } from '@/db/tables'
-import { DrizzleContextType } from '@/types'
-import { count, eq, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { threadAsText } from './as-text'
 import { generateEmbeddingsCloud } from './embeddings'
 
 export class Indexer {
-  private db: DrizzleContextType['db']
+  private db: AnyDrizzleDatabase
   private batchSize: number
   private isIndexing: boolean
   private shouldCancelAfterNextBatch: boolean
@@ -19,7 +19,7 @@ export class Indexer {
     totalEmbeddingsProcessed: number
   }
 
-  constructor({ db, batchSize = 10 }: { db: DrizzleContextType['db']; batchSize?: number }) {
+  constructor({ db, batchSize = 10 }: { db: AnyDrizzleDatabase; batchSize?: number }) {
     this.db = db
     this.batchSize = batchSize
     this.isIndexing = false
@@ -97,7 +97,7 @@ export class Indexer {
 
   async indexNextBatch() {
     const embeddings = await this.embedNextBatch()
-    for (let embedding of embeddings) {
+    for (const embedding of embeddings) {
       await this.db.insert(embeddingsTable).values({
         id: uuidv7(),
         ...embedding,
@@ -127,17 +127,21 @@ export class Indexer {
   }
 
   async updateProgress() {
-    const threadsCount = await this.db.select({ count: count() }).from(emailThreadsTable).get()
-    if (!threadsCount) {
-      throw new Error('Failed to get threads count')
+    try {
+      const allThreads = await this.db.select().from(emailThreadsTable)
+      this.threadCount = allThreads.length
+    } catch (error) {
+      console.warn('Could not get thread count:', error)
+      this.threadCount = 0
     }
-    this.threadCount = threadsCount.count
 
-    const embeddingsCount = await this.db.select({ count: count() }).from(embeddingsTable).get()
-    if (!embeddingsCount) {
-      throw new Error('Failed to get embeddings count')
+    try {
+      const allEmbeddings = await this.db.select().from(embeddingsTable)
+      this.embeddingsCount = allEmbeddings.length
+    } catch (error) {
+      console.warn('Could not get embeddings count:', error)
+      this.embeddingsCount = 0
     }
-    this.embeddingsCount = embeddingsCount.count
   }
 
   cancel() {

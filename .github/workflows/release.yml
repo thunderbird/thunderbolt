@@ -57,8 +57,20 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            build_name: 'Linux'
           - os: macos-latest
+            target: aarch64-apple-darwin
+            build_name: 'macOS (Apple Silicon)'
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            build_name: 'macOS (Intel)'
           - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build_name: 'Windows (x64)'
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            build_name: 'Windows (ARM64)'
 
     runs-on: ${{ matrix.os }}
 
@@ -110,7 +122,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: build Tauri app for Windows (x86_64)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
         run: |
           bun install
           bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
@@ -123,24 +135,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: build Tauri app for Windows (ARM64)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && matrix.target == 'aarch64-pc-windows-msvc'
         run: |
           # Install ARM64 target
           rustup target add aarch64-pc-windows-msvc
-          # Clean ARM64 target to avoid conflicts
-          Remove-Item -Recurse -Force src-tauri/target/aarch64-pc-windows-msvc -ErrorAction SilentlyContinue
           # Build for ARM64
+          bun install
           bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
+          # Force SQLite to be built from source for ARM64
+          LIBSQL_BUNDLED: '1'
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Build Tauri app for macOS (Silicon)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install
           bun tauri build --bundles app,dmg --target aarch64-apple-darwin
@@ -153,7 +166,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Build Tauri app for macOS (Intel)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
         run: |
           # Install x86_64 target
           rustup target add x86_64-apple-darwin

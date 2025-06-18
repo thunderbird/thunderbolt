@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { emailMessagesTable } from '@/db/tables'
 // import { getEmbeddings } from '@/lib/embeddings'
 import { EmailMessage } from '@/types'
@@ -15,7 +15,7 @@ const removeQuotedText = (emailText: string): string => {
 }
 
 export default function GenerateEmbeddingsOptimizedSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(10)
   const [status, setStatus] = useState<string>('')

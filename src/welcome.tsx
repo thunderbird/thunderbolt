@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button } from './components/ui/button'
 import { Skeleton } from './components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
-import { useDrizzle } from './db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { todosTable } from './db/tables'
 import { useImap } from './imap/provider'
 import { refreshTasks } from './lib/tasks'
@@ -12,7 +12,7 @@ import { useSideview } from './sideview/provider'
 
 export default function WelcomePage() {
   const { client: imapClient } = useImap()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const { setSideview } = useSideview()
   const [_inboxSummary, setInboxSummary] = useState<string | null>(null)
   const [toDoList, setToDoList] = useState<{ item: string; emailMessageId?: string | null }[]>([])

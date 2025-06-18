@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { emailMessagesTable } from '@/db/tables'
 // import { getEmbedding } from '@/lib/embeddings'
 import { EmailMessage } from '@/types'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsFrontendNoDatabaseSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(10)
   const [status, setStatus] = useState<string>('')

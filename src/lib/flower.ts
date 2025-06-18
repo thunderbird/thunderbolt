@@ -1,11 +1,11 @@
 /// <reference types="@flwr/flwr" />
 
-import { getDrizzleDatabase } from '@/db/singleton'
+import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 
 // Flower Intelligence module URL - using latest version
-const FI_URL = 'https://unpkg.com/@flwr/flwr@latest/dist/flowerintelligence.bundled.es.js'
+const FI_MODULE_URL = 'https://cdn.jsdelivr.net/npm/flower-intelligence@latest/dist/flwr-intelligence.iife.js'
 
 // Default model for Flower AI
 const FI_DEFAULT_MODEL = 'llama-3.1-70b-instruct'
@@ -14,14 +14,14 @@ let cachedFlowerModule: Promise<{ FlowerIntelligence: any }> | null = null
 
 function getFlowerIntelligenceModule() {
   if (!cachedFlowerModule) {
-    cachedFlowerModule = import(FI_URL)
+    cachedFlowerModule = import(FI_MODULE_URL)
   }
   return cachedFlowerModule
 }
 
 export async function getFlowerApiKey(): Promise<string | undefined> {
   try {
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
     const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
 
@@ -95,3 +95,48 @@ export async function chatWithFlower(
 }
 
 export { FI_DEFAULT_MODEL }
+
+/**
+ * Get or create Flower data.
+ */
+export const getOrCreateFlowerData = async () => {
+  console.log('🌸 Starting getOrCreateFlowerData...')
+
+  try {
+    const db = DatabaseSingleton.instance.db
+
+    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'flower_data')).get()
+
+    if (setting?.value) {
+      console.log('🌸 Found existing Flower data in database')
+      return JSON.parse(setting.value as string)
+    }
+
+    console.log('🌸 No existing Flower data, creating new...')
+
+    // Generate new Flower data
+    const newFlowerData = {
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      // Add any other initialization data here
+    }
+
+    // Store in database
+    await db
+      .insert(settingsTable)
+      .values({
+        key: 'flower_data',
+        value: JSON.stringify(newFlowerData),
+      })
+      .onConflictDoUpdate({
+        target: settingsTable.key,
+        set: { value: JSON.stringify(newFlowerData) },
+      })
+
+    console.log('🌸 Created and stored new Flower data:', newFlowerData)
+    return newFlowerData
+  } catch (error) {
+    console.error('Error in getOrCreateFlowerData:', error)
+    throw error
+  }
+}

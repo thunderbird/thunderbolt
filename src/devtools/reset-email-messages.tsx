@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { emailThreadsTable, embeddingsTable } from '@/db/tables'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 
 export default function ResetEmailMessagesSection() {
   const [status, setStatus] = useState<string>('')
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
 
   const resetAllMutation = useMutation({
     mutationFn: async () => {

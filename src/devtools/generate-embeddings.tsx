@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { Indexer } from '@/lib/indexer'
 import { useTray } from '@/lib/tray'
 import { EmailMessage } from '@/types'
@@ -11,7 +11,7 @@ import { AlertCircle, Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const { tray } = useTray()
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(1)

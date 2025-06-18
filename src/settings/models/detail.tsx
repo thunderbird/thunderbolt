@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { modelsTable } from '@/db/tables'
 import { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
@@ -55,7 +55,7 @@ const formSchema = z
 export default function ModelDetailPage() {
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [showSaved, setShowSaved] = React.useState(false)
 

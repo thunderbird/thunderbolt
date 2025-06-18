@@ -1,4 +1,4 @@
-import { getDrizzleDatabase } from '@/db/singleton'
+import { DatabaseSingleton } from '@/db/singleton'
 import { todosTable } from '@/db/tables'
 import { inArray } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -12,7 +12,7 @@ export const addTasks = {
     tasks: z.array(z.string()).describe("The tasks to add to the user's task (to do) list."),
   }),
   execute: async (params: { tasks: string[] }) => {
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     const tasks = await db
       .insert(todosTable)
       .values(
@@ -32,7 +32,7 @@ export const getTasks = {
   verb: 'Getting tasks',
   parameters: z.object({}),
   execute: async () => {
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     const tasks = await db.select().from(todosTable)
     return tasks
   },
@@ -46,7 +46,7 @@ export const deleteTasks = {
     taskIds: z.array(z.string()).describe("The IDs of the tasks to delete from the user's task (to do) list."),
   }),
   execute: async (params: { taskIds: string[] }) => {
-    const { db } = await getDrizzleDatabase()
+    const db = DatabaseSingleton.instance.db
     await db.delete(todosTable).where(inArray(todosTable.id, params.taskIds))
     return {
       success: true,

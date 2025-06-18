@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { modelsTable } from '@/db/tables'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
@@ -10,7 +10,7 @@ import { Outlet, useNavigate, useParams } from 'react-router'
 export default function ModelsLayout() {
   const navigate = useNavigate()
   const { modelId } = useParams()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],

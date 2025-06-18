@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { useDrizzle } from '@/db/provider'
+import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 
@@ -11,12 +11,12 @@ export function useSetting<T = string>(
   isLoading: boolean
   setValue: (value: T) => Promise<void>
 } {
-  const { db } = useDrizzle()
   const queryClient = useQueryClient()
 
   const { data: value, isLoading } = useQuery<T | null>({
     queryKey: ['settings', key],
     queryFn: async () => {
+      const db = DatabaseSingleton.instance.db
       const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
       if (!setting) return null
       return setting.value as T
@@ -25,6 +25,7 @@ export function useSetting<T = string>(
 
   const mutation = useMutation({
     mutationFn: async (updatedValue: T) => {
+      const db = DatabaseSingleton.instance.db
       await db
         .insert(settingsTable)
         .values({

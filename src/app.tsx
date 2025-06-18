@@ -15,9 +15,8 @@ import PreferencesSettingsPage from '@/settings/preferences'
 import ThunderboltBridgeSettingsPage from '@/settings/thunderbolt-bridge'
 import { useEffect, useState } from 'react'
 import { getOrCreateChatThread, seedAccounts, seedMcpServers, seedModels, seedSettings } from './dal'
-import { initializeDrizzleDatabase } from './db/database'
 import { migrate } from './db/migrate'
-import { DrizzleProvider } from './db/provider'
+import { DatabaseSingleton } from './db/singleton'
 import { accountsTable } from './db/tables'
 import DevToolsPage from './devtools'
 import ImapClient from './imap/imap'
@@ -25,6 +24,7 @@ import { ImapProvider } from './imap/provider'
 import Layout from './layout'
 import { createAppDataDir } from './lib/fs'
 import { MCPProvider } from './lib/mcp-provider'
+import { isTauri } from './lib/platform'
 import { TrayManager, TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
@@ -35,9 +35,7 @@ import UiKitPage from './ui-kit'
 
 const queryClient = new QueryClient()
 
-// Component that initializes MCP sync
 function AppContent({ initData }: { initData: InitData }) {
-  // Initialize MCP sync
   useMcpSync()
 
   return (
@@ -72,14 +70,18 @@ function AppContent({ initData }: { initData: InitData }) {
 const init = async (): Promise<InitData> => {
   const appDataDirPath = await createAppDataDir()
 
-  const { db, sqlite } = await initializeDrizzleDatabase(`${appDataDirPath}/local.db`)
+  const databaseType = isTauri() ? 'libsql-tauri' : 'sqlocal'
+  const db = await DatabaseSingleton.instance.initialize({
+    type: databaseType,
+    path: `${appDataDirPath}/thunderbolt.db`,
+  })
 
-  await migrate({ sqlite })
+  await migrate(db)
 
-  await seedAccounts(db)
-  await seedModels(db)
-  await seedSettings(db)
-  await seedMcpServers(db)
+  await seedAccounts()
+  await seedModels()
+  await seedSettings()
+  await seedMcpServers()
 
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()
@@ -94,7 +96,6 @@ const init = async (): Promise<InitData> => {
       password: account.imapPassword,
     })
 
-    // Initialize the IMAP sync client after the IMAP client
     await imapSync.initialize({
       hostname: account.imapHostname,
       port: account.imapPort,
@@ -119,12 +120,9 @@ const init = async (): Promise<InitData> => {
     }
   }
 
-  // Get or create an initial chat thread
-  const initialThreadId = await getOrCreateChatThread(db)
+  const initialThreadId = await getOrCreateChatThread()
 
   return {
-    db,
-    sqlite,
     imap,
     imapSync,
     sideviewType,
@@ -164,19 +162,17 @@ export const App = () => {
     <ThemeProvider defaultTheme="system" storageKey="thunderbolt-ui-theme">
       <TrayProvider tray={initData.tray} window={initData.window}>
         <QueryClientProvider client={queryClient}>
-          <DrizzleProvider context={{ db: initData.db, sqlite: initData.sqlite }}>
-            <MCPProvider>
-              <ImapProvider client={initData.imap}>
-                <ImapSyncProvider client={initData.imapSync}>
-                  <SidebarProvider>
-                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <AppContent initData={initData} />
-                    </SideviewProvider>
-                  </SidebarProvider>
-                </ImapSyncProvider>
-              </ImapProvider>
-            </MCPProvider>
-          </DrizzleProvider>
+          <MCPProvider>
+            <ImapProvider client={initData.imap}>
+              <ImapSyncProvider client={initData.imapSync}>
+                <SidebarProvider>
+                  <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
+                    <AppContent initData={initData} />
+                  </SideviewProvider>
+                </SidebarProvider>
+              </ImapSyncProvider>
+            </ImapProvider>
+          </MCPProvider>
         </QueryClientProvider>
       </TrayProvider>
     </ThemeProvider>

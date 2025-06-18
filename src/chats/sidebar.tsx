@@ -15,8 +15,8 @@ import {
 } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getOrCreateChatThread } from '@/dal'
-import { useDrizzle } from '@/db/provider'
 import { chatThreadsTable } from '@/db/tables'
+import { useDatabase } from '@/hooks/use-database'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { desc, eq } from 'drizzle-orm'
 import { Flame, Loader2, Lock, MessageCircle, MoreHorizontal, PanelLeftIcon, Settings, SquarePen } from 'lucide-react'
@@ -25,7 +25,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const { state, toggleSidebar } = useSidebar()
 
@@ -60,7 +60,7 @@ export default function ChatSidebar() {
     mutationFn: async () => {
       await db.delete(chatThreadsTable)
       // Create a new thread immediately after deletion
-      const chatThreadId = await getOrCreateChatThread(db)
+      const chatThreadId = await getOrCreateChatThread()
       return chatThreadId
     },
     onSuccess: async (chatThreadId) => {
@@ -72,7 +72,7 @@ export default function ChatSidebar() {
 
   const createNewChat = async () => {
     try {
-      const chatThreadId = await getOrCreateChatThread(db)
+      const chatThreadId = await getOrCreateChatThread()
       queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate(`/chats/${chatThreadId}`)
     } catch (error) {

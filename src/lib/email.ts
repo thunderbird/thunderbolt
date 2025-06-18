@@ -1,5 +1,6 @@
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, emailThreadsTable } from '@/db/tables'
-import { DrizzleContextType, EmailMessage, EmailThread } from '@/types'
+import { EmailMessage, EmailThread } from '@/types'
 import { eq, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -20,7 +21,7 @@ function extractReferences(email: EmailMessage): string[] {
  * Groups emails into threads based on in-reply-to headers
  */
 export class EmailThreader {
-  private db: DrizzleContextType['db']
+  private db: AnyDrizzleDatabase
   private batchSize: number
   private shouldCancelAfterNextBatch: boolean
   private threadsCreated: number
@@ -31,7 +32,7 @@ export class EmailThreader {
    * @param db Database connection
    * @param batchSize Number of emails to process in each batch (default: 10)
    */
-  constructor(db: DrizzleContextType['db'], batchSize: number = 10) {
+  constructor(db: AnyDrizzleDatabase, batchSize: number = 10) {
     this.db = db
     this.batchSize = batchSize
     this.shouldCancelAfterNextBatch = false

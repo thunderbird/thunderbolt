@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { emailMessagesTable } from '@/db/tables'
 import { EmailThreader } from '@/lib/email'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@radix-ui/react-accordion'
@@ -9,7 +9,7 @@ import { AlertCircle, Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateThreadsSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(10)
   const [status, setStatus] = useState<string>('')

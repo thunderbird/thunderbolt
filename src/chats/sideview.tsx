@@ -1,12 +1,10 @@
 import { getEmailThreadByIdWithMessages, getEmailThreadByMessageIdWithMessages, getEmailThreadByMessageImapIdWithMessages } from '@/dal'
-import { useDrizzle } from '@/db/provider'
 import { useSideview } from '@/sideview/provider'
 import { EmailThreadView } from '@/sideview/thread'
 import { useQuery } from '@tanstack/react-query'
 
 export function Sideview({}: {}) {
   const { sideviewId, sideviewType } = useSideview()
-  const { db } = useDrizzle()
 
   console.log('sideviewType', sideviewType, sideviewId)
 
@@ -17,11 +15,11 @@ export function Sideview({}: {}) {
 
       switch (sideviewType) {
         case 'message':
-          return await getEmailThreadByMessageIdWithMessages(db, sideviewId)
+          return await getEmailThreadByMessageIdWithMessages(sideviewId)
         case 'imap':
-          return await getEmailThreadByMessageImapIdWithMessages(db, sideviewId)
+          return await getEmailThreadByMessageImapIdWithMessages(sideviewId)
         case 'thread':
-          return await getEmailThreadByIdWithMessages(db, sideviewId)
+          return await getEmailThreadByIdWithMessages(sideviewId)
         default:
           return null
       }

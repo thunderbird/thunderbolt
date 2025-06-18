@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { search } from '@/lib/embeddings'
 import { EmailMessage } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -20,7 +20,7 @@ const searchFormSchema = z.object({
 type SearchFormValues = z.infer<typeof searchFormSchema>
 
 export default function SearchSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [isSearching, setIsSearching] = useState<boolean>(false)
   const [results, setResults] = useState<any[]>([])
   const [status, setStatus] = useState<string>('')

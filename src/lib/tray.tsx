@@ -1,17 +1,37 @@
-import { invoke } from '@tauri-apps/api/core'
-import { Menu } from '@tauri-apps/api/menu'
-import { TrayIcon } from '@tauri-apps/api/tray'
-import { getCurrentWindow, Window } from '@tauri-apps/api/window'
-import { exit } from '@tauri-apps/plugin-process'
-import { createContext, ReactNode, useContext, useState } from 'react'
-import { isDesktop } from './platform'
+import { createContext, ReactNode, useContext } from 'react'
+import { isDesktop, isTauri } from './platform'
+
+// Lazy load Tauri modules only when needed
+let tauriCore: any = null
+let tauriMenu: any = null
+let tauriTray: any = null
+let tauriWindow: any = null
+let tauriProcess: any = null
+
+const loadTauriModules = async () => {
+  if (isTauri() && !tauriCore) {
+    try {
+      tauriCore = await import('@tauri-apps/api/core')
+      tauriMenu = await import('@tauri-apps/api/menu')
+      tauriTray = await import('@tauri-apps/api/tray')
+      tauriWindow = await import('@tauri-apps/api/window')
+      tauriProcess = await import('@tauri-apps/plugin-process')
+    } catch (error) {
+      console.error('Failed to load Tauri modules:', error)
+    }
+  }
+}
 
 interface TrayContextType {
-  tray: TrayIcon | undefined
-  window: Window | undefined
+  tray: any | undefined // Changed from TrayIcon to any for compatibility
+  window: any | undefined // Changed from Window to any for compatibility
 }
 
 const TrayContext = createContext<TrayContextType | undefined>(undefined)
+
+export const TrayProvider = ({ children, tray, window }: { children: ReactNode; tray: any; window: any }) => {
+  return <TrayContext.Provider value={{ tray, window }}>{children}</TrayContext.Provider>
+}
 
 export const useTray = () => {
   const context = useContext(TrayContext)
@@ -21,29 +41,12 @@ export const useTray = () => {
   return context
 }
 
-interface TrayProviderProps {
-  children: ReactNode
-  tray: TrayIcon | undefined
-  window: Window | undefined
-}
-
-export const TrayProvider = ({ children, tray, window }: TrayProviderProps) => {
-  const [trayContext] = useState<TrayContextType>({ tray, window })
-
-  return <TrayContext.Provider value={trayContext}>{children}</TrayContext.Provider>
-}
-
 export class TrayManager {
-  private static instance: TrayManager | undefined
-  private tray: TrayIcon | undefined
-  private appWindow: Window | undefined
+  private static instance: TrayManager | null = null
+  private tray: any | undefined
+  private appWindow: any | undefined
 
-  private constructor() {
-    this.tray = undefined
-    this.appWindow = undefined
-  }
-
-  static async init(): Promise<{ tray: TrayIcon | undefined; window: Window | undefined }> {
+  static async init(): Promise<{ tray: any | undefined; window: any | undefined }> {
     if (!TrayManager.instance) {
       TrayManager.instance = new TrayManager()
       await TrayManager.instance.initialize()
@@ -54,45 +57,63 @@ export class TrayManager {
     }
   }
 
-  static async initIfSupported(): Promise<{ tray: TrayIcon | undefined; window: Window | undefined }> {
-    if (isDesktop()) {
+  static async initIfSupported(): Promise<{ tray: any | undefined; window: any | undefined }> {
+    if (isTauri() && isDesktop()) {
       return TrayManager.init()
     }
-    // Return empty tray/window for mobile platforms
-    return { tray: undefined, window: getCurrentWindow() }
+    // Return empty tray/window for mobile platforms or web
+    return {
+      tray: undefined,
+      window: isTauri() ? (await loadTauriModules(), tauriWindow?.getCurrentWindow()) : undefined,
+    }
   }
 
-  getTray(): TrayIcon | undefined {
+  private getTray() {
     return this.tray
   }
 
-  getWindow(): Window | undefined {
+  private getWindow() {
     return this.appWindow
   }
 
-  async showWindow() {
-    if (!this.appWindow) return
+  private async handleShowClick() {
+    if (!isTauri() || !this.appWindow) return
 
-    if (isDesktop()) {
-      await invoke('toggle_dock_icon', { show: true })
-    }
+    await loadTauriModules()
+    if (!tauriCore) return
 
     await this.appWindow.show()
-    await this.appWindow.setFocus()
-  }
+    await this.appWindow.setSkipTaskbar(false)
 
-  private async handleShowClick() {
-    await this.showWindow()
+    if (isDesktop()) {
+      try {
+        await tauriCore.invoke('toggle_dock_icon', { show: true })
+      } catch (error) {
+        console.error('Failed to show dock icon:', error)
+      }
+    }
   }
 
   private async handleQuitClick() {
-    await exit(0)
+    if (!isTauri()) {
+      // In web environment, just close the window/tab
+      window.close()
+      return
+    }
+
+    await loadTauriModules()
+    if (tauriProcess) {
+      await tauriProcess.exit(0)
+    }
   }
 
   private async setupWindowBehavior() {
-    if (!this.appWindow) return
+    if (!isTauri() || !this.appWindow) return
 
-    this.appWindow.onCloseRequested(async (event) => {
+    await loadTauriModules()
+    if (!tauriCore) return
+
+    this.appWindow.onCloseRequested(async (event: any) => {
       if (!this.appWindow) return
 
       event.preventDefault()
@@ -100,48 +121,65 @@ export class TrayManager {
       await this.appWindow.setSkipTaskbar(true)
 
       if (isDesktop()) {
-        await invoke('toggle_dock_icon', { show: false })
+        try {
+          await tauriCore.invoke('toggle_dock_icon', { show: false })
+        } catch (error) {
+          console.error('Failed to hide dock icon:', error)
+        }
       }
     })
   }
 
   private async initialize() {
-    this.appWindow = getCurrentWindow()
+    if (!isTauri()) {
+      // Web environment - no tray support
+      return {
+        tray: undefined,
+        window: undefined,
+      }
+    }
+
+    await loadTauriModules()
+    if (!tauriWindow) {
+      console.error('Failed to load Tauri window module')
+      return { tray: undefined, window: undefined }
+    }
+
+    this.appWindow = tauriWindow.getCurrentWindow()
 
     // Only set up tray-related features on desktop platforms
-    if (isDesktop()) {
+    if (isDesktop() && tauriMenu && tauriTray) {
       await this.setupWindowBehavior()
 
-      const menu = await Menu.new({
-        items: [
-          {
-            id: 'show',
-            text: 'Show',
-            action: this.handleShowClick.bind(this),
-          },
-          {
-            id: 'quit',
-            text: 'Quit',
-            action: this.handleQuitClick.bind(this),
-          },
-        ],
-      })
+      try {
+        const menu = await tauriMenu.Menu.new({
+          items: [
+            {
+              id: 'show',
+              text: 'Show',
+              action: this.handleShowClick.bind(this),
+            },
+            {
+              id: 'quit',
+              text: 'Quit',
+              action: this.handleQuitClick.bind(this),
+            },
+          ],
+        })
 
-      this.tray = await TrayIcon.new({
-        title: 'Thunderbolt',
-        tooltip: 'Thunderbolt',
-        menu,
-      })
+        this.tray = await tauriTray.TrayIcon.new({
+          title: 'Thunderbolt',
+          tooltip: 'Thunderbolt',
+          menu,
+        })
+      } catch (error) {
+        console.error('Failed to create tray:', error)
+      }
     }
 
     return {
       tray: this.tray,
       window: this.appWindow,
     }
-  }
-
-  destroy() {
-    this.tray?.close()
-    TrayManager.instance = undefined
   }
 }

@@ -1,29 +1,29 @@
-# Thunderbolt
-***(Formerly known as Mozilla Assist(ant))***
+# Thunderbolt [[Demo]](https://thunderbolt-h9p7.onrender.com)
+
+**_(Formerly known as Mozilla Assist(ant))_**
 
 [![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml)
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 ![Thunderbolt Chat](./docs/screenshots/chat.png)
 
-
 ## Stack:
 
-* TypeScript
-* Rust
-* Tauri - for creating the desktop / mobile application
-* React - for the UI
-* Tailwind - for styling
-* Shadcn - for UI components
-* React Router - for navigation / route handling
-* libsql - for local data storage, vector store, and encryption at rest
-* Drizzle - for ORM / migrations (eventually hoping to migrate this to SQLx / SeaORM in Rust)
-* Vercel AI SDK - for handling the chat thread state, streaming LLM responses, and handling LLM tool calls
-* Mistral + Candle - for running embedding, and possibly LLMs, on-device via Hugging Face
-* Zod - for JSON schema validation
-* Vite - frontend package bundler
-* UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
-* Rust: imap, mail-parser, html2text - for syncing and parsing emails
+- TypeScript
+- Rust
+- Tauri - for creating the desktop / mobile application
+- React - for the UI
+- Tailwind - for styling
+- Shadcn - for UI components
+- React Router - for navigation / route handling
+- libsql - for local data storage, vector store, and encryption at rest
+- Drizzle - for ORM / migrations (eventually hoping to migrate this to SQLx / SeaORM in Rust)
+- Vercel AI SDK - for handling the chat thread state, streaming LLM responses, and handling LLM tool calls
+- Mistral + Candle - for running embedding, and possibly LLMs, on-device via Hugging Face
+- Zod - for JSON schema validation
+- Vite - frontend package bundler
+- UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
+- Rust: imap, mail-parser, html2text - for syncing and parsing emails
 
 ## Rust Setup
 
@@ -62,6 +62,7 @@ make setup
 ```
 
 The `make setup` command will:
+
 1. Initialize and update git submodules (including the Flower framework)
 2. Install frontend dependencies with bun
 3. Install backend dependencies with uv
@@ -147,6 +148,7 @@ tauri signer generate -p "$PASSWORD" -w ~/.tauri/thunderbolt.key
 ### Using the Keys
 
 Set these environment variables when signing:
+
 ```sh
 export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/thunderbolt.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="your-password-here"

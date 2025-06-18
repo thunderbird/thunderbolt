@@ -1,4 +1,3 @@
-import { useDrizzle } from '@/db/provider'
 import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
@@ -16,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
 
+import { useDatabase } from '@/hooks/use-database'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -40,7 +40,7 @@ const locationFormSchema = z.object({
 })
 
 export default function PreferencesSettingsPage() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -186,18 +186,18 @@ export default function PreferencesSettingsPage() {
 
         await db
           .insert(settingsTable)
-          .values({ key: 'location_lat', value: values.locationLat })
+          .values({ key: 'location_lat', value: values.locationLat.toString() })
           .onConflictDoUpdate({
             target: settingsTable.key,
-            set: { value: values.locationLat },
+            set: { value: values.locationLat.toString() },
           })
 
         await db
           .insert(settingsTable)
-          .values({ key: 'location_lng', value: values.locationLng })
+          .values({ key: 'location_lng', value: values.locationLng.toString() })
           .onConflictDoUpdate({
             target: settingsTable.key,
-            set: { value: values.locationLng },
+            set: { value: values.locationLng.toString() },
           })
       } catch (error) {
         console.error('Error saving location settings:', error)

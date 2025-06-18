@@ -1,4 +1,4 @@
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { settingsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 export default function ThunderboltBridgeSettingsPage() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [isInitializing, setIsInitializing] = React.useState(false)
   const [bridgeEnabled, setBridgeEnabled] = React.useState(false)

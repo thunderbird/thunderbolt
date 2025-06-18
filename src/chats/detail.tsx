@@ -1,5 +1,5 @@
-import { useDrizzle } from '@/db/provider'
 import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/db/tables'
+import { useDatabase } from '@/hooks/use-database'
 import { createModel } from '@/lib/ai'
 import { convertDbChatMessageToUIMessage, convertUIMessageToDbChatMessage } from '@/lib/utils'
 import { SaveMessagesFunction } from '@/types'
@@ -11,7 +11,7 @@ import Chat from './chat'
 
 export default function ChatDetailPage() {
   const params = useParams()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
 
   const {
@@ -43,7 +43,7 @@ export default function ChatDetailPage() {
 
       // Check if this is the first message and if we're using a confidential model
       const existingMessages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.chatThreadId, params.chatThreadId!)).limit(1)
-      
+
       if (existingMessages.length === 0 && !thread.isEncrypted) {
         // Get the selected model to check if it's confidential
         const selectedModelId = await db.select().from(settingsTable).where(eq(settingsTable.key, 'selected_model')).get()
@@ -53,7 +53,7 @@ export default function ChatDetailPage() {
             .from(modelsTable)
             .where(eq(modelsTable.id, selectedModelId.value as string))
             .get()
-          
+
           if (model && model.isConfidential) {
             // Update thread to be encrypted
             await db.update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, params.chatThreadId!))

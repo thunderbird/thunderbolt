@@ -1,11 +1,11 @@
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { mcpServersTable } from '@/db/tables'
 import { useMCP } from '@/lib/mcp-provider'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 export function useMcpSync() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const { servers, addServer, removeServer, updateServerStatus } = useMCP()
 
   const { data: dbServers = [] } = useQuery({

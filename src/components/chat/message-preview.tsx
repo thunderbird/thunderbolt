@@ -1,5 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { emailMessagesTable } from '@/db/tables'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
@@ -16,7 +16,7 @@ interface ChatMessagePreviewProps {
 export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProps) {
   if (!messageId && !imapId) throw new Error('Either messageId or imapId must be provided')
 
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const { setSideview } = useSideview()
 
   const { data: message } = useQuery<EmailMessageWithAddresses>({

@@ -1,15 +1,14 @@
-import * as schema from '@/db/schema'
+import { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, modelsTable, todosTable } from '@/db/schema'
 import { ImapSyncer } from '@/imap/sync'
 import { generateObject } from 'ai'
 import { eq, isNotNull } from 'drizzle-orm'
-import { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { createModel } from './ai'
 
 export type RefreshTasksParams = {
-  db: SqliteRemoteDatabase<typeof schema>
+  db: AnyDrizzleDatabase
 }
 
 export const refreshTasks = async ({ db }: RefreshTasksParams) => {
@@ -24,7 +23,8 @@ export const refreshTasks = async ({ db }: RefreshTasksParams) => {
 
   const messages = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.mailbox, 'INBOX'))
 
-  const modelConfig = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
+  const modelConfigResults = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).limit(1)
+  const modelConfig = modelConfigResults.length > 0 ? modelConfigResults[0] : null
 
   if (!modelConfig) {
     throw new Error('No model found')

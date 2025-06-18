@@ -1,4 +1,4 @@
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 import { createModel } from '@/lib/ai'
 import { convertDbChatMessageToUIMessage, convertUIMessageToDbChatMessage } from '@/lib/utils'
@@ -11,7 +11,7 @@ import FlowerChat from './flower-chat'
 
 export default function FlowerChatDetailPage() {
   const params = useParams()
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
 
   const {

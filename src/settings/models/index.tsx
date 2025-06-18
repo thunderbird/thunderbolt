@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { modelsTable } from '@/db/tables'
 import { createModel } from '@/lib/ai'
 import { cn } from '@/lib/utils'
@@ -82,7 +82,7 @@ const formSchema = z
   )
 
 export default function ModelsPage() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)

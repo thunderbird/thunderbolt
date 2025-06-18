@@ -1,5 +1,6 @@
 import { migrations } from '@/drizzle/_migrations'
-import Database from '@/lib/libsql'
+import { sql } from 'drizzle-orm'
+import type { AnyDrizzleDatabase } from './database-interface'
 
 export type ProxyMigrator = (migrationQueries: string[]) => Promise<void>
 
@@ -21,25 +22,27 @@ function splitSqlStatements(sql: string): string[] {
  *
  * @returns A promise that resolves when the migrations are complete.
  */
-export async function migrate({ sqlite }: { sqlite: Database }) {
-  const migrationTableCreate = /*sql*/ `
+export async function migrate(db: AnyDrizzleDatabase) {
+  await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             hash text NOT NULL UNIQUE,
 			created_at numeric
 		)
-	`
-
-  await sqlite.execute(migrationTableCreate, [])
+	`)
 
   // Get current migrations from database
-  const rows: [id: number, hash: string, created_at: number][] = await sqlite.select(/*sql*/ `SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
+  const rows = await db.all(sql`SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
 
   // Convert the rows to a more usable format
-  const dbMigrations = rows.map(([id, hash, created_at]) => ({ id, hash, created_at }))
+  const dbMigrations = rows.map(([id, hash, created_at]: any) => ({
+    id,
+    hash,
+    created_at,
+  }))
 
   const hasBeenRun = (hash: string) =>
-    dbMigrations.find((dbMigration) => {
+    dbMigrations.find((dbMigration: any) => {
       return dbMigration?.hash === hash
     })
 
@@ -52,7 +55,7 @@ export async function migrate({ sqlite }: { sqlite: Database }) {
 
         for (const statement of statements) {
           try {
-            await sqlite.execute(statement, [])
+            await db.run(sql.raw(statement))
           } catch (statementError) {
             console.error(`Error executing statement in migration ${migration.name}:`, statementError)
             console.error('Statement:', statement)
@@ -61,7 +64,7 @@ export async function migrate({ sqlite }: { sqlite: Database }) {
         }
 
         // Record the migration as complete
-        await sqlite.execute(/*sql*/ `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`, [migration.hash, Date.now()])
+        await db.run(sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`)
         console.info(`Applied migration: ${migration.name}`)
       } catch (error) {
         console.error(`Failed to apply migration ${migration.name}:`, error)

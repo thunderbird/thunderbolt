@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { ImapSyncer } from '@/imap/sync'
 import { Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 export default function ImapSyncSection() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [syncer, setSyncer] = useState<ImapSyncer | null>(null)
   const [status, setStatus] = useState({
     messagesProcessed: 0,

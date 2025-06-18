@@ -164,14 +164,19 @@ app = FastAPI(
     lifespan=combined_lifespan,
 )
 
-# Configure CORS
+# Configure CORS using environment-based settings
+settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: In production, replace with specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["mcp-session-id"],  # Expose the mcp-session-id header to clients
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_methods_list,
+    allow_headers=[settings.cors_allow_headers]
+    if settings.cors_allow_headers != "*"
+    else ["*"],
+    expose_headers=[settings.cors_expose_headers]
+    if settings.cors_expose_headers
+    else [],
 )
 
 

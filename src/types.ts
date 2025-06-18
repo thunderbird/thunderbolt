@@ -2,9 +2,7 @@ import { TrayIcon } from '@tauri-apps/api/tray'
 import { Window } from '@tauri-apps/api/window'
 import { UIDataTypes, UIMessage, UIMessagePart } from 'ai'
 import { InferSelectModel } from 'drizzle-orm'
-import { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import type { z } from 'zod'
-import * as schema from './db/schema'
 import {
   chatMessagesTable,
   chatThreadsTable,
@@ -20,12 +18,9 @@ import {
   todosTable,
 } from './db/tables'
 import ImapClient from './imap/imap'
-import Database from './lib/libsql'
 import { ImapSyncClient } from './sync'
 
 export type InitData = {
-  db: SqliteRemoteDatabase<typeof schema>
-  sqlite: Database
   imap: ImapClient
   imapSync: ImapSyncClient
   tray: TrayIcon | undefined
@@ -55,11 +50,6 @@ export type Settings = {
   account?: AccountsSettings
   models?: ModelsSettings
   last_generated_todos_from_inbox?: string
-}
-
-export type DrizzleContextType = {
-  db: SqliteRemoteDatabase<typeof schema>
-  sqlite: Database
 }
 
 export type ChatMessage = InferSelectModel<typeof chatMessagesTable>

@@ -1,1 +1,0 @@
-ALTER TABLE `models` ADD COLUMN `tool_usage` integer DEFAULT 1 NOT NULL; 

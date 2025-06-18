@@ -1,10 +1,12 @@
 import { getDefaultCloudUrl } from '@/lib/config'
 import { desc, eq, notExists } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
+import { DatabaseSingleton } from './db/singleton'
 import { accountsTable, chatMessagesTable, chatThreadsTable, emailMessagesTable, emailThreadsTable, mcpServersTable, modelsTable, settingsTable } from './db/tables'
-import { DrizzleContextType, EmailThreadWithMessagesAndAddresses } from './types'
+import { EmailThreadWithMessagesAndAddresses, type Model } from './types'
 
-export const seedAccounts = async (db: DrizzleContextType['db']) => {
+export const seedAccounts = async () => {
+  const db = DatabaseSingleton.instance.db
   await db.select().from(accountsTable)
   // if (accounts.length === 0) {
   //   await db.insert(accountsTable).values({
@@ -18,7 +20,8 @@ export const seedAccounts = async (db: DrizzleContextType['db']) => {
   // }
 }
 
-export const seedModels = async (db: DrizzleContextType['db']) => {
+export const seedModels = async () => {
+  const db = DatabaseSingleton.instance.db
   const models = await db.select().from(modelsTable)
   if (models.length === 0) {
     const seedData = [
@@ -75,7 +78,7 @@ export const seedModels = async (db: DrizzleContextType['db']) => {
         model: 'mistralai/mistral-small-3.1-24b',
         isSystem: 0,
         enabled: 1,
-        toolUsage: 0, // Disabled due to inconsistent tool calling with Mistral models
+        toolUsage: 1,
         isConfidential: 1,
       },
     ]
@@ -85,28 +88,27 @@ export const seedModels = async (db: DrizzleContextType['db']) => {
   }
 }
 
-export const seedSettings = async (db: DrizzleContextType['db']) => {
-  const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
-
-  if (!cloudUrlSetting) {
-    // Use centralized config for default cloud URL
-    await db.insert(settingsTable).values({
+export const seedSettings = async () => {
+  const db = DatabaseSingleton.instance.db
+  await db
+    .insert(settingsTable)
+    .values({
       key: 'cloud_url',
       value: getDefaultCloudUrl(),
     })
-  }
+    .onConflictDoNothing()
 
-  const anonymousId = await db.select().from(settingsTable).where(eq(settingsTable.key, 'anonymous_id')).get()
-
-  if (!anonymousId) {
-    await db.insert(settingsTable).values({
+  await db
+    .insert(settingsTable)
+    .values({
       key: 'anonymous_id',
-      value: uuidv7(), // @todo look into any concerns here
+      value: uuidv7(), // @todo this should really be cryptographically secure
     })
-  }
+    .onConflictDoNothing()
 }
 
-export const seedMcpServers = async (db: DrizzleContextType['db']) => {
+export const seedMcpServers = async () => {
+  const db = DatabaseSingleton.instance.db
   const existingServers = await db.select().from(mcpServersTable).limit(1)
 
   if (existingServers.length === 0) {
@@ -119,12 +121,38 @@ export const seedMcpServers = async (db: DrizzleContextType['db']) => {
     })
   }
 }
+/**
+ * Gets the currently selected model or falls back to the system default model
+ * @returns The selected model or system default model
+ * @throws Error if no system model is found
+ */
+export const getSelectedModel = async (): Promise<Model> => {
+  const db = DatabaseSingleton.instance.db
+  const model = await db
+    .select()
+    .from(modelsTable)
+    .where(eq(modelsTable.id, db.select({ value: settingsTable.value }).from(settingsTable).where(eq(settingsTable.key, 'selected_model'))))
+    .get()
+
+  if (model?.id) {
+    return model
+  }
+
+  const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
+
+  if (!systemModel) {
+    throw new Error('No system model found')
+  }
+
+  return systemModel
+}
 
 /**
  * Gets an existing empty chat thread or creates a new one
  * @returns The ID of the chat thread to use
  */
-export const getOrCreateChatThread = async (db: DrizzleContextType['db'], isEncrypted: boolean = false): Promise<string> => {
+export const getOrCreateChatThread = async (isEncrypted: boolean = false): Promise<string> => {
+  const db = DatabaseSingleton.instance.db
   // First check if any threads exist
   const threads = await db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
 
@@ -153,7 +181,8 @@ export const getOrCreateChatThread = async (db: DrizzleContextType['db'], isEncr
   return chatThreadId
 }
 
-export const getEmailThreadByIdWithMessages = async (db: DrizzleContextType['db'], emailThreadId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+export const getEmailThreadByIdWithMessages = async (emailThreadId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+  const db = DatabaseSingleton.instance.db
   const thread = await db.select().from(emailThreadsTable).where(eq(emailThreadsTable.id, emailThreadId)).get()
 
   if (!thread) return null
@@ -173,7 +202,8 @@ export const getEmailThreadByIdWithMessages = async (db: DrizzleContextType['db'
   return { ...thread, messages }
 }
 
-export const getEmailThreadByMessageImapIdWithMessages = async (db: DrizzleContextType['db'], imapId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+export const getEmailThreadByMessageImapIdWithMessages = async (imapId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+  const db = DatabaseSingleton.instance.db
   const message = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.imapId, imapId)).get()
 
   if (!message || !message.emailThreadId) return null
@@ -198,7 +228,8 @@ export const getEmailThreadByMessageImapIdWithMessages = async (db: DrizzleConte
   return { ...thread, messages }
 }
 
-export const getEmailThreadByMessageIdWithMessages = async (db: DrizzleContextType['db'], emailMessageId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+export const getEmailThreadByMessageIdWithMessages = async (emailMessageId: string): Promise<EmailThreadWithMessagesAndAddresses | null> => {
+  const db = DatabaseSingleton.instance.db
   const message = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.id, emailMessageId)).get()
 
   if (!message || !message.emailThreadId) return null

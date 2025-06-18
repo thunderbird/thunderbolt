@@ -1,5 +1,5 @@
-import { useDrizzle } from '@/db/provider'
 import { modelsTable, settingsTable } from '@/db/tables'
+import { useDatabase } from '@/hooks/use-database'
 import { Model, SaveMessagesFunction, Setting } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { UIMessage } from 'ai'
@@ -13,7 +13,7 @@ interface ChatProps {
 }
 
 export default function Chat({ id, initialMessages, saveMessages }: ChatProps) {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
 
   const { data: models = [] } = useQuery<Model[]>({
     queryKey: ['models'],

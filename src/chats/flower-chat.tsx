@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { modelsTable, settingsTable } from '@/db/tables'
 import { chatWithFlowerDirect, FI_DEFAULT_MODEL, getFlowerApiKey } from '@/lib/flower-direct'
 import { Model, SaveMessagesFunction, Setting } from '@/types'
@@ -19,7 +19,7 @@ interface FlowerChatProps {
 type AttestationStatus = 'pending' | 'verified' | 'failed'
 
 export default function FlowerChat({ id, initialMessages, saveMessages }: FlowerChatProps) {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const [messages, setMessages] = useState<UIMessage[]>(initialMessages || [])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)

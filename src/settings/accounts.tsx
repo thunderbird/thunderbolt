@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useDrizzle } from '@/db/provider'
+import { useDatabase } from '@/hooks/use-database'
 import { accountsTable } from '@/db/tables'
 import ImapClient from '@/imap/imap'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,7 +23,7 @@ const formSchema = z.object({
 })
 
 export default function AccountsSettingsPage() {
-  const { db } = useDrizzle()
+  const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [showDialog, setShowDialog] = React.useState(false)
   const [showSaved, setShowSaved] = React.useState(false)

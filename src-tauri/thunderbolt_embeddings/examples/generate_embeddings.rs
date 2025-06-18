@@ -39,11 +39,11 @@ async fn setup_database() -> Result<Connection> {
     // Try to find the right path to the database
     let db_paths = [
         // From root of the project
-        Path::new("src-tauri/data/local.db"),
+        Path::new("src-tauri/data/thunderbolt.db"),
         // From src-tauri directory
-        Path::new("data/local.db"),
+        Path::new("data/thunderbolt.db"),
         // From thunderbolt_embeddings directory
-        Path::new("../data/local.db"),
+        Path::new("../data/thunderbolt.db"),
     ];
 
     let mut db_path = None;

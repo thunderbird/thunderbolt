@@ -1,5 +1,5 @@
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, emailThreadsTable, embeddingsTable } from '@/db/tables'
-import { DrizzleContextType } from '@/types'
 import { invoke } from '@tauri-apps/api/core'
 import { eq, isNotNull, sql } from 'drizzle-orm'
 
@@ -62,7 +62,7 @@ export async function generateEmbeddingsCloud(texts: string[]): Promise<number[]
  * @param limit The maximum number of results to return (default: 5)
  * @returns A promise that resolves to an array of matching email threads with their messages
  */
-export async function search(db: DrizzleContextType['db'], searchText: string, limit: number = 5) {
+export async function search(db: AnyDrizzleDatabase, searchText: string, limit: number = 5) {
   try {
     const [embedding] = await generateEmbeddings([searchText])
 

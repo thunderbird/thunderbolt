@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getEmailThreadByIdWithMessages, getEmailThreadByMessageIdWithMessages } from '@/dal'
-import { useDrizzle } from '@/db/provider'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
@@ -11,7 +10,6 @@ import { useSideview } from './provider'
 export function EmailThreadView() {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
   const { sideviewId, sideviewType, setSideview } = useSideview()
-  const { db } = useDrizzle()
 
   const { data: thread, isLoading } = useQuery({
     queryKey: ['thread', sideviewId],
@@ -19,11 +17,11 @@ export function EmailThreadView() {
       if (!sideviewId) return null
 
       if (sideviewType === 'thread') {
-        return await getEmailThreadByIdWithMessages(db, sideviewId)
+        return await getEmailThreadByIdWithMessages(sideviewId)
       }
 
       if (sideviewType === 'message') {
-        return await getEmailThreadByMessageIdWithMessages(db, sideviewId)
+        return await getEmailThreadByMessageIdWithMessages(sideviewId)
       }
 
       return null

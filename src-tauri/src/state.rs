@@ -1,16 +1,12 @@
-use crate::db_pool::DbPool;
-use thunderbolt_embeddings::embedding::Embedder;
-use thunderbolt_imap_client::ImapClient;
-use thunderbolt_imap_sync::ImapSync;
+#[cfg(feature = "bridge")]
 use thunderbolt_bridge::BridgeServer;
+#[cfg(feature = "bridge")]
 use std::sync::Arc;
+#[cfg(feature = "bridge")]
 use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct AppState {
-    pub db_pool: Option<DbPool>,
-    pub imap_client: Option<ImapClient>,
-    pub imap_sync: Option<ImapSync>,
-    pub embedder: Option<Arc<Embedder>>,
+    #[cfg(feature = "bridge")]
     pub bridge_server: Option<Arc<Mutex<BridgeServer>>>,
 }

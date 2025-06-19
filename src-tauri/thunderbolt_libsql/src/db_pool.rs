@@ -77,4 +77,4 @@ impl DbPool {
     pub fn get_database(&self) -> Arc<Database> {
         self.database.clone()
     }
-}
+} 

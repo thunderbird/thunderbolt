@@ -71,9 +71,8 @@ build-ios:
 
 # Clean build artifacts
 clean:
-	rm -rf dist/
-	rm -rf src-tauri/target/
-	rm -rf node_modules/
+	- rm -rf dist src-tauri/target node_modules flower/intelligence/ts/node_modules flower/intelligence/ts/dist public/flower
+	- (cd src-tauri && cargo clean)
 
 # Linting
 lint:

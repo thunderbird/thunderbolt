@@ -69,9 +69,9 @@ function AppContent({ initData }: { initData: InitData }) {
 
 const init = async (): Promise<InitData> => {
   const appDataDirPath = await createAppDataDir()
-  const databaseType = getDatabaseType()
+  const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(databaseType, appDataDirPath)
-  
+
   const db = await DatabaseSingleton.instance.initialize({
     type: databaseType,
     path: dbPath,

@@ -4,7 +4,12 @@ use serde::{Deserialize, Serialize};
 
 // Make the embedding module public so it can be used in examples
 pub mod embedding;
+pub mod commands;
+
 use embedding::{generate_embedding, Embedder};
+
+// Re-export the commands and state
+pub use commands::{EmbeddingsState, init_embedder, generate_embeddings};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EmailMessage {

@@ -1,11 +1,12 @@
 [package]
-name = "thunderbolt_bridge"
+name = "thunderbolt-bridge"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 tokio = { version = "1.45", features = ["full"] }
 tokio-tungstenite = "0.24"
+tungstenite = "0.24"
 axum = { version = "0.7", features = ["ws", "json"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = "0.5"
@@ -32,4 +33,4 @@ hyper-util = { version = "0.1", features = ["server", "http1", "tokio"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
-reqwest = { version = "0.12.14", features = ["json"] }
+reqwest = { version = "0.12.20", features = ["json"] }

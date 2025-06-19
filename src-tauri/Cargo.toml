@@ -1,8 +1,9 @@
 [package]
 name = "thunderbolt"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Privacy-respecting AI assistant."
+authors = ["Chris Roth <chris@cjroth.com>"]
+license = "MPL-2.0"
 edition = "2021"
 default-run = "thunderbolt"
 
@@ -14,13 +15,21 @@ default-run = "thunderbolt"
 name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+libsql = ["dep:thunderbolt-libsql"]
+email = ["dep:thunderbolt-email", "dep:thunderbolt-imap-client", "dep:thunderbolt-imap-sync", "libsql"]
+embeddings = ["dep:thunderbolt-embeddings"]
+bridge = ["dep:thunderbolt-bridge"]
+all = ["libsql", "email", "embeddings", "bridge"]
+
 [workspace]
-members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embeddings", "thunderbolt_bridge"]
+members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embeddings", "thunderbolt_bridge", "thunderbolt_libsql", "thunderbolt_email"]
 
 [workspace.dependencies]
 # Use Thunderbird's fork with Windows build fix
 # See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { git = "https://github.com/thunderbird/libsql", branch = "main", default-features = false, features = ["core", "encryption"] }
+libsql = { version = "0.9.11", default-features = false, features = ["core", "encryption"] }
 anyhow = "1.0.98"
 serde = { version = "1.0.219", features = ["derive"] }
 thunderbolt-lib = { path = "." }
@@ -32,49 +41,25 @@ path = "src/main.rs"
 [build-dependencies]
 tauri-build = { version = "2.2.0", features = [] }
 
-# Common dependencies (no Metal features)
 [dependencies]
 tauri = { version = "2.5.1", features = [ "tray-icon", "devtools"] }
-tauri-plugin-opener = "2.2.7"
-tauri-plugin-shell = "2.2.1"
+tauri-plugin-opener = "2.3.0"
+tauri-plugin-shell = "2.2.2"
 tauri-plugin-os = "2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-imap = "3.0.0-alpha.15"
-native-tls = "0.2.14"
-dotenv = "0.15.0"
-hf-hub = "0.4.2"
-tokenizers = "0.21.1"
 anyhow = "1.0.98"
 tokio = "1.45.1"
-chrono = { version = "0.4.41", features = ["serde"] }
-html2text = "0.14.2"
 tauri-plugin-devtools = "2.0.0"
 tauri-plugin-http = "2.4.4"
-tokio-stream = "0.1.17"
-http = "1.3.1"
-tauri-plugin-process = "2.2.1"
-regex = "1.11.1"
-keyring = { version = "3.6.2", features = [
-    "apple-native",
-    "windows-native",
-    "sync-secret-service",
-] }
+tauri-plugin-process = "2.2.2"
 tauri-plugin-fs = "2.3.0"
-libsql = { workspace = true }
-base64 = "0.22.1"
-bytes = "1.10.1"
-mail-parser = { version = "0.10.2", features = ["serde_support"] }
-thunderbolt_imap_client = { path = "./thunderbolt_imap_client" }
-thunderbolt_imap_sync = { path = "./thunderbolt_imap_sync" }
-thunderbolt_embeddings = { path = "./thunderbolt_embeddings" }
-thunderbolt_bridge = { path = "./thunderbolt_bridge" }
-# MCP Server dependencies
-axum = "0.7.9"
-tower = "0.4.13"
-tower-http = { version = "0.5.2", features = ["cors"] }
-uuid = { version = "1.17.0", features = ["v4", "serde"] }
-dashmap = "5.5.3"
+thunderbolt-imap-client = { package = "thunderbolt-imap-client", path = "./thunderbolt_imap_client", optional = true }
+thunderbolt-imap-sync = { package = "thunderbolt-imap-sync", path = "./thunderbolt_imap_sync", optional = true }
+thunderbolt-embeddings = { package = "thunderbolt-embeddings", path = "./thunderbolt_embeddings", optional = true }
+thunderbolt-bridge = { package = "thunderbolt-bridge", path = "./thunderbolt_bridge", optional = true }
+thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_libsql", optional = true }
+thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
 
 [profile.dev]
 incremental = true                              # Compile your binary in smaller steps.

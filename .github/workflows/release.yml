@@ -58,19 +58,19 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            build_name: "Linux"
+            build_name: 'Linux'
           - os: macos-latest
             target: aarch64-apple-darwin
-            build_name: "macOS (Apple Silicon)"
+            build_name: 'macOS (Apple Silicon)'
           - os: macos-latest
             target: x86_64-apple-darwin
-            build_name: "macOS (Intel)"
+            build_name: 'macOS (Intel)'
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            build_name: "Windows (x64)"
+            build_name: 'Windows (x64)'
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            build_name: "Windows (ARM64)"
+            build_name: 'Windows (ARM64)'
 
     runs-on: ${{ matrix.os }}
 
@@ -112,7 +112,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           bun install
-          bun tauri build
+          bun tauri build -- --features libsql
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -146,8 +146,6 @@ jobs:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
-          # Force SQLite to be built from source for ARM64
-          LIBSQL_BUNDLED: '1'
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -156,7 +154,7 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install
-          bun tauri build --bundles app,dmg --target aarch64-apple-darwin
+          bun tauri build --bundles app,dmg --target aarch64-apple-darwin -- --features libsql
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -173,7 +171,7 @@ jobs:
           # Clean only the x86_64 target to avoid architecture conflicts
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
-          bun tauri build --bundles app,dmg --target x86_64-apple-darwin
+          bun tauri build --bundles app,dmg --target x86_64-apple-darwin -- --features libsql
         env:
           # Override the target-cpu=native flag
           RUSTFLAGS: '-C target-cpu=x86-64'

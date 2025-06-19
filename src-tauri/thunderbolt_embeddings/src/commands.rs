@@ -1,15 +1,20 @@
 use anyhow::Result;
-use thunderbolt_embeddings;
 use std::sync::Arc;
 use tauri::{command, State};
 use tokio::sync::Mutex;
 
-use crate::state::AppState;
+use crate::embedding::Embedder;
+
+/// Application state for the embeddings functionality
+#[derive(Default)]
+pub struct EmbeddingsState {
+    pub embedder: Option<Arc<Embedder>>,
+}
 
 #[command]
-pub async fn init_embedder(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+pub async fn init_embedder(state: State<'_, Mutex<EmbeddingsState>>) -> Result<(), String> {
     // Initialize the embedder
-    let embedder = thunderbolt_embeddings::embedding::Embedder::new()
+    let embedder = Embedder::new()
         .map_err(|e| format!("Failed to initialize embedder: {e}"))?;
 
     // Store the embedder in state wrapped in an Arc for thread safety
@@ -21,7 +26,7 @@ pub async fn init_embedder(state: State<'_, Mutex<AppState>>) -> Result<(), Stri
 
 #[command]
 pub async fn generate_embeddings(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Mutex<EmbeddingsState>>,
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, String> {
     // Get a cloned Arc to the embedder from state
@@ -41,11 +46,11 @@ pub async fn generate_embeddings(
     // Spawn a blocking task with the Arc-wrapped embedder
     let embeddings = tokio::task::spawn_blocking(move || {
         // Use the Arc-wrapped embedder with the arc-specific function
-        thunderbolt_embeddings::embedding::generate_embeddings_arc(&embedder_arc, &texts_clone)
+        crate::embedding::generate_embeddings_arc(&embedder_arc, &texts_clone)
             .map_err(|e| format!("Failed to generate embeddings: {e}"))
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?;
 
     embeddings
-}
+} 

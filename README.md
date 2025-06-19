@@ -90,6 +90,39 @@ cd flower/framework && pip install -e . && cd ../..
 bun tauri dev
 ```
 
+### Enabling optional Rust features (e.g. libsql)
+
+The Rust backend is built with **Cargo features**. By default **no optional
+features are enabled**, which keeps the binary size small and avoids pulling in
+dependencies you might not need during early development.
+
+| Feature      | What it enables                                     |
+| ------------ | --------------------------------------------------- |
+| `libsql`     | Local encrypted SQLite replacement via libsql       |
+| `email`      | IMAP client, mail-parser and related commands       |
+| `embeddings` | On-device embeddings generation (Candle)            |
+| `bridge`     | Native messaging bridge for the Thunderbird add-on  |
+| `all`        | A convenience feature that enables all of the above |
+
+You can pass features to any `tauri` CLI command by adding a `--` separator —
+everything after it is forwarded to `cargo`:
+
+```sh
+# Run the app with libsql support enabled
+bun tauri dev -- --features libsql
+
+# Build a production bundle with all optional features
+bun tauri build -- --features all
+
+# If you ever need to explicitly remove default features in the future:
+bun tauri dev -- --no-default-features --features libsql,email
+```
+
+Note: when a feature is not compiled in, its corresponding commands are
+omitted from the binary. The renderer detects that automatically through the
+`capabilities` command we added, so no runtime errors occur — the feature is
+simply unavailable in the UI.
+
 ## Run Rust Examples
 
 Important! Embed and mistral need to be built for release - they will hang you just run them with `cargo run --bin embed` in debug mode.
@@ -112,9 +145,23 @@ cargo build --bin embed --release
 
 ## Analyze Vite Modules
 
-```sh
-bun analyze
-```
+Thunderbolt ships with [vite-bundle-analyzer](https://github.com/victorb/vite-plugin-bundle-analyzer) wired in, but **it is disabled by default** so it doesn't slow down normal builds or break CI on missing `stats.html`.
+
+There are two ways to turn it on:
+
+1. Run the dedicated script (convenient for local use):
+
+   ```sh
+   bun analyze   # alias for `vite analyze`
+   ```
+
+2. Toggle it for any build by setting an environment variable (handy in CI):
+
+   ```sh
+   ANALYZE=true bun run build   # generates dist/stats.html alongside a normal production build
+   ```
+
+In both cases the plugin runs in _static_ mode and writes `dist/stats.html`; it will **not** try to open a browser automatically.
 
 ## Tauri Signing Keys
 

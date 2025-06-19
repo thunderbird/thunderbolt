@@ -1,5 +1,5 @@
 [package]
-name = "thunderbolt_imap_client"
+name = "thunderbolt-imap-client"
 version = "0.1.0"
 edition = "2021"
 description = "IMAP client for Thunderbolt"

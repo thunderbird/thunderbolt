@@ -1,10 +1,10 @@
 [package]
-name = "thunderbolt_imap_sync"
+name = "thunderbolt-imap-sync"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thunderbolt_imap_client = { path = "../thunderbolt_imap_client" }
+thunderbolt-imap-client = { path = "../thunderbolt_imap_client" }
 anyhow = "1.0.98"
 chrono = "0.4.41"
 libsql = { workspace = true }

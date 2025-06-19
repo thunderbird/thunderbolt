@@ -1,5 +1,5 @@
 [package]
-name = "thunderbolt_embeddings"
+name = "thunderbolt-embeddings"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,10 +13,11 @@ tokio = { version = "1.45.1", features = ["full"] }
 candle-nn = { version = "0.9.1" }
 candle-core = { version = "0.9.1" }
 candle-transformers = { version = "0.9.1" }
-hf-hub = "0.4.2"
+hf-hub = "0.4.3"
 tokenizers = "0.21.1"
 uuid = { version = "1.17.0", features = ["v7", "rng"] }
-rayon = "1.8.0"
+rayon = "1.10.0"
+tauri = { version = "2.5.1", features = [] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 candle-nn = { version = "0.9.1", features = ["metal"] }

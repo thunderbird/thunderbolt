@@ -1,6 +1,7 @@
-import { isTauri as isTauriCore } from '@tauri-apps/api/core'
+import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/singleton'
+import { memoize } from './memoize'
 
 /**
  * Detects if the app is running in a Tauri environment
@@ -50,14 +51,14 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
 
     // Try to access OPFS - this will fail in private browsing
     const root = await navigator.storage.getDirectory()
-    
+
     // Try to create a test file to ensure write access
     const testFileName = `opfs-test-${Date.now()}.txt`
     await root.getFileHandle(testFileName, { create: true })
-    
+
     // Clean up test file
     await root.removeEntry(testFileName)
-    
+
     return true
   } catch (error) {
     console.warn('OPFS is not available:', error)
@@ -65,12 +66,42 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Capabilities
+// -----------------------------------------------------------------------------
+
+export interface Capabilities {
+  libsql: boolean
+  // extend as new backend capabilities are added
+}
+
+const DEFAULT_CAPABILITIES: Capabilities = { libsql: false }
+
+// Fetch once, then memoize for the rest of the session.
+const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
+  if (!isTauri()) return DEFAULT_CAPABILITIES
+
+  try {
+    return await invoke<Capabilities>('capabilities')
+  } catch (err) {
+    console.error('Failed to retrieve capabilities:', err)
+    return DEFAULT_CAPABILITIES
+  }
+}, 'capabilities')
+
+export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
+
 /**
- * Determines the appropriate database type based on the platform
- * @returns The database type to use
+ * Determines the appropriate database type based on the platform and the
+ * capabilities exposed by the backend.
+ *
+ * Note: this is asynchronous because we might need to query the backend once.
  */
-export const getDatabaseType = (): DatabaseType => {
-  return isTauri() ? 'libsql-tauri' : 'sqlocal'
+export const getDatabaseType = async (): Promise<DatabaseType> => {
+  if (!isTauri()) return 'sqlocal'
+
+  const { libsql } = await getCapabilities()
+  return libsql ? 'libsql-tauri' : 'sqlocal'
 }
 
 /**

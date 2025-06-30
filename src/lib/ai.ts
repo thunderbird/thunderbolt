@@ -18,8 +18,8 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
-import { createFlower, isFlowerModel } from './ai-providers/flower'
 import { getCloudUrl } from './config'
+import { handleFlowerChatStream } from './flower'
 import { createToolset, getAvailableTools } from './tools'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
@@ -119,31 +119,6 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModel> =>
 
       return model as LanguageModel
     }
-    case 'flower': {
-      // Use our custom Flower provider for true E2E encryption
-      if (isFlowerModel(modelConfig.model)) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('Chat is not encrypted because this is not a production environment')
-        }
-        const flower = createFlower({
-          // Do not encrypt in development in order to make debugging easier
-          encrypt: modelConfig.isConfidential ? process.env.NODE_ENV === 'production' : false,
-        })
-        return flower(modelConfig.model) as LanguageModel
-      } else {
-        // Fallback to OpenAI compatible for unknown models
-        const db = DatabaseSingleton.instance.db
-        const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
-        const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
-
-        const openaiCompatible = createOpenAICompatible({
-          name: 'flower',
-          baseURL: `${cloudUrl}/flower`,
-          apiKey: 'dynamic', // API key will be handled by the backend
-        })
-        return openaiCompatible(modelConfig.model) as LanguageModel
-      }
-    }
     case 'openai_compatible': {
       if (!modelConfig.url) {
         throw new Error('No URL provided for OpenAI Compatible provider')
@@ -181,15 +156,6 @@ export const aiFetchStreamingResponse = async ({
   mcpClients,
 }: AiFetchStreamingResponseOptions) => {
   try {
-    const baseModel = await createModel(modelConfig)
-
-    const wrappedModel = wrapLanguageModel({
-      model: baseModel as any, // @todo seems like Vercel AI SDK is not typed correctly
-      middleware: extractReasoningMiddleware({ tagName: 'think' }),
-    })
-
-    const model = wrappedModel
-
     const options = init as RequestInit & { body: string }
     const body = JSON.parse(options.body)
 
@@ -244,28 +210,50 @@ export const aiFetchStreamingResponse = async ({
       console.log('Model does not support tools, skipping tool setup')
     }
 
+    // Add system prompt as first message if not already present
+    const systemPrompt = createPrompt({
+      preferredName: preferredNameResult?.value as string,
+      location: {
+        name: locationNameResult?.value as string,
+        lat: locationLatResult?.value
+          ? typeof locationLatResult.value === 'number'
+            ? locationLatResult.value
+            : parseFloat(locationLatResult.value as string)
+          : undefined,
+        lng: locationLngResult?.value
+          ? typeof locationLngResult.value === 'number'
+            ? locationLngResult.value
+            : parseFloat(locationLngResult.value as string)
+          : undefined,
+      },
+    })
+
+    // Flower is a special case that uses a custom SDK that is not compatible with the Vercel AI SDK.
+    if (modelConfig.provider === 'flower') {
+      const tools = modelConfig.toolUsage === 1 ? await getAvailableTools() : undefined
+      return handleFlowerChatStream({
+        messages,
+        systemPrompt,
+        model: modelConfig.model,
+        tools,
+      })
+    }
+
+    const baseModel = await createModel(modelConfig)
+
+    const wrappedModel = wrapLanguageModel({
+      model: baseModel as any, // @todo seems like Vercel AI SDK is not typed correctly
+      middleware: extractReasoningMiddleware({ tagName: 'think' }),
+    })
+
+    const model = wrappedModel
+
     const result = streamText({
       model,
-      system: createPrompt({
-        preferredName: preferredNameResult?.value as string,
-        location: {
-          name: locationNameResult?.value as string,
-          lat: locationLatResult?.value
-            ? typeof locationLatResult.value === 'number'
-              ? locationLatResult.value
-              : parseFloat(locationLatResult.value as string)
-            : undefined,
-          lng: locationLngResult?.value
-            ? typeof locationLngResult.value === 'number'
-              ? locationLngResult.value
-              : parseFloat(locationLngResult.value as string)
-            : undefined,
-        },
-      }),
+      system: systemPrompt,
       messages: convertToModelMessages(messages),
       toolCallStreaming: supportsTools,
       tools: supportsTools ? toolset : undefined,
-
       maxSteps: 10,
     })
 

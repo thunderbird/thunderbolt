@@ -1,140 +1,155 @@
-import { DatabaseSingleton } from '@/db/singleton'
-import { settingsTable } from '@/db/tables'
-import { eq } from 'drizzle-orm'
-
-// Flower Intelligence module URL - using latest version
-const FI_MODULE_URL = 'https://cdn.jsdelivr.net/npm/flower-intelligence@latest/dist/flwr-intelligence.iife.js'
-
-// Default model for Flower AI
-const FI_DEFAULT_MODEL = 'llama-3.1-70b-instruct'
-
-let cachedFlowerModule: Promise<{ FlowerIntelligence: any }> | null = null
-
-function getFlowerIntelligenceModule() {
-  if (!cachedFlowerModule) {
-    cachedFlowerModule = import(FI_MODULE_URL)
-  }
-  return cachedFlowerModule
-}
+import type { ToolConfig } from '@/types'
+import type { ChatOptions, FlowerIntelligence, StreamEvent } from '@flwr/flwr'
+import { convertToModelMessages, type UIMessage } from 'ai'
+import ky from 'ky'
+import { getCloudUrl } from './config'
+import { memoize } from './memoize'
+import { createFlowerToolset, createToolset } from './tools'
 
 export async function getFlowerApiKey(): Promise<string | undefined> {
-  try {
-    const db = DatabaseSingleton.instance.db
-    const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
-    const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
-
-    const response = await fetch(`${cloudUrl}/flower/api-key`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to get Flower API key: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    return data.api_key
-  } catch (error) {
-    console.error('Error getting Flower API key:', error)
-    return undefined
-  }
-}
-
-export async function initializeFlowerIntelligence(): Promise<any> {
-  try {
-    const { FlowerIntelligence } = await getFlowerIntelligenceModule()
-    const fi = FlowerIntelligence.instance
-
-    // Set up remote handoff
-    fi.remoteHandoff = true
-
-    // Get API key
-    const apiKey = await getFlowerApiKey()
-    if (!apiKey) {
-      throw new Error('Failed to get Flower API key')
-    }
-
-    fi.apiKey = apiKey
-
-    return fi
-  } catch (error) {
-    console.error('Error initializing Flower Intelligence:', error)
-    throw error
-  }
-}
-
-export async function chatWithFlower(
-  messages: Array<{ role: string; content: string }>,
-  options: {
-    model?: string
-    stream?: boolean
-    encrypt?: boolean
-    onStreamEvent?: (event: { chunk: string }) => void
-  } = {},
-): Promise<any> {
-  const fi = await initializeFlowerIntelligence()
-
-  const response = await fi.chat({
-    model: options.model || FI_DEFAULT_MODEL,
-    messages,
-    stream: options.stream || false,
-    encrypt: options.encrypt || true,
-    forceRemote: true,
-    onStreamEvent: options.onStreamEvent,
+  const cloudUrl = await getCloudUrl()
+  const response = await ky.post(`${cloudUrl}/flower/api-key`, {
+    json: {},
   })
 
-  if (!response.ok) {
-    throw new Error(response.failure?.description || 'Flower AI request failed')
-  }
-
-  return response
+  const data = await response.json<{ api_key: string }>()
+  return data.api_key
 }
 
-export { FI_DEFAULT_MODEL }
+const getFlowerIntelligenceDebug = async (): Promise<FlowerIntelligence> => {
+  // @ts-ignore - Module may not exist in CI environment
+  const { FlowerIntelligence } = await import('../../flower/intelligence/ts/src/index')
+  return FlowerIntelligence.instance as unknown as FlowerIntelligence
+}
 
-/**
- * Get or create Flower data.
- */
-export const getOrCreateFlowerData = async () => {
-  console.log('🌸 Starting getOrCreateFlowerData...')
+const getFlowerIntelligenceRelease = async (): Promise<FlowerIntelligence> => {
+  const moduleUrl = '/flower/intelligence/ts/dist/flowerintelligence.bundled.es.js'
+  const { FlowerIntelligence } = await (eval(`import("${moduleUrl}")`) as Promise<any>)
+  return FlowerIntelligence.instance
+}
 
-  try {
-    const db = DatabaseSingleton.instance.db
-
-    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'flower_data')).get()
-
-    if (setting?.value) {
-      console.log('🌸 Found existing Flower data in database')
-      return JSON.parse(setting.value as string)
-    }
-
-    console.log('🌸 No existing Flower data, creating new...')
-
-    // Generate new Flower data
-    const newFlowerData = {
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      // Add any other initialization data here
-    }
-
-    // Store in database
-    await db
-      .insert(settingsTable)
-      .values({
-        key: 'flower_data',
-        value: JSON.stringify(newFlowerData),
-      })
-      .onConflictDoUpdate({
-        target: settingsTable.key,
-        set: { value: JSON.stringify(newFlowerData) },
-      })
-
-    console.log('🌸 Created and stored new Flower data:', newFlowerData)
-    return newFlowerData
-  } catch (error) {
-    console.error('Error in getOrCreateFlowerData:', error)
-    throw error
+export const getFlowerIntelligence = memoize(async () => {
+  const flowerApiKey = await getFlowerApiKey()
+  if (!flowerApiKey) {
+    throw new Error('Failed to get Flower API key')
   }
+
+  const fi =
+    process.env.NODE_ENV === 'development' ? await getFlowerIntelligenceDebug() : await getFlowerIntelligenceRelease()
+
+  fi.apiKey = flowerApiKey
+  fi.remoteHandoff = true
+
+  const cloudUrl = await getCloudUrl()
+
+  // baseUrl exists in the custom branch of the Flower Intelligence SDK but not in the official version.
+  // We're using the official TypeScript types, so we need to ignore the type error.
+
+  // @ts-ignore-next-line
+  fi.baseUrl = `${cloudUrl}/flower`
+  return fi
+})
+
+export const handleFlowerChatStream = async ({
+  model,
+  systemPrompt,
+  messages,
+  tools,
+}: {
+  model: ChatOptions['model']
+  systemPrompt: string
+  messages: UIMessage[]
+  tools?: ToolConfig[]
+}) => {
+  // Convert UI messages to Flower format using the same function as other providers
+  const modelMessages = convertToModelMessages(messages, {
+    tools: tools ? createToolset(tools) : undefined,
+  })
+
+  const flowerMessages = modelMessages.map((msg) => {
+    let content: string
+
+    if (typeof msg.content === 'string') {
+      content = msg.content
+    } else if (Array.isArray(msg.content)) {
+      // Extract text from structured content
+      content = msg.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+    } else {
+      content = JSON.stringify(msg.content)
+    }
+
+    return {
+      role: msg.role as 'user' | 'assistant' | 'system',
+      content,
+    }
+  })
+
+  const hasSystemMessage = flowerMessages.some((msg) => msg.role === 'system')
+  if (!hasSystemMessage) {
+    flowerMessages.unshift({
+      role: 'system',
+      content: systemPrompt,
+    })
+  }
+
+  // Create a custom streaming response that mimics Vercel AI SDK format
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        try {
+          let fullResponse = ''
+
+          const fi = await getFlowerIntelligence()
+          const toolset = tools ? createFlowerToolset(tools) : undefined
+
+          await fi.chat({
+            messages: flowerMessages,
+            model,
+            stream: true,
+            tools: toolset,
+            onStreamEvent: (event: StreamEvent) => {
+              if (event.chunk) {
+                fullResponse += event.chunk
+
+                // Format as proper SSE data event
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify({ type: 'text', text: event.chunk })}\n\n`),
+                )
+              }
+            },
+            forceRemote: true,
+          })
+
+          // Send finish event in SSE format
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\n`),
+          )
+
+          // Send final DONE event
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+
+          controller.close()
+        } catch (error) {
+          console.error('Error in Flower streaming:', error)
+
+          // Send error event in SSE format
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : 'Unknown error' })}\n\n`,
+            ),
+          )
+
+          controller.close()
+        }
+      },
+    }),
+    {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    },
+  )
 }

@@ -180,3 +180,12 @@ export const updateSetting = async (key: string, value: string): Promise<void> =
     set: { value },
   })
 }
+
+/**
+ * Gets all available (enabled) models from the database
+ * @returns Array of enabled models
+ */
+export const getAvailableModels = async (): Promise<Model[]> => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
+}

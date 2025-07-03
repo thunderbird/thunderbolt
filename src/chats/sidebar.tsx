@@ -19,7 +19,7 @@ import { useDatabase } from '@/hooks/use-database'
 import { getOrCreateChatThread } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { desc, eq } from 'drizzle-orm'
-import { CheckSquare, Flame, Loader2, Lock, MoreHorizontal, Settings, SquarePen } from 'lucide-react'
+import { CheckSquare, Flame, Loader2, Lock, MoreHorizontal, Settings, SquarePen, Zap } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 export default function ChatSidebar() {
@@ -87,11 +87,28 @@ export default function ChatSidebar() {
                   <span>New Chat</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator className="m-0" />
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link to="/tasks">
                     <CheckSquare className="size-4" />
                     <span>Tasks</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link to="/automations">
+                    <Zap className="size-4" />
+                    <span>Automations</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

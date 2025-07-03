@@ -1,0 +1,52 @@
+import { DatabaseSingleton } from '@/db/singleton'
+import { triggersTable } from '@/db/tables'
+import { useBooleanSetting } from '@/hooks/use-setting'
+import { eq } from 'drizzle-orm'
+import { useEffect, useRef } from 'react'
+import { runAutomation } from './runner'
+
+export const useTriggerScheduler = () => {
+  const [isTriggersEnabled] = useBooleanSetting('triggers_is_enabled', false)
+  const timers = useRef<number[]>([])
+
+  useEffect(() => {
+    const db = DatabaseSingleton.instance.db
+
+    const plan = async () => {
+      if (!isTriggersEnabled) {
+        return
+      }
+
+      timers.current.forEach(clearTimeout)
+      timers.current = []
+
+      const triggers = await db.select().from(triggersTable).where(eq(triggersTable.isEnabled, 1))
+
+      triggers.forEach((t) => {
+        if (t.triggerTime) {
+          const [h, m] = t.triggerTime.split(':').map(Number)
+          const next = new Date()
+          next.setHours(h, m, 0, 0)
+          if (next < new Date()) next.setDate(next.getDate() + 1)
+          const delay = next.getTime() - Date.now()
+          timers.current.push(
+            setTimeout(() => runAutomation(t.promptId).catch(console.error), delay) as unknown as number,
+          )
+        }
+      })
+    }
+
+    if (!isTriggersEnabled) {
+      return
+    }
+
+    plan()
+
+    const id = setInterval(plan, 60_000)
+
+    return () => {
+      clearInterval(id)
+      timers.current.forEach(clearTimeout)
+    }
+  }, [isTriggersEnabled])
+}

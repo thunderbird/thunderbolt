@@ -4,21 +4,25 @@ import { cn } from '@/lib/utils'
 import { Model } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowUp, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { PromptInput } from '../ui/prompt-input'
 import { AgentToolResponse } from './agent-tool-response'
 import { ChatLoadingIndicator } from './chat-loading-indicator'
 import { Reasoning } from './reasoning'
 import { StreamingMarkdown } from './streaming-markdown'
+import { TriggerMessage } from './trigger-message'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers
   models: Model[]
   selectedModel: string | null
   onModelChange: (model: string | null) => void
+  /** Details of the automation prompt that triggered this chat, if any */
+  triggerPrompt?: {
+    title: string | null
+    prompt: string
+  } | null
 }
 
 interface SuggestionButtonProps {
@@ -41,8 +45,14 @@ const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string
   const suggestions = [
     { label: 'Check the weather', prompt: 'What is the forecast for this week?' },
     { label: 'Check your to dos', prompt: 'What are my current tasks?' },
-    { label: 'Write a message', prompt: 'Write a thank you email to my coworker for helping with the meeting yesterday.' },
-    { label: 'Understand a topic', prompt: 'Explain how checks and balances work between the three branches of government.' },
+    {
+      label: 'Write a message',
+      prompt: 'Write a thank you email to my coworker for helping with the meeting yesterday.',
+    },
+    {
+      label: 'Understand a topic',
+      prompt: 'Explain how checks and balances work between the three branches of government.',
+    },
   ]
 
   return (
@@ -54,14 +64,22 @@ const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string
   )
 }
 
-export default function ChatUI({ chatHelpers, models, selectedModel, onModelChange }: ChatUIProps) {
+export default function ChatUI({ chatHelpers, models, selectedModel, onModelChange, triggerPrompt }: ChatUIProps) {
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
 
-  const { scrollContainerRef, scrollTargetRef, scrollToBottom, resetUserScroll, scrollHandlers, userHasScrolled, isAtBottom } = useAutoScroll({
+  const {
+    scrollContainerRef,
+    scrollTargetRef,
+    scrollToBottom,
+    resetUserScroll,
+    scrollHandlers,
+    userHasScrolled,
+    isAtBottom,
+  } = useAutoScroll({
     dependencies: [],
     smooth: true,
     isStreaming: chatHelpers.status === 'streaming',
@@ -90,14 +108,14 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
     if (!isMobile) return
 
     let timeout: NodeJS.Timeout
-    const inputElement = formRef.current?.querySelector('input')
+    const textareaElement = formRef.current?.querySelector('textarea')
 
     const handleFocus = (e: FocusEvent) => {
-      if (e.target === inputElement) {
+      if (e.target === textareaElement) {
         setIsKeyboardVisible(true)
-        // Scroll the input into view after a small delay
+        // Scroll the textarea into view after a small delay
         timeout = setTimeout(() => {
-          inputElement?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+          textareaElement?.scrollIntoView({ behavior: 'smooth', block: 'end' })
         }, 300)
       }
     }
@@ -120,8 +138,14 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
     }
   }, [isMobile])
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    chatHelpers.handleSubmit(e)
+  const handleSubmit = () => {
+    if (!chatHelpers.input.trim()) return
+
+    const syntheticEvent = {
+      preventDefault: () => {},
+    } as React.FormEvent<HTMLFormElement>
+
+    chatHelpers.handleSubmit(syntheticEvent)
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()
     setTimeout(() => scrollToBottom(), 100)
@@ -130,19 +154,40 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
   const handleSelectPrompt = (prompt: string) => {
     chatHelpers.setInput(prompt)
     setTimeout(() => {
-      const inputElement = formRef.current?.querySelector('input')
-      if (inputElement) {
-        inputElement.focus()
+      const textareaElement = formRef.current?.querySelector('textarea')
+      if (textareaElement) {
+        textareaElement.focus()
       }
     }, 0)
   }
 
   return (
-    <div className={cn('flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]', isMobile && isKeyboardVisible && 'pb-0')}>
+    <div
+      className={cn(
+        'flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
+        isMobile && isKeyboardVisible && 'pb-0',
+      )}
+    >
       <AnimatePresence>
         {hasMessages && (
-          <motion.div ref={scrollContainerRef} {...scrollHandlers} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 p-4 overflow-y-auto space-y-4">
+          <motion.div
+            ref={scrollContainerRef}
+            {...scrollHandlers}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 p-4 overflow-y-auto space-y-4"
+          >
+            {/* Automation trigger banner */}
+            {triggerPrompt && (
+              <TriggerMessage title={triggerPrompt.title || 'Automation'} prompt={triggerPrompt.prompt} />
+            )}
+
             {chatHelpers.messages.map((message, i) => {
+              // Skip the very first user message if it was the automation prompt (already shown above)
+              if (triggerPrompt && i === 0) {
+                return null
+              }
               if (message.role === 'assistant') {
                 return (
                   <div key={i} className="space-y-2 p-4 rounded-md bg-secondary mr-auto">
@@ -174,7 +219,7 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
                   .map((part, j) => (
                     <div key={j} className="p-4 rounded-md max-w-3/4 bg-primary text-primary-foreground ml-auto">
                       <div className="space-y-2">
-                        <div className="text-primary-foreground leading-relaxed">{part.text}</div>
+                        <StreamingMarkdown content={part.text} className="text-primary-foreground leading-relaxed" />
                       </div>
                     </div>
                   ))
@@ -189,7 +234,9 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
             {chatHelpers.error && (
               <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto">
                 <p className="text-destructive font-medium mb-1">Error</p>
-                <p className="text-destructive/80 text-sm">{chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}</p>
+                <p className="text-destructive/80 text-sm">
+                  {chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}
+                </p>
               </div>
             )}
 
@@ -223,10 +270,8 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
             duration: 0.25,
           }}
         >
-          <motion.form
-            ref={formRef}
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full max-w-[696px] min-w-[268px]"
+          <motion.div
+            className="w-full max-w-[696px] min-w-[268px]"
             layout
             transition={{
               type: 'tween',
@@ -234,32 +279,32 @@ export default function ChatUI({ chatHelpers, models, selectedModel, onModelChan
               duration: 0.25,
             }}
           >
-            <Input variant="ghost" autoFocus value={chatHelpers.input} onChange={chatHelpers.handleInputChange} placeholder="Say something..." className="flex-1 px-4 py-2" />
-            <div className="flex gap-2 justify-end items-center w-full">
-              <Select value={selectedModel || ''} onValueChange={onModelChange}>
-                <SelectTrigger className="rounded-full" size="sm">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      <div className="flex items-center gap-2">
-                        {model.isConfidential ? <Lock className="size-3.5" /> : null}
-                        <p className="text-left">{model.name}</p>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="submit" variant="default" className="h-6 w-6 rounded-full flex items-center justify-center">
-                <ArrowUp className="size-4" />
-              </Button>
-            </div>
-          </motion.form>
+            <PromptInput
+              ref={formRef}
+              value={chatHelpers.input}
+              onChange={(value: string) => chatHelpers.setInput(value)}
+              placeholder="Say something..."
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={onModelChange}
+              showSubmitButton
+              onSubmit={handleSubmit}
+              isLoading={chatHelpers.status === 'streaming'}
+              autoFocus
+              submitOnEnter
+              className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+            />
+          </motion.div>
 
           {!hasMessages && !(isMobile && isKeyboardVisible) && (
             <AnimatePresence>
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ delay: 0.1 }} className="w-full overflow-x-auto pb-2">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ delay: 0.1 }}
+                className="w-full overflow-x-auto pb-2"
+              >
                 <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
               </motion.div>
             </AnimatePresence>

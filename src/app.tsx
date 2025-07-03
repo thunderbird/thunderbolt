@@ -19,7 +19,7 @@ import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { getOrCreateChatThread } from '@/lib/dal'
-import { seedAccounts, seedModels, seedSettings, seedTasks } from '@/lib/seed'
+import { seedAccounts, seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
 import { ThemeProvider } from '@/lib/theme-provider'
 import AccountsSettingsPage from '@/settings/accounts'
 import DevSettingsPage from '@/settings/dev-settings'
@@ -31,6 +31,8 @@ import PreferencesSettingsPage from '@/settings/preferences'
 import ThunderboltBridgeSettingsPage from '@/settings/thunderbolt-bridge'
 import TasksPage from '@/tasks'
 import { useEffect, useState } from 'react'
+import AutomationsPage from './automations'
+import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import { accountsTable } from './db/tables'
@@ -53,6 +55,7 @@ const queryClient = new QueryClient()
 
 function AppContent({ initData }: { initData: InitData }) {
   useMcpSync()
+  useTriggerScheduler()
 
   return (
     <BrowserRouter>
@@ -63,6 +66,7 @@ function AppContent({ initData }: { initData: InitData }) {
             <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
             <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
             <Route path="tasks" element={<TasksPage />} />
+            <Route path="automations" element={<AutomationsPage />} />
           </Route>
 
           {/* Settings routes with SettingsLayout */}
@@ -104,6 +108,7 @@ const init = async (): Promise<InitData> => {
   await seedSettings()
   await seedAccounts()
   await seedTasks()
+  await seedPrompts()
 
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()

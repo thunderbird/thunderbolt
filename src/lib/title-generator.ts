@@ -2,10 +2,12 @@
  * Generates a title from a chat message by extracting key words
  *
  * @param message - The chat message to generate a title from
+ * @param options - Optional configuration object
+ * @param options.words - Number of words to include in the title (default: 6)
  * @returns A formatted title with capitalized words or "New Chat" if no words are found
  */
 
-export function generateTitle(message: string): string {
+export function generateTitle(message: string, options?: { words?: number }): string {
   // Clean and extract key words
   const cleaned = message
     .replace(/^(hey|hi|hello|please|can you|could you|help me|what|how|why)/i, '')
@@ -13,10 +15,27 @@ export function generateTitle(message: string): string {
     .trim()
 
   const words = cleaned.split(' ').filter((w) => w.length > 2)
-  const title = words.slice(0, 4).join(' ').slice(0, 24)
+
+  // Use the specified number of words or default to 6
+  const maxWords = options?.words ?? 6
+  const selectedWords = words.slice(0, maxWords)
+  const title = selectedWords.join(' ')
+
+  // If the title is longer than 50 characters, truncate at word boundary
+  const maxLength = 50
+  let finalTitle = title
+  if (title.length > maxLength) {
+    // Find the last space before the character limit
+    const truncated = title.slice(0, maxLength)
+    const lastSpaceIndex = truncated.lastIndexOf(' ')
+    finalTitle = lastSpaceIndex > 0 ? truncated.slice(0, lastSpaceIndex) : truncated
+  }
+
+  // Remove punctuation from the final title
+  finalTitle = finalTitle.replace(/[.,!?;:'"()[\]{}]/g, '')
 
   return (
-    title
+    finalTitle
       .split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ') || 'New Chat'

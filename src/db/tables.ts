@@ -30,6 +30,7 @@ export const chatThreadsTable = sqliteTable('chat_threads', {
   id: text('id').primaryKey().notNull().unique(),
   title: text('title'),
   isEncrypted: integer('is_encrypted').default(0).notNull(),
+  triggeredBy: text('triggered_by').references(() => promptsTable.id),
 })
 
 export const chatMessagesTable = sqliteTable('chat_messages', {
@@ -96,7 +97,9 @@ export const tasksTable = sqliteTable('tasks', {
 
 export const modelsTable = sqliteTable('models', {
   id: text('id').primaryKey().notNull().unique(),
-  provider: text('provider', { enum: ['openai', 'fireworks', 'openai_compatible', 'thunderbolt', 'flower', 'together'] }).notNull(),
+  provider: text('provider', {
+    enum: ['openai', 'fireworks', 'openai_compatible', 'thunderbolt', 'flower', 'together'],
+  }).notNull(),
   name: text('name').notNull(),
   model: text('model').notNull(),
   url: text('url'),
@@ -130,7 +133,7 @@ export const emailMessagesToAddressesTable = sqliteTable(
       .references(() => emailAddressesTable.address, { onDelete: 'cascade', onUpdate: 'cascade' }),
     type: text('type', { enum: ['to', 'cc', 'bcc'] }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.emailMessageId, table.emailAddressId] })]
+  (table) => [primaryKey({ columns: [table.emailMessageId, table.emailAddressId] })],
 )
 
 export const accountsTable = sqliteTable('accounts', {
@@ -154,4 +157,23 @@ export const mcpServersTable = sqliteTable('mcp_servers', {
   enabled: integer('enabled').default(1).notNull(),
   createdAt: integer('created_at').default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+})
+
+export const promptsTable = sqliteTable('prompts', {
+  id: text('id').primaryKey().notNull().unique(),
+  title: text('title'),
+  prompt: text('prompt').notNull(),
+  modelId: text('model_id')
+    .notNull()
+    .references(() => modelsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+})
+
+export const triggersTable = sqliteTable('triggers', {
+  id: text('id').primaryKey().notNull().unique(),
+  triggerType: text('trigger_type', { enum: ['time'] }).notNull(),
+  triggerTime: text('trigger_time'),
+  promptId: text('prompt_id')
+    .notNull()
+    .references(() => promptsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  isEnabled: integer('is_enabled').default(1).notNull(),
 })

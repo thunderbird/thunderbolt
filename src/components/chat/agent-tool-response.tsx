@@ -52,7 +52,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
     // Handle different result types
     if (Array.isArray(results)) {
       return (
-        <div className="space-y-3 mt-3">
+        <div className="space-y-3">
           {results.map((result, index) => (
             <ChatMessagePreview key={index} imapId={result} />
           ))}
@@ -64,7 +64,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
       // Handle error results
       if ('error' in results) {
         return (
-          <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 rounded-md">
+          <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-md">
             <p className="text-red-700 dark:text-red-300 text-sm">Error: {results.error}</p>
           </div>
         )
@@ -73,7 +73,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
       // Handle success results with data
       if ('success' in results && results.success) {
         return (
-          <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 rounded-md">
+          <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-md">
             <p className="text-green-700 dark:text-green-300 text-sm">✓ Operation completed successfully</p>
           </div>
         )
@@ -81,7 +81,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
 
       // Handle other object results
       return (
-        <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-950/30 border border-gray-200 rounded-md">
+        <div className="p-3 bg-gray-50 dark:bg-gray-950/30 rounded-md">
           <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
             {JSON.stringify(results, null, 2)}
           </pre>
@@ -92,7 +92,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
     // Handle string results
     if (typeof results === 'string') {
       return (
-        <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-950/30 border border-gray-200 rounded-md">
+        <div className="p-3 bg-gray-50 dark:bg-gray-950/30 rounded-md">
           <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{results}</p>
         </div>
       )
@@ -119,7 +119,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
       className={`tool-invocation-card border rounded-lg overflow-hidden transition-colors ${getStatusColor(status)}`}
     >
       <div
-        className="tool-header p-3 flex justify-between items-center cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+        className="tool-header p-2.5 flex justify-between items-center cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
         <div className="tool-info flex items-center gap-3 min-w-0 flex-1">
@@ -162,9 +162,7 @@ export const AgentToolResponse = ({ part }: AgentToolResponseProps) => {
         </div>
       </div>
 
-      {!isCollapsed && resultData && (
-        <div className="tool-result border-t border-current/10">{renderResults(resultData)}</div>
-      )}
+      {!isCollapsed && resultData && <div className="tool-result p-3">{renderResults(resultData)}</div>}
     </div>
   )
 }

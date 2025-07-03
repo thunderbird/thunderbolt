@@ -14,8 +14,10 @@ import {
   embeddingsTable,
   mcpServersTable,
   modelsTable,
+  promptsTable,
   settingsTable,
   tasksTable,
+  triggersTable,
 } from './db/tables'
 import ImapClient from './imap/imap'
 import { ImapSyncClient } from './sync'
@@ -64,6 +66,8 @@ export type Model = InferSelectModel<typeof modelsTable>
 export type Task = InferSelectModel<typeof tasksTable>
 export type Contact = InferSelectModel<typeof contactsTable>
 export type McpServer = InferSelectModel<typeof mcpServersTable>
+export type Prompt = InferSelectModel<typeof promptsTable>
+export type Trigger = InferSelectModel<typeof triggersTable>
 
 export type EmailMessageWithAddresses = EmailMessage & {
   sender: EmailAddress

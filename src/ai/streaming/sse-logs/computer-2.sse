@@ -1,0 +1,96 @@
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"<think>\n"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"Okay, the user asked, \""},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"What are my current tasks?\" I need to"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" check their task list. The"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" getTasks function was called, and the"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" response shows three tasks. Let me parse that"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":".\n\nFirst, look at"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" the tasks provided. Each has an"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" ID, item description, and is"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"Complete status. The user probably wants"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" a clear list of what they need"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to do. The tasks are:\n\n1"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Connect email account\n2. Set name"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" and location in preferences\n3. Explore Thunder"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"bolt Pro tools\n\nI should present these in"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" a user-friendly way. Maybe bullet points with"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" their IDs so they"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" can reference them later. Also, note"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" that none are completed yet."},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" The user might appreciate knowing they can add"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" or delete tasks if needed"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Keep the response concise but informative"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":", using emojis to make it more engaging"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Make sure to mention that they"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" can ask for more actions"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" if they need"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to manage the tasks"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" further.\n</think>\n\nHere are your current"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" tasks 📋:\n\n1. **"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"Connect your email account** (ID: "},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"0198432"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"a...)  \n   *\"Connect"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" your email account to get started\""},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"*\n\n2. **Set your name"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" & location** (ID: "},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"0198432a...)"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"  \n   *\"Set your name and location in"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" preferences for better AI responses\"*\n\n3."},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" **Explore Thunderbolt Pro tools** (ID"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":": 0198432"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"a...)  \n   *\"Explore Thunderbolt Pro"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" tools to extend capabilities\"*\n\nAll tasks are"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" pending completion. Would you"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" like to add new tasks or delete any"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" of these? ✨"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7c8f93a0-b901-4385-a388-82db3d6a44c4","object":"chat.completion.chunk","created":1753480211,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1410,"total_tokens":1734,"completion_tokens":324}}
+
+data: [DONE]
+

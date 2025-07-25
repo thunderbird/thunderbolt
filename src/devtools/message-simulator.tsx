@@ -9,17 +9,22 @@ import { useLocalStorage } from '@/hooks/use-local-storage'
 import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ReasoningUIPart, TextUIPart, ToolInvocationUIPart, UIMessage } from 'ai'
-import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
+import { streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { defaultMiddleware } from '@/ai/middleware/default'
 import APPLE_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
 import BANANA_SSE_CONTENT from '../ai/streaming/sse-logs/banana.sse?raw'
+import COMPUTER_1_SSE_CONTENT from '../ai/streaming/sse-logs/computer-1.sse?raw'
+import COMPUTER_2_SSE_CONTENT from '../ai/streaming/sse-logs/computer-2.sse?raw'
 
 // Map of SSE log files to their content
 const SSE_LOG_FILES = {
   apple: APPLE_SSE_CONTENT,
   banana: BANANA_SSE_CONTENT,
+  'computer-1': COMPUTER_1_SSE_CONTENT,
+  'computer-2': COMPUTER_2_SSE_CONTENT,
 } as const
 
 // Generate SSE logs array from file names
@@ -79,7 +84,7 @@ function SimulatorContent({}: SimulatorContentProps) {
       // Attach only the reasoning extraction middleware (tagName: think)
       const wrappedModel = wrapLanguageModel({
         model: baseModel,
-        middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+        middleware: defaultMiddleware,
       })
 
       // Call the Vercel AI SDK streamText helper which gives us a StreamTextResult-like object

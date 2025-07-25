@@ -1,5 +1,39 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`SSE -> UIMessage: computer-1 1`] = `
+"{
+  "id": "sim",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: computer-2 1`] = `
+"{
+  "id": "sim",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user asked, \\"What are my current tasks?\\" I need to check their task list. The getTasks function was called, and the response shows three tasks. Let me parse that.\\n\\nFirst, look at the tasks provided. Each has an ID, item description, and isComplete status. The user probably wants a clear list of what they need to do. The tasks are:\\n\\n1. Connect email account\\n2. Set name and location in preferences\\n3. Explore Thunderbolt Pro tools\\n\\nI should present these in a user-friendly way. Maybe bullet points with their IDs so they can reference them later. Also, note that none are completed yet. The user might appreciate knowing they can add or delete tasks if needed. Keep the response concise but informative, using emojis to make it more engaging. Make sure to mention that they can ask for more actions if they need to manage the tasks further.\\n"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\nHere are your current tasks 📋:\\n\\n1. **Connect your email account** (ID: 0198432a...)  \\n   *\\"Connect your email account to get started\\"*\\n\\n2. **Set your name & location** (ID: 0198432a...)  \\n   *\\"Set your name and location in preferences for better AI responses\\"*\\n\\n3. **Explore Thunderbolt Pro tools** (ID: 0198432a...)  \\n   *\\"Explore Thunderbolt Pro tools to extend capabilities\\"*\\n\\nAll tasks are pending completion. Would you like to add new tasks or delete any of these? ✨"
+    }
+  ]
+}"
+`;
+
 exports[`SSE -> UIMessage: banana 1`] = `
 "{
   "id": "sim",

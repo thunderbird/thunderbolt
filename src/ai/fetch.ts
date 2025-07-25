@@ -1,5 +1,3 @@
-import { stripTagsMiddleware } from '@/ai/middleware/strip-tags'
-import { toolCallsMiddleware } from '@/ai/middleware/tool-calls'
 import { createPrompt } from '@/ai/prompt'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
@@ -20,7 +18,6 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   convertToModelMessages,
   experimental_createMCPClient,
-  extractReasoningMiddleware,
   LanguageModel,
   streamText,
   ToolInvocation,
@@ -29,6 +26,7 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
+import { defaultMiddleware } from './middleware/default'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
   result: T
@@ -159,8 +157,7 @@ export const aiFetchStreamingResponse = async ({
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
       model: baseModel,
-      middleware: [stripTagsMiddleware, toolCallsMiddleware, extractReasoningMiddleware({ tagName: 'think' })],
-      // middleware: [],
+      middleware: defaultMiddleware,
     })
 
     const result = streamText({

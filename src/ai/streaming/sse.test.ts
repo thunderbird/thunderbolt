@@ -1,10 +1,11 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2StreamPart } from '@ai-sdk/provider'
-import { extractReasoningMiddleware, simulateReadableStream, streamText, wrapLanguageModel } from 'ai'
+import { simulateReadableStream, streamText, wrapLanguageModel } from 'ai'
 import { MockLanguageModelV2 } from 'ai/test'
 import { describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
+import { defaultMiddleware } from '../middleware/default'
 import { createSimulatedFetch, createUIMessageTransform, parseSseLog, streamTextToUIMessage } from './util'
 
 describe('sse', async () => {
@@ -86,7 +87,7 @@ describe('sse', async () => {
 
   const wrappedModel = wrapLanguageModel({
     model,
-    middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+    middleware: defaultMiddleware,
   })
 
   it('should return a readable stream', async () => {
@@ -113,7 +114,7 @@ describe('sse', async () => {
       reader.releaseLock()
     }
 
-    expect(count).toBe(79)
+    expect(count).toBe(74)
 
     expect(finalMessage).toEqual({
       id: 'sim',

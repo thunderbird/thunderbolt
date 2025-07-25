@@ -109,5 +109,7 @@ describe('sse', async () => {
     // console.log('message', message)
 
     expect(message).toEqual(expectedMessage)
+
+    expect(JSON.stringify(message, null, 2)).toMatchSnapshot()
   })
 })

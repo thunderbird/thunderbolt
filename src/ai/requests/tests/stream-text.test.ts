@@ -57,7 +57,7 @@ function discoverTestCases(): Array<{ name: string; streamFile: string; expected
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('streamText - Integration Tests', () => {
+describe('SSE -> UIMessage:', () => {
   beforeEach(() => {
     // Reset any test state if needed
   })
@@ -71,47 +71,46 @@ describe('streamText - Integration Tests', () => {
   }
 
   for (const testCase of testCases) {
-    describe(`${testCase.name} test case`, () => {
-      it('should correctly parse SSE stream and match expected final message', async () => {
-        // Arrange ----------------------------------------------------------
-        const expectedMessage: UIMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
+    it(testCase.name, async () => {
+      // Arrange ----------------------------------------------------------
+      const expectedMessage: UIMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
 
-        // Load and parse SSE data from file
-        const sseData = readFileSync(testCase.streamFile, 'utf8')
-        const chunks = parseSseLog(sseData)
+      // Load and parse SSE data from file
+      const sseData = readFileSync(testCase.streamFile, 'utf8')
+      const chunks = parseSseLog(sseData)
 
-        // Create simulated fetch with the parsed chunks
-        const simulatedFetch = createSimulatedFetch(chunks, {
-          initialDelayInMs: 0,
-          chunkDelayInMs: 0,
-        })
-
-        // Set up the model with the same pattern as sse.test.ts
-        const provider = createOpenAICompatible({
-          name: 'local-test',
-          baseURL: 'http://localhost:3000',
-          fetch: simulatedFetch,
-        })
-
-        const model = provider('test-model')
-
-        const wrappedModel = wrapLanguageModel({
-          model,
-          middleware: [extractReasoningMiddleware({ tagName: 'think' })],
-        })
-
-        // Act --------------------------------------------------------------
-        const result = streamText({
-          model: wrappedModel,
-          prompt: '<test>',
-        })
-
-        // Collect the final message from the stream
-        const actualMessage = await streamTextToUIMessage(result)
-
-        // Assert -----------------------------------------------------------
-        expect(actualMessage).toEqual(expectedMessage)
+      // Create simulated fetch with the parsed chunks
+      const simulatedFetch = createSimulatedFetch(chunks, {
+        initialDelayInMs: 0,
+        chunkDelayInMs: 0,
       })
+
+      // Set up the model with the same pattern as sse.test.ts
+      const provider = createOpenAICompatible({
+        name: 'local-test',
+        baseURL: 'http://localhost:3000',
+        fetch: simulatedFetch,
+      })
+
+      const model = provider('test-model')
+
+      const wrappedModel = wrapLanguageModel({
+        model,
+        middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+      })
+
+      // Act --------------------------------------------------------------
+      const result = streamText({
+        model: wrappedModel,
+        prompt: '<test>',
+      })
+
+      // Collect the final message from the stream
+      const actualMessage = await streamTextToUIMessage(result)
+
+      // Assert -----------------------------------------------------------
+      expect(actualMessage).toEqual(expectedMessage)
+      expect(JSON.stringify(actualMessage, null, 2)).toMatchSnapshot()
     })
   }
 })

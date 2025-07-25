@@ -1,5 +1,5 @@
 import type { LanguageModelV2StreamPart } from '@ai-sdk/provider'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { toolCallsMiddleware } from './tool-calls'
 
 // Helper to create a ReadableStream of text parts

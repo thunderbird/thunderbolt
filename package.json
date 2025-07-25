@@ -17,10 +17,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format-check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:flower": "vitest run --config vitest.config.flower.ts",
-    "test:bun": "bun test src/",
     "check": "bun run type-check && bun run lint && bun run format-check"
   },
   "dependencies": {
@@ -111,7 +107,6 @@
     "type-fest": "^4.41.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.3",
-    "vite-bundle-analyzer": "^1.0.0",
-    "vitest": "^3.2.4"
+    "vite-bundle-analyzer": "^1.0.0"
   }
 }

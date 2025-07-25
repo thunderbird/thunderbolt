@@ -1,6 +1,9 @@
 import { fetch as customFetch } from '@/lib/fetch'
 import { Model } from '@/types'
-import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageStreamPart } from 'ai'
+import type { LanguageModelV2Middleware, LanguageModelV2StreamPart } from '@ai-sdk/provider'
+import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageStreamPart, wrapLanguageModel } from 'ai'
+import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
+import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,6 +41,10 @@ export type StreamTextParams = {
    * without relying on module mocking.
    */
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  /**
+   * Optional middleware array compatible with Vercel AI SDK middleware.
+   */
+  middleware?: LanguageModelV2Middleware[]
 }
 
 // ---------------------------------------------------------------------------
@@ -46,11 +53,12 @@ export type StreamTextParams = {
 
 /**
  * Parses a single Server-Sent-Event line and, if it contains JSON with a delta,
- * converts it into one or more {@link UIMessageStreamPart}s understood by the
- * Vercel AI SDK.
+ * converts it into one or more {@link LanguageModelV2StreamPart}s that can be
+ * processed by middleware.
  */
-function parseSSELine(line: string): UIMessageStreamPart[] {
-  const parts: UIMessageStreamPart[] = []
+export function parseSSELine(line: string): { parts: LanguageModelV2StreamPart[]; messageId?: string } {
+  const parts: LanguageModelV2StreamPart[] = []
+  let messageId: string | undefined
 
   // Remove the "data:" prefix that OpenAI-compatible streams use.
   if (line.startsWith('data:')) {
@@ -58,12 +66,12 @@ function parseSSELine(line: string): UIMessageStreamPart[] {
   }
 
   // Ignore empty comment / heartbeat lines.
-  if (!line) return parts
+  if (!line) return { parts }
 
   // OpenAI sends a terminator line.
   if (line === '[DONE]') {
     // Don't emit finish here - it will be handled by the stream ending
-    return parts
+    return { parts }
   }
 
   // Attempt to decode JSON – ignore malformed chunks.
@@ -71,13 +79,31 @@ function parseSSELine(line: string): UIMessageStreamPart[] {
     const payload = JSON.parse(line)
     const choice = payload?.choices?.[0]
 
-    if (!choice) return parts
+    // Extract message ID if available
+    if (payload?.id) {
+      messageId = payload.id
+    }
+
+    if (!choice) return { parts, messageId }
 
     const delta = choice.delta ?? {}
 
     // Text delta
     if (delta.content) {
-      parts.push({ type: 'text', text: delta.content })
+      parts.push({ 
+        type: 'text', 
+        text: delta.content,
+        reasoning: delta.reasoning !== undefined ? delta.reasoning : undefined
+      } as any)
+    }
+
+    // Reasoning delta (when content is empty but reasoning is present)
+    if (delta.reasoning && (!delta.content || delta.content === '')) {
+      parts.push({ 
+        type: 'text', 
+        text: '', 
+        reasoning: delta.reasoning 
+      } as any)
     }
 
     // Check for finish reason in the choice object
@@ -89,9 +115,119 @@ function parseSSELine(line: string): UIMessageStreamPart[] {
     /* Swallow JSON parse errors silently – they happen on keep-alive lines. */
   }
 
-  return parts
+  return { parts, messageId }
 }
 
+/**
+ * Converts a {@link LanguageModelV2StreamPart} to a {@link UIMessageStreamPart}
+ * for compatibility with the UI message stream.
+ */
+function convertToUIMessageStreamPart(part: LanguageModelV2StreamPart): UIMessageStreamPart | null {
+  switch (part.type) {
+    case 'text':
+      return { type: 'text', text: (part as any).text }
+    case 'reasoning':
+      return { type: 'reasoning', text: (part as any).text }
+    case 'finish':
+      return {
+        type: 'finish',
+        finishReason: (part as any).finishReason || 'stop',
+        usage: (part as any).usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      } as any
+    case 'error':
+      return { type: 'error', errorText: (part as any).error?.message || 'Unknown error' }
+    default:
+      // Skip unknown part types
+      return null
+  }
+}
+
+/**
+ * Creates a minimal language model that can be wrapped with middleware.
+ * This allows us to use the existing middleware infrastructure from the AI SDK.
+ */
+function createSSELanguageModel(response: Response): any {
+  let messageId = 'unknown'
+
+  const doStream = async () => {
+    // Create a stream that parses SSE into LanguageModelV2StreamParts
+    const stream = new ReadableStream<LanguageModelV2StreamPart>({
+      async start(controller) {
+        const reader = response.body!.getReader()
+        const decoder = new TextDecoder('utf-8')
+        let buffer = ''
+
+        try {
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // SSE events are separated by newlines – process complete lines only
+            const lines = buffer.split(/\r?\n/)
+            buffer = lines.pop() ?? '' // Keep the incomplete remainder
+
+            for (const line of lines) {
+              const parsed = parseSSELine(line)
+              
+              // Capture messageId from first SSE event that has one
+              if (parsed.messageId && messageId === 'unknown') {
+                messageId = parsed.messageId
+              }
+              
+              for (const part of parsed.parts) {
+                controller.enqueue(part)
+              }
+            }
+          }
+
+          // Flush any remaining buffer
+          if (buffer.trim()) {
+            const parsed = parseSSELine(buffer)
+            for (const part of parsed.parts) {
+              controller.enqueue(part)
+            }
+          }
+
+          // Always emit a finish event when the stream ends with messageId
+          controller.enqueue({
+            type: 'finish',
+            finishReason: 'stop',
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            messageId,
+          } as any)
+        } catch (error) {
+          console.error('streamText parsing error', error)
+          controller.enqueue({ type: 'error', error: { message: (error as Error).message } } as any)
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return {
+      stream,
+      warnings: undefined,
+      usage: Promise.resolve({ promptTokens: 0, completionTokens: 0, totalTokens: 0 }),
+      experimental_providerMetadata: undefined,
+      messageId,
+    }
+  }
+
+  // Return a minimal language model compatible with wrapLanguageModel
+  return {
+    specificationVersion: 'v2',
+    provider: 'openrouter-sse',
+    modelId: 'openrouter-stream',
+    doStream,
+    doGenerate: async () => {
+      throw new Error('Generation not supported in SSE stream mode')
+    },
+    getMessageId: () => messageId,
+  } as any
+}
 
 // ---------------------------------------------------------------------------
 // Main function
@@ -110,6 +246,7 @@ export const streamText = async ({
   temperature = 0.25,
   baseUrl = 'https://openrouter.ai/api/v1',
   fetch: fetchImpl = customFetch,
+  middleware = [],
 }: StreamTextParams) => {
   const url = `${baseUrl}/chat/completions`
 
@@ -144,53 +281,56 @@ export const streamText = async ({
     throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText}`)
   }
 
-  // Transform the raw SSE into UIMessageStreamParts
+  // Apply middleware to process the stream
+  const baseModel = createSSELanguageModel(response)
+
+  if (middleware.length === 0) {
+    // Apply default middleware - try both think tag parsing and reasoning property parsing
+    middleware = [streamingParserMiddleware, reasoningPropertyParserMiddleware]
+  }
+  
+  // Apply middleware using wrapLanguageModel
+  const wrappedModel = wrapLanguageModel({
+    providerId: 'openrouter-sse',
+    model: baseModel,
+    middleware,
+  })
+
+  // Use the wrapped model to create the stream
+  const streamResult = await (wrappedModel as any).doStream()
+
+  // Convert the processed stream to UIMessageStreamParts
   const stream = createUIMessageStream({
-    async execute(writer) {
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
+      async execute(writer) {
+        const reader = streamResult.stream.getReader()
+        let messageId = (baseModel as any).getMessageId?.() || 'unknown'
 
-      try {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+        try {
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
 
-          buffer += decoder.decode(value, { stream: true })
+            // Extract messageId from finish parts if available
+            if ((value as any).type === 'finish' && (value as any).messageId) {
+              messageId = (value as any).messageId
+            }
 
-          // SSE events are separated by newlines – process complete lines only
-          const lines = buffer.split(/\r?\n/)
-          buffer = lines.pop() ?? '' // Keep the incomplete remainder
-
-          for (const line of lines) {
-            const parsed = parseSSELine(line)
-            for (const part of parsed) {
-              writer.write(part)
+            const uiPart = convertToUIMessageStreamPart(value)
+            if (uiPart) {
+              // Add messageId to finish parts
+              if (uiPart.type === 'finish') {
+                (uiPart as any).metadata = { finishReason: 'stop', messageId }
+              }
+              writer.write(uiPart)
             }
           }
+        } catch (error) {
+          console.error('streamText middleware processing error', error)
+          writer.write({ type: 'error', errorText: (error as Error).message })
         }
-
-        // Flush any remaining buffer
-        if (buffer.trim()) {
-          const parsed = parseSSELine(buffer)
-          for (const part of parsed) {
-            writer.write(part)
-          }
-        }
-        
-        // Always emit a finish event when the stream ends
-        writer.write({ 
-          type: 'finish', 
-          finishReason: 'stop',
-          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
-        } as any)
-      } catch (error) {
-        console.error('streamText parsing error', error)
-        writer.write({ type: 'error', errorText: (error as Error).message })
-      }
-    },
-  })
+      },
+    })
 
   // Minimal StreamTextResult implementation compatible with .toUIMessageStreamResponse()
   const result = {

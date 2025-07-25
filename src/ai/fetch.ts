@@ -1,5 +1,7 @@
 import { stripTagsMiddleware } from '@/ai/middleware/strip-tags'
 import { toolCallsMiddleware } from '@/ai/middleware/tool-calls'
+import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
+import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
 import { createPrompt } from '@/ai/prompt'
 import { streamText as openRouterStreamText } from '@/ai/requests/stream-text'
 import { DatabaseSingleton } from '@/db/singleton'
@@ -179,6 +181,7 @@ export const aiFetchStreamingResponse = async ({
       model: nonNullModel!,
       messages: openaiMessages,
       // tool_choice is hard-wired inside streamText; other params default.
+      middleware: [streamingParserMiddleware, reasoningPropertyParserMiddleware],
     })
 
     return streamResult.toUIMessageStreamResponse({

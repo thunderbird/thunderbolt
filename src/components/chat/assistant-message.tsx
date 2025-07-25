@@ -17,19 +17,38 @@ const supportedPartTypes = ['reasoning', 'tool-invocation', 'text']
 export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => supportedPartTypes.includes(part.type))
 
+  // Combine multiple reasoning parts into one for display
+  const reasoningParts = filteredParts.filter(part => part.type === 'reasoning')
+  const nonReasoningParts = filteredParts.filter(part => part.type !== 'reasoning')
+  
+  const combinedReasoningText = reasoningParts.map(part => (part as any).text).join('')
+  const combinedReasoningPart = combinedReasoningText ? {
+    type: 'reasoning' as const,
+    text: combinedReasoningText
+  } : null
+
+  // Rebuild the parts list with combined reasoning
+  const processedParts = []
+  if (combinedReasoningPart) {
+    processedParts.push(combinedReasoningPart)
+  }
+  processedParts.push(...nonReasoningParts)
+
   const partElements = []
 
-  if (filteredParts.length === 0) {
+  if (processedParts.length === 0) {
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
-  filteredParts.forEach((part, index) => {
-    const isLastPart = index === filteredParts.length - 1
+  processedParts.forEach((part, index) => {
+    const isLastPart = index === processedParts.length - 1
     const isPartStreaming = isStreaming && isLastPart
 
     switch (part.type) {
       case 'reasoning':
-        partElements.push(<ReasoningPart part={part} isStreaming={isPartStreaming} />)
+        // For reasoning, check if we're still receiving reasoning parts in the original message
+        const isReasoningStreaming = isStreaming && reasoningParts.length > 0
+        partElements.push(<ReasoningPart part={part} isStreaming={isReasoningStreaming} />)
         break
       case 'tool-invocation':
         partElements.push(<ToolInvocationPart part={part} isStreaming={isPartStreaming} />)

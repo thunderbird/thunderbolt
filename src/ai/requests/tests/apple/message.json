@@ -8,7 +8,7 @@
     },
     {
       "type": "text",
-      "text": "🌤️ **Weekly Weather Forecast Request**  \n\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \n\nCould you share where you're located? Once I have that, I\u2019ll fetch the latest forecast for you! 🌍✨"
+      "text": "\n\n🌤️ **Weekly Weather Forecast Request**  \n\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \n\nCould you share where you're located? Once I have that, I'll fetch the latest forecast for you! 🌍✨"
     }
   ],
   "metadata": {

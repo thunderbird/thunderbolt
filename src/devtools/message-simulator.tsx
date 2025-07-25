@@ -1,7 +1,11 @@
+import { streamText } from '@/ai/requests/stream-text'
+import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
+import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import type { Model } from '@/types'
 import { type UIMessage } from 'ai'
 import { Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
@@ -137,203 +141,50 @@ data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chu
 
 data: [DONE]`
 
-/**
- * Parse a single SSE line like the streamText function does
- */
-const parseSSELine = (line: string) => {
-  if (line.startsWith('data:')) {
-    line = line.slice(5).trim()
-  }
+// ------------------------------------------------------------
+// Helpers to create a mock fetch that streams the SSE log
+// ------------------------------------------------------------
 
-  if (!line) return {}
-  if (line === '[DONE]') {
-    return { isFinished: true, finishReason: 'stop' }
-  }
+const makeMockFetch = (sseData: string): ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
+  return async () => {
+    const encoder = new TextEncoder()
+    const lines = sseData.split('\n').filter((l) => l.trim())
+    let idx = 0
 
-  try {
-    const payload = JSON.parse(line)
-    const choice = payload?.choices?.[0]
-    if (!choice) return {}
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (idx >= lines.length) {
+          controller.close()
+          return
+        }
 
-    const delta = choice.delta ?? {}
-    const result: any = {}
+        // Push next line with newline so the parser sees complete lines
+        const chunk = encoder.encode(lines[idx++] + '\n')
+        controller.enqueue(chunk)
 
-    if (payload.id) {
-      result.id = payload.id
-    }
+        // Small delay to simulate real streaming
+        await new Promise((r) => setTimeout(r, 50))
+      },
+    })
 
-    if (delta.content) {
-      result.textContent = delta.content
-    }
-
-    if (choice.finish_reason) {
-      result.isFinished = true
-      result.finishReason = choice.finish_reason
-    }
-
-    return result
-  } catch {
-    return {}
-  }
-}
-
-/**
- * Parse content with <think> tags and return appropriate message parts
- */
-const parseContentIntoParts = (allTextContent: string, messageId?: string) => {
-  const parts: any[] = []
-
-  // Parse reasoning content from <think> tags
-  const thinkMatch = allTextContent.match(/<think>([\s\S]*?)<\/think>/)
-  if (thinkMatch) {
-    const reasoningContent = thinkMatch[1].trim()
-    if (reasoningContent) {
-      parts.push({
-        type: 'reasoning',
-        text: reasoningContent,
-      })
-    }
-  }
-
-  // Extract text content (everything after </think> tag, or all content if no think tags)
-  let textContent = allTextContent
-  if (thinkMatch) {
-    const afterThinkIndex = allTextContent.indexOf('</think>') + '</think>'.length
-    textContent = allTextContent.substring(afterThinkIndex).trim()
-  }
-
-  if (textContent) {
-    parts.push({
-      type: 'text',
-      text: textContent,
+    return new Response(stream, {
+      headers: { 'Content-Type': 'text/event-stream' },
     })
   }
-
-  return {
-    parts,
-    id: messageId || `fallback_${Date.now()}`,
-  }
 }
 
-/**
- * Simulate the streamText parsing directly from SSE content
- */
-const simulateStreamText = async (sseContent: string, signal?: AbortSignal): Promise<UIMessage> => {
-  const lines = sseContent.split('\n').filter((line) => line.trim())
-  let allTextContent = ''
-  let messageId: string | undefined
-
-  // Process each line with delay to simulate streaming
-  for (let i = 0; i < lines.length; i++) {
-    if (signal?.aborted) throw new Error('Aborted')
-
-    const line = lines[i]
-    const parsed = parseSSELine(line)
-
-    // Capture the message ID from the first line that has one
-    if (parsed.id && !messageId) {
-      messageId = parsed.id
-    }
-
-    // Buffer text content as it comes in
-    if (parsed.textContent) {
-      allTextContent += parsed.textContent
-    }
-
-    // When finished, parse the full content and return
-    if (parsed.isFinished) {
-      const { parts, id } = parseContentIntoParts(allTextContent, messageId)
-
-      return {
-        id,
-        role: 'assistant',
-        parts,
-        metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
-      }
-    }
-
-    // Add delay between lines for visual effect
-    if (i < lines.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-  }
-
-  // Fallback if no finish signal was found
-  const { parts, id } = parseContentIntoParts(allTextContent, messageId)
-  return {
-    id,
-    role: 'assistant',
-    parts,
-    metadata: { finishReason: 'stop', messageId: id },
-  }
-}
-
-/**
- * Simulate the streamText parsing directly from SSE content with real-time updates
- */
-const simulateStreamTextWithUpdates = async (
-  sseContent: string,
-  signal: AbortSignal,
-  setRealtimeMessage: React.Dispatch<React.SetStateAction<Partial<UIMessage> | null>>,
-): Promise<UIMessage> => {
-  const lines = sseContent.split('\n').filter((line) => line.trim())
-  let allTextContent = ''
-  let messageId: string | undefined
-
-  // Process each line with delay to simulate streaming
-  for (let i = 0; i < lines.length; i++) {
-    if (signal?.aborted) throw new Error('Aborted')
-
-    const line = lines[i]
-    const parsed = parseSSELine(line)
-
-    // Capture the message ID from the first line that has one
-    if (parsed.id && !messageId) {
-      messageId = parsed.id
-    }
-
-    // Buffer text content as it comes in
-    if (parsed.textContent) {
-      allTextContent += parsed.textContent
-    }
-
-    // Update real-time message
-    if (messageId) {
-      const { parts, id } = parseContentIntoParts(allTextContent, messageId)
-      setRealtimeMessage({
-        id,
-        role: 'assistant',
-        parts,
-        metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
-      })
-    }
-
-    // When finished, parse the full content and return
-    if (parsed.isFinished) {
-      const { parts, id } = parseContentIntoParts(allTextContent, messageId)
-
-      return {
-        id,
-        role: 'assistant',
-        parts,
-        metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
-      }
-    }
-
-    // Add delay between lines for visual effect
-    if (i < lines.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-  }
-
-  // Fallback if no finish signal was found
-  const { parts, id } = parseContentIntoParts(allTextContent, messageId)
-  return {
-    id,
-    role: 'assistant',
-    parts,
-    metadata: { finishReason: 'stop', messageId: id },
-  }
+// Dummy model instance (only fields used by streamText)
+const dummyModel: Model = {
+  id: 'sim',
+  provider: 'custom',
+  name: 'sim',
+  model: 'simulation-model',
+  apiKey: '',
+  url: '',
+  isSystem: 0,
+  enabled: 1,
+  toolUsage: 1,
+  isConfidential: 0,
 }
 
 interface SimulatorContentProps {}
@@ -359,19 +210,44 @@ function SimulatorContent({}: SimulatorContentProps) {
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
 
-    // Initialize with empty message to show chat output immediately
-    setRealtimeMessage({
-      id: `sim_${Date.now()}`,
-      role: 'assistant',
-      parts: [],
-      metadata: { finishReason: 'stop', messageId: `sim_${Date.now()}` },
-    })
+    // Prepare mock fetch that replays the SSE log
+    const mockFetch = makeMockFetch(sseLog)
 
     try {
-      // Use our direct SSE parsing simulation with real-time updates
-      const finalMessage = await simulateStreamTextWithUpdates(sseLog, signal, setRealtimeMessage)
+      const { stream } = (await streamText({
+        model: dummyModel as any,
+        messages: [{ role: 'user', content: 'Simulated prompt' }],
+        fetch: mockFetch,
+        signal,
+        middleware: [streamingParserMiddleware, reasoningPropertyParserMiddleware],
+      })) as any
 
-      setSimulatedMessage(finalMessage)
+      const reader = stream.getReader()
+
+      const parts: any[] = []
+
+      // Initialize empty realtime message
+      setRealtimeMessage({ id: 'sim', role: 'assistant', parts })
+
+      // Consume stream
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        if (value.type === 'text' || value.type === 'reasoning') {
+          parts.push(value)
+          setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
+        }
+
+        if (value.type === 'finish') {
+          setSimulatedMessage({
+            id: 'sim',
+            role: 'assistant',
+            parts: [...parts],
+            metadata: { finishReason: value.finishReason || 'stop', messageId: 'sim' },
+          })
+        }
+      }
     } catch (error) {
       console.error('Simulation error:', error)
     } finally {

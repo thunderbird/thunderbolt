@@ -186,43 +186,25 @@ class ProxyService:
             # Make the proxied request with streaming
             logger.info(f"Proxying streaming request to: {target_url}")
 
-            async with self.client.stream(
-                method=request.method,
-                url=target_url,
-                headers=headers,
-                content=body,
-                follow_redirects=False,
-            ) as proxied_response:
-                # If the upstream returned an error status, forward the full body and status code
-                if proxied_response.status_code >= 400:
-                    error_body = await proxied_response.aread()
-                    # Pass through original headers where it makes sense (content-type etc.)
-                    headers_to_forward = {
-                        k: v
-                        for k, v in proxied_response.headers.items()
-                        if k.lower() in {"content-type", "cache-control"}
-                    }
-                    return Response(
-                        content=error_body,
-                        status_code=proxied_response.status_code,
-                        headers=headers_to_forward,
-                    )
+            async def stream_response() -> Any:
+                async with self.client.stream(
+                    method=request.method,
+                    url=target_url,
+                    headers=headers,
+                    content=body,
+                    follow_redirects=False,
+                ) as response:
+                    response.raise_for_status()
 
-                # Otherwise stream the successful response downstream
-                async def stream_response() -> Any:
-                    async for chunk in proxied_response.aiter_bytes():
+                    # Stream the response content
+                    async for chunk in response.aiter_bytes():
                         yield chunk
 
-                return StreamingResponse(
-                    stream_response(),
-                    media_type="text/event-stream",
-                    headers={
-                        k: v
-                        for k, v in proxied_response.headers.items()
-                        if k.lower()
-                        in {"content-type", "cache-control", "x-accel-buffering"}
-                    },
-                )
+            # For streaming, we directly create the streaming response
+            return StreamingResponse(
+                stream_response(),
+                media_type="text/event-stream",
+            )
 
         except httpx.TimeoutException as e:
             raise HTTPException(status_code=504, detail="Gateway timeout") from e

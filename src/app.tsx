@@ -38,6 +38,7 @@ import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import { accountsTable } from './db/tables'
 import DevToolsPage from './devtools'
+import MessageSimulatorPage from './devtools/message-simulator'
 import ImapClient from './imap/imap'
 import { ImapProvider } from './imap/provider'
 import Layout from './layout'
@@ -85,6 +86,7 @@ function AppContent({ initData }: { initData: InitData }) {
 
           <Route path="ui-kit" element={<UiKitPage />} />
           <Route path="devtools" element={<DevToolsPage />} />
+          <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 
         {/* OAuth callback route */}

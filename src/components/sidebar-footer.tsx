@@ -100,6 +100,12 @@ export function SidebarFooter() {
                   </NavLink>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
+                  <NavLink to="/message-simulator">
+                    <Terminal className="mr-2 size-4" />
+                    Message Simulator
+                  </NavLink>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <NavLink to="/ui-kit">
                     <Palette className="mr-2 size-4" />
                     UI Kit

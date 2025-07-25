@@ -171,8 +171,6 @@ export const streamText = async ({
     tool_choice: 'auto',
   }
 
-  console.log('model', model)
-
   // Prepare headers – include Authorization if available
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

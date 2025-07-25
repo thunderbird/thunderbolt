@@ -1,4 +1,4 @@
-import { createSimulatedFetch, parseSseLog } from '@/ai/requests/util'
+import { createSimulatedFetch, createUIMessageTransform, parseSseLog } from '@/ai/requests/util'
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -67,66 +67,17 @@ function SimulatorContent({}: SimulatorContentProps) {
       })
 
       // -------------------------------------------------------------------
-      // Consume the stream emitted by the SDK **as it happens** and build a
-      // UIMessage that can be rendered by our <AssistantMessage/> component.
+      // Transform the raw chunk stream into UIMessage snapshots using a
+      // standard TransformStream, then consume each UIMessage update
       // -------------------------------------------------------------------
-
-      const reader = result.fullStream.getReader()
-
-      let messageId: string = 'sim'
-      let currentTextPart: { type: 'text'; text: string } | null = null
-      let currentReasoningPart: { type: 'reasoning'; text: string } | null = null
-      const parts: any[] = []
+      const messageStream = result.fullStream.pipeThrough(createUIMessageTransform())
+      const reader = messageStream.getReader()
 
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-
-          const chunk: any = value // Cast to any to simplify TypeScript handling of dynamic chunk types
-
-          switch (chunk.type) {
-            case 'text': // Fallback for potential future chunk types
-              // Accumulate successive text deltas into a single text part so
-              // the UI doesn’t have to handle many tiny items.
-              if (!currentTextPart) {
-                currentTextPart = { type: 'text', text: '' }
-                parts.push(currentTextPart)
-              }
-              // Both chunk.textDelta (preferred) and chunk.text may appear depending on transformer
-              currentTextPart.text += chunk.textDelta ?? chunk.text ?? ''
-              break
-
-            case 'reasoning':
-              // Accumulate successive reasoning chunks into one part.
-              if (!currentReasoningPart) {
-                currentReasoningPart = { type: 'reasoning', text: '' }
-                parts.push(currentReasoningPart)
-              }
-              currentReasoningPart.text += chunk.text ?? ''
-              break
-
-            case 'finish':
-              // Capture the final messageId if present (OpenAI style streams
-              // often include it in the last chunk).
-              if (chunk.messageId) {
-                messageId = chunk.messageId
-              }
-              break
-
-            default:
-              // Ignore other chunk types for this simulator.
-              break
-          }
-
-          // Push the latest snapshot to the React state so the UI updates in
-          // real-time. Spread `parts` to ensure new reference for React.
-          setRealtimeMessage({
-            id: messageId,
-            role: 'assistant',
-            parts: [...parts],
-            // Metadata omitted in simulator context
-          })
+          setRealtimeMessage(value as any) // Cast to bypass TypeScript generics mismatch
         }
       } finally {
         reader.releaseLock()

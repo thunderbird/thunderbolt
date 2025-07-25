@@ -2,10 +2,10 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2StreamPart } from '@ai-sdk/provider'
 import { extractReasoningMiddleware, simulateReadableStream, streamText, wrapLanguageModel } from 'ai'
 import { MockLanguageModelV2 } from 'ai/test'
-import { describe, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
-import { createSimulatedFetch, parseSseLog } from './util'
+import { createSimulatedFetch, createUIMessageTransform, parseSseLog, streamTextToUIMessage } from './util'
 
 describe.skip('sse', async () => {
   it('should return a readable stream', async () => {
@@ -49,11 +49,11 @@ describe.skip('sse', async () => {
   })
 })
 
-const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'tests/apple/stream.sse'), 'utf8'))
+const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'tests/banana/stream.sse'), 'utf8'))
 
 const simulatedFetch = createSimulatedFetch(chunks, {
   initialDelayInMs: 0,
-  chunkDelayInMs: 50,
+  chunkDelayInMs: 0,
 })
 
 const provider = createOpenAICompatible({
@@ -69,20 +69,45 @@ const wrappedModel = wrapLanguageModel({
   middleware: [extractReasoningMiddleware({ tagName: 'think' })],
 })
 
-describe('sse', async () => {
+describe.skip('sse', async () => {
   it('should return a readable stream', async () => {
     const result = streamText({
       model: wrappedModel,
       prompt: 'Hello, test!',
     })
 
-    for await (const chunk of result.) {
-      console.log('chunk2', chunk)
-    }
+    // Transform the raw chunk stream into UIMessage snapshots
+    const messageStream = result.fullStream.pipeThrough(createUIMessageTransform())
+    const reader = messageStream.getReader()
 
-    for await (const step of await result.steps) {
-      console.log('step', step)
+    let finalMessage
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        finalMessage = value
+        console.log('UIMessage Streaming Snapshot:', JSON.stringify(value, null, 2))
+      }
+    } finally {
+      reader.releaseLock()
     }
   })
 })
 
+describe('sse', async () => {
+  it('should return a readable stream', async () => {
+    const result = streamText({
+      model: wrappedModel,
+      prompt: '<test>',
+    })
+
+    const message = await streamTextToUIMessage(result)
+
+    // Load expected message from JSON file for deep comparison
+    const expectedMessage = JSON.parse(fs.readFileSync(join(__dirname, 'tests/banana/message.json'), 'utf8'))
+
+    // console.log('message', message)
+
+    expect(message).toEqual(expectedMessage)
+  })
+})

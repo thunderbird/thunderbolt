@@ -3,9 +3,10 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 // Import the function under test
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { UIMessage } from 'ai'
-import { extractReasoningMiddleware } from 'ai'
-import { streamText } from '../stream-text'
+import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
+import { createSimulatedFetch, parseSseLog, streamTextToUIMessage } from '../util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
@@ -53,56 +54,6 @@ function discoverTestCases(): Array<{ name: string; streamFile: string; expected
 }
 
 // ---------------------------------------------------------------------------
-// Utility Functions
-// ---------------------------------------------------------------------------
-
-/**
- * Collects all streaming parts from fullStream into a final UIMessage
- */
-async function collectStreamParts(fullStream: ReadableStream): Promise<UIMessage> {
-  const reader = fullStream.getReader()
-  let messageId = 'unknown'
-  let currentTextPart: { type: 'text'; text: string } | null = null
-  const parts: any[] = []
-
-  try {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      switch (value.type) {
-        case 'text-delta':
-          // Accumulate text deltas into a single text part
-          if (!currentTextPart) {
-            currentTextPart = { type: 'text', text: '' }
-            parts.push(currentTextPart)
-          }
-          currentTextPart.text += (value as any).textDelta
-          break
-        case 'reasoning':
-          parts.push({ type: 'reasoning', text: (value as any).text })
-          break
-        case 'finish':
-          messageId = (value as any).messageId || messageId
-          break
-        default:
-          break
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-
-  return {
-    id: messageId,
-    role: 'assistant',
-    parts,
-    metadata: { finishReason: 'stop', messageId },
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -125,72 +76,41 @@ describe('streamText - Integration Tests', () => {
         // Arrange ----------------------------------------------------------
         const expectedMessage: UIMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
 
-        // Load SSE data directly from file
+        // Load and parse SSE data from file
         const sseData = readFileSync(testCase.streamFile, 'utf8')
+        const chunks = parseSseLog(sseData)
 
-        const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-          { role: 'user', content: 'Test prompt' },
-        ]
+        // Create simulated fetch with the parsed chunks
+        const simulatedFetch = createSimulatedFetch(chunks, {
+          initialDelayInMs: 0,
+          chunkDelayInMs: 0,
+        })
+
+        // Set up the model with the same pattern as sse.test.ts
+        const provider = createOpenAICompatible({
+          name: 'local-test',
+          baseURL: 'http://localhost:3000',
+          fetch: simulatedFetch,
+        })
+
+        const model = provider('test-model')
+
+        const wrappedModel = wrapLanguageModel({
+          model,
+          middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+        })
 
         // Act --------------------------------------------------------------
-        // Use the real AI SDK extractReasoningMiddleware
-        const middleware = [extractReasoningMiddleware({ tagName: 'think' })]
-        const result = await streamText({ messages, sseData, middleware })
+        const result = streamText({
+          model: wrappedModel,
+          prompt: '<test>',
+        })
 
-        // Collect the final message from the fullStream
-        const finalMessage = await collectStreamParts(result.fullStream)
-
-        // Assert -----------------------------------------------------------
-        // Compare the main structural elements - ignore minor Unicode character differences
-        expect(finalMessage.id).toBe(expectedMessage.id)
-        expect(finalMessage.role).toBe(expectedMessage.role)
-        expect(finalMessage.parts.length).toBe(expectedMessage.parts.length)
-        expect(finalMessage.parts[0].type).toBe('reasoning')
-        expect(finalMessage.parts[1].type).toBe('text')
-        expect((finalMessage.parts[0] as any).text).toBe((expectedMessage.parts[0] as any).text)
-        // For text content, verify it contains key elements based on test case
-        if (testCase.name === 'banana') {
-          expect((finalMessage.parts[1] as any).text).toContain('Hello!')
-          expect((finalMessage.parts[1] as any).text).toContain('assist you today')
-          expect((finalMessage.parts[1] as any).text).toContain('😊')
-        } else {
-          expect((finalMessage.parts[1] as any).text).toContain('Weekly Weather Forecast Request')
-          expect((finalMessage.parts[1] as any).text).toContain('location')
-          expect((finalMessage.parts[1] as any).text).toContain('🌍✨')
-        }
-        expect((finalMessage.metadata as any).finishReason).toBe((expectedMessage.metadata as any).finishReason)
-        expect((finalMessage.metadata as any).messageId).toBe((expectedMessage.metadata as any).messageId)
-      })
-
-      it('should use sseData parameter correctly', async () => {
-        // Arrange ----------------------------------------------------------
-        const sseData = readFileSync(testCase.streamFile, 'utf8')
-        const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-          { role: 'user', content: 'Test prompt' },
-        ]
-
-        // Act --------------------------------------------------------------
-        const result = await streamText({ messages, sseData })
+        // Collect the final message from the stream
+        const actualMessage = await streamTextToUIMessage(result)
 
         // Assert -----------------------------------------------------------
-        expect(result).toHaveProperty('fullStream')
-        expect(result.fullStream).toBeInstanceOf(ReadableStream)
-      })
-
-      it('should return correct response structure', async () => {
-        // Arrange ----------------------------------------------------------
-        const sseData = readFileSync(testCase.streamFile, 'utf8')
-        const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-          { role: 'user', content: 'Test prompt' },
-        ]
-
-        // Act --------------------------------------------------------------
-        const result = await streamText({ messages, sseData })
-
-        // Assert -----------------------------------------------------------
-        expect(result).toHaveProperty('fullStream')
-        expect(result.fullStream).toBeInstanceOf(ReadableStream)
-        expect(typeof result.toUIMessageStreamResponse).toBe('function')
+        expect(actualMessage).toEqual(expectedMessage)
       })
     })
   }

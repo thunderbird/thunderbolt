@@ -1,6 +1,6 @@
 // @ts-ignore - Bun test types are provided at runtime
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { readFileSync, readdirSync } from 'node:fs'
+import { lstatSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Import the function under test
@@ -12,32 +12,40 @@ import { streamText } from '../stream-text'
 // ---------------------------------------------------------------------------
 
 /**
- * Discovers all test cases by finding .text-stream files and their corresponding .message.json files
+ * Discovers all test cases by finding test directories with stream.sse and message.json files
  */
 function discoverTestCases(): Array<{ name: string; streamFile: string; expectedFile: string }> {
   const testsDir = __dirname
-  const files = readdirSync(testsDir)
+  const entries = readdirSync(testsDir)
 
   const testCases: Array<{ name: string; streamFile: string; expectedFile: string }> = []
 
-  for (const file of files) {
-    if (file.endsWith('.text-stream')) {
-      const testName = file.replace('.text-stream', '')
-      const expectedFile = join(testsDir, `${testName}.message.json`)
-      const streamFile = join(testsDir, file)
+  for (const entry of entries) {
+    const entryPath = join(testsDir, entry)
 
-      // Check if corresponding message.json exists
-      try {
-        readFileSync(expectedFile, 'utf8')
-        testCases.push({
-          name: testName,
-          streamFile,
-          expectedFile,
-        })
-      } catch {
-        // Skip if message.json doesn't exist
-        console.warn(`Warning: No ${testName}.message.json found for ${testName}.text-stream`)
+    // Check if it's a directory
+    try {
+      if (lstatSync(entryPath).isDirectory()) {
+        const streamFile = join(entryPath, 'stream.sse')
+        const expectedFile = join(entryPath, 'message.json')
+
+        // Check if both required files exist
+        try {
+          readFileSync(streamFile, 'utf8')
+          readFileSync(expectedFile, 'utf8')
+
+          testCases.push({
+            name: entry,
+            streamFile,
+            expectedFile,
+          })
+        } catch {
+          // Skip if either file doesn't exist
+          console.warn(`Warning: Test directory ${entry} is missing stream.sse or message.json`)
+        }
       }
+    } catch {
+      // Skip if can't stat the entry
     }
   }
 

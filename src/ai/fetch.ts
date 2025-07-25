@@ -1,9 +1,6 @@
 import { stripTagsMiddleware } from '@/ai/middleware/strip-tags'
 import { toolCallsMiddleware } from '@/ai/middleware/tool-calls'
-import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
-import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
 import { createPrompt } from '@/ai/prompt'
-import { streamText as openRouterStreamText } from '@/ai/requests/stream-text'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
@@ -145,62 +142,17 @@ export const aiFetchStreamingResponse = async ({
     },
   })
 
-  // Non-null model assertion for the rest of the function
-  const nonNullModel = model!
-
-  // ---------------------------------------------------------------------
-  // TEMPORARY: Use the new OpenRouter streaming implementation exclusively.
-  // ---------------------------------------------------------------------
-  if (true) {
-    // Convert UIMessage parts to simple role/content objects expected by OpenAI-compatible APIs
-    const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map((msg) => {
-        let content = ''
-
-        if (Array.isArray(msg.parts)) {
-          for (const part of msg.parts) {
-            if (part.type === 'text') {
-              // Concatenate text parts; ignore other parts for now
-              content += (part as any).text || ''
-            }
-          }
-        }
-
-        return {
-          role: msg.role as 'system' | 'user' | 'assistant',
-          content,
-        }
-      }),
-    ]
-
-    const cloudUrl = await getCloudUrl()
-
-    const streamResult = await openRouterStreamText({
-      // baseUrl: `${cloudUrl}/openai`,
-      model: nonNullModel!,
-      messages: openaiMessages,
-      // tool_choice is hard-wired inside streamText; other params default.
-      middleware: [streamingParserMiddleware, reasoningPropertyParserMiddleware],
-    })
-
-    return streamResult.toUIMessageStreamResponse({
-      sendReasoning: true,
-      messageMetadata: () => ({ modelId }),
-    })
-  }
-
   // Flower is a special case that uses a custom SDK that is not compatible with the Vercel AI SDK.
-  if (nonNullModel.provider === 'flower') {
-    const tools = nonNullModel.toolUsage === 1 ? await getAvailableTools() : undefined
-    return handleFlowerChatStream({ messages, systemPrompt, model: nonNullModel.model, tools })
+  if (model.provider === 'flower') {
+    const tools = model.toolUsage === 1 ? await getAvailableTools() : undefined
+    return handleFlowerChatStream({ messages, systemPrompt, model: model.model, tools })
   }
 
   try {
-    const baseModel = await createModel(nonNullModel)
+    const baseModel = await createModel(model)
 
     const wrappedModel = wrapLanguageModel({
-      providerId: nonNullModel.provider,
+      providerId: model.provider,
       model: baseModel,
       middleware: [stripTagsMiddleware, toolCallsMiddleware, extractReasoningMiddleware({ tagName: 'think' })],
       // middleware: [],

@@ -1,193 +1,32 @@
-import { createOpenAI } from '@ai-sdk/openai'
-import type { UIMessage } from 'ai'
-import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
-// Use the official Vercel AI SDK
+import { createSimulatedFetch, parseSseLog } from '@/ai/requests/util'
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import type { ReasoningUIPart, TextUIPart, ToolInvocationUIPart, UIMessage } from 'ai'
+import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
+import DEFAULT_SSE_CONTENT from '../ai/requests/tests/apple/stream.sse?raw'
+
 import { Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
-
-// Default SSE content from apple.sse for testing
-const DEFAULT_SSE_CONTENT = `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"<think>\\n"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"Okay, the user is"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" asking for the weather forecast this"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" week. Let me check what"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to do.\\n\\nFirst, I"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" remember that the user doesn"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'t provided their location yet."},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" The instructions say I should ask"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" for the location before using any"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location-based tools. Since"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" the weather"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast depends on the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location, I can't"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" proceed without that information."},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" \\n\\nI should"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" respond by asking them where"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" they are located."},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" That way, once they"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" provide the city or"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" area, I can use"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" the appropriate tool to get the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast. I need"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to make sure I don't"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" mention any tools by name"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":", just ask for the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location. \\n\\nAlso,"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need to follow the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" format: use Markdown,"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" sub"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"headers, bullet points, and"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" emojis if appropriate"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Let me structure the response"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" politely and clearly"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Make sure to explain why"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need the location so they"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" understand it's necessary for the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast. \\n\\nDouble-check"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"ing the guidelines:"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" don't invent info"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":", be honest if I can"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'t help without the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location."},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" Yep, that's covered"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Alright, time to put"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" it all together.\\n"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"</think>\\n\\n🌤️"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" **Weekly Weather Forecast Request**"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"  \\n\\nTo provide you with the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" most accurate forecast,"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need to know your **"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"location** (e.g.,"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" city or region). Weather varies"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" by area, and"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" real-time data requires this"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" detail to"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" proceed."},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"  \\n\\nCould you share where you"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'re located? Once I have"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" that, I'll fetch the"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" latest forecast for you!"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" 🌍✨"},"finish_reason":null}],"usage":null}
-
-data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":317,"total_tokens":611,"completion_tokens":294}}
-
-data: [DONE]`
-
-// ---------------------------------------------------------------------------
-// Mock fetch that replays the SSE log
-// ---------------------------------------------------------------------------
-
-const createMockFetch = (sseData: string): ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
-  return async (_input, _init) => {
-    const encoder = new TextEncoder()
-    const lines = sseData.split('\n').filter((l) => l.trim())
-    let idx = 0
-
-    const stream = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        if (idx >= lines.length) {
-          controller.close()
-          return
-        }
-
-        const chunk = encoder.encode(lines[idx++] + '\n')
-        controller.enqueue(chunk)
-
-        // Small delay to simulate real streaming latency
-        await new Promise((r) => setTimeout(r, 500))
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-      },
-    })
-  }
-}
 
 interface SimulatorContentProps {}
 
 function SimulatorContent({}: SimulatorContentProps) {
   const [sseLog, setSseLog] = useState(DEFAULT_SSE_CONTENT)
   const [isSimulating, setIsSimulating] = useState(false)
-  const [simulatedMessage, setSimulatedMessage] = useState<UIMessage | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [realtimeMessage, setRealtimeMessage] = useState<Partial<UIMessage> | null>(null)
+  const [realtimeMessage, setRealtimeMessage] = useState<UIMessage<
+    ReasoningUIPart | ToolInvocationUIPart | TextUIPart,
+    { finishReason: string; messageId: string }
+  > | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const startSimulation = async () => {
     if (!sseLog.trim()) return
 
     // Reset previous simulation
-    setSimulatedMessage(null)
     setRealtimeMessage(null)
     setIsSimulating(true)
     setIsStreaming(true)
@@ -198,63 +37,99 @@ function SimulatorContent({}: SimulatorContentProps) {
 
     try {
       // Create a mock fetch that returns the SSE log
-      const mockFetch = createMockFetch(sseLog)
+      const chunks = parseSseLog(sseLog)
+      const simulatedFetch = createSimulatedFetch(chunks, {
+        initialDelayInMs: 200,
+        chunkDelayInMs: 20,
+      })
 
       // Initialize a custom OpenAI-compatible provider pointing to a mock URL
-      const openai = createOpenAI({
-        apiKey: 'mock-key',
-        baseURL: 'https://mock.local/v1', // dummy
-        fetch: mockFetch,
+      const provider = createOpenAICompatible({
+        name: 'test-provide',
+        baseURL: 'http://localhost:8000',
+        fetch: simulatedFetch,
       })
 
       // Get a model instance (model id is irrelevant, only used for labeling)
-      const baseModel = openai('gpt-4o')
+      const baseModel = provider('test-model')
 
       // Attach only the reasoning extraction middleware (tagName: think)
       const wrappedModel = wrapLanguageModel({
-        providerId: 'openai',
         model: baseModel,
         middleware: [extractReasoningMiddleware({ tagName: 'think' })],
       })
 
-      const { fullStream } = (await streamText({
+      // Call the Vercel AI SDK streamText helper which gives us a StreamTextResult-like object
+      const result = await streamText({
         model: wrappedModel,
-        messages: [{ role: 'user', content: 'Simulated prompt' }],
+        prompt: 'Simulated prompt', // Minimal prompt just to satisfy the SDK API
         abortSignal: signal,
-      })) as any
+      })
 
-      const reader = fullStream.getReader()
+      // -------------------------------------------------------------------
+      // Consume the stream emitted by the SDK **as it happens** and build a
+      // UIMessage that can be rendered by our <AssistantMessage/> component.
+      // -------------------------------------------------------------------
 
+      const reader = result.fullStream.getReader()
+
+      let messageId: string = 'sim'
+      let currentTextPart: { type: 'text'; text: string } | null = null
+      let currentReasoningPart: { type: 'reasoning'; text: string } | null = null
       const parts: any[] = []
 
-      // Initialize empty realtime message
-      setRealtimeMessage({ id: 'sim', role: 'assistant', parts })
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-      // Consume stream
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+          const chunk: any = value // Cast to any to simplify TypeScript handling of dynamic chunk types
 
-        switch (value.type) {
-          case 'text-delta':
-            parts.push({ type: 'text', text: (value as any).textDelta })
-            setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
-            break
-          case 'reasoning':
-            parts.push({ type: 'reasoning', text: (value as any).text })
-            setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
-            break
-          case 'finish':
-            setSimulatedMessage({
-              id: 'sim',
-              role: 'assistant',
-              parts: [...parts],
-              metadata: { finishReason: (value as any).finishReason || 'stop', messageId: 'sim' },
-            })
-            break
-          default:
-            break
+          switch (chunk.type) {
+            case 'text': // Fallback for potential future chunk types
+              // Accumulate successive text deltas into a single text part so
+              // the UI doesn’t have to handle many tiny items.
+              if (!currentTextPart) {
+                currentTextPart = { type: 'text', text: '' }
+                parts.push(currentTextPart)
+              }
+              // Both chunk.textDelta (preferred) and chunk.text may appear depending on transformer
+              currentTextPart.text += chunk.textDelta ?? chunk.text ?? ''
+              break
+
+            case 'reasoning':
+              // Accumulate successive reasoning chunks into one part.
+              if (!currentReasoningPart) {
+                currentReasoningPart = { type: 'reasoning', text: '' }
+                parts.push(currentReasoningPart)
+              }
+              currentReasoningPart.text += chunk.text ?? ''
+              break
+
+            case 'finish':
+              // Capture the final messageId if present (OpenAI style streams
+              // often include it in the last chunk).
+              if (chunk.messageId) {
+                messageId = chunk.messageId
+              }
+              break
+
+            default:
+              // Ignore other chunk types for this simulator.
+              break
+          }
+
+          // Push the latest snapshot to the React state so the UI updates in
+          // real-time. Spread `parts` to ensure new reference for React.
+          setRealtimeMessage({
+            id: messageId,
+            role: 'assistant',
+            parts: [...parts],
+            // Metadata omitted in simulator context
+          })
         }
+      } finally {
+        reader.releaseLock()
       }
     } catch (error) {
       console.error('Simulation error:', error)
@@ -274,7 +149,6 @@ function SimulatorContent({}: SimulatorContentProps) {
 
   const resetSimulation = () => {
     stopSimulation()
-    setSimulatedMessage(null)
     setRealtimeMessage(null)
     setSseLog(DEFAULT_SSE_CONTENT)
   }
@@ -291,7 +165,9 @@ function SimulatorContent({}: SimulatorContentProps) {
           <Card>
             <CardHeader>
               <CardTitle>SSE Log Input</CardTitle>
-              <CardDescription>Paste your SSE log here. Default content is from apple.sse test file.</CardDescription>
+              <CardDescription>
+                You can paste an SSE log here to recreate the message streaming process.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Textarea
@@ -343,7 +219,8 @@ function SimulatorContent({}: SimulatorContentProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="border rounded-md p-4">
-                    <AssistantMessage message={realtimeMessage as UIMessage} isStreaming={isStreaming} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <AssistantMessage message={realtimeMessage as any} isStreaming={isStreaming} />
                   </div>
                 </CardContent>
               </Card>

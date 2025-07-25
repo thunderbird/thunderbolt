@@ -5,6 +5,7 @@ import { MockLanguageModelV2 } from 'ai/test'
 import { describe, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
+import { createSimulatedFetch, parseSseLog } from './util'
 
 describe.skip('sse', async () => {
   it('should return a readable stream', async () => {
@@ -33,7 +34,7 @@ describe.skip('sse', async () => {
                 },
               },
             ],
-          }), // .pipeThrough(new TextEncoderStream()),
+          }),
         }),
       }),
       prompt: 'Hello, test!',
@@ -48,44 +49,17 @@ describe.skip('sse', async () => {
   })
 })
 
-// Read the recorded SSE stream and ensure that every chunk ends with a double newline
-// The OpenAI-compatible SSE parser expects each event to be terminated by an empty line
-// ("\n\n").  When we simply `split` on every single newline the delimiters are lost, which
-// means the consumer no longer recognises the event boundaries and eventually fails with
-// `finishReason: "error"`.  Keeping the delimiter fixes the issue.
-const chunks = fs
-  .readFileSync(join(__dirname, 'tests/apple/stream.sse'), 'utf8')
-  .trim() // get rid of leading/trailing whitespace so we don't generate an empty chunk
-  .split(/\n\n+/) // split **only** on the blank line that separates SSE events
-  .filter(Boolean) // defensive: remove potential empty strings
-  .map((chunk) => `${chunk}\n\n`) // re-append the delimiter for each chunk
+const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'tests/apple/stream.sse'), 'utf8'))
 
-console.log('chunks', chunks[0])
-
-const mockFetch: typeof fetch = async (_input: RequestInfo | URL, _init?: RequestInit) => {
-  return new Response(
-    simulateReadableStream({
-      // initialDelayInMs: 1000, // Delay before the first chunk
-      // chunkDelayInMs: 300, // Delay between chunks
-      chunks,
-    }).pipeThrough(new TextEncoderStream()),
-    {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-      },
-    },
-  )
-}
-
-// Bun's `fetch` type expects a `preconnect` method.
-mockFetch.preconnect = () => Promise.resolve(false)
+const simulatedFetch = createSimulatedFetch(chunks, {
+  initialDelayInMs: 0,
+  chunkDelayInMs: 50,
+})
 
 const provider = createOpenAICompatible({
   name: 'local-test',
   baseURL: 'http://localhost:3000',
-  fetch: mockFetch,
+  fetch: simulatedFetch,
 })
 
 const model = provider('test-model')
@@ -102,8 +76,8 @@ describe('sse', async () => {
       prompt: 'Hello, test!',
     })
 
-    for await (const chunk of result.fullStream) {
-      // console.log('chunk2', chunk)
+    for await (const chunk of result.) {
+      console.log('chunk2', chunk)
     }
 
     for await (const step of await result.steps) {
@@ -111,3 +85,4 @@ describe('sse', async () => {
     }
   })
 })
+

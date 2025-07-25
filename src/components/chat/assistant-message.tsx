@@ -1,11 +1,17 @@
-import { UIMessage } from 'ai'
+import { UIMessage, type ReasoningUIPart, type TextUIPart, type ToolInvocationUIPart } from 'ai'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolInvocationPart } from './tool-invocation-part'
 
 interface AssistantMessageProps {
-  message: UIMessage
+  message: UIMessage<
+    ReasoningUIPart | ToolInvocationUIPart | TextUIPart,
+    {
+      finishReason: string
+      messageId: string
+    }
+  >
   isStreaming: boolean
 }
 

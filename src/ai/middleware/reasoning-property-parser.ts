@@ -4,7 +4,7 @@ import type { TransformStreamDefaultController } from 'stream/web'
 /**
  * Middleware that handles reasoning content provided via a "reasoning" property
  * in the delta object (as used by some OpenRouter providers like Qwen).
- * 
+ *
  * This streams reasoning content in real-time as it arrives, then switches
  * to regular text content when the reasoning phase ends.
  */
@@ -14,7 +14,6 @@ export const reasoningPropertyParserMiddleware: LanguageModelV2Middleware = {
 
     // State for reasoning streaming
     let inReasoningMode = false
-    let hasStartedReasoning = false
 
     const transform = new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
       transform(
@@ -33,8 +32,7 @@ export const reasoningPropertyParserMiddleware: LanguageModelV2Middleware = {
         // If we have reasoning content, we're in reasoning mode
         if (reasoning && reasoning !== '') {
           inReasoningMode = true
-          hasStartedReasoning = true
-          
+
           // Emit reasoning content immediately as it arrives
           controller.enqueue({ type: 'reasoning', text: reasoning } as any)
           return
@@ -52,7 +50,7 @@ export const reasoningPropertyParserMiddleware: LanguageModelV2Middleware = {
         }
       },
 
-      flush(controller: TransformStreamDefaultController<LanguageModelV2StreamPart>) {
+      flush(_controller: TransformStreamDefaultController<LanguageModelV2StreamPart>) {
         // No need to flush anything since we stream reasoning in real-time
       },
     })

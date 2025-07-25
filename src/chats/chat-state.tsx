@@ -57,19 +57,24 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
 
   // Stable fetch function that always reads the latest model id from the ref
   const customFetch = useCallback(
-    async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
-      if (!init) throw new Error('Missing init')
+    Object.assign(
+      async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
+        if (!init) throw new Error('Missing init')
 
-      const modelId = selectedModelIdRef.current
-      if (!modelId) throw new Error('No model selected')
+        const modelId = selectedModelIdRef.current
+        if (!modelId) throw new Error('No model selected')
 
-      return aiFetchStreamingResponse({
-        init,
-        saveMessages,
-        modelId,
-        mcpClients: getEnabledClients(),
-      })
-    },
+        return aiFetchStreamingResponse({
+          init,
+          saveMessages,
+          modelId,
+          mcpClients: getEnabledClients(),
+        })
+      },
+      {
+        preconnect: () => Promise.resolve(false),
+      },
+    ),
     [getEnabledClients, saveMessages],
   )
 

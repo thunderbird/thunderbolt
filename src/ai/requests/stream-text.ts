@@ -49,21 +49,23 @@ export type StreamTextParams = {
  * converts it into one or more {@link UIMessageStreamPart}s understood by the
  * Vercel AI SDK.
  */
-function parseSSELine(line: string): UIMessageStreamPart[] {
-  const parts: UIMessageStreamPart[] = []
-
+function parseSSELine(line: string): {
+  textContent?: string
+  isFinished?: boolean
+  finishReason?: string
+  id?: string
+} {
   // Remove the "data:" prefix that OpenAI-compatible streams use.
   if (line.startsWith('data:')) {
     line = line.slice(5).trim()
   }
 
   // Ignore empty comment / heartbeat lines.
-  if (!line) return parts
+  if (!line) return {}
 
   // OpenAI sends a terminator line.
   if (line === '[DONE]') {
-    parts.push({ type: 'finish', metadata: { finishReason: 'stop' } } as any)
-    return parts
+    return { isFinished: true, finishReason: 'stop' }
   }
 
   // Attempt to decode JSON – ignore malformed chunks.
@@ -71,24 +73,73 @@ function parseSSELine(line: string): UIMessageStreamPart[] {
     const payload = JSON.parse(line)
     const choice = payload?.choices?.[0]
 
-    if (!choice) return parts
+    if (!choice) return {}
 
     const delta = choice.delta ?? {}
+    const result: { textContent?: string; isFinished?: boolean; finishReason?: string; id?: string } = {}
+
+    // Extract ID from the payload
+    if (payload.id) {
+      result.id = payload.id
+    }
 
     // Text delta
     if (delta.content) {
-      parts.push({ type: 'text', text: delta.content })
+      result.textContent = delta.content
     }
 
     // Finish reason – emit finish part when provided
     if (choice.finish_reason) {
-      parts.push({ type: 'finish', metadata: { finishReason: choice.finish_reason } } as any)
+      result.isFinished = true
+      result.finishReason = choice.finish_reason
     }
+
+    return result
   } catch {
     /* Swallow JSON parse errors silently – they happen on keep-alive lines. */
+    return {}
+  }
+}
+
+/**
+ * Parses content with <think> tags and returns appropriate message parts
+ */
+function parseContentIntoParts(
+  allTextContent: string,
+  messageId?: string,
+): { parts: UIMessageStreamPart[]; id: string } {
+  const parts: UIMessageStreamPart[] = []
+
+  // Parse reasoning content from <think> tags
+  const thinkMatch = allTextContent.match(/<think>([\s\S]*?)<\/think>/)
+  if (thinkMatch) {
+    const reasoningContent = thinkMatch[1].trim()
+    if (reasoningContent) {
+      parts.push({
+        type: 'reasoning',
+        text: reasoningContent,
+      } as any)
+    }
   }
 
-  return parts
+  // Extract text content (everything after </think> tag, or all content if no think tags)
+  let textContent = allTextContent
+  if (thinkMatch) {
+    const afterThinkIndex = allTextContent.indexOf('</think>') + '</think>'.length
+    textContent = allTextContent.substring(afterThinkIndex).trim()
+  }
+
+  if (textContent) {
+    parts.push({
+      type: 'text',
+      text: textContent,
+    } as any)
+  }
+
+  return {
+    parts,
+    id: messageId || `fallback_${Date.now()}`,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +201,8 @@ export const streamText = async ({
       const reader = response.body!.getReader()
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
+      let allTextContent = '' // Buffer for all text content
+      let messageId: string | undefined // Capture the message ID
 
       try {
         // eslint-disable-next-line no-constant-condition
@@ -165,8 +218,28 @@ export const streamText = async ({
 
           for (const line of lines) {
             const parsed = parseSSELine(line)
-            for (const part of parsed) {
-              writer.write(part)
+
+            // Capture the message ID from the first line that has one
+            if (parsed.id && !messageId) {
+              messageId = parsed.id
+            }
+
+            // Buffer text content as it comes in
+            if (parsed.textContent) {
+              allTextContent += parsed.textContent
+            }
+
+            // When finished, parse the full content and emit proper parts
+            if (parsed.isFinished) {
+              const { parts, id } = parseContentIntoParts(allTextContent, messageId)
+              for (const part of parts) {
+                writer.write(part)
+              }
+              writer.write({
+                type: 'finish',
+                metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
+              } as any)
+              return // Exit early when finished
             }
           }
         }
@@ -174,8 +247,21 @@ export const streamText = async ({
         // Flush any remaining buffer
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer)
-          for (const part of parsed) {
-            writer.write(part)
+          if (parsed.id && !messageId) {
+            messageId = parsed.id
+          }
+          if (parsed.textContent) {
+            allTextContent += parsed.textContent
+          }
+          if (parsed.isFinished) {
+            const { parts, id } = parseContentIntoParts(allTextContent, messageId)
+            for (const part of parts) {
+              writer.write(part)
+            }
+            writer.write({
+              type: 'finish',
+              metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
+            } as any)
           }
         }
       } catch (error) {

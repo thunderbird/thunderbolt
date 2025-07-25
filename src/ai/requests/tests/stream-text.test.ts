@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Import the function under test
+import type { UIDataTypes, UIMessage, UIMessagePart } from 'ai'
 import { streamText } from '../stream-text'
 
 // ---------------------------------------------------------------------------
@@ -68,29 +69,30 @@ function createSSEStreamFromFile(filePath: string): ReadableStream<Uint8Array> {
 }
 
 /**
- * Collects all parts from a stream and builds the final message
+ * Collects all parts from a stream and builds the final UIMessage
  */
-async function collectStreamParts(stream: any): Promise<{ role: string; content: string; metadata: any }> {
-  const parts: Array<{ type: string; [key: string]: any }> = []
+async function collectStreamParts(stream: any): Promise<UIMessage> {
+  const parts: UIMessagePart<UIDataTypes>[] = []
+  let metadata: any = {}
+  let messageId = 'unknown'
 
   for await (const part of stream) {
-    parts.push(part)
+    if (part.type === 'reasoning' || part.type === 'text') {
+      parts.push(part)
+    } else if (part.type === 'finish') {
+      metadata = part.metadata || {}
+      if (part.metadata?.messageId) {
+        messageId = part.metadata.messageId
+      }
+    }
   }
 
-  // Extract role (should be in the first delta, but we'll default to 'assistant')
-  const role = 'assistant'
-
-  // Concatenate all text parts
-  const content = parts
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text)
-    .join('')
-
-  // Get finish metadata
-  const finishPart = parts.find((p) => p.type === 'finish')
-  const metadata = finishPart?.metadata || {}
-
-  return { role, content, metadata }
+  return {
+    id: messageId,
+    role: 'assistant',
+    parts,
+    metadata,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +120,7 @@ describe('streamText - Integration Tests', () => {
     describe(`${testCase.name} test case`, () => {
       it('should correctly parse SSE stream and match expected final message', async () => {
         // Arrange ----------------------------------------------------------
-        const expectedMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
+        const expectedMessage: UIMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
 
         mockedResponse = new Response(createSSEStreamFromFile(testCase.streamFile) as any, {
           status: 200,
@@ -137,9 +139,8 @@ describe('streamText - Integration Tests', () => {
         const finalMessage = await collectStreamParts(result.stream)
 
         // Assert -----------------------------------------------------------
-        expect(finalMessage.role).toBe(expectedMessage.role)
-        expect(finalMessage.content).toBe(expectedMessage.content)
-        expect(finalMessage.metadata.finishReason).toBe(expectedMessage.metadata.finishReason)
+        // Compare the entire UIMessage including the ID from the stream
+        expect(finalMessage).toEqual(expectedMessage)
       })
 
       it('should call fetch with correct parameters', async () => {

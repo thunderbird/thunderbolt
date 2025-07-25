@@ -48,24 +48,19 @@ describe.skip('sse', async () => {
   })
 })
 
+// Read the recorded SSE stream and ensure that every chunk ends with a double newline
+// The OpenAI-compatible SSE parser expects each event to be terminated by an empty line
+// ("\n\n").  When we simply `split` on every single newline the delimiters are lost, which
+// means the consumer no longer recognises the event boundaries and eventually fails with
+// `finishReason: "error"`.  Keeping the delimiter fixes the issue.
 const chunks = fs
   .readFileSync(join(__dirname, 'tests/apple/stream.sse'), 'utf8')
-  .split('\n')
-  .map((line) => line.split('data: ')[1])
-  .filter(Boolean)
-  .filter((line) => line !== '[DONE]')
-  .map((line) => {
-    try {
-      return JSON.parse(line)
-    } catch (error) {
-      console.log('cannot parse', line)
-      process.exit(1)
-    }
-  })
-  .map((chunk) => {
-    // console.log('chunk', chunk)
-    return chunk
-  })
+  .trim() // get rid of leading/trailing whitespace so we don't generate an empty chunk
+  .split(/\n\n+/) // split **only** on the blank line that separates SSE events
+  .filter(Boolean) // defensive: remove potential empty strings
+  .map((chunk) => `${chunk}\n\n`) // re-append the delimiter for each chunk
+
+console.log('chunks', chunks[0])
 
 const provider = createOpenAICompatible({
   baseURL: 'http://localhost:3000',
@@ -74,73 +69,7 @@ const provider = createOpenAICompatible({
       simulateReadableStream({
         // initialDelayInMs: 1000, // Delay before the first chunk
         // chunkDelayInMs: 300, // Delay between chunks
-        chunks: [
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"<think>\\n"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"Okay, the user is"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" asking for the weather forecast this"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" week. Let me check what"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to do.\\n\\nFirst, I"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" remember that the user doesn"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'t provided their location yet."},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" The instructions say I should ask"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" for the location before using any"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location-based tools. Since"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" the weather"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast depends on the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location, I can't"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" proceed without that information."},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" \\n\\nI should"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" respond by asking them where"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" they are located."},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" That way, once they"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" provide the city or"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" area, I can use"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" the appropriate tool to get the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast. I need"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" to make sure I don't"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" mention any tools by name"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":", just ask for the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location. \\n\\nAlso,"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need to follow the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" format: use Markdown,"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" sub"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"headers, bullet points, and"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" emojis if appropriate"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Let me structure the response"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" politely and clearly"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Make sure to explain why"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need the location so they"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" understand it's necessary for the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" forecast. \\n\\nDouble-check"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"ing the guidelines:"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" don't invent info"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":", be honest if I can"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'t help without the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" location."},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" Yep, that's covered"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":". Alright, time to put"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" it all together.\\n"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"</think>\\n\\n🌤️"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" **Weekly Weather Forecast Request**"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"  \\n\\nTo provide you with the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" most accurate forecast,"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" I need to know your **"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"location** (e.g.,"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" city or region). Weather varies"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" by area, and"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" real-time data requires this"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" detail to"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" proceed."},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"  \\n\\nCould you share where you"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"'re located? Once I have"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" that, I'll fetch the"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" latest forecast for you!"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":" 🌍✨"},"finish_reason":null}],"usage":null}\n\n`,
-          `data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":317,"total_tokens":611,"completion_tokens":294}}\n\n`,
-          `data: [DONE]\n\n`,
-        ],
+        chunks,
       }).pipeThrough(new TextEncoderStream()),
       {
         status: 200,

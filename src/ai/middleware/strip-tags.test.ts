@@ -1,5 +1,5 @@
 import type { LanguageModelV2StreamPart } from '@ai-sdk/provider'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { stripTagsMiddleware } from './strip-tags'
 
 /** Helper: create a ReadableStream from an array of stream parts */

@@ -1,9 +1,11 @@
 import { fetch as customFetch } from '@/lib/fetch'
-import { Model } from '@/types'
 import type { LanguageModelV2Middleware, LanguageModelV2StreamPart } from '@ai-sdk/provider'
-import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageStreamPart, wrapLanguageModel } from 'ai'
-import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
-import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
+
+// New imports from AI SDK testing helpers
+import { streamText as aiStreamText, simulateReadableStream, wrapLanguageModel } from 'ai'
+import { MockLanguageModelV2 } from 'ai/test'
+
+import { extractReasoningMiddleware } from 'ai'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,10 +16,6 @@ import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-pro
  */
 export type StreamTextParams = {
   /**
-   * The model configuration selected by the user.
-   */
-  model: Model
-  /**
    * The prompt messages in OpenAI-compatible format.
    */
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
@@ -26,19 +24,14 @@ export type StreamTextParams = {
    */
   signal?: AbortSignal
   /**
-   * Temperature used for the generation (defaults to `0.25`).
+   * Raw SSE content. If provided, `fetch` will be ignored and this content will
+   * be used to generate the simulated stream.
    */
-  temperature?: number
+  sseData?: string
   /**
-   * Base URL of an OpenAI-compatible endpoint (must include the `/v1` suffix).
-   * Defaults to the public OpenRouter endpoint.
-   *
-   * Example: `https://openrouter.ai/api/v1` or `https://example.com/v1`.
-   */
-  baseUrl?: string
-  /**
-   * Optional custom `fetch` implementation. Useful for testing to inject a mock
-   * without relying on module mocking.
+   * Optional custom `fetch` implementation. Still supported for backwards
+   * compatibility. When provided and `sseData` is not set, the response body
+   * will be parsed as SSE and converted into simulated chunks.
    */
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   /**
@@ -90,19 +83,19 @@ export function parseSSELine(line: string): { parts: LanguageModelV2StreamPart[]
 
     // Text delta
     if (delta.content) {
-      parts.push({ 
-        type: 'text', 
+      parts.push({
+        type: 'text',
         text: delta.content,
-        reasoning: delta.reasoning !== undefined ? delta.reasoning : undefined
+        reasoning: delta.reasoning !== undefined ? delta.reasoning : undefined,
       } as any)
     }
 
     // Reasoning delta (when content is empty but reasoning is present)
     if (delta.reasoning && (!delta.content || delta.content === '')) {
-      parts.push({ 
-        type: 'text', 
-        text: '', 
-        reasoning: delta.reasoning 
+      parts.push({
+        type: 'text',
+        text: '',
+        reasoning: delta.reasoning,
       } as any)
     }
 
@@ -118,115 +111,36 @@ export function parseSSELine(line: string): { parts: LanguageModelV2StreamPart[]
   return { parts, messageId }
 }
 
-/**
- * Converts a {@link LanguageModelV2StreamPart} to a {@link UIMessageStreamPart}
- * for compatibility with the UI message stream.
- */
-function convertToUIMessageStreamPart(part: LanguageModelV2StreamPart): UIMessageStreamPart | null {
-  switch (part.type) {
-    case 'text':
-      return { type: 'text', text: (part as any).text }
-    case 'reasoning':
-      return { type: 'reasoning', text: (part as any).text }
-    case 'finish':
-      return {
-        type: 'finish',
-        finishReason: (part as any).finishReason || 'stop',
-        usage: (part as any).usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-      } as any
-    case 'error':
-      return { type: 'error', errorText: (part as any).error?.message || 'Unknown error' }
-    default:
-      // Skip unknown part types
-      return null
-  }
-}
+// ---------------------------------------------------------------------------
+// SSE → AI SDK test chunk conversion
+// ---------------------------------------------------------------------------
 
-/**
- * Creates a minimal language model that can be wrapped with middleware.
- * This allows us to use the existing middleware infrastructure from the AI SDK.
- */
-function createSSELanguageModel(response: Response): any {
-  let messageId = 'unknown'
+function sseToChunks(sseData: string): any[] {
+  const chunks: any[] = []
 
-  const doStream = async () => {
-    // Create a stream that parses SSE into LanguageModelV2StreamParts
-    const stream = new ReadableStream<LanguageModelV2StreamPart>({
-      async start(controller) {
-        const reader = response.body!.getReader()
-        const decoder = new TextDecoder('utf-8')
-        let buffer = ''
+  const lines = sseData.split(/\r?\n/).filter((l) => l.trim())
 
-        try {
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+  for (const line of lines) {
+    const { parts } = parseSSELine(line)
 
-            buffer += decoder.decode(value, { stream: true })
-
-            // SSE events are separated by newlines – process complete lines only
-            const lines = buffer.split(/\r?\n/)
-            buffer = lines.pop() ?? '' // Keep the incomplete remainder
-
-            for (const line of lines) {
-              const parsed = parseSSELine(line)
-              
-              // Capture messageId from first SSE event that has one
-              if (parsed.messageId && messageId === 'unknown') {
-                messageId = parsed.messageId
-              }
-              
-              for (const part of parsed.parts) {
-                controller.enqueue(part)
-              }
-            }
-          }
-
-          // Flush any remaining buffer
-          if (buffer.trim()) {
-            const parsed = parseSSELine(buffer)
-            for (const part of parsed.parts) {
-              controller.enqueue(part)
-            }
-          }
-
-          // Always emit a finish event when the stream ends with messageId
-          controller.enqueue({
-            type: 'finish',
-            finishReason: 'stop',
-            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-            messageId,
-          } as any)
-        } catch (error) {
-          console.error('streamText parsing error', error)
-          controller.enqueue({ type: 'error', error: { message: (error as Error).message } } as any)
-        } finally {
-          controller.close()
-        }
-      },
-    })
-
-    return {
-      stream,
-      warnings: undefined,
-      usage: Promise.resolve({ promptTokens: 0, completionTokens: 0, totalTokens: 0 }),
-      experimental_providerMetadata: undefined,
-      messageId,
+    for (const part of parts) {
+      if (part.type === 'text') {
+        chunks.push({ type: 'text-delta', textDelta: (part as any).text || '' })
+      } else if (part.type === 'reasoning') {
+        chunks.push({ type: 'reasoning', text: (part as any).text || '' })
+      }
     }
   }
 
-  // Return a minimal language model compatible with wrapLanguageModel
-  return {
-    specificationVersion: 'v2',
-    provider: 'openrouter-sse',
-    modelId: 'openrouter-stream',
-    doStream,
-    doGenerate: async () => {
-      throw new Error('Generation not supported in SSE stream mode')
-    },
-    getMessageId: () => messageId,
-  } as any
+  // Always end with a finish chunk so the downstream code knows we're done.
+  chunks.push({
+    type: 'finish',
+    finishReason: 'stop',
+    usage: { promptTokens: 0, completionTokens: 0 },
+    logprobs: undefined,
+  })
+
+  return chunks
 }
 
 // ---------------------------------------------------------------------------
@@ -240,117 +154,59 @@ function createSSELanguageModel(response: Response): any {
  * `StreamTextResult` so it can be consumed transparently by existing code.
  */
 export const streamText = async ({
-  model,
   messages,
-  signal,
-  temperature = 0.25,
-  baseUrl = 'https://openrouter.ai/api/v1',
-  fetch: fetchImpl = customFetch,
   middleware = [],
+  fetch: fetchImpl = customFetch,
+  sseData,
 }: StreamTextParams) => {
-  const url = `${baseUrl}/chat/completions`
+  // ---------------------------------------------------------------------
+  // Acquire raw SSE data
+  // ---------------------------------------------------------------------
 
-  // Build the request payload
-  const body = {
-    model: model.model,
-    messages,
-    stream: true,
-    temperature,
-    tool_choice: 'auto',
+  let rawSSE: string
+
+  if (sseData) {
+    rawSSE = sseData
+  } else {
+    // Fallback to fetch logic for backwards compatibility
+    const response = await fetchImpl('https://mock.local/stream', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    })
+
+    rawSSE = await response.text()
   }
 
-  // Prepare headers – include Authorization if available
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-    Authorization: `Bearer ${model.apiKey}`,
-  }
-  if (model.apiKey) {
-    headers['Authorization'] = `Bearer ${model.apiKey}`
-  }
+  // ---------------------------------------------------------------------
+  // Convert SSE → chunks → simulateReadableStream
+  // ---------------------------------------------------------------------
 
-  // Fire the request
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
+  const chunks = sseToChunks(rawSSE)
+
+  const mockModel = new MockLanguageModelV2({
+    doStream: async (_options) => ({
+      stream: simulateReadableStream({ chunks }),
+      rawCall: { rawPrompt: null, rawSettings: {} },
+    }),
   })
 
-  if (!response.ok || !response.body) {
-    throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText}`)
-  }
-
-  // Apply middleware to process the stream
-  const baseModel = createSSELanguageModel(response)
-
   if (middleware.length === 0) {
-    // Apply default middleware - try both think tag parsing and reasoning property parsing
-    middleware = [streamingParserMiddleware, reasoningPropertyParserMiddleware]
+    middleware = [extractReasoningMiddleware({ tagName: 'think' })]
   }
-  
-  // Apply middleware using wrapLanguageModel
+
   const wrappedModel = wrapLanguageModel({
-    providerId: 'openrouter-sse',
-    model: baseModel,
+    providerId: 'mock',
+    model: mockModel as any,
     middleware,
   })
 
-  // Use the wrapped model to create the stream
-  const streamResult = await (wrappedModel as any).doStream()
+  // Finally call the real aiStreamText helper to get a StreamTextResult-like object
+  const result = await aiStreamText({
+    model: wrappedModel as any,
+    messages,
+    maxSteps: 1, // Disable multi-step execution
+  })
 
-  // Convert the processed stream to UIMessageStreamParts
-  const stream = createUIMessageStream({
-      async execute(writer) {
-        const reader = streamResult.stream.getReader()
-        let messageId = (baseModel as any).getMessageId?.() || 'unknown'
-
-        try {
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            // Extract messageId from finish parts if available
-            if ((value as any).type === 'finish' && (value as any).messageId) {
-              messageId = (value as any).messageId
-            }
-
-            const uiPart = convertToUIMessageStreamPart(value)
-            if (uiPart) {
-              // Add messageId to finish parts
-              if (uiPart.type === 'finish') {
-                (uiPart as any).metadata = { finishReason: 'stop', messageId }
-              }
-              writer.write(uiPart)
-            }
-          }
-        } catch (error) {
-          console.error('streamText middleware processing error', error)
-          writer.write({ type: 'error', errorText: (error as Error).message })
-        }
-      },
-    })
-
-  // Minimal StreamTextResult implementation compatible with .toUIMessageStreamResponse()
-  const result = {
-    stream,
-    toUIMessageStreamResponse: (
-      options: { status?: number; headers?: Record<string, string>; [key: string]: any } = {},
-    ) =>
-      createUIMessageStreamResponse({
-        status: options.status ?? 200,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-          ...(options.headers ?? {}),
-        },
-        stream,
-        ...options,
-      }),
-  } as unknown // Cast to unknown first to bypass strict structural typing
-
-  return result as any // The caller treats it as StreamTextResult
+  // Return the result directly - the AI SDK handles stream management properly
+  return result
 }

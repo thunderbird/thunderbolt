@@ -1,12 +1,11 @@
-import { streamText } from '@/ai/requests/stream-text'
-import { streamingParserMiddleware } from '@/ai/middleware/streaming-parser-debug'
-import { reasoningPropertyParserMiddleware } from '@/ai/middleware/reasoning-property-parser'
+import { createOpenAI } from '@ai-sdk/openai'
+import type { UIMessage } from 'ai'
+import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
+// Use the official Vercel AI SDK
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import type { Model } from '@/types'
-import { type UIMessage } from 'ai'
 import { Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
 
@@ -141,12 +140,12 @@ data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chu
 
 data: [DONE]`
 
-// ------------------------------------------------------------
-// Helpers to create a mock fetch that streams the SSE log
-// ------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Mock fetch that replays the SSE log
+// ---------------------------------------------------------------------------
 
-const makeMockFetch = (sseData: string): ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
-  return async () => {
+const createMockFetch = (sseData: string): ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
+  return async (_input, _init) => {
     const encoder = new TextEncoder()
     const lines = sseData.split('\n').filter((l) => l.trim())
     let idx = 0
@@ -158,33 +157,20 @@ const makeMockFetch = (sseData: string): ((input: RequestInfo | URL, init?: Requ
           return
         }
 
-        // Push next line with newline so the parser sees complete lines
         const chunk = encoder.encode(lines[idx++] + '\n')
         controller.enqueue(chunk)
 
-        // Small delay to simulate real streaming
-        await new Promise((r) => setTimeout(r, 50))
+        // Small delay to simulate real streaming latency
+        await new Promise((r) => setTimeout(r, 500))
       },
     })
 
     return new Response(stream, {
-      headers: { 'Content-Type': 'text/event-stream' },
+      headers: {
+        'Content-Type': 'text/event-stream',
+      },
     })
   }
-}
-
-// Dummy model instance (only fields used by streamText)
-const dummyModel: Model = {
-  id: 'sim',
-  provider: 'custom',
-  name: 'sim',
-  model: 'simulation-model',
-  apiKey: '',
-  url: '',
-  isSystem: 0,
-  enabled: 1,
-  toolUsage: 1,
-  isConfidential: 0,
 }
 
 interface SimulatorContentProps {}
@@ -210,19 +196,34 @@ function SimulatorContent({}: SimulatorContentProps) {
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
 
-    // Prepare mock fetch that replays the SSE log
-    const mockFetch = makeMockFetch(sseLog)
-
     try {
-      const { stream } = (await streamText({
-        model: dummyModel as any,
-        messages: [{ role: 'user', content: 'Simulated prompt' }],
+      // Create a mock fetch that returns the SSE log
+      const mockFetch = createMockFetch(sseLog)
+
+      // Initialize a custom OpenAI-compatible provider pointing to a mock URL
+      const openai = createOpenAI({
+        apiKey: 'mock-key',
+        baseURL: 'https://mock.local/v1', // dummy
         fetch: mockFetch,
-        signal,
-        middleware: [streamingParserMiddleware, reasoningPropertyParserMiddleware],
+      })
+
+      // Get a model instance (model id is irrelevant, only used for labeling)
+      const baseModel = openai('gpt-4o')
+
+      // Attach only the reasoning extraction middleware (tagName: think)
+      const wrappedModel = wrapLanguageModel({
+        providerId: 'openai',
+        model: baseModel,
+        middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+      })
+
+      const { fullStream } = (await streamText({
+        model: wrappedModel,
+        messages: [{ role: 'user', content: 'Simulated prompt' }],
+        abortSignal: signal,
       })) as any
 
-      const reader = stream.getReader()
+      const reader = fullStream.getReader()
 
       const parts: any[] = []
 
@@ -234,18 +235,25 @@ function SimulatorContent({}: SimulatorContentProps) {
         const { done, value } = await reader.read()
         if (done) break
 
-        if (value.type === 'text' || value.type === 'reasoning') {
-          parts.push(value)
-          setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
-        }
-
-        if (value.type === 'finish') {
-          setSimulatedMessage({
-            id: 'sim',
-            role: 'assistant',
-            parts: [...parts],
-            metadata: { finishReason: value.finishReason || 'stop', messageId: 'sim' },
-          })
+        switch (value.type) {
+          case 'text-delta':
+            parts.push({ type: 'text', text: (value as any).textDelta })
+            setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
+            break
+          case 'reasoning':
+            parts.push({ type: 'reasoning', text: (value as any).text })
+            setRealtimeMessage({ id: 'sim', role: 'assistant', parts: [...parts] })
+            break
+          case 'finish':
+            setSimulatedMessage({
+              id: 'sim',
+              role: 'assistant',
+              parts: [...parts],
+              metadata: { finishReason: (value as any).finishReason || 'stop', messageId: 'sim' },
+            })
+            break
+          default:
+            break
         }
       }
     } catch (error) {

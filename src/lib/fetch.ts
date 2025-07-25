@@ -21,3 +21,6 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
 
   return globalThis.fetch(input, init)
 }
+
+// Bun's `fetch` type expects a `preconnect` method.
+fetch.preconnect = () => Promise.resolve(false)

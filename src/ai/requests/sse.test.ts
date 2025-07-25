@@ -62,24 +62,30 @@ const chunks = fs
 
 console.log('chunks', chunks[0])
 
-const provider = createOpenAICompatible({
-  baseURL: 'http://localhost:3000',
-  fetch: async () => {
-    return new Response(
-      simulateReadableStream({
-        // initialDelayInMs: 1000, // Delay before the first chunk
-        // chunkDelayInMs: 300, // Delay between chunks
-        chunks,
-      }).pipeThrough(new TextEncoderStream()),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache',
-        },
+const mockFetch: typeof fetch = async (_input: RequestInfo | URL, _init?: RequestInit) => {
+  return new Response(
+    simulateReadableStream({
+      // initialDelayInMs: 1000, // Delay before the first chunk
+      // chunkDelayInMs: 300, // Delay between chunks
+      chunks,
+    }).pipeThrough(new TextEncoderStream()),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
       },
-    )
-  },
+    },
+  )
+}
+
+// Bun's `fetch` type expects a `preconnect` method.
+mockFetch.preconnect = () => Promise.resolve(false)
+
+const provider = createOpenAICompatible({
+  name: 'local-test',
+  baseURL: 'http://localhost:3000',
+  fetch: mockFetch,
 })
 
 const model = provider('test-model')

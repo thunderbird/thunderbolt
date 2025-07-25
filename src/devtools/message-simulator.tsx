@@ -2,25 +2,48 @@ import { createSimulatedFetch, createUIMessageTransform, parseSseLog } from '@/a
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
+import { useLocalStorage } from '@/hooks/use-local-storage'
+import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ReasoningUIPart, TextUIPart, ToolInvocationUIPart, UIMessage } from 'ai'
 import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
-import DEFAULT_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
-
-import { Play, RotateCcw, Square } from 'lucide-react'
+import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
+
+import APPLE_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
+import BANANA_SSE_CONTENT from '../ai/streaming/sse-logs/banana.sse?raw'
+
+// Map of SSE log files to their content
+const SSE_LOG_FILES = {
+  apple: APPLE_SSE_CONTENT,
+  banana: BANANA_SSE_CONTENT,
+} as const
+
+// Generate SSE logs array from file names
+const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => ({
+  value: fileName,
+  label: fileName.charAt(0).toUpperCase() + fileName.slice(1),
+  content,
+}))
 
 interface SimulatorContentProps {}
 
 function SimulatorContent({}: SimulatorContentProps) {
-  const [sseLog, setSseLog] = useState(DEFAULT_SSE_CONTENT)
+  const [selectedSse, setSelectedSse] = useLocalStorage('message-simulator-sse', '')
+  const [sseLog, setSseLog] = useState(() => {
+    const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
+    return selectedLog?.content || ''
+  })
   const [isSimulating, setIsSimulating] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [realtimeMessage, setRealtimeMessage] = useState<UIMessage<
     ReasoningUIPart | ToolInvocationUIPart | TextUIPart,
     { finishReason: string; messageId: string }
   > | null>(null)
+  const [open, setOpen] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const startSimulation = async () => {
@@ -101,7 +124,17 @@ function SimulatorContent({}: SimulatorContentProps) {
   const resetSimulation = () => {
     stopSimulation()
     setRealtimeMessage(null)
-    setSseLog(DEFAULT_SSE_CONTENT)
+    setSseLog('')
+    setSelectedSse('')
+  }
+
+  const handleSseSelection = (value: string) => {
+    const selectedLog = SSE_LOGS.find((log) => log.value === value)
+    if (selectedLog) {
+      setSelectedSse(value)
+      setSseLog(selectedLog.content)
+      setOpen(false)
+    }
   }
 
   return (
@@ -117,10 +150,48 @@ function SimulatorContent({}: SimulatorContentProps) {
             <CardHeader>
               <CardTitle>SSE Log Input</CardTitle>
               <CardDescription>
-                You can paste an SSE log here to recreate the message streaming process.
+                You can select a predefined SSE log or paste your own SSE log here to recreate the message streaming
+                process.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* SSE Log Selection Combobox */}
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Select SSE Log:</label>
+                <Popover open={open} onOpenChange={setOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={open}
+                      className="w-[300px] justify-between"
+                      disabled={isSimulating}
+                    >
+                      {selectedSse ? SSE_LOGS.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
+                      <ChevronsUpDown className="opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput placeholder="Search SSE logs..." className="h-9" />
+                      <CommandList>
+                        <CommandEmpty>No SSE log found.</CommandEmpty>
+                        <CommandGroup>
+                          {SSE_LOGS.map((log) => (
+                            <CommandItem key={log.value} value={log.value} onSelect={handleSseSelection}>
+                              {log.label}
+                              <Check
+                                className={cn('ml-auto', selectedSse === log.value ? 'opacity-100' : 'opacity-0')}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
               <Textarea
                 placeholder="SSE content will be processed by the actual streamText function..."
                 value={sseLog}

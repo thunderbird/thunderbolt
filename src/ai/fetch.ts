@@ -11,7 +11,12 @@ import { createToolset, getAvailableTools } from '@/lib/tools'
 import { Model, SaveMessagesFunction } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { createOpenRouter } from '@openrouter/ai-sdk-provider' // TODO: Use when AI SDK v2 branch is stable
+
+// Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
+// > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
+// OpenRouter is working on a new version of their SDK that is compatible with Vercel AI SDK v5. We'll uncomment this when it's ready.
+// import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+
 import {
   convertToModelMessages,
   experimental_createMCPClient,
@@ -78,9 +83,9 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModel> =>
       if (!modelConfig.apiKey) throw new Error('No API key provided')
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
-      const openrouter = createOpenRouter({
-        // name: 'openrouter',
-        // baseURL: 'https://openrouter.ai/api/v1',
+      const openrouter = createOpenAICompatible({
+        name: 'openrouter',
+        baseURL: 'https://openrouter.ai/api/v1',
         apiKey: modelConfig.apiKey,
         fetch,
       })

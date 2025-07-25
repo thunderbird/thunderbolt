@@ -97,7 +97,7 @@ type-check:
 # Run tests
 test:
 	@echo "$(BLUE)→ Running frontend tests...$(NC)"
-	@bun run test || echo "$(YELLOW)  No frontend tests found$(NC)"
+	@bun test || echo "$(YELLOW)  No frontend tests found$(NC)"
 	@echo "$(BLUE)→ Running backend tests...$(NC)"
 	@cd backend && uv run pytest -v
 

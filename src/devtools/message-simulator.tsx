@@ -1,8 +1,6 @@
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Header } from '@/components/ui/header'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Textarea } from '@/components/ui/textarea'
 import { type UIMessage } from 'ai'
 import { Play, RotateCcw, Square } from 'lucide-react'
@@ -270,6 +268,74 @@ const simulateStreamText = async (sseContent: string, signal?: AbortSignal): Pro
   }
 }
 
+/**
+ * Simulate the streamText parsing directly from SSE content with real-time updates
+ */
+const simulateStreamTextWithUpdates = async (
+  sseContent: string,
+  signal: AbortSignal,
+  setRealtimeMessage: React.Dispatch<React.SetStateAction<Partial<UIMessage> | null>>,
+): Promise<UIMessage> => {
+  const lines = sseContent.split('\n').filter((line) => line.trim())
+  let allTextContent = ''
+  let messageId: string | undefined
+
+  // Process each line with delay to simulate streaming
+  for (let i = 0; i < lines.length; i++) {
+    if (signal?.aborted) throw new Error('Aborted')
+
+    const line = lines[i]
+    const parsed = parseSSELine(line)
+
+    // Capture the message ID from the first line that has one
+    if (parsed.id && !messageId) {
+      messageId = parsed.id
+    }
+
+    // Buffer text content as it comes in
+    if (parsed.textContent) {
+      allTextContent += parsed.textContent
+    }
+
+    // Update real-time message
+    if (messageId) {
+      const { parts, id } = parseContentIntoParts(allTextContent, messageId)
+      setRealtimeMessage({
+        id,
+        role: 'assistant',
+        parts,
+        metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
+      })
+    }
+
+    // When finished, parse the full content and return
+    if (parsed.isFinished) {
+      const { parts, id } = parseContentIntoParts(allTextContent, messageId)
+
+      return {
+        id,
+        role: 'assistant',
+        parts,
+        metadata: { finishReason: parsed.finishReason || 'stop', messageId: id },
+      }
+    }
+
+    // Add delay between lines for visual effect
+    if (i < lines.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+
+  // Fallback if no finish signal was found
+  const { parts, id } = parseContentIntoParts(allTextContent, messageId)
+  return {
+    id,
+    role: 'assistant',
+    parts,
+    metadata: { finishReason: 'stop', messageId: id },
+  }
+}
+
 interface SimulatorContentProps {}
 
 function SimulatorContent({}: SimulatorContentProps) {
@@ -277,6 +343,7 @@ function SimulatorContent({}: SimulatorContentProps) {
   const [isSimulating, setIsSimulating] = useState(false)
   const [simulatedMessage, setSimulatedMessage] = useState<UIMessage | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [realtimeMessage, setRealtimeMessage] = useState<Partial<UIMessage> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const startSimulation = async () => {
@@ -284,6 +351,7 @@ function SimulatorContent({}: SimulatorContentProps) {
 
     // Reset previous simulation
     setSimulatedMessage(null)
+    setRealtimeMessage(null)
     setIsSimulating(true)
     setIsStreaming(true)
 
@@ -291,9 +359,17 @@ function SimulatorContent({}: SimulatorContentProps) {
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
 
+    // Initialize with empty message to show chat output immediately
+    setRealtimeMessage({
+      id: `sim_${Date.now()}`,
+      role: 'assistant',
+      parts: [],
+      metadata: { finishReason: 'stop', messageId: `sim_${Date.now()}` },
+    })
+
     try {
-      // Use our direct SSE parsing simulation
-      const finalMessage = await simulateStreamText(sseLog, signal)
+      // Use our direct SSE parsing simulation with real-time updates
+      const finalMessage = await simulateStreamTextWithUpdates(sseLog, signal, setRealtimeMessage)
 
       setSimulatedMessage(finalMessage)
     } catch (error) {
@@ -315,109 +391,99 @@ function SimulatorContent({}: SimulatorContentProps) {
   const resetSimulation = () => {
     stopSimulation()
     setSimulatedMessage(null)
+    setRealtimeMessage(null)
     setSseLog(DEFAULT_SSE_CONTENT)
   }
 
   return (
-    <SidebarInset>
-      <div className="flex flex-col h-full">
-        <Header />
-        <div className="flex-1 overflow-auto">
-          <div className="flex flex-col gap-6 p-6 w-full">
-            <div>
-              <h1 className="text-3xl font-bold">Message Simulator</h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Simulate streaming chat responses by parsing SSE logs. Uses the same parsing logic as streamText with
-                50ms delays.
-              </p>
-            </div>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-auto">
+        <div className="flex flex-col gap-6 p-6 w-full">
+          <div>
+            <h1 className="text-3xl font-bold">Message Simulator</h1>
+          </div>
 
-            <div className="grid gap-6">
-              {/* SSE Log Input Section */}
+          {/* SSE Log Input Section - Full Width */}
+          <Card>
+            <CardHeader>
+              <CardTitle>SSE Log Input</CardTitle>
+              <CardDescription>Paste your SSE log here. Default content is from apple.sse test file.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                placeholder="SSE content will be processed by the actual streamText function..."
+                value={sseLog}
+                onChange={(e) => setSseLog(e.target.value)}
+                className="min-h-[200px] font-mono text-xs"
+                disabled={isSimulating}
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={startSimulation}
+                  disabled={isSimulating || !sseLog.trim()}
+                  className="flex items-center gap-2"
+                >
+                  <Play size={16} />
+                  {isSimulating ? 'Running...' : 'Run'}
+                </Button>
+
+                {isSimulating && (
+                  <Button onClick={stopSimulation} variant="destructive" className="flex items-center gap-2">
+                    <Square size={16} />
+                    Stop
+                  </Button>
+                )}
+
+                <Button
+                  onClick={resetSimulation}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  disabled={isSimulating}
+                >
+                  <RotateCcw size={16} />
+                  Clear
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bottom Grid: Chat Output and JSON Debug */}
+          {realtimeMessage && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Simulated Chat Output */}
               <Card>
                 <CardHeader>
-                  <CardTitle>SSE Log Input</CardTitle>
-                  <CardDescription>
-                    Paste your SSE log here. Default content is from apple.sse test file.
-                  </CardDescription>
+                  <CardTitle>Simulated Chat Output</CardTitle>
+                  <CardDescription>This shows the UIMessage as it's being built from the SSE log.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <Textarea
-                    placeholder="SSE content will be processed by the actual streamText function..."
-                    value={sseLog}
-                    onChange={(e) => setSseLog(e.target.value)}
-                    className="min-h-[200px] font-mono text-xs"
-                    disabled={isSimulating}
-                  />
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={startSimulation}
-                      disabled={isSimulating || !sseLog.trim()}
-                      className="flex items-center gap-2"
-                    >
-                      <Play size={16} />
-                      {isSimulating ? 'Processing...' : 'Start Simulation'}
-                    </Button>
-
-                    {isSimulating && (
-                      <Button onClick={stopSimulation} variant="destructive" className="flex items-center gap-2">
-                        <Square size={16} />
-                        Stop
-                      </Button>
-                    )}
-
-                    <Button
-                      onClick={resetSimulation}
-                      variant="outline"
-                      className="flex items-center gap-2"
-                      disabled={isSimulating}
-                    >
-                      <RotateCcw size={16} />
-                      Reset to Default
-                    </Button>
+                <CardContent>
+                  <div className="border rounded-md p-4">
+                    <AssistantMessage message={realtimeMessage as UIMessage} isStreaming={isStreaming} />
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Simulated Chat Output Section */}
-              {simulatedMessage && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Simulated Chat Output</CardTitle>
-                    <CardDescription>
-                      This shows the final UIMessage after parsing the SSE log using the same logic as streamText.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="border rounded-md p-4 max-w-2xl">
-                      <AssistantMessage message={simulatedMessage} isStreaming={isStreaming} />
-                    </div>
-
-                    {/* Debug info */}
-                    <details className="mt-4">
-                      <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                        View parsed message details
-                      </summary>
-                      <pre className="mt-2 p-3 bg-muted rounded text-xs overflow-auto">
-                        {JSON.stringify(simulatedMessage, null, 2)}
-                      </pre>
-                    </details>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Real-time JSON Debug */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Parsed Message (Real-time)</CardTitle>
+                  <CardDescription>JSON structure updates in real-time as the SSE log is processed.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <pre className="p-3 bg-muted rounded text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
+                    {realtimeMessage ? JSON.stringify(realtimeMessage, null, 2) : 'No message data yet...'}
+                  </pre>
+                </CardContent>
+              </Card>
             </div>
-          </div>
+          )}
         </div>
       </div>
-    </SidebarInset>
+    </div>
   )
 }
 
 export default function MessageSimulatorPage() {
-  return (
-    <SidebarProvider>
-      <SimulatorContent />
-    </SidebarProvider>
-  )
+  return <SimulatorContent />
 }

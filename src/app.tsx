@@ -70,6 +70,7 @@ function AppContent({ initData }: { initData: InitData }) {
             <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
             <Route path="tasks" element={<TasksPage />} />
             <Route path="automations" element={<AutomationsPage />} />
+            <Route path="message-simulator" element={<MessageSimulatorPage />} />
           </Route>
 
           {/* Settings routes with SettingsLayout */}
@@ -86,7 +87,6 @@ function AppContent({ initData }: { initData: InitData }) {
 
           <Route path="ui-kit" element={<UiKitPage />} />
           <Route path="devtools" element={<DevToolsPage />} />
-          <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 
         {/* OAuth callback route */}

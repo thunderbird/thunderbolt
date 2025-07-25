@@ -1,0 +1,23 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`sse streamTextToUIMessage 1`] = `
+{
+  "id": "sim",
+  "parts": [
+    {
+      "text": 
+"Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  
+
+**Need help with:**  
+- Finding information?  
+- Scheduling or reminders?  
+- General advice or ideas?  
+
+Just ask! 😊"
+,
+      "type": "text",
+    },
+  ],
+  "role": "assistant",
+}
+`;

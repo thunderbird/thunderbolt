@@ -1,56 +1,55 @@
-import { lstatSync, readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 // Import the function under test
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { UIMessage } from 'ai'
 import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
-import { createSimulatedFetch, parseSseLog, streamTextToUIMessage } from '../util'
+import { createSimulatedFetch, parseSseLog, streamTextToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
 // ---------------------------------------------------------------------------
 
 /**
- * Discovers all test cases by finding test directories with stream.sse and message.json files
+ * Discovers all test cases by finding .sse files in the sse-logs directory
  */
-function discoverTestCases(): Array<{ name: string; streamFile: string; expectedFile: string }> {
-  const testsDir = __dirname
-  const entries = readdirSync(testsDir)
+function discoverTestCases(): Array<{ name: string; streamFile: string }> {
+  const sseLogsDir = join(__dirname, 'sse-logs')
 
-  const testCases: Array<{ name: string; streamFile: string; expectedFile: string }> = []
+  try {
+    const entries = readdirSync(sseLogsDir)
+    const testCases: Array<{ name: string; streamFile: string }> = []
 
-  for (const entry of entries) {
-    const entryPath = join(testsDir, entry)
+    for (const entry of entries) {
+      const entryPath = join(sseLogsDir, entry)
 
-    // Check if it's a directory
-    try {
-      if (lstatSync(entryPath).isDirectory()) {
-        const streamFile = join(entryPath, 'stream.sse')
-        const expectedFile = join(entryPath, 'message.json')
-
-        // Check if both required files exist
+      // Check if it's a .sse file
+      if (entry.endsWith('.sse')) {
         try {
-          readFileSync(streamFile, 'utf8')
-          readFileSync(expectedFile, 'utf8')
+          // Check if file exists and is readable
+          readFileSync(entryPath, 'utf8')
+
+          // Use filename without extension as test name
+          const name = entry.replace('.sse', '')
 
           testCases.push({
-            name: entry,
-            streamFile,
-            expectedFile,
+            name,
+            streamFile: entryPath,
           })
         } catch {
-          // Skip if either file doesn't exist
-          console.warn(`Warning: Test directory ${entry} is missing stream.sse or message.json`)
+          // Skip if file is not readable
+          console.warn(`Warning: Cannot read SSE file ${entry}`)
         }
       }
-    } catch {
-      // Skip if can't stat the entry
     }
-  }
 
-  return testCases
+    return testCases
+  } catch {
+    // If sse-logs directory doesn't exist or can't be read
+    console.warn('Warning: sse-logs directory not found or not readable')
+    return []
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -73,8 +72,6 @@ describe('SSE -> UIMessage:', () => {
   for (const testCase of testCases) {
     it(testCase.name, async () => {
       // Arrange ----------------------------------------------------------
-      const expectedMessage: UIMessage = JSON.parse(readFileSync(testCase.expectedFile, 'utf8'))
-
       // Load and parse SSE data from file
       const sseData = readFileSync(testCase.streamFile, 'utf8')
       const chunks = parseSseLog(sseData)
@@ -109,7 +106,7 @@ describe('SSE -> UIMessage:', () => {
       const actualMessage = await streamTextToUIMessage(result)
 
       // Assert -----------------------------------------------------------
-      expect(actualMessage).toEqual(expectedMessage)
+      // Use snapshot testing instead of comparing to JSON files
       expect(JSON.stringify(actualMessage, null, 2)).toMatchSnapshot()
     })
   }

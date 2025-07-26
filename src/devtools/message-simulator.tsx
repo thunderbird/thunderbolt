@@ -1,4 +1,4 @@
-import { createSimulatedFetch, createUIMessageTransform, parseSseLog } from '@/ai/streaming/util'
+import { createSimulatedFetch, parseSseLog } from '@/ai/streaming/util'
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,12 +6,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { useLocalStorage } from '@/hooks/use-local-storage'
+import { getOrCreateChatStore } from '@/lib/chat-store-registry'
 import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { ReasoningUIPart, TextUIPart, ToolInvocationUIPart, UIMessage } from 'ai'
+import { useChat } from '@ai-sdk/react'
 import { streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { v7 as uuidv7 } from 'uuid'
 
 import { createDefaultMiddleware } from '@/ai/middleware/default'
 import APPLE_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
@@ -34,7 +36,7 @@ const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => ({
   content,
 }))
 
-interface SimulatorContentProps {}
+type SimulatorContentProps = Record<string, never>
 
 function SimulatorContent({}: SimulatorContentProps) {
   const [selectedSse, setSelectedSse] = useLocalStorage('message-simulator-sse', '')
@@ -42,93 +44,90 @@ function SimulatorContent({}: SimulatorContentProps) {
     const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
     return selectedLog?.content || ''
   })
-  const [isSimulating, setIsSimulating] = useState(false)
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [realtimeMessage, setRealtimeMessage] = useState<UIMessage<
-    ReasoningUIPart | ToolInvocationUIPart | TextUIPart,
-    { finishReason: string; messageId: string }
-  > | null>(null)
   const [open, setOpen] = useState(false)
-  const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Create a custom fetch function that simulates the SSE response
+  const customFetch = useCallback(
+    Object.assign(
+      async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
+        console.log('sseLog', sseLog)
+        if (!sseLog.trim()) {
+          throw new Error('No SSE log content')
+        }
+
+        // Create a mock fetch that returns the SSE log
+        const chunks = parseSseLog(sseLog)
+        const simulatedFetch = createSimulatedFetch(chunks, {
+          initialDelayInMs: 200,
+          chunkDelayInMs: 20,
+        })
+
+        // Simulate the real AI fetch by creating a streamText result
+        const provider = createOpenAICompatible({
+          name: 'test-provider',
+          baseURL: 'http://localhost:8000',
+          fetch: simulatedFetch,
+        })
+
+        const baseModel = provider('test-model')
+        const wrappedModel = wrapLanguageModel({
+          model: baseModel,
+          middleware: createDefaultMiddleware(),
+        })
+
+        const result = streamText({
+          model: wrappedModel,
+          prompt: 'Simulated prompt',
+          abortSignal: init?.signal || undefined,
+        })
+
+        // Return the UI message stream response like the real API does
+        return result.toUIMessageStreamResponse({
+          sendReasoning: true,
+          messageMetadata: () => ({ modelId: 'simulator' }),
+        })
+      },
+      {
+        preconnect: () => Promise.resolve(false),
+      },
+    ),
+    [sseLog],
+  )
+
+  const chatStoreInstance = getOrCreateChatStore('message-simulator', {
+    initialMessages: [],
+    fetch: customFetch,
+  })
+
+  const chatHelpers = useChat({
+    id: 'message-simulator',
+    chatStore: chatStoreInstance,
+    generateId: uuidv7,
+    onError: (error) => {
+      console.error('Simulation error:', error)
+    },
+  })
+
+  const { messages, status, stop, setMessages } = chatHelpers
+  const isLoading = status === 'streaming'
 
   const startSimulation = async () => {
     if (!sseLog.trim()) return
 
-    // Reset previous simulation
-    setRealtimeMessage(null)
-    setIsSimulating(true)
-    setIsStreaming(true)
-
-    // Create abort controller for cancellation
-    abortControllerRef.current = new AbortController()
-    const signal = abortControllerRef.current.signal
-
-    try {
-      // Create a mock fetch that returns the SSE log
-      const chunks = parseSseLog(sseLog)
-      const simulatedFetch = createSimulatedFetch(chunks, {
-        initialDelayInMs: 200,
-        chunkDelayInMs: 20,
-      })
-
-      // Initialize a custom OpenAI-compatible provider pointing to a mock URL
-      const provider = createOpenAICompatible({
-        name: 'test-provide',
-        baseURL: 'http://localhost:8000',
-        fetch: simulatedFetch,
-      })
-
-      // Get a model instance (model id is irrelevant, only used for labeling)
-      const baseModel = provider('test-model')
-
-      // Attach only the reasoning extraction middleware (tagName: think)
-      const wrappedModel = wrapLanguageModel({
-        model: baseModel,
-        middleware: createDefaultMiddleware(),
-      })
-
-      // Call the Vercel AI SDK streamText helper which gives us a StreamTextResult-like object
-      const result = await streamText({
-        model: wrappedModel,
-        prompt: 'Simulated prompt', // Minimal prompt just to satisfy the SDK API
-        abortSignal: signal,
-      })
-
-      // -------------------------------------------------------------------
-      // Transform the raw chunk stream into UIMessage snapshots using a
-      // standard TransformStream, then consume each UIMessage update
-      // -------------------------------------------------------------------
-      const messageStream = result.fullStream.pipeThrough(createUIMessageTransform())
-      const reader = messageStream.getReader()
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          setRealtimeMessage(value as any) // Cast to bypass TypeScript generics mismatch
-        }
-      } finally {
-        reader.releaseLock()
-      }
-    } catch (error) {
-      console.error('Simulation error:', error)
-    } finally {
-      setIsSimulating(false)
-      setIsStreaming(false)
-    }
+    // Start the chat with a simulated prompt
+    await chatHelpers.append({
+      role: 'user',
+      parts: [{ type: 'text', text: 'Simulated prompt' }],
+    })
   }
 
   const stopSimulation = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-    setIsSimulating(false)
-    setIsStreaming(false)
+    stop()
   }
 
   const resetSimulation = () => {
     stopSimulation()
-    setRealtimeMessage(null)
+    setMessages([])
     setSseLog('')
     setSelectedSse('')
   }
@@ -170,7 +169,7 @@ function SimulatorContent({}: SimulatorContentProps) {
                       role="combobox"
                       aria-expanded={open}
                       className="w-[300px] justify-between"
-                      disabled={isSimulating}
+                      disabled={isLoading}
                     >
                       {selectedSse ? SSE_LOGS.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
                       <ChevronsUpDown className="opacity-50" />
@@ -202,20 +201,20 @@ function SimulatorContent({}: SimulatorContentProps) {
                 value={sseLog}
                 onChange={(e) => setSseLog(e.target.value)}
                 className="min-h-[200px] font-mono text-xs"
-                disabled={isSimulating}
+                disabled={isLoading}
               />
 
               <div className="flex gap-2">
                 <Button
                   onClick={startSimulation}
-                  disabled={isSimulating || !sseLog.trim()}
+                  disabled={isLoading || !sseLog.trim()}
                   className="flex items-center gap-2"
                 >
                   <Play size={16} />
-                  {isSimulating ? 'Running...' : 'Run'}
+                  {isLoading ? 'Running...' : 'Run'}
                 </Button>
 
-                {isSimulating && (
+                {isLoading && (
                   <Button onClick={stopSimulation} variant="destructive" className="flex items-center gap-2">
                     <Square size={16} />
                     Stop
@@ -226,7 +225,7 @@ function SimulatorContent({}: SimulatorContentProps) {
                   onClick={resetSimulation}
                   variant="outline"
                   className="flex items-center gap-2"
-                  disabled={isSimulating}
+                  disabled={isLoading}
                 >
                   <RotateCcw size={16} />
                   Clear
@@ -236,7 +235,7 @@ function SimulatorContent({}: SimulatorContentProps) {
           </Card>
 
           {/* Bottom Grid: Chat Output and JSON Debug */}
-          {realtimeMessage && (
+          {messages.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Simulated Chat Output */}
               <Card>
@@ -246,8 +245,16 @@ function SimulatorContent({}: SimulatorContentProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="border rounded-md p-4">
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <AssistantMessage message={realtimeMessage as any} isStreaming={isStreaming} />
+                    {messages
+                      .filter((msg) => msg.role === 'assistant')
+                      .map((message) => (
+                        <AssistantMessage
+                          key={message.id}
+                          message={message as any}
+                          isStreaming={isLoading && messages[messages.length - 1]?.id === message.id}
+                        />
+                      ))}
+                    {messages.length === 0 && <div className="text-muted-foreground">No assistant response yet...</div>}
                   </div>
                 </CardContent>
               </Card>
@@ -260,7 +267,13 @@ function SimulatorContent({}: SimulatorContentProps) {
                 </CardHeader>
                 <CardContent>
                   <pre className="p-3 bg-muted rounded text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
-                    {realtimeMessage ? JSON.stringify(realtimeMessage, null, 2) : 'No message data yet...'}
+                    {messages.length > 0
+                      ? JSON.stringify(
+                          messages.filter((msg) => msg.role === 'assistant'),
+                          null,
+                          2,
+                        )
+                      : 'No message data yet...'}
                   </pre>
                 </CardContent>
               </Card>

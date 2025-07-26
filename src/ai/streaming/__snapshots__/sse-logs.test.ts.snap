@@ -11,7 +11,7 @@ exports[`SSE -> UIMessage: computer-1 1`] = `
     },
     {
       "type": "text",
-      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n"
+      "text": "\\n\\n.\\n\\n\\n\\n"
     }
   ]
 }"

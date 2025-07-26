@@ -4,7 +4,8 @@ import { join } from 'node:path'
 
 // Import the function under test
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
+import { streamText, wrapLanguageModel } from 'ai'
+import { createDefaultMiddleware } from '../middleware/default'
 import { createSimulatedFetch, parseSseLog, streamTextToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
@@ -93,7 +94,7 @@ describe('SSE -> UIMessage:', () => {
 
       const wrappedModel = wrapLanguageModel({
         model,
-        middleware: [extractReasoningMiddleware({ tagName: 'think' })],
+        middleware: createDefaultMiddleware(),
       })
 
       // Act --------------------------------------------------------------

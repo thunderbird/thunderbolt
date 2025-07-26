@@ -25,6 +25,7 @@ def get_settings() -> Settings:
 
 # Global whitelist of Thunderbolt-provided model names (provider-agnostic)
 THUNDERBOLT_MODEL_WHITELIST = {
+    "qwen3-235b-a22b-instruct-2507",
     "kimi-k2-instruct",
     "deepseek-r1-0528",
     "qwen3-235b-a22b",

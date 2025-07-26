@@ -19,7 +19,11 @@ RUN apt update && apt install -y less \
     iproute2 \
     dnsutils \
     aggregate \
-    jq
+    jq \
+    python3 \
+    python3-pip \
+    python3-venv \
+    build-essential
 
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
@@ -65,6 +69,23 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a "source /usr/share/doc/fzf/examples/completion.zsh" \
     -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
     -x
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash && \
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
+
+# Install UV (Python package manager)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then UV_ARCH="x86_64"; else UV_ARCH="aarch64"; fi && \
+    curl -LsSf https://github.com/astral-sh/uv/releases/latest/download/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz && \
+    tar -xzf /tmp/uv.tar.gz -C /tmp && \
+    mkdir -p ~/.local/bin && \
+    cp /tmp/uv-${UV_ARCH}-unknown-linux-gnu/uv ~/.local/bin/ && \
+    chmod +x ~/.local/bin/uv && \
+    rm -rf /tmp/uv* && \
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
 # Install Claude
 RUN npm install -g @anthropic-ai/claude-code

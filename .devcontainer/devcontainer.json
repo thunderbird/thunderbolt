@@ -41,5 +41,5 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "sudo /usr/local/bin/init-firewall.sh"
+  "postCreateCommand": "sudo /usr/local/bin/init-firewall.sh && cd /workspace && export PATH=\"$HOME/.bun/bin:$HOME/.local/bin:$PATH\" && make setup"
 }

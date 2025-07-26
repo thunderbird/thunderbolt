@@ -26,7 +26,7 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
-import { defaultMiddleware } from './middleware/default'
+import { createDefaultMiddleware } from './middleware/default'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
   result: T
@@ -157,7 +157,7 @@ export const aiFetchStreamingResponse = async ({
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
       model: baseModel,
-      middleware: defaultMiddleware,
+      middleware: createDefaultMiddleware(),
     })
 
     const result = streamText({

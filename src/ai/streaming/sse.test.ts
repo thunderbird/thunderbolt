@@ -5,7 +5,7 @@ import { MockLanguageModelV2 } from 'ai/test'
 import { describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
-import { defaultMiddleware } from '../middleware/default'
+import { createDefaultMiddleware } from '../middleware/default'
 import { createSimulatedFetch, createUIMessageTransform, parseSseLog, streamTextToUIMessage } from './util'
 
 describe('sse', async () => {
@@ -87,7 +87,7 @@ describe('sse', async () => {
 
   const wrappedModel = wrapLanguageModel({
     model,
-    middleware: defaultMiddleware,
+    middleware: createDefaultMiddleware(),
   })
 
   it('should return a readable stream', async () => {
@@ -146,5 +146,24 @@ describe('sse', async () => {
         },
       ],
     })
+  })
+
+  it('should produce identical results when running the same SSE log multiple times', async () => {
+    const results = []
+
+    for (let i = 0; i < 2; i++) {
+      const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/apple.sse'), 'utf8'))
+      const simulatedFetch = createSimulatedFetch(chunks, { initialDelayInMs: 0, chunkDelayInMs: 0 })
+      const provider = createOpenAICompatible({ name: 'test', baseURL: 'http://localhost:8000', fetch: simulatedFetch })
+      const model = provider('test-model')
+      const wrappedModel = wrapLanguageModel({ model, middleware: createDefaultMiddleware() })
+      const result = streamText({ model: wrappedModel, prompt: 'test' })
+      const finalMessage = await streamTextToUIMessage(result)
+      results.push(finalMessage)
+    }
+
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]).toEqual(results[0])
+    }
   })
 })

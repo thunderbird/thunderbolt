@@ -13,7 +13,7 @@ import { streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
 import { useRef, useState } from 'react'
 
-import { defaultMiddleware } from '@/ai/middleware/default'
+import { createDefaultMiddleware } from '@/ai/middleware/default'
 import APPLE_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
 import BANANA_SSE_CONTENT from '../ai/streaming/sse-logs/banana.sse?raw'
 import COMPUTER_1_SSE_CONTENT from '../ai/streaming/sse-logs/computer-1.sse?raw'
@@ -84,7 +84,7 @@ function SimulatorContent({}: SimulatorContentProps) {
       // Attach only the reasoning extraction middleware (tagName: think)
       const wrappedModel = wrapLanguageModel({
         model: baseModel,
-        middleware: defaultMiddleware,
+        middleware: createDefaultMiddleware(),
       })
 
       // Call the Vercel AI SDK streamText helper which gives us a StreamTextResult-like object

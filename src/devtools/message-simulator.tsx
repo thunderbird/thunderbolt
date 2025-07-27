@@ -1,4 +1,4 @@
-import { createSimulatedFetch, parseSseLog } from '@/ai/streaming/util'
+import { createMockToolSet, createSimulatedFetch, parseSseLog } from '@/ai/streaming/util'
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +20,8 @@ import APPLE_SSE_CONTENT from '../ai/streaming/sse-logs/apple.sse?raw'
 import BANANA_SSE_CONTENT from '../ai/streaming/sse-logs/banana.sse?raw'
 import COMPUTER_1_SSE_CONTENT from '../ai/streaming/sse-logs/computer-1.sse?raw'
 import COMPUTER_2_SSE_CONTENT from '../ai/streaming/sse-logs/computer-2.sse?raw'
+import GET_TASKS_1_SSE_CONTENT from '../ai/streaming/sse-logs/get-tasks-1.sse?raw'
+import GET_TASKS_2_SSE_CONTENT from '../ai/streaming/sse-logs/get-tasks-2.sse?raw'
 
 // Map of SSE log files to their content
 const SSE_LOG_FILES = {
@@ -27,6 +29,8 @@ const SSE_LOG_FILES = {
   banana: BANANA_SSE_CONTENT,
   'computer-1': COMPUTER_1_SSE_CONTENT,
   'computer-2': COMPUTER_2_SSE_CONTENT,
+  'get-tasks-1': GET_TASKS_1_SSE_CONTENT,
+  'get-tasks-2': GET_TASKS_2_SSE_CONTENT,
 } as const
 
 // Generate SSE logs array from file names
@@ -78,6 +82,19 @@ function SimulatorChat({ sseLog, onStop, stopRef }: SimulatorChatProps) {
           model: wrappedModel,
           prompt: 'Simulated prompt',
           abortSignal: init?.signal || undefined,
+          onChunk: (chunk) => {
+            console.log('onChunk', chunk)
+          },
+          onError: (error) => {
+            console.error('streamText error:', error)
+          },
+          onFinish: (message) => {
+            console.log('onFinish', message)
+          },
+          onStepFinish: (step) => {
+            console.log('onStepFinish', step)
+          },
+          tools: createMockToolSet(),
         })
 
         // Return the UI message stream response like the real API does

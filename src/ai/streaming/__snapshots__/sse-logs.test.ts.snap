@@ -12,6 +12,11 @@ exports[`SSE -> UIMessage: computer-1 1`] = `
     {
       "type": "text",
       "text": "\\n\\n.\\n\\n\\n\\n"
+    },
+    {
+      "type": "tool-call",
+      "toolCallId": "call_NZvgbpB4mJNl58GNomt9yS3l",
+      "toolName": "getTasks"
     }
   ]
 }"
@@ -29,6 +34,33 @@ exports[`SSE -> UIMessage: computer-2 1`] = `
     {
       "type": "text",
       "text": "\\n\\nHere are your current tasks 📋:\\n\\n1. **Connect your email account** (ID: 0198432a...)  \\n   *\\"Connect your email account to get started\\"*\\n\\n2. **Set your name & location** (ID: 0198432a...)  \\n   *\\"Set your name and location in preferences for better AI responses\\"*\\n\\n3. **Explore Thunderbolt Pro tools** (ID: 0198432a...)  \\n   *\\"Explore Thunderbolt Pro tools to extend capabilities\\"*\\n\\nAll tasks are pending completion. Would you like to add new tasks or delete any of these? ✨"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: get-tasks-1 1`] = `
+"{
+  "id": "sim",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "tool-call",
+      "toolCallId": "call_JpbyBMDd9HZRhUGXsYW5vaR9",
+      "toolName": "getTasks"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: get-tasks-2 1`] = `
+"{
+  "id": "sim",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "text",
+      "text": "# Your Current Tasks\\nYou have the following tasks:\\n* Connect your email account to get started (Not completed)\\n* Set your name and location in preferences for better AI responses (Not completed)\\n* Explore Thunderbolt Pro tools to extend capabilities (Not completed)\\n* hi (Completed)"
     }
   ]
 }"

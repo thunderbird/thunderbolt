@@ -1,0 +1,26 @@
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":"# Your"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" Current Tasks\nYou have the following"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" tasks:\n* Connect your email account"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" to get started (Not"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" completed)\n"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":"* Set your name and location in preferences"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" for better AI responses (Not completed)\n"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":"* Explore Thunderbolt Pro tools to extend"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":" capabilities (Not completed)\n* hi ("},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{"content":"Completed)"},"finish_reason":null}],"usage":null}
+
+data: {"id":"232348cd-35ce-4d8a-b6c4-3c0e76ecf417","object":"chat.completion.chunk","created":1753584390,"model":"accounts/fireworks/models/llama-v3p1-405b-instruct","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":8444,"total_tokens":8502,"completion_tokens":58}}
+
+data: [DONE]
+

@@ -75,6 +75,10 @@ export const createUIMessageTransform = (): TransformStream<any, UIMessage> => {
           }
           break
 
+        case 'tool-call':
+          parts.push({ type: 'tool-call', toolCallId: chunk.toolCallId, toolName: chunk.toolName })
+          break
+
         default:
           // Ignore other chunk types
           break
@@ -115,4 +119,18 @@ export const streamTextToUIMessage = async (streamTextResult: StreamTextResult<T
   }
 
   return finalMessage
+}
+
+export const createMockToolSet = (): ToolSet => {
+  return new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        return (...args: any[]) => {
+          console.log(`[Simulated Tool] ${String(prop)}`, ...args)
+          return null
+        }
+      },
+    },
+  )
 }

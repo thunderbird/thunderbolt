@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { streamText, wrapLanguageModel } from 'ai'
 import { createDefaultMiddleware } from '../middleware/default'
-import { createSimulatedFetch, parseSseLog, streamTextToUIMessage } from './util'
+import { createMockToolSet, createSimulatedFetch, parseSseLog, streamTextToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
@@ -101,6 +101,7 @@ describe('SSE -> UIMessage:', () => {
       const result = streamText({
         model: wrappedModel,
         prompt: '<test>',
+        tools: createMockToolSet(),
       })
 
       // Collect the final message from the stream

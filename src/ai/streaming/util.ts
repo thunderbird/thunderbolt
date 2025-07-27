@@ -1,4 +1,14 @@
-import { simulateReadableStream, type StreamTextResult, type ToolSet, type UIMessage } from 'ai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import {
+  defaultChatStore,
+  simulateReadableStream,
+  streamText,
+  wrapLanguageModel,
+  type ToolSet,
+  type UIMessage,
+} from 'ai'
+import { v7 as uuidv7 } from 'uuid'
+import { createDefaultMiddleware } from '../middleware/default'
 
 type SimulatedFetchOptions = {
   initialDelayInMs?: number
@@ -37,90 +47,6 @@ export const parseSseLog = (sseLog: string): string[] => {
     .map((chunk) => `${chunk}\n\n`) // re-append the delimiter for each chunk
 }
 
-/**
- * Creates a TransformStream that converts AI SDK streaming chunks into UIMessage snapshots.
- * Each chunk processed emits a complete UIMessage with accumulated parts.
- */
-export const createUIMessageTransform = (): TransformStream<any, UIMessage> => {
-  let messageId: string = 'sim'
-  let currentTextPart: { type: 'text'; text: string } | null = null
-  let currentReasoningPart: { type: 'reasoning'; text: string } | null = null
-  const parts: any[] = []
-
-  return new TransformStream({
-    transform(chunk: any, controller) {
-      switch (chunk.type) {
-        case 'text-delta':
-        case 'text':
-          // Accumulate successive text deltas into a single text part
-          if (!currentTextPart) {
-            currentTextPart = { type: 'text', text: '' }
-            parts.push(currentTextPart)
-          }
-          currentTextPart.text += chunk.textDelta ?? chunk.text ?? ''
-          break
-
-        case 'reasoning':
-          // Accumulate successive reasoning chunks into one part
-          if (!currentReasoningPart) {
-            currentReasoningPart = { type: 'reasoning', text: '' }
-            parts.push(currentReasoningPart)
-          }
-          currentReasoningPart.text += chunk.text ?? ''
-          break
-
-        case 'finish':
-          if (chunk.messageId) {
-            messageId = chunk.messageId
-          }
-          break
-
-        case 'tool-call':
-          parts.push({ type: 'tool-call', toolCallId: chunk.toolCallId, toolName: chunk.toolName })
-          break
-
-        default:
-          // Ignore other chunk types
-          break
-      }
-
-      // Emit the current UIMessage snapshot
-      controller.enqueue({
-        id: messageId,
-        role: 'assistant',
-        parts: [...parts], // Spread to ensure new reference
-      } as UIMessage)
-    },
-  })
-}
-
-/**
- * Consumes a StreamTextResult and returns the final accumulated UIMessage.
- * Useful for testing scenarios where you want the complete result without streaming UI updates.
- */
-export const streamTextToUIMessage = async (streamTextResult: StreamTextResult<ToolSet, any>): Promise<UIMessage> => {
-  const messageStream = streamTextResult.fullStream.pipeThrough(createUIMessageTransform())
-
-  let finalMessage
-
-  const reader = messageStream.getReader()
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      finalMessage = value
-    }
-  } finally {
-    reader.releaseLock()
-  }
-
-  if (!finalMessage) {
-    throw new Error('Failed to convert text stream into UIMessage.')
-  }
-
-  return finalMessage
-}
-
 export const createMockToolSet = (): ToolSet => {
   return new Proxy(
     {},
@@ -133,4 +59,111 @@ export const createMockToolSet = (): ToolSet => {
       },
     },
   )
+}
+
+export const sseToUIMessage = async (
+  sseData: string,
+  options: {
+    initialDelayInMs?: number
+    chunkDelayInMs?: number
+  } = {},
+): Promise<UIMessage> => {
+  const chunks = parseSseLog(sseData)
+
+  // ------------------------------------------------------------------
+  // Prepare a custom fetch that mimics the real /api/chat endpoint
+  // but streams from our pre-recorded SSE log. This is the same pattern
+  // used by MessageSimulator (src/devtools/message-simulator.tsx).
+  // ------------------------------------------------------------------
+
+  const customFetch: typeof fetch = Object.assign(
+    async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
+      // Build a Response that streams UI-Message chunks from the SSE log
+      const simulatedFetch = createSimulatedFetch(chunks, {
+        initialDelayInMs: options.initialDelayInMs,
+        chunkDelayInMs: options.chunkDelayInMs,
+      })
+
+      const provider = createOpenAICompatible({
+        name: 'test-provider',
+        baseURL: 'http://localhost:8000',
+        fetch: simulatedFetch,
+      })
+
+      const baseModel = provider('test-model')
+
+      const wrappedModel = wrapLanguageModel({
+        model: baseModel,
+        middleware: createDefaultMiddleware(),
+      })
+
+      const result = streamText({
+        model: wrappedModel,
+        prompt: '<test>',
+        tools: createMockToolSet(),
+        abortSignal: (init?.signal ?? undefined) as AbortSignal | undefined,
+      })
+
+      return result.toUIMessageStreamResponse({
+        sendReasoning: true,
+        messageMetadata: () => ({ modelId: 'simulator' }),
+      })
+    },
+    {
+      preconnect: () => Promise.resolve(false),
+    },
+  )
+
+  // ------------------------------------------------------------------
+  // Set up a ChatStore instance (the underlying engine behind useChat)
+  // and submit a user message so that we exercise the exact same code
+  // paths that the real UI uses.
+  // ------------------------------------------------------------------
+
+  const chatStore = defaultChatStore({
+    api: '/api/chat',
+    fetch: customFetch,
+    generateId: uuidv7,
+    maxSteps: 10,
+  })
+
+  const chatId = `test-${uuidv7()}`
+  chatStore.addChat(chatId, [])
+
+  // Submit a single user message (mirrors the MessageSimulator prompt)
+  await chatStore.submitMessage({
+    chatId,
+    message: {
+      role: 'user',
+      parts: [{ type: 'text', text: '<test>' }],
+    } as any,
+  })
+
+  // Wait for streaming to finish (status 'ready' or 'error')
+  const waitForChatToFinish = async () => {
+    return await new Promise<void>((resolve, reject) => {
+      const interval = setInterval(() => {
+        const status = chatStore.getStatus(chatId)
+        if (status === 'ready') {
+          clearInterval(interval)
+          resolve()
+        } else if (status === 'error') {
+          clearInterval(interval)
+          reject(chatStore.getError(chatId))
+        }
+      }, 10)
+    })
+  }
+
+  await waitForChatToFinish()
+
+  // Collect the assistant's final message
+  const messages = chatStore.getMessages(chatId)
+  const actualMessage = messages.filter((m: any) => m.role === 'assistant').pop()
+
+  if (!actualMessage) {
+    throw new Error('Failed to convert SSE data into UIMessage.')
+  }
+
+  return actualMessage
 }

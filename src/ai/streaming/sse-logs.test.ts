@@ -1,12 +1,9 @@
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Import the function under test
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { streamText, wrapLanguageModel } from 'ai'
-import { createDefaultMiddleware } from '../middleware/default'
-import { createMockToolSet, createSimulatedFetch, parseSseLog, streamTextToUIMessage } from './util'
+import { sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
@@ -58,10 +55,6 @@ function discoverTestCases(): Array<{ name: string; streamFile: string }> {
 // ---------------------------------------------------------------------------
 
 describe('SSE -> UIMessage:', () => {
-  beforeEach(() => {
-    // Reset any test state if needed
-  })
-
   const testCases = discoverTestCases()
 
   if (testCases.length === 0) {
@@ -72,44 +65,9 @@ describe('SSE -> UIMessage:', () => {
 
   for (const testCase of testCases) {
     it(testCase.name, async () => {
-      // Arrange ----------------------------------------------------------
-      // Load and parse SSE data from file
       const sseData = readFileSync(testCase.streamFile, 'utf8')
-      const chunks = parseSseLog(sseData)
-
-      // Create simulated fetch with the parsed chunks
-      const simulatedFetch = createSimulatedFetch(chunks, {
-        initialDelayInMs: 0,
-        chunkDelayInMs: 0,
-      })
-
-      // Set up the model with the same pattern as sse.test.ts
-      const provider = createOpenAICompatible({
-        name: 'local-test',
-        baseURL: 'http://localhost:3000',
-        fetch: simulatedFetch,
-      })
-
-      const model = provider('test-model')
-
-      const wrappedModel = wrapLanguageModel({
-        model,
-        middleware: createDefaultMiddleware(),
-      })
-
-      // Act --------------------------------------------------------------
-      const result = streamText({
-        model: wrappedModel,
-        prompt: '<test>',
-        tools: createMockToolSet(),
-      })
-
-      // Collect the final message from the stream
-      const actualMessage = await streamTextToUIMessage(result)
-
-      // Assert -----------------------------------------------------------
-      // Use snapshot testing instead of comparing to JSON files
-      expect(JSON.stringify(actualMessage, null, 2)).toMatchSnapshot()
+      const message = await sseToUIMessage(sseData)
+      expect(JSON.stringify(message, null, 2)).toMatchSnapshot()
     })
   }
 })

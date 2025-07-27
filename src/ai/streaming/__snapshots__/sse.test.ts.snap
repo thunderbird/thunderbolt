@@ -2,10 +2,9 @@
 
 exports[`sse simulateReadableStream 1`] = `
 [
-  DefaultStepResult {
+  {
     "content": [
       {
-        "providerMetadata": undefined,
         "text": 
 "
 Okay, the user said "hi". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.
@@ -30,16 +29,13 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
-    "providerMetadata": undefined,
     "request": {},
     "response": {
-      "headers": undefined,
-      "id": "aitxt-lAdATC0ooU7yfDNw2T0KzCSG",
+      "id": "<DYNAMIC_ID>",
       "messages": [
         {
           "content": [
             {
-              "providerOptions": undefined,
               "text": 
 "
 Okay, the user said "hi". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.
@@ -67,7 +63,7 @@ Just ask! 😊"
         },
       ],
       "modelId": "mock-model-id",
-      "timestamp": 2025-07-27T03:46:21.364Z,
+      "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
       "inputTokens": 10,

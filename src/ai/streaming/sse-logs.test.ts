@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Import the function under test
-import { sseToUIMessage } from './util'
+import { normalizeUIMessage, sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
@@ -67,7 +67,8 @@ describe('SSE -> UIMessage:', () => {
     it(testCase.name, async () => {
       const sseData = readFileSync(testCase.streamFile, 'utf8')
       const message = await sseToUIMessage(sseData)
-      expect(JSON.stringify(message, null, 2)).toMatchSnapshot()
+      const normalizedMessage = normalizeUIMessage(message)
+      expect(JSON.stringify(normalizedMessage, null, 2)).toMatchSnapshot()
     })
   }
 })

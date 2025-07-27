@@ -167,3 +167,52 @@ export const sseToUIMessage = async (
 
   return actualMessage
 }
+
+/**
+ * Normalizes dynamic fields in UIMessage for snapshot testing
+ */
+export const normalizeUIMessage = (message: any): any => {
+  const normalized = JSON.parse(JSON.stringify(message))
+  
+  // Replace dynamic IDs with stable placeholders
+  if (normalized.id) {
+    normalized.id = '<DYNAMIC_ID>'
+  }
+  
+  // Normalize tool invocation IDs
+  if (normalized.parts) {
+    normalized.parts = normalized.parts.map((part: any) => {
+      if (part.toolInvocation?.toolCallId) {
+        return {
+          ...part,
+          toolInvocation: {
+            ...part.toolInvocation,
+            toolCallId: '<DYNAMIC_TOOL_CALL_ID>'
+          }
+        }
+      }
+      return part
+    })
+  }
+  
+  return normalized
+}
+
+/**
+ * Normalizes dynamic fields in test results for snapshot testing
+ */
+export const normalizeStepResult = (step: any): any => {
+  const normalized = JSON.parse(JSON.stringify(step))
+  
+  // Normalize response properties
+  if (normalized.response) {
+    if (normalized.response.id) {
+      normalized.response.id = '<DYNAMIC_ID>'
+    }
+    if (normalized.response.timestamp) {
+      normalized.response.timestamp = '<DYNAMIC_TIMESTAMP>'
+    }
+  }
+  
+  return normalized
+}

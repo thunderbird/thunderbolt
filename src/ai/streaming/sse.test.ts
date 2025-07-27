@@ -6,7 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
 import { createDefaultMiddleware } from '../middleware/default'
-import { createSimulatedFetch, parseSseLog } from './util'
+import { createSimulatedFetch, normalizeStepResult, parseSseLog } from './util'
 
 describe('sse', async () => {
   it('simulateReadableStream', async () => {
@@ -53,8 +53,9 @@ describe('sse', async () => {
     await result.consumeStream()
 
     const steps = await result.steps
+    const normalizedSteps = steps.map(normalizeStepResult)
 
-    expect(steps).toMatchSnapshot()
+    expect(normalizedSteps).toMatchSnapshot()
   })
 })
 

@@ -2,7 +2,7 @@
 
 exports[`SSE -> UIMessage: computer-1 1`] = `
 "{
-  "id": "019849fd-19ed-701c-a415-a878717a834c",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },
@@ -24,7 +24,7 @@ exports[`SSE -> UIMessage: computer-1 1`] = `
       "toolInvocation": {
         "state": "call",
         "step": 0,
-        "toolCallId": "call_NZvgbpB4mJNl58GNomt9yS3l",
+        "toolCallId": "<DYNAMIC_TOOL_CALL_ID>",
         "toolName": "getTasks",
         "args": {}
       }
@@ -35,7 +35,7 @@ exports[`SSE -> UIMessage: computer-1 1`] = `
 
 exports[`SSE -> UIMessage: computer-2 1`] = `
 "{
-  "id": "019849fd-1a1a-77ab-8f54-0b87097711ad",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },
@@ -58,7 +58,7 @@ exports[`SSE -> UIMessage: computer-2 1`] = `
 
 exports[`SSE -> UIMessage: get-tasks-1 1`] = `
 "{
-  "id": "019849fd-1a5f-7395-8780-39786b0ad063",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },
@@ -72,7 +72,7 @@ exports[`SSE -> UIMessage: get-tasks-1 1`] = `
       "toolInvocation": {
         "state": "call",
         "step": 0,
-        "toolCallId": "call_JpbyBMDd9HZRhUGXsYW5vaR9",
+        "toolCallId": "<DYNAMIC_TOOL_CALL_ID>",
         "toolName": "getTasks",
         "args": {}
       }
@@ -83,7 +83,7 @@ exports[`SSE -> UIMessage: get-tasks-1 1`] = `
 
 exports[`SSE -> UIMessage: get-tasks-2 1`] = `
 "{
-  "id": "019849fd-1a72-7169-aa8e-38e8de768da5",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },
@@ -102,7 +102,7 @@ exports[`SSE -> UIMessage: get-tasks-2 1`] = `
 
 exports[`SSE -> UIMessage: banana 1`] = `
 "{
-  "id": "019849fd-1a8f-7388-bfd9-14d42efacbec",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },
@@ -121,7 +121,7 @@ exports[`SSE -> UIMessage: banana 1`] = `
 
 exports[`SSE -> UIMessage: apple 1`] = `
 "{
-  "id": "019849fd-1bc2-729f-8e84-3f9e9f12c9e7",
+  "id": "<DYNAMIC_ID>",
   "metadata": {
     "modelId": "simulator"
   },

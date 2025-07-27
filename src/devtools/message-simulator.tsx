@@ -12,7 +12,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { useChat } from '@ai-sdk/react'
 import { streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { createDefaultMiddleware } from '@/ai/middleware/default'
@@ -36,21 +36,20 @@ const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => ({
   content,
 }))
 
-type SimulatorContentProps = Record<string, never>
+type SimulatorChatProps = {
+  sseLog: string
+  onStop: () => void
+  stopRef: React.MutableRefObject<(() => void) | null>
+}
 
-function SimulatorContent({}: SimulatorContentProps) {
-  const [selectedSse, setSelectedSse] = useLocalStorage('message-simulator-sse', '')
-  const [sseLog, setSseLog] = useState(() => {
-    const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
-    return selectedLog?.content || ''
-  })
-  const [open, setOpen] = useState(false)
+function SimulatorChat({ sseLog, onStop, stopRef }: SimulatorChatProps) {
+  // Generate stable IDs only once when component mounts
+  const [chatId] = useState(() => `simulation-${uuidv7()}`)
 
   // Create a custom fetch function that simulates the SSE response
   const customFetch = useCallback(
     Object.assign(
       async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
-        console.log('sseLog', sseLog)
         if (!sseLog.trim()) {
           throw new Error('No SSE log content')
         }
@@ -94,13 +93,13 @@ function SimulatorContent({}: SimulatorContentProps) {
     [sseLog],
   )
 
-  const chatStoreInstance = getOrCreateChatStore('message-simulator', {
+  const chatStoreInstance = getOrCreateChatStore(chatId, {
     initialMessages: [],
     fetch: customFetch,
   })
 
   const chatHelpers = useChat({
-    id: 'message-simulator',
+    id: chatId,
     chatStore: chatStoreInstance,
     generateId: uuidv7,
     onError: (error) => {
@@ -108,26 +107,133 @@ function SimulatorContent({}: SimulatorContentProps) {
     },
   })
 
-  const { messages, status, stop, setMessages } = chatHelpers
+  const { messages, status, stop } = chatHelpers
   const isLoading = status === 'streaming'
 
-  const startSimulation = async () => {
-    if (!sseLog.trim()) return
+  // Auto-start simulation when component mounts
+  useEffect(() => {
+    const startSimulation = async () => {
+      await chatHelpers.append({
+        role: 'user',
+        parts: [{ type: 'text', text: '<prompt>' }],
+      })
+    }
+    startSimulation()
+  }, [])
 
-    // Start the chat with a simulated prompt
-    await chatHelpers.append({
-      role: 'user',
-      parts: [{ type: 'text', text: 'Simulated prompt' }],
-    })
+  // Call onStop when simulation finishes naturally
+  useEffect(() => {
+    console.log('Status changed:', status, 'Messages:', messages.length, 'IsLoading:', isLoading)
+    if ((status === 'ready' || status === 'error') && messages.length > 0 && !isLoading) {
+      // Simulation has finished
+      console.log('Simulation finished, calling onStop')
+      onStop()
+    }
+  }, [status, messages.length, isLoading, onStop])
+
+  // Call onStop when user stops manually
+  const handleStop = () => {
+    stop()
+    onStop()
+  }
+
+  // Expose the stop function to parent via ref
+  useEffect(() => {
+    stopRef.current = handleStop
+    return () => {
+      stopRef.current = null
+    }
+  }, [stopRef])
+
+  return (
+    <>
+      {/* Bottom Grid: Chat Output and JSON Debug */}
+      {messages.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Simulated Chat Output */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Simulated Chat Output</CardTitle>
+              <CardDescription>This shows the UIMessage as it's being built from the SSE log.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-md p-4">
+                {messages
+                  .filter((msg) => msg.role === 'assistant')
+                  .map((message) => (
+                    <AssistantMessage
+                      key={message.id}
+                      message={message as any}
+                      isStreaming={isLoading && messages[messages.length - 1]?.id === message.id}
+                    />
+                  ))}
+                {messages.filter((msg) => msg.role === 'assistant').length === 0 && (
+                  <div className="text-muted-foreground">No assistant response yet...</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Real-time JSON Debug */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Parsed Message (Real-time)</CardTitle>
+              <CardDescription>JSON structure updates in real-time as the SSE log is processed.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre className="p-3 bg-muted rounded text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
+                {messages.length > 0
+                  ? JSON.stringify(
+                      messages.filter((msg) => msg.role === 'assistant'),
+                      null,
+                      2,
+                    )
+                  : 'No message data yet...'}
+              </pre>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
+  )
+}
+
+type SimulatorContentProps = Record<string, never>
+
+function SimulatorContent({}: SimulatorContentProps) {
+  const [selectedSse, setSelectedSse] = useLocalStorage('simulation-sse', '')
+  const [sseLog, setSseLog] = useState(() => {
+    const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
+    return selectedLog?.content || ''
+  })
+  const [open, setOpen] = useState(false)
+  const [simulationKey, setSimulationKey] = useState<number | null>(null)
+  const [isRunning, setIsRunning] = useState(false)
+  const stopFunctionRef = useRef<(() => void) | null>(null)
+
+  const startSimulation = () => {
+    if (!sseLog.trim()) return
+    // Create a new simulation key to force re-mount of SimulatorChat
+    setSimulationKey(Date.now())
+    setIsRunning(true)
   }
 
   const stopSimulation = () => {
-    stop()
+    // Try to call the child's stop function first, then set state
+    if (stopFunctionRef.current) {
+      stopFunctionRef.current()
+    }
+    setIsRunning(false)
+  }
+
+  const onSimulationFinished = () => {
+    // Called when simulation finishes naturally - just update button state
+    setIsRunning(false)
   }
 
   const resetSimulation = () => {
-    stopSimulation()
-    setMessages([])
+    setSimulationKey(null)
+    setIsRunning(false)
     setSseLog('')
     setSelectedSse('')
   }
@@ -169,7 +275,7 @@ function SimulatorContent({}: SimulatorContentProps) {
                       role="combobox"
                       aria-expanded={open}
                       className="w-[300px] justify-between"
-                      disabled={isLoading}
+                      disabled={isRunning}
                     >
                       {selectedSse ? SSE_LOGS.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
                       <ChevronsUpDown className="opacity-50" />
@@ -201,31 +307,33 @@ function SimulatorContent({}: SimulatorContentProps) {
                 value={sseLog}
                 onChange={(e) => setSseLog(e.target.value)}
                 className="min-h-[200px] font-mono text-xs"
-                disabled={isLoading}
+                disabled={isRunning}
               />
 
               <div className="flex gap-2">
                 <Button
-                  onClick={startSimulation}
-                  disabled={isLoading || !sseLog.trim()}
+                  onClick={isRunning ? stopSimulation : startSimulation}
+                  disabled={!sseLog.trim()}
                   className="flex items-center gap-2"
                 >
-                  <Play size={16} />
-                  {isLoading ? 'Running...' : 'Run'}
+                  {isRunning ? (
+                    <>
+                      <Square size={16} />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Play size={16} />
+                      Run
+                    </>
+                  )}
                 </Button>
-
-                {isLoading && (
-                  <Button onClick={stopSimulation} variant="destructive" className="flex items-center gap-2">
-                    <Square size={16} />
-                    Stop
-                  </Button>
-                )}
 
                 <Button
                   onClick={resetSimulation}
                   variant="outline"
                   className="flex items-center gap-2"
-                  disabled={isLoading}
+                  disabled={isRunning}
                 >
                   <RotateCcw size={16} />
                   Clear
@@ -234,50 +342,14 @@ function SimulatorContent({}: SimulatorContentProps) {
             </CardContent>
           </Card>
 
-          {/* Bottom Grid: Chat Output and JSON Debug */}
-          {messages.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Simulated Chat Output */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Simulated Chat Output</CardTitle>
-                  <CardDescription>This shows the UIMessage as it's being built from the SSE log.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="border rounded-md p-4">
-                    {messages
-                      .filter((msg) => msg.role === 'assistant')
-                      .map((message) => (
-                        <AssistantMessage
-                          key={message.id}
-                          message={message as any}
-                          isStreaming={isLoading && messages[messages.length - 1]?.id === message.id}
-                        />
-                      ))}
-                    {messages.length === 0 && <div className="text-muted-foreground">No assistant response yet...</div>}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Real-time JSON Debug */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Parsed Message (Real-time)</CardTitle>
-                  <CardDescription>JSON structure updates in real-time as the SSE log is processed.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <pre className="p-3 bg-muted rounded text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
-                    {messages.length > 0
-                      ? JSON.stringify(
-                          messages.filter((msg) => msg.role === 'assistant'),
-                          null,
-                          2,
-                        )
-                      : 'No message data yet...'}
-                  </pre>
-                </CardContent>
-              </Card>
-            </div>
+          {/* Simulation Output */}
+          {simulationKey && (
+            <SimulatorChat
+              key={simulationKey}
+              sseLog={sseLog}
+              onStop={onSimulationFinished}
+              stopRef={stopFunctionRef}
+            />
           )}
         </div>
       </div>

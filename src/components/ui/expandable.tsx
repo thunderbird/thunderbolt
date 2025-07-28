@@ -64,9 +64,9 @@ export const Expandable = ({
               'disabled:pointer-events-none disabled:opacity-50',
             )}
           >
-            <div className={cn('flex items-center', icon ? 'gap-2' : '')}>
+            <div className={cn('flex items-center overflow-hidden', icon ? 'gap-2' : '')}>
               {icon}
-              <span className="text-sm font-medium text-muted-foreground">{title}</span>
+              <span className="text-sm font-medium text-muted-foreground overflow-hidden">{title}</span>
             </div>
             <ChevronRight
               className={cn('h-4 w-4 text-gray-500 transition-transform duration-200', isOpen && 'rotate-90')}

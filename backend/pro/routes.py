@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from .context import SimpleContext
 from .duckduckgo import DuckDuckGoSearcher
+from .exa import ExaSearcher
 from .models import (
     FetchContentRequest,
     FetchContentResponse,
@@ -20,7 +21,8 @@ from .openmeteo import OpenMeteoWeather
 from .web_content_fetcher import WebContentFetcher
 
 # Initialize the tool clients
-searcher = DuckDuckGoSearcher()
+ddg_searcher = DuckDuckGoSearcher()
+exa_searcher = ExaSearcher()
 fetcher = WebContentFetcher()
 weather_client = OpenMeteoWeather()
 
@@ -29,13 +31,32 @@ def create_pro_tools_app() -> FastAPI:
     """Create FastAPI app with pro tools endpoints"""
     app = FastAPI(title="Thunderbolt Pro Tools", version="1.0.0")
 
-    @app.post("/search", response_model=SearchResponse)
+    @app.post("/search-duckduckgo", response_model=SearchResponse)
     async def search_endpoint(request: SearchRequest) -> SearchResponse:
         """Search DuckDuckGo and return formatted results. This only returns links, not content. You should use the fetch-content endpoint to get the content of the links."""
         try:
             ctx = SimpleContext()
-            results = await searcher.search(request.query, ctx, request.max_results)
-            formatted = searcher.format_results_for_llm(results)
+            results = await ddg_searcher.search(request.query, ctx, request.max_results)
+            formatted = ddg_searcher.format_results_for_llm(results)
+
+            return SearchResponse(results=formatted, success=True)
+        except Exception as e:
+            return SearchResponse(results="", success=False, error=str(e))
+
+    @app.post("/search-exa", response_model=SearchResponse)
+    async def search_exa_endpoint(request: SearchRequest) -> SearchResponse:
+        """Search using Exa AI and return formatted results with better relevance and content extraction."""
+        if not exa_searcher:
+            return SearchResponse(
+                results="",
+                success=False,
+                error="Exa search is not configured. Please set the EXA_API_KEY environment variable.",
+            )
+
+        try:
+            ctx = SimpleContext()
+            results = await exa_searcher.search(request.query, ctx, request.max_results)
+            formatted = exa_searcher.format_results_for_llm(results)
 
             return SearchResponse(results=formatted, success=True)
         except Exception as e:

@@ -42,11 +42,11 @@ export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 /**
  * Search DuckDuckGo and return formatted results
  */
-export const search = async (params: SearchParams): Promise<string> => {
+export const searchDuckDuckGo = async (params: SearchParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
-      .post(`${cloudUrl}/pro/search`, {
+      .post(`${cloudUrl}/pro/search-duckduckgo`, {
         json: {
           query: params.query,
           max_results: params.max_results || 10,
@@ -54,6 +54,31 @@ export const search = async (params: SearchParams): Promise<string> => {
       })
       .json<{ results: string; success: boolean; error?: string }>()
 
+    if (!response.success) {
+      throw new Error(response.error || 'Search failed')
+    }
+
+    return response.results
+  } catch (error) {
+    console.error('Search error:', error)
+    throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Search using Exa AI and return formatted results
+ */
+export const searchExa = async (params: SearchParams): Promise<string> => {
+  try {
+    const cloudUrl = await getCloudUrl()
+    const response = await ky
+      .post(`${cloudUrl}/pro/search-exa`, {
+        json: {
+          query: params.query,
+          max_results: params.max_results || 10,
+        },
+      })
+      .json<{ results: string; success: boolean; error?: string }>()
     if (!response.success) {
       throw new Error(response.error || 'Search failed')
     }
@@ -171,11 +196,18 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
  */
 export const configs: ToolConfig[] = [
   {
-    name: 'search',
-    description: 'Search the web.',
-    verb: 'searching',
+    name: 'search_exa',
+    description: 'Search the web using Exa AI.',
+    verb: 'searching with Exa',
     parameters: searchSchema,
-    execute: search,
+    execute: searchExa,
+  },
+  {
+    name: 'search_ddg',
+    description: 'Search the web using DuckDuckGo.',
+    verb: 'searching with DuckDuckGo',
+    parameters: searchSchema,
+    execute: searchDuckDuckGo,
   },
   {
     name: 'fetch_content',

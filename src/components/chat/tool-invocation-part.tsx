@@ -62,10 +62,10 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
 
     if (typeof results === 'object') {
       // Handle error results
-      if ('error' in results) {
+      if ('error' in results && results.error) {
         return (
           <div className="bg-red-50 dark:bg-red-950/30 rounded-md">
-            <p className="text-red-700 dark:text-red-300 text-sm">Error: {results.error}</p>
+            <p className="text-red-700 dark:text-red-300 text-sm">Error: {String(results.error)}</p>
           </div>
         )
       }

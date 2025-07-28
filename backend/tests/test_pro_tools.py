@@ -19,7 +19,13 @@ class TestProToolsEndpoints:
 
     def test_search_endpoint_exists(self, client: TestClient) -> None:
         """Test that the search endpoint exists and returns proper error for invalid request."""
-        response = client.post("/pro/search", json={})
+        response = client.post("/pro/search-duckduckgo", json={})
+        # Should get validation error for missing query field
+        assert response.status_code == 422
+
+    def test_search_exa_endpoint_exists(self, client: TestClient) -> None:
+        """Test that the search-exa endpoint exists and returns proper error for invalid request."""
+        response = client.post("/pro/search-exa", json={})
         # Should get validation error for missing query field
         assert response.status_code == 422
 
@@ -66,7 +72,7 @@ class TestProToolsEndpoints:
             mock_format.return_value = "Formatted results"
 
             response = client.post(
-                "/pro/search", json={"query": "test query", "max_results": 5}
+                "/pro/search-duckduckgo", json={"query": "test query", "max_results": 5}
             )
 
             assert response.status_code == 200

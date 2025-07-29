@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     fireworks_api_key: str = ""  # Make it optional with empty string default
     flower_mgmt_key: str = ""  # Flower management API key
     flower_proj_id: str = ""  # Flower project ID
+    exa_api_key: str = ""  # Exa AI API key
 
     # OAuth Settings
     google_client_id: str = ""  # Google OAuth client ID

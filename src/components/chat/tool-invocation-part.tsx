@@ -1,4 +1,5 @@
-import { getToolMetadata } from '@/lib/tool-metadata'
+import { getToolMetadata, getToolMetadataSync } from '@/lib/tool-metadata'
+import { useQuery } from '@tanstack/react-query'
 import type { ToolInvocationUIPart } from 'ai'
 import { Check, Loader2, X } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
@@ -25,8 +26,19 @@ function getToolIcon(status: 'running' | 'complete' | 'error') {
 }
 
 export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
-  // Get metadata using function-based approach (synchronous)
-  const metadata = getToolMetadata(part.toolInvocation.toolName, part.toolInvocation.args)
+  const { toolName, args } = part.toolInvocation
+
+  // Use react-query to fetch metadata with proper caching
+  const { data: metadata } = useQuery({
+    queryKey: ['tool-metadata', toolName, JSON.stringify(args)],
+    queryFn: async () => {
+      const result = await getToolMetadata(toolName, args)
+      return result
+    },
+    // Use sync version as placeholder data for immediate rendering
+    placeholderData: () => getToolMetadataSync(toolName, args),
+    staleTime: Infinity, // Tool metadata doesn't change during runtime
+  })
 
   // Determine status based on the tool invocation state
   const toolInvocation = part.toolInvocation
@@ -34,7 +46,7 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
   const hasError = 'error' in toolInvocation
   const status: 'running' | 'complete' | 'error' = hasError ? 'error' : hasResult ? 'complete' : 'running'
 
-  const renderResults = (results: any) => {
+  const renderResults = (results: unknown) => {
     if (!results) return null
 
     // Handle different result types
@@ -50,10 +62,10 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
 
     if (typeof results === 'object') {
       // Handle error results
-      if ('error' in results) {
+      if ('error' in results && results.error) {
         return (
           <div className="bg-red-50 dark:bg-red-950/30 rounded-md">
-            <p className="text-red-700 dark:text-red-300 text-sm">Error: {results.error}</p>
+            <p className="text-red-700 dark:text-red-300 text-sm">Error: {String(results.error)}</p>
           </div>
         )
       }
@@ -92,23 +104,27 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
   // Get the result data based on the tool invocation
   const getResultData = () => {
     if ('result' in toolInvocation) {
-      return (toolInvocation as any).result
+      return toolInvocation.result
     }
     if ('error' in toolInvocation) {
-      return { error: (toolInvocation as any).error || 'An error occurred' }
+      return { error: toolInvocation.error || 'An error occurred' }
     }
     return null
   }
 
   const resultData = getResultData()
 
-  const titleNode = (
-    <div className="flex items-center gap-3 min-w-0">
-      <span className="font-medium text-sm truncate text-muted-foreground">{metadata.displayName}</span>
+  const titleNode = metadata ? (
+    <span className="flex items-center gap-2 overflow-hidden">
+      <span className="flex-shrink-0">{metadata.displayName}</span>
       {status === 'running' && (
-        <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse">{metadata.loadingMessage}</span>
+        <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
+          {metadata.loadingMessage}
+        </span>
       )}
-    </div>
+    </span>
+  ) : (
+    'Loading...'
   )
 
   return (

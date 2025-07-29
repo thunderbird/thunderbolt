@@ -5,8 +5,8 @@ import type {
   DraftEmailParams,
   GetEmailParams,
   SearchEmailsParams,
-} from '../tools'
-import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails } from '../tools'
+} from './tools'
+import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails } from './tools'
 
 // Custom error type for HTTP error mocking
 interface HTTPError extends Error {

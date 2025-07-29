@@ -22,7 +22,9 @@ def test_search_exa_endpoint_exists(client):
 
 def test_search_exa_without_api_key(client):
     """Test that search-exa returns proper error when API key is not configured"""
-    response = client.post("/pro/search-exa", json={"query": "test search", "max_results": 5})
+    response = client.post(
+        "/pro/search-exa", json={"query": "test search", "max_results": 5}
+    )
     assert response.status_code == 200
 
     data = response.json()

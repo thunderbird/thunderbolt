@@ -22,7 +22,11 @@ from .web_content_fetcher import WebContentFetcher
 
 # Initialize the tool clients
 ddg_searcher = DuckDuckGoSearcher()
-exa_searcher = ExaSearcher()
+try:
+    exa_searcher = ExaSearcher()
+except ValueError:
+    # Exa API key not configured
+    exa_searcher = None
 fetcher = WebContentFetcher()
 weather_client = OpenMeteoWeather()
 

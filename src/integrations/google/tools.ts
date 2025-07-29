@@ -1,261 +1,652 @@
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
-import { draftToolConfigs } from './drafts'
-import { labelToolConfigs } from './labels'
-import { messageToolConfigs } from './messages'
-import { settingToolConfigs } from './settings'
 import { ensureValidGoogleToken, getGoogleCredentials } from './utils'
-import { watchToolConfigs } from './watch'
 
-/**
- * Schemas
- */
-export const listThreadsSchema = z
+// =============================================================================
+// SCHEMAS
+// =============================================================================
+
+export const checkInboxSchema = z
   .object({
-    maxResults: z.number().describe('Maximum number of threads to return'),
-    pageToken: z.string().describe('Page token to retrieve a specific page of results'),
-    q: z.string().describe('Only return threads matching the specified query'),
-    labelIds: z.array(z.string()).describe('Only return threads with labels that match all of the specified label IDs'),
-    includeSpamTrash: z.boolean().describe('Include threads from SPAM and TRASH in the results'),
-    includeBodyHtml: z.boolean().describe('Whether to include the parsed HTML in the return for each body'),
+    label: z
+      .string()
+      .optional()
+      .default('INBOX')
+      .describe('Gmail label/folder to check (INBOX, SENT, DRAFTS, or custom labels)'),
+    max_results: z
+      .number()
+      .optional()
+      .default(20)
+      .describe('Maximum number of conversations to return (default: 20, max: 50)'),
+    include_spam_trash: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Include conversations from SPAM and TRASH folders'),
   })
   .strict()
 
-export const getThreadSchema = z
+export const searchEmailsSchema = z
   .object({
-    id: z.string().describe('The ID of the thread to retrieve'),
-    includeBodyHtml: z.boolean().describe('Whether to include the parsed HTML in the return for each body'),
+    query: z
+      .string()
+      .describe('Gmail search query (supports Gmail search syntax like "from:example.com subject:important")'),
+    max_results: z
+      .number()
+      .optional()
+      .default(20)
+      .describe('Maximum number of emails to return (default: 20, max: 50)'),
   })
   .strict()
 
-export const modifyThreadSchema = z
+export const getEmailSchema = z
   .object({
-    id: z.string().describe('Thread ID'),
-    addLabelIds: z.array(z.string()),
-    removeLabelIds: z.array(z.string()),
+    id: z.string().describe('The email message ID to retrieve'),
   })
   .strict()
 
-export const simpleThreadIdSchema = z.object({ id: z.string().describe('Thread ID') }).strict()
+export const draftEmailSchema = z
+  .object({
+    to: z.union([z.string(), z.array(z.string())]).describe('Recipient email address(es)'),
+    subject: z.string().describe('Email subject'),
+    body: z.string().describe('Email body content (plain text or HTML)'),
+    cc: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe('CC recipients (optional)'),
+    bcc: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe('BCC recipients (optional)'),
+    reply_to_id: z.string().optional().describe('ID of email to reply to (optional)'),
+    reply_all: z.boolean().optional().default(false).describe('Whether to reply to all recipients (default: false)'),
+  })
+  .strict()
 
-export type ListThreadsParams = z.infer<typeof listThreadsSchema>
-export type GetThreadParams = z.infer<typeof getThreadSchema>
-export type ModifyThreadParams = z.infer<typeof modifyThreadSchema>
-export type SimpleThreadIdParams = z.infer<typeof simpleThreadIdSchema>
+export const checkCalendarSchema = z
+  .object({
+    days_ahead: z.number().optional().default(7).describe('Number of days ahead to check (default: 7 days)'),
+    calendar_id: z.string().optional().default('primary').describe('Calendar ID to check (default: primary calendar)'),
+  })
+  .strict()
 
-// ---------------------------------------------------------------------------
-// Google Mail API minimal types
-// ---------------------------------------------------------------------------
+// =============================================================================
+// TYPES
+// =============================================================================
 
-type GoogleThreadStub = {
+export type CheckInboxParams = z.infer<typeof checkInboxSchema>
+export type SearchEmailsParams = z.infer<typeof searchEmailsSchema>
+export type GetEmailParams = z.infer<typeof getEmailSchema>
+export type DraftEmailParams = z.infer<typeof draftEmailSchema>
+export type CheckCalendarParams = z.infer<typeof checkCalendarSchema>
+
+export type EmailSummary = {
   id: string
-  snippet?: string
-  historyId?: string
+  thread_id: string
+  from: string
+  subject: string
+  snippet: string
+  date: string
+  is_unread: boolean
+  has_attachments: boolean
+  labels: string[]
 }
 
-export type GoogleListThreadsResponse = {
-  threads?: GoogleThreadStub[]
-  nextPageToken?: string
-  resultSizeEstimate?: number
+export type ConversationSummary = {
+  thread_id: string
+  message_count: number
+  from: string
+  subject: string
+  snippet: string
+  latest_date: string
+  is_unread: boolean
+  has_attachments: boolean
+  labels: string[]
 }
 
-type GoogleMessagePayload = {
-  mimeType?: string
-  body?: { data?: string }
-  parts?: GoogleMessagePayload[]
+export type EmailDetails = {
+  id: string
+  thread_id: string
+  from: { name: string; email: string }
+  to: Array<{ name: string; email: string }>
+  cc?: Array<{ name: string; email: string }>
+  subject: string
+  date: string
+  body_text: string
+  body_html?: string
+  attachments: Array<{
+    id: string
+    filename: string
+    mime_type: string
+    size_bytes: number
+  }>
+  labels: string[]
+  is_unread: boolean
 }
 
-type GoogleMessage = {
-  id?: string
-  payload?: GoogleMessagePayload
-  [key: string]: unknown
+export type CalendarEvent = {
+  id: string
+  summary: string
+  start: string
+  end: string
+  all_day: boolean
+  location?: string
+  description?: string
+  attendees_count?: number
+  meeting_link?: string
+  status: 'confirmed' | 'tentative' | 'cancelled'
 }
 
-export type GoogleThreadResponse = {
-  id?: string
-  messages?: GoogleMessage[]
-  [key: string]: unknown
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+/**
+ * Parse email address from Gmail API format
+ */
+const parseEmailAddress = (emailStr: string): { name: string; email: string } => {
+  if (!emailStr) return { name: '', email: '' }
+
+  // Handle formats like "John Doe <john@example.com>" or just "john@example.com"
+  const match = emailStr.match(/^(.+?)\s*<(.+)>$/)
+  if (match) {
+    return { name: match[1].trim(), email: match[2].trim() }
+  }
+  return { name: '', email: emailStr.trim() }
 }
 
 /**
- * Public API
+ * Extract header value from Gmail message
  */
-export const listThreads = async (params: ListThreadsParams) => {
+const getHeader = (message: any, name: string): string => {
+  if (!message?.payload?.headers) return ''
+  const header = message.payload.headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())
+  return header?.value || ''
+}
+
+/**
+ * Extract body from Gmail message payload
+ */
+const extractBody = (payload: any, mimeType: string): string => {
+  if (!payload) return ''
+
+  if (payload.mimeType === mimeType && payload.body?.data) {
+    // Use browser-compatible base64 decoding instead of Node.js Buffer
+    try {
+      return decodeURIComponent(escape(atob(payload.body.data)))
+    } catch (error) {
+      console.warn('Failed to decode email body:', error)
+      return ''
+    }
+  }
+
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      const body = extractBody(part, mimeType)
+      if (body) return body
+    }
+  }
+
+  return ''
+}
+
+/**
+ * Truncate text to reasonable length for LLMs
+ */
+const truncateText = (text: string, maxLength = 4000): string => {
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...[truncated]'
+}
+
+/**
+ * Build raw email message for drafts
+ */
+const buildRawMessage = (params: DraftEmailParams): string => {
+  const parts: string[] = []
+
+  parts.push('From: me')
+
+  // Handle recipients
+  const toAddresses = Array.isArray(params.to) ? params.to.join(', ') : params.to
+  parts.push(`To: ${toAddresses}`)
+
+  if (params.cc) {
+    const ccAddresses = Array.isArray(params.cc) ? params.cc.join(', ') : params.cc
+    parts.push(`Cc: ${ccAddresses}`)
+  }
+
+  if (params.bcc) {
+    const bccAddresses = Array.isArray(params.bcc) ? params.bcc.join(', ') : params.bcc
+    parts.push(`Bcc: ${bccAddresses}`)
+  }
+
+  parts.push(`Subject: ${params.subject}`)
+  parts.push('MIME-Version: 1.0')
+
+  // Detect if body contains HTML
+  const isHtml = params.body.includes('<') && params.body.includes('>')
+  if (isHtml) {
+    parts.push('Content-Type: text/html; charset="UTF-8"')
+  } else {
+    parts.push('Content-Type: text/plain; charset="UTF-8"')
+  }
+
+  parts.push('')
+
+  // Convert various line break formats to proper email line breaks
+  const processedBody = params.body
+    .replace(/\\n\\n/g, '\r\n\r\n') // Literal \n\n strings
+    .replace(/\\n/g, '\r\n') // Literal \n strings
+    .replace(/\n\n/g, '\r\n\r\n') // Actual double newlines
+    .replace(/\n/g, '\r\n') // Actual single newlines
+
+  parts.push(processedBody)
+
+  // Use browser-compatible base64 encoding instead of Node.js Buffer
+  const emailContent = parts.join('\r\n')
+  return btoa(unescape(encodeURIComponent(emailContent)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+}
+
+// =============================================================================
+// MAIN FUNCTIONS
+// =============================================================================
+
+/**
+ * Check inbox for recent email threads (conversations) with lightweight summaries
+ */
+export const checkInbox = async (params: CheckInboxParams) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
   const searchParams = new URLSearchParams()
-  if (params.maxResults) searchParams.set('maxResults', params.maxResults.toString())
-  if (
-    params.pageToken &&
-    params.pageToken.trim() !== '' &&
-    params.pageToken !== 'None' &&
-    params.pageToken !== 'null'
-  ) {
-    searchParams.set('pageToken', params.pageToken)
+  searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
+  searchParams.set('labelIds', params.label)
+  if (params.include_spam_trash) {
+    searchParams.set('includeSpamTrash', 'true')
   }
-  if (params.q) searchParams.set('q', params.q)
-  if (params.labelIds?.length) params.labelIds.forEach((id) => searchParams.append('labelIds', id))
-  if (params.includeSpamTrash !== undefined) searchParams.set('includeSpamTrash', String(params.includeSpamTrash))
 
-  const response = await ky
+  // Get list of thread IDs instead of individual messages
+  const listResponse = await ky
     .get('https://www.googleapis.com/gmail/v1/users/me/threads', {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    .json<GoogleListThreadsResponse>()
+    .json<{ threads?: Array<{ id: string; snippet?: string; historyId?: string }>; resultSizeEstimate?: number }>()
 
-  if (params.includeBodyHtml && response.threads) {
-    const threadsWithDetails = await Promise.all(
-      response.threads.map((thread) => getThread({ id: thread.id, includeBodyHtml: true })),
-    )
-    return { ...response, threads: threadsWithDetails }
+  if (!listResponse.threads?.length) {
+    return {
+      conversations: [],
+      total_count: 0,
+      has_more: false,
+    }
   }
 
-  return response
+  // Get thread details in parallel
+  const threadDetails = await Promise.all(
+    listResponse.threads.map(async (thread) => {
+      const threadResponse = await ky
+        .get(`https://www.googleapis.com/gmail/v1/users/me/threads/${thread.id}`, {
+          searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        .json<any>()
+
+      // Get the most recent message in the thread for display info
+      const latestMessage = threadResponse.messages?.[threadResponse.messages.length - 1]
+      if (!latestMessage) {
+        return null
+      }
+
+      // Check if thread has unread messages
+      const hasUnread = threadResponse.messages?.some((msg: any) => msg.labelIds?.includes('UNREAD')) || false
+
+      // Check if thread has attachments
+      const hasAttachments =
+        threadResponse.messages?.some((msg: any) =>
+          msg.payload?.parts?.some((part: any) => part.filename && part.filename.length > 0),
+        ) || false
+
+      // Get labels from the latest message
+      const labels = latestMessage.labelIds || []
+
+      return {
+        thread_id: thread.id,
+        message_count: threadResponse.messages?.length || 1,
+        from: getHeader(latestMessage, 'From'),
+        subject: getHeader(latestMessage, 'Subject'),
+        snippet: thread.snippet || '',
+        latest_date: getHeader(latestMessage, 'Date'),
+        is_unread: hasUnread,
+        has_attachments: hasAttachments,
+        labels,
+      } as ConversationSummary
+    }),
+  )
+
+  // Filter out any null results
+  const validThreadDetails = threadDetails.filter(Boolean) as ConversationSummary[]
+
+  return {
+    conversations: validThreadDetails,
+    total_count: listResponse.resultSizeEstimate || validThreadDetails.length,
+    has_more: (listResponse.resultSizeEstimate || 0) > validThreadDetails.length,
+  }
 }
 
-export const getThread = async (params: GetThreadParams) => {
+/**
+ * Search emails using Gmail query syntax
+ */
+export const searchEmails = async (params: SearchEmailsParams) => {
+  const credentials = await getGoogleCredentials()
+  const accessToken = await ensureValidGoogleToken(credentials)
+
+  const searchParams = new URLSearchParams()
+  searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
+  searchParams.set('q', params.query)
+
+  // Get list of message IDs
+  const listResponse = await ky
+    .get('https://www.googleapis.com/gmail/v1/users/me/messages', {
+      searchParams,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    .json<{ messages?: Array<{ id: string; threadId: string }>; resultSizeEstimate?: number }>()
+
+  if (!listResponse.messages?.length) {
+    return {
+      messages: [],
+      total_count: 0,
+      has_more: false,
+    }
+  }
+
+  // Get message details in parallel (metadata only for performance)
+  const messageDetails = await Promise.all(
+    listResponse.messages.map(async (msg) => {
+      const detailResponse = await ky
+        .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+          searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        .json<any>()
+
+      return {
+        id: msg.id,
+        thread_id: msg.threadId,
+        from: getHeader(detailResponse, 'From'),
+        subject: getHeader(detailResponse, 'Subject'),
+        snippet: detailResponse.snippet || '',
+        date: getHeader(detailResponse, 'Date'),
+        is_unread: detailResponse.labelIds?.includes('UNREAD') || false,
+        has_attachments:
+          detailResponse.payload?.parts?.some((part: any) => part.filename && part.filename.length > 0) || false,
+        labels: detailResponse.labelIds || [],
+      } as EmailSummary
+    }),
+  )
+
+  return {
+    messages: messageDetails,
+    total_count: listResponse.resultSizeEstimate || messageDetails.length,
+    has_more: (listResponse.resultSizeEstimate || 0) > messageDetails.length,
+  }
+}
+
+/**
+ * Get full details of a specific email
+ */
+export const getEmail = async (params: GetEmailParams) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
   const response = await ky
-    .get(`https://www.googleapis.com/gmail/v1/users/me/threads/${params.id}`, {
+    .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.id}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    .json<GoogleThreadResponse>()
+    .json<any>()
 
-  if (params.includeBodyHtml && response.messages) {
-    response.messages = response.messages.map((m) => {
-      const processed = { ...m } as GoogleMessage & { bodyHtml?: string | null; bodyText?: string | null }
-      if (m.payload) {
-        processed.bodyHtml = extractBody(m.payload, 'text/html')
-        processed.bodyText = extractBody(m.payload, 'text/plain')
+  // Extract email addresses
+  const fromHeader = getHeader(response, 'From')
+  const toHeader = getHeader(response, 'To')
+  const ccHeader = getHeader(response, 'Cc')
+
+  const from = parseEmailAddress(fromHeader)
+  const to = toHeader
+    .split(',')
+    .map((addr) => parseEmailAddress(addr.trim()))
+    .filter((addr) => addr.email)
+  const cc = ccHeader
+    ? ccHeader
+        .split(',')
+        .map((addr) => parseEmailAddress(addr.trim()))
+        .filter((addr) => addr.email)
+    : undefined
+
+  // Extract body content
+  const bodyText = extractBody(response.payload, 'text/plain')
+  const bodyHtml = extractBody(response.payload, 'text/html')
+
+  // Extract attachments
+  const attachments: Array<{
+    id: string
+    filename: string
+    mime_type: string
+    size_bytes: number
+  }> = []
+
+  const extractAttachments = (parts: any[]) => {
+    for (const part of parts || []) {
+      if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
+        attachments.push({
+          id: part.body.attachmentId,
+          filename: part.filename,
+          mime_type: part.mimeType || 'application/octet-stream',
+          size_bytes: part.body.size || 0,
+        })
       }
-      return processed
-    })
-  }
-
-  return response as GoogleThreadResponse & {
-    messages?: (GoogleMessage & { bodyHtml?: string | null; bodyText?: string | null })[]
-  }
-}
-
-/** Recursively extract part body */
-const extractBody = (
-  payload: { mimeType?: string; body?: { data?: string }; parts?: any[] },
-  type: string,
-): string | null => {
-  if (payload.mimeType === type && payload.body?.data) {
-    return Buffer.from(payload.body.data, 'base64').toString('utf-8')
-  }
-  if (payload.parts) {
-    for (const p of payload.parts) {
-      const body = extractBody(p, type)
-      if (body) return body
+      if (part.parts) {
+        extractAttachments(part.parts)
+      }
     }
   }
-  return null
+
+  if (response.payload?.parts) {
+    extractAttachments(response.payload.parts)
+  }
+
+  return {
+    id: params.id,
+    thread_id: response.threadId || '',
+    from,
+    to,
+    cc,
+    subject: getHeader(response, 'Subject'),
+    date: getHeader(response, 'Date'),
+    body_text: truncateText(bodyText),
+    body_html: bodyHtml ? truncateText(bodyHtml) : undefined,
+    attachments,
+    labels: response.labelIds || [],
+    is_unread: response.labelIds?.includes('UNREAD') || false,
+  } as EmailDetails
 }
 
-// ----------------- Thread mutations -----------------
-
-export const modifyThread = async (params: ModifyThreadParams) => {
+/**
+ * Draft an email (ready to send later)
+ */
+export const draftEmail = async (params: DraftEmailParams) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
-  return await ky
-    .post(`https://www.googleapis.com/gmail/v1/users/me/threads/${params.id}/modify`, {
-      json: {
-        addLabelIds: params.addLabelIds,
-        removeLabelIds: params.removeLabelIds,
-      },
+  const raw = buildRawMessage(params)
+
+  const url = 'https://www.googleapis.com/gmail/v1/users/me/drafts'
+
+  // If replying to an email, we need to set up threading
+  const requestBody: any = {
+    message: {
+      raw,
+    },
+  }
+
+  if (params.reply_to_id) {
+    // Get the original message to extract thread ID
+    const originalMessage = await ky
+      .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.reply_to_id}`, {
+        searchParams: { format: 'metadata', metadataHeaders: 'Message-ID,References' },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .json<any>()
+
+    if (originalMessage.threadId) {
+      requestBody.message.threadId = originalMessage.threadId
+    }
+  }
+
+  const response = await ky
+    .post(url, {
+      json: requestBody,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    .json<GoogleThreadResponse>()
+    .json<any>()
+
+  return {
+    draft_id: response.id,
+    thread_id: response.message?.threadId,
+    created_at: new Date().toISOString(),
+  }
 }
 
-export const deleteThread = async (params: SimpleThreadIdParams) => {
+/**
+ * Check calendar events for upcoming days
+ */
+export const checkCalendar = async (params: CheckCalendarParams) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
-  await ky.delete(`https://www.googleapis.com/gmail/v1/users/me/threads/${params.id}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  return { status: 'deleted' }
-}
 
-export const trashThread = async (params: SimpleThreadIdParams) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
-  return await ky
-    .post(`https://www.googleapis.com/gmail/v1/users/me/threads/${params.id}/trash`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  const now = new Date()
+  const futureDate = new Date()
+  futureDate.setDate(now.getDate() + params.days_ahead)
+
+  const searchParams = new URLSearchParams()
+  searchParams.set('calendarId', params.calendar_id)
+  searchParams.set('timeMin', now.toISOString())
+  searchParams.set('timeMax', futureDate.toISOString())
+  searchParams.set('singleEvents', 'true')
+  searchParams.set('orderBy', 'startTime')
+  searchParams.set('maxResults', '50')
+
+  try {
+    const response = await ky
+      .get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        searchParams,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .json<any>()
+
+    const events: CalendarEvent[] = (response.items || []).map((event: any) => {
+      const start = event.start?.dateTime || event.start?.date
+      const end = event.end?.dateTime || event.end?.date
+      const isAllDay = !event.start?.dateTime
+
+      // Extract meeting link
+      let meetingLink: string | undefined
+      if (event.hangoutLink) {
+        meetingLink = event.hangoutLink
+      } else if (event.conferenceData?.entryPoints?.length) {
+        meetingLink = event.conferenceData.entryPoints[0].uri
+      }
+
+      return {
+        id: event.id,
+        summary: event.summary || 'No title',
+        start,
+        end,
+        all_day: isAllDay,
+        location: event.location,
+        description: event.description ? truncateText(event.description, 200) : undefined,
+        attendees_count: event.attendees?.length || 0,
+        meeting_link: meetingLink,
+        status: event.status === 'confirmed' ? 'confirmed' : event.status === 'tentative' ? 'tentative' : 'cancelled',
+      } as CalendarEvent
     })
-    .json<GoogleThreadResponse>()
+
+    return {
+      events,
+      timezone: response.timeZone || 'UTC',
+    }
+  } catch (error: any) {
+    // Calendar API might not be enabled or accessible
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      return {
+        events: [],
+        timezone: 'UTC',
+        error: 'Calendar access not available. Please enable Google Calendar API access.',
+      }
+    }
+    throw error
+  }
 }
 
-export const untrashThread = async (params: SimpleThreadIdParams) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
-  return await ky
-    .post(`https://www.googleapis.com/gmail/v1/users/me/threads/${params.id}/untrash`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    .json<GoogleThreadResponse>()
-}
+// =============================================================================
+// TOOL CONFIGURATIONS
+// =============================================================================
 
-export const threadToolConfigs: ToolConfig[] = [
-  {
-    name: 'google_list_threads',
-    description: 'List Google threads with optional filtering',
-    verb: 'Listing Google threads',
-    parameters: listThreadsSchema,
-    execute: listThreads,
-  },
-  {
-    name: 'google_get_thread',
-    description: 'Get a specific Google thread by ID',
-    verb: 'Getting Google thread',
-    parameters: getThreadSchema,
-    execute: getThread,
-  },
-  {
-    name: 'google_modify_thread',
-    description: 'Add or remove labels on a Gmail thread',
-    verb: 'Modifying Gmail thread',
-    parameters: modifyThreadSchema,
-    execute: modifyThread,
-  },
-  {
-    name: 'google_delete_thread',
-    description: 'Permanently delete a Gmail thread',
-    verb: 'Deleting Gmail thread',
-    parameters: simpleThreadIdSchema,
-    execute: deleteThread,
-  },
-  {
-    name: 'google_trash_thread',
-    description: 'Move a Gmail thread to Trash',
-    verb: 'Trashing Gmail thread',
-    parameters: simpleThreadIdSchema,
-    execute: trashThread,
-  },
-  {
-    name: 'google_untrash_thread',
-    description: 'Move a Gmail thread out of Trash',
-    verb: 'Untrashing Gmail thread',
-    parameters: simpleThreadIdSchema,
-    execute: untrashThread,
-  },
-]
-
-// Combine with message tools
+/**
+ * Google Tools Configuration
+ *
+ * This file exports 5 high-level, LLM-friendly Google tools that replace
+ * the previous 70+ low-level API tools. The new tools provide:
+ *
+ * 1. google_check_inbox - Check Gmail inbox/folders with lightweight conversation summaries
+ * 2. google_search_emails - Search emails using Gmail query syntax
+ * 3. google_get_email - Get full details of a specific email
+ * 4. google_draft_email - Create email drafts (including replies)
+ * 5. google_check_calendar - Check Google Calendar for upcoming events
+ *
+ * Benefits:
+ * - Reduced cognitive load for LLMs (5 vs 70+ tools)
+ * - Smaller, more manageable response payloads
+ * - Higher-level abstractions that accomplish common tasks in single calls
+ * - Read-only operations (except drafting) for safer usage
+ */
 export const configs: ToolConfig[] = [
-  ...threadToolConfigs,
-  ...messageToolConfigs,
-  ...labelToolConfigs,
-  ...draftToolConfigs,
-  ...settingToolConfigs,
-  ...watchToolConfigs,
+  {
+    name: 'google_check_inbox',
+    description:
+      'Check Gmail inbox or other folders for recent email conversations (threads) with lightweight summaries',
+    verb: 'Checking Gmail inbox',
+    parameters: checkInboxSchema,
+    execute: checkInbox,
+  },
+  {
+    name: 'google_search_emails',
+    description: 'Search all Gmail messages using Gmail query syntax (e.g. "from:example.com subject:important")',
+    verb: 'Searching Gmail messages',
+    parameters: searchEmailsSchema,
+    execute: searchEmails,
+  },
+  {
+    name: 'google_get_email',
+    description: 'Get full details of a specific Gmail message including body content and attachments',
+    verb: 'Getting Gmail message details',
+    parameters: getEmailSchema,
+    execute: getEmail,
+  },
+  {
+    name: 'google_draft_email',
+    description: 'Create a draft email (can be a new email or reply to existing). Draft will be saved but not sent.',
+    verb: 'Creating Gmail draft',
+    parameters: draftEmailSchema,
+    execute: draftEmail,
+  },
+  {
+    name: 'google_check_calendar',
+    description: 'Check Google Calendar for upcoming events in the specified timeframe',
+    verb: 'Checking Google Calendar',
+    parameters: checkCalendarSchema,
+    execute: checkCalendar,
+  },
 ]

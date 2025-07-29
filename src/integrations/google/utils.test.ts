@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { DraftEmailParams } from '../tools'
+import type { DraftEmailParams } from './tools'
 import {
   buildRawMessage,
   ensureValidGoogleToken,
@@ -8,7 +8,7 @@ import {
   getHeader,
   parseEmailAddress,
   truncateText,
-} from '../utils'
+} from './utils'
 
 // Mock external dependencies
 const mockGetSetting = mock()

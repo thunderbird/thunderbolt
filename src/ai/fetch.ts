@@ -180,6 +180,13 @@ export const aiFetchStreamingResponse = async ({
           finishReason: step.finishReason,
           toolCallCount: step.toolCalls?.length || 0,
         })
+
+        // When a step includes tool calls, log their names and arguments for easier debugging
+        step.toolCalls?.forEach((call, idx) => {
+          console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
+          console.log('Arguments:', call.args)
+          console.groupEnd()
+        })
       },
       onFinish: (finish) => {
         console.log('finish', {

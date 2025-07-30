@@ -1,0 +1,178 @@
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"Okay,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" the user said \"Good morning\". I"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" need to respond appropriately. Let me"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" check the current date"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" and time: "},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"2025-0"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"7-30T00:13"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":":40.623Z. Wait"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":", that's"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" midnight UTC,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" but the user might be in"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" a different time zone. Since they"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" said"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" \""},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"Good morning\", it's"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" probably morning where"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" they are. But the system"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" note says"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" the user hasn't provided a location"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":", so I shouldn't assume.\n\n"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"My role"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" is to be a helpful"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" executive assistant. The user might want to start"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" their day"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" with tasks or"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" check the weather. But without knowing"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" their location, I can't"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" get the weather. The tools"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" available include get_current_weather and get_weather_fore"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"cast, which require a location. The instructions"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" say to ask"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" for location before using location"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"-based tools.\n\nSo first, I should greet them"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" back and ask for their"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" location to provide relevant info"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" like weather"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":". Also,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" maybe check"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" if"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" they need help with tasks. Let me"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" structure the response: friendly"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" greeting, ask for location,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" offer task assistance"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":". Keep it"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" concise and pleasant. Avoid"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" mentioning tools"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" explicitly. Make"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" sure not to invent info."},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" Since they said"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" good morning"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":", maybe add a morning-related"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" emoji like"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" ☀️.\n\nWait,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" the user hasn't asked a"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" specific question"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" yet, just a greeting. So the"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" response should be welcoming and prompt for more details to"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" assist better"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":". Yes,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" that's right."},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" So the main points"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" are: respond to good"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" morning, ask for location to"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" help with"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" weather or other location-based"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" needs, and offer to manage"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" tasks.\n</think>"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"\n\n☀️ Good morning! To help"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" you kick off your"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" day, could you share your current location"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"? This way I"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" can check the weather or tailor"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" other updates"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" for you"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":".  \n\nAlso,"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" would you like me to"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":":  \n- Review your"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" **task list"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"** 📝  \n- Add new"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" tasks for today"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"?  \n"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"- Share morning"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" news highlights"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"?  \n\nJust let"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" me know how I"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":" can assist! 😊"},"finish_reason":null}],"usage":null}
+
+data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1306,"total_tokens":1711,"completion_tokens":405}}
+
+data: [DONE]
+

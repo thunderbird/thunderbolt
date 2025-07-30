@@ -62,9 +62,18 @@ const parseYamlFrontMatter = (yamlContent: string): Record<string, any> => {
 
 /**
  * Parses an enhanced SSE file with YAML front matter and multiple responses
+ * Always returns a valid structure, never throws errors
  */
 export const parseEnhancedSseFile = (fileContent: string): EnhancedSseFile => {
   const trimmedContent = fileContent.trim()
+
+  // Handle empty content
+  if (!trimmedContent) {
+    return {
+      metadata: {},
+      responses: [''],
+    }
+  }
 
   // Check if file starts with front matter
   if (!trimmedContent.startsWith('---')) {
@@ -78,12 +87,22 @@ export const parseEnhancedSseFile = (fileContent: string): EnhancedSseFile => {
   // Find the end of front matter
   const frontMatterEndIndex = trimmedContent.indexOf('\n---\n', 3)
   if (frontMatterEndIndex === -1) {
-    throw new Error('Invalid front matter format: missing closing ---')
+    // Invalid front matter format - treat as single response
+    return {
+      metadata: {},
+      responses: [trimmedContent],
+    }
   }
 
   // Extract and parse front matter
   const frontMatterContent = trimmedContent.slice(3, frontMatterEndIndex)
-  const metadata = parseYamlFrontMatter(frontMatterContent)
+  let metadata: Record<string, any> = {}
+  try {
+    metadata = parseYamlFrontMatter(frontMatterContent)
+  } catch {
+    // If YAML parsing fails, use empty metadata
+    metadata = {}
+  }
 
   // Extract content after front matter
   const contentAfterFrontMatter = trimmedContent.slice(frontMatterEndIndex + 5).trim()
@@ -94,8 +113,12 @@ export const parseEnhancedSseFile = (fileContent: string): EnhancedSseFile => {
     .map((response) => response.trim())
     .filter(Boolean)
 
+  // If no responses found, use the entire content after front matter
   if (responses.length === 0) {
-    throw new Error('No SSE responses found in file')
+    return {
+      metadata,
+      responses: [contentAfterFrontMatter || ''],
+    }
   }
 
   return { metadata, responses }

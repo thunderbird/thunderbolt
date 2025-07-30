@@ -33,24 +33,13 @@ const SSE_LOG_FILES = {
 
 // Generate SSE logs array from file names with metadata
 const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => {
-  try {
-    const { metadata } = parseEnhancedSseFile(content)
-    return {
-      value: fileName,
-      label: fileName.charAt(0).toUpperCase() + fileName.slice(1).replace('-', ' '),
-      content,
-      description: metadata.description,
-      metadata,
-    }
-  } catch {
-    // Fallback for legacy files without front matter
-    return {
-      value: fileName,
-      label: fileName.charAt(0).toUpperCase() + fileName.slice(1).replace('-', ' '),
-      content,
-      description: undefined,
-      metadata: {},
-    }
+  const { metadata } = parseEnhancedSseFile(content)
+  return {
+    value: fileName,
+    label: fileName.charAt(0).toUpperCase() + fileName.slice(1).replace('-', ' '),
+    content,
+    description: metadata.description,
+    metadata,
   }
 })
 
@@ -268,13 +257,9 @@ function SimulatorContent({}: SimulatorContentProps) {
 
   // Parse metadata from current SSE content
   const metadata = (() => {
-    try {
-      if (sseContent.trim()) {
-        const { metadata, responses } = parseEnhancedSseFile(sseContent)
-        return { ...metadata, responsesCount: responses.length }
-      }
-    } catch {
-      // Ignore parsing errors
+    if (sseContent.trim()) {
+      const { metadata, responses } = parseEnhancedSseFile(sseContent)
+      return { ...metadata, responsesCount: responses.length }
     }
     return {}
   })()
@@ -379,18 +364,6 @@ function SimulatorContent({}: SimulatorContentProps) {
                       <>
                         <dt className="font-medium text-muted-foreground">Description:</dt>
                         <dd className="text-foreground">{(metadata as any).description}</dd>
-                      </>
-                    )}
-                    {typeof (metadata as any).initial_delay_ms === 'number' && (
-                      <>
-                        <dt className="font-medium text-muted-foreground">Initial Delay:</dt>
-                        <dd className="text-foreground">{(metadata as any).initial_delay_ms}ms</dd>
-                      </>
-                    )}
-                    {typeof (metadata as any).chunk_delay_ms === 'number' && (
-                      <>
-                        <dt className="font-medium text-muted-foreground">Chunk Delay:</dt>
-                        <dd className="text-foreground">{(metadata as any).chunk_delay_ms}ms</dd>
                       </>
                     )}
                     {typeof (metadata as any).start_with_reasoning === 'boolean' && (

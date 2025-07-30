@@ -1,5 +1,5 @@
 ---
-description: "Typical response from qwen/qwen3-32b on OpenRouter with unsupported `reasoning` property."
+description: "Unsupported `reasoning` property."
 ---
 
 : OPENROUTER PROCESSING

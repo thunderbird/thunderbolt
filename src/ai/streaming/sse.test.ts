@@ -60,7 +60,7 @@ describe('sse', async () => {
 })
 
 describe('sse', async () => {
-  const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/banana.sse'), 'utf8'))
+  const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/002-reasoning-property.sse'), 'utf8'))
 
   const simulatedFetch = createSimulatedFetch(chunks, {
     initialDelayInMs: 0,
@@ -109,7 +109,7 @@ describe('sse', async () => {
     const results = []
 
     for (let i = 0; i < 2; i++) {
-      const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/apple.sse'), 'utf8'))
+      const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/002-reasoning-property.sse'), 'utf8'))
       const simulatedFetch = createSimulatedFetch(chunks, { initialDelayInMs: 0, chunkDelayInMs: 0 })
       const provider = createOpenAICompatible({ name: 'test', baseURL: 'http://localhost:8000', fetch: simulatedFetch })
       const model = provider('test-model')

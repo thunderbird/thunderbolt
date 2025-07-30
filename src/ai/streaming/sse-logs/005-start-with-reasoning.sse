@@ -1,5 +1,5 @@
 ---
-description: "qwen3-235b-a22b-thinking-2507 response that is missing opening <think> tag"
+description: "Missing opening <think> tag."
 start_with_reasoning: true
 ---
 

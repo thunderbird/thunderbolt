@@ -9,8 +9,8 @@ import { toolCallsMiddleware } from './tool-calls'
  * maintains internal state that can cause issues when reused across multiple
  * streaming operations.
  */
-export const createDefaultMiddleware = () => [
+export const createDefaultMiddleware = (startWithReasoning: boolean = false) => [
   stripTagsMiddleware,
   toolCallsMiddleware,
-  extractReasoningMiddleware({ tagName: 'think' }),
+  extractReasoningMiddleware({ tagName: 'think', startWithReasoning }),
 ]

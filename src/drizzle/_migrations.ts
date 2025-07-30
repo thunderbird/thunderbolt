@@ -23,5 +23,10 @@ export const migrations: Migration[] = [
     "hash": "0002_zippy_squadron_sinister",
     "name": "0002_zippy_squadron_sinister.sql",
     "sql": "ALTER TABLE `chat_messages` ADD `model_id` text REFERENCES models(id);"
+  },
+  {
+    "hash": "0003_add_start_with_reasoning",
+    "name": "0003_add_start_with_reasoning.sql",
+    "sql": "ALTER TABLE `models` ADD `start_with_reasoning` integer DEFAULT 0 NOT NULL;"
   }
 ];

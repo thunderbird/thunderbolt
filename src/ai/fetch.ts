@@ -157,7 +157,7 @@ export const aiFetchStreamingResponse = async ({
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
       model: baseModel,
-      middleware: createDefaultMiddleware(),
+      middleware: createDefaultMiddleware(Boolean(model.startWithReasoning)),
     })
 
     const result = streamText({

@@ -109,6 +109,7 @@ export const modelsTable = sqliteTable('models', {
   enabled: integer('enabled').default(1).notNull(),
   toolUsage: integer('tool_usage').default(1).notNull(),
   isConfidential: integer('is_confidential').default(0).notNull(),
+  startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
 })
 
 export const embeddingsTable = sqliteTable('embeddings', {

@@ -35,12 +35,13 @@ export const seedModels = async () => {
       },
       {
         id: uuidv7(),
-        name: 'Qwen 3 Thinking',
+        name: 'Qwen 3 (Thinking)',
         provider: 'thunderbolt' as const,
         model: 'qwen3-235b-a22b-thinking-2507',
         isSystem: 0,
         enabled: 1,
         isConfidential: 0,
+        startWithReasoning: 1,
       },
       {
         id: uuidv7(),

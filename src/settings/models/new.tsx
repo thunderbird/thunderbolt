@@ -90,6 +90,7 @@ export default function NewModelPage() {
       enabled: 1,
       toolUsage: 1,
       isConfidential: 0,
+      startWithReasoning: 0,
     })
   }
 

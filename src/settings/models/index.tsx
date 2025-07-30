@@ -361,7 +361,7 @@ export default function ModelsPage() {
       }
 
       // Use the same createModel function as the chat
-      const modelConfigWithDefaults = { ...modelConfig, toolUsage: 1, isConfidential: 0 }
+      const modelConfigWithDefaults = { ...modelConfig, toolUsage: 1, isConfidential: 0, startWithReasoning: 0 }
       const model = await createModel(modelConfigWithDefaults)
 
       // Test with a minimal prompt - race against timeout

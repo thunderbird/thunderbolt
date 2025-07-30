@@ -16,18 +16,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { createDefaultMiddleware } from '@/ai/middleware/default'
-import THINK_SSE_CONTENT from '../ai/streaming/sse-logs/001-think.sse?raw'
+import THINK_TAGS_SSE_CONTENT from '../ai/streaming/sse-logs/001-think-tags.sse?raw'
 import REASONING_PROPERTY_SSE_CONTENT from '../ai/streaming/sse-logs/002-reasoning-property.sse?raw'
 import MALFORMED_TOOL_CALL_THINK_SSE_CONTENT from '../ai/streaming/sse-logs/003-malformed-tool-call-think.sse?raw'
-import GET_TASKS_SSE_CONTENT from '../ai/streaming/sse-logs/004-get-tasks.sse?raw'
+import TOOL_CALL_SSE_CONTENT from '../ai/streaming/sse-logs/004-tool-call.sse?raw'
 import START_WITH_REASONING_SSE_CONTENT from '../ai/streaming/sse-logs/005-start-with-reasoning.sse?raw'
 
 // Map of SSE log files to their content
 const SSE_LOG_FILES = {
-  think: THINK_SSE_CONTENT,
+  'think-tags': THINK_TAGS_SSE_CONTENT,
   'reasoning-property': REASONING_PROPERTY_SSE_CONTENT,
   'malformed-tool-call-think': MALFORMED_TOOL_CALL_THINK_SSE_CONTENT,
-  'get-tasks': GET_TASKS_SSE_CONTENT,
+  'tool-call': TOOL_CALL_SSE_CONTENT,
   'start-with-reasoning': START_WITH_REASONING_SSE_CONTENT,
 } as const
 

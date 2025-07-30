@@ -21,6 +21,7 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
   const filteredParts = message.parts.filter((part) => supportedPartTypes.includes(part.type))
   const [toolsStartTime] = useState(() => Date.now())
   const toolsEndTimeRef = useRef<number | null>(null)
+  const toolTimingsRef = useRef<Map<number, { name: string; args: any; startTime: number; endTime?: number }>>(new Map())
 
   const partGroups: { expandables: React.ReactElement[]; others: React.ReactElement[]; hasTools: boolean }[] = []
   let currentGroup: { expandables: React.ReactElement[]; others: React.ReactElement[]; hasTools: boolean } = { expandables: [], others: [], hasTools: false }
@@ -96,6 +97,30 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
   const currentStreamingIndex = filteredParts.length - 1
   const pastAllTools = lastToolIndex === -1 || currentStreamingIndex > lastToolIndex
   
+  // Track individual tool timings
+  useEffect(() => {
+    filteredParts.forEach((part, index) => {
+      if (part.type === 'tool-invocation') {
+        const toolInvocation = (part as any).toolInvocation
+        const timing = toolTimingsRef.current.get(index)
+        
+        // Record start time when tool appears
+        if (!timing) {
+          toolTimingsRef.current.set(index, {
+            name: toolInvocation.toolName,
+            args: toolInvocation.args,
+            startTime: Date.now()
+          })
+        }
+        
+        // Record end time when tool completes
+        if (timing && !timing.endTime && ('result' in toolInvocation || 'error' in toolInvocation)) {
+          timing.endTime = Date.now()
+        }
+      }
+    })
+  }, [filteredParts])
+  
   // Capture the end time when all tools are completed and we've moved past them
   useEffect(() => {
     if (allToolsCompleted && pastAllTools && totalToolCount > 0 && !toolsEndTimeRef.current) {
@@ -128,6 +153,14 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
                         key="tools-summary"
                         toolCount={totalToolCount}
                         duration={(toolsEndTimeRef.current || Date.now()) - toolsStartTime}
+                        tools={Array.from(toolTimingsRef.current.entries())
+                          .map(([_, timing]) => ({
+                            name: timing.name,
+                            args: timing.args,
+                            startTime: timing.startTime,
+                            endTime: timing.endTime || Date.now()
+                          }))
+                          .sort((a, b) => a.startTime - b.startTime)}
                       />]
                     : [])
                 ]}

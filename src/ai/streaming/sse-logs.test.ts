@@ -21,7 +21,7 @@ function discoverTestCases(): Array<{
   const sseLogsDir = join(__dirname, 'sse-logs')
 
   try {
-    const entries = readdirSync(sseLogsDir)
+    const entries = readdirSync(sseLogsDir).sort()
     const testCases: Array<{
       name: string
       streamFile: string

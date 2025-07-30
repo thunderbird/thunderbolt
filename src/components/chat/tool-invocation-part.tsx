@@ -1,7 +1,7 @@
 import { getToolMetadata, getToolMetadataSync } from '@/lib/tool-metadata'
 import { useQuery } from '@tanstack/react-query'
 import type { ToolInvocationUIPart } from 'ai'
-import { Check, Loader2, X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 import { ChatMessagePreview } from './message-preview'
 
@@ -15,9 +15,8 @@ function getToolIcon(status: 'running' | 'complete' | 'error') {
 
   switch (status) {
     case 'running':
-      return <Loader2 className={`${baseClass} animate-spin text-blue-600 dark:text-blue-400`} />
     case 'complete':
-      return <Check className={`${baseClass} text-green-600 dark:text-green-400`} />
+      return <Loader2 className={`${baseClass} animate-spin text-blue-600 dark:text-blue-400`} />
     case 'error':
       return <X className={`${baseClass} text-red-600 dark:text-red-400`} />
     default:

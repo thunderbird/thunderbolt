@@ -6,8 +6,9 @@ import type {
   GetEmailParams,
   SearchEmailsParams,
   SearchDriveParams,
+  GetDriveFileContentParams,
 } from './tools'
-import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails, searchDrive } from './tools'
+import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails, searchDrive, getDriveFileContent } from './tools'
 
 // Custom error type for HTTP error mocking
 interface HTTPError extends Error {
@@ -913,6 +914,157 @@ describe('Google Tools', () => {
       mockEnsureValidGoogleToken.mockRejectedValue(authError)
 
       await expect(searchDrive(params)).rejects.toThrow('Authentication failed')
+    })
+  })
+
+  describe('getDriveFileContent', () => {
+    it('should get content from a Google Doc', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'doc123',
+      }
+
+      const mockFileResponse = {
+        id: 'doc123',
+        name: 'My Document.docx',
+        mimeType: 'application/vnd.google-apps.document',
+      }
+
+      const mockContent = 'This is the content of my Google Doc.\n\nIt has multiple paragraphs.'
+      const mockTextFn = mock().mockResolvedValue(mockContent)
+
+      mockJson.mockResolvedValueOnce(mockFileResponse)
+      mockGet.mockReturnValueOnce({ json: mockJson }).mockReturnValueOnce({ text: mockTextFn })
+
+      const result = await getDriveFileContent(params)
+
+      expect(result).toMatchObject({
+        file_id: 'doc123',
+        file_name: 'My Document.docx',
+        content: mockContent,
+        truncated: false,
+      })
+
+      expect(mockGet).toHaveBeenCalledTimes(2)
+    })
+
+    it('should get content from a text file', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'txt123',
+      }
+
+      const mockFileResponse = {
+        id: 'txt123',
+        name: 'notes.txt',
+        mimeType: 'text/plain',
+      }
+
+      const mockContent = 'These are my notes.\nLine 2 of notes.'
+      const mockTextFn = mock().mockResolvedValue(mockContent)
+
+      mockJson.mockResolvedValueOnce(mockFileResponse)
+      mockGet.mockReturnValueOnce({ json: mockJson }).mockReturnValueOnce({ text: mockTextFn })
+
+      const result = await getDriveFileContent(params)
+
+      expect(result).toMatchObject({
+        file_id: 'txt123',
+        file_name: 'notes.txt',
+        content: mockContent,
+        truncated: false,
+      })
+    })
+
+    it('should handle unsupported file types', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'img123',
+      }
+
+      const mockFileResponse = {
+        id: 'img123',
+        name: 'photo.jpg',
+        mimeType: 'image/jpeg',
+      }
+
+      mockJson.mockResolvedValueOnce(mockFileResponse)
+
+      const result = await getDriveFileContent(params)
+
+      expect(result).toMatchObject({
+        file_id: 'img123',
+        file_name: 'photo.jpg',
+        content: '',
+        truncated: false,
+        error: 'Cannot extract text from image/jpeg. Only Google Docs and text files are supported.',
+      })
+    })
+
+    it('should handle access denied errors', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'private123',
+      }
+
+      const mockError = new Error('Forbidden') as HTTPError
+      mockError.response = { status: 403 }
+      mockGet.mockImplementation(() => {
+        throw mockError
+      })
+
+      const result = await getDriveFileContent(params)
+
+      expect(result).toMatchObject({
+        file_id: 'private123',
+        file_name: 'Unknown',
+        content: '',
+        truncated: false,
+        error: 'Access denied. Make sure you have permission to read this file.',
+      })
+    })
+
+    it('should handle file not found errors', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'missing123',
+      }
+
+      const mockError = new Error('Not Found') as HTTPError
+      mockError.response = { status: 404 }
+      mockGet.mockImplementation(() => {
+        throw mockError
+      })
+
+      const result = await getDriveFileContent(params)
+
+      expect(result).toMatchObject({
+        file_id: 'missing123',
+        file_name: 'Unknown',
+        content: '',
+        truncated: false,
+        error: 'File not found.',
+      })
+    })
+
+    it('should truncate long content', async () => {
+      const params: GetDriveFileContentParams = {
+        file_id: 'long123',
+      }
+
+      const mockFileResponse = {
+        id: 'long123',
+        name: 'long-document.docx',
+        mimeType: 'application/vnd.google-apps.document',
+      }
+
+      // Create a string longer than the 50000 character limit
+      const longContent = 'A'.repeat(60000)
+      const mockTextFn = mock().mockResolvedValue(longContent)
+
+      mockJson.mockResolvedValueOnce(mockFileResponse)
+      mockGet.mockReturnValueOnce({ json: mockJson }).mockReturnValueOnce({ text: mockTextFn })
+      mockTruncateText.mockReturnValue('A'.repeat(50000) + '...[truncated]')
+
+      const result = await getDriveFileContent(params)
+
+      expect(result.truncated).toBe(true)
+      expect(mockTruncateText).toHaveBeenCalledWith(longContent, 50000)
     })
   })
 })

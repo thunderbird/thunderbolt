@@ -97,6 +97,12 @@ export const searchDriveSchema = z
   })
   .strict()
 
+export const getDriveFileContentSchema = z
+  .object({
+    file_id: z.string().describe('The Google Drive file ID to retrieve content from'),
+  })
+  .strict()
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -107,6 +113,7 @@ export type GetEmailParams = z.infer<typeof getEmailSchema>
 export type DraftEmailParams = z.infer<typeof draftEmailSchema>
 export type CheckCalendarParams = z.infer<typeof checkCalendarSchema>
 export type SearchDriveParams = z.infer<typeof searchDriveSchema>
+export type GetDriveFileContentParams = z.infer<typeof getDriveFileContentSchema>
 
 export type EmailSummary = {
   id: string
@@ -179,6 +186,14 @@ export type DriveFile = {
   owned_by_me: boolean
   parent_folders?: string[]
   description?: string
+}
+
+export type DriveFileContent = {
+  file_id: string
+  file_name: string
+  content: string
+  truncated: boolean
+  error?: string
 }
 
 // =============================================================================
@@ -585,6 +600,92 @@ export const searchDrive = async (params: SearchDriveParams) => {
   }
 }
 
+/**
+ * Get text content from a Google Drive file
+ * Works with Google Docs, Sheets, Slides, and text files
+ */
+export const getDriveFileContent = async (params: GetDriveFileContentParams): Promise<DriveFileContent> => {
+  const credentials = await getGoogleCredentials()
+  const accessToken = await ensureValidGoogleToken(credentials)
+
+  try {
+    // Get file metadata to determine type
+    const fileResponse = await ky
+      .get(`https://www.googleapis.com/drive/v3/files/${params.file_id}`, {
+        searchParams: { fields: 'id,name,mimeType' },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .json<any>()
+
+    const fileName = fileResponse.name || 'Unknown'
+    const mimeType = fileResponse.mimeType || 'application/octet-stream'
+
+    let content = ''
+
+    // Extract content based on file type
+    if (mimeType === 'application/vnd.google-apps.document') {
+      // Google Docs - export as plain text
+      const response = await ky.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}/export`, {
+        searchParams: { mimeType: 'text/plain' },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      content = await response.text()
+    } else if (mimeType.startsWith('text/')) {
+      // Text files - get raw content
+      const response = await ky.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}`, {
+        searchParams: { alt: 'media' },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      content = await response.text()
+    } else {
+      // Unsupported file type
+      return {
+        file_id: params.file_id,
+        file_name: fileName,
+        content: '',
+        truncated: false,
+        error: `Cannot extract text from ${mimeType}. Only Google Docs and text files are supported.`,
+      }
+    }
+
+    // Truncate if too long for LLM context
+    const maxLength = 50000
+    const truncated = content.length > maxLength
+    if (truncated) {
+      content = truncateText(content, maxLength)
+    }
+
+    return {
+      file_id: params.file_id,
+      file_name: fileName,
+      content,
+      truncated,
+    }
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      return {
+        file_id: params.file_id,
+        file_name: 'Unknown',
+        content: '',
+        truncated: false,
+        error: 'Access denied. Make sure you have permission to read this file.',
+      }
+    }
+    
+    if (error.response?.status === 404) {
+      return {
+        file_id: params.file_id,
+        file_name: 'Unknown',
+        content: '',
+        truncated: false,
+        error: 'File not found.',
+      }
+    }
+
+    throw error
+  }
+}
+
 // =============================================================================
 // TOOL CONFIGURATIONS
 // =============================================================================
@@ -592,7 +693,7 @@ export const searchDrive = async (params: SearchDriveParams) => {
 /**
  * Google Tools Configuration
  *
- * This file exports 6 high-level, LLM-friendly Google tools that replace
+ * This file exports 7 high-level, LLM-friendly Google tools that replace
  * the previous 70+ low-level API tools. The new tools provide:
  *
  * 1. google_check_inbox - Check Gmail inbox/folders with lightweight conversation summaries
@@ -601,9 +702,10 @@ export const searchDrive = async (params: SearchDriveParams) => {
  * 4. google_draft_email - Create email drafts (including replies)
  * 5. google_check_calendar - Check Google Calendar for upcoming events
  * 6. google_search_drive - Search Google Drive files using Drive API query syntax
+ * 7. google_get_drive_file_content - Get content from Google Drive files (Docs, Sheets, Slides, etc.)
  *
  * Benefits:
- * - Reduced cognitive load for LLMs (6 vs 70+ tools)
+ * - Reduced cognitive load for LLMs (7 vs 70+ tools)
  * - Smaller, more manageable response payloads
  * - Higher-level abstractions that accomplish common tasks in single calls
  * - Read-only operations (except drafting) for safer usage
@@ -651,5 +753,12 @@ export const configs: ToolConfig[] = [
     verb: 'Searching Google Drive',
     parameters: searchDriveSchema,
     execute: searchDrive,
+  },
+  {
+    name: 'google_get_drive_file_content',
+    description: 'Get the text content from a Google Drive file (Google Docs and text files)',
+    verb: 'Getting Drive file content',
+    parameters: getDriveFileContentSchema,
+    execute: getDriveFileContent,
   },
 ]

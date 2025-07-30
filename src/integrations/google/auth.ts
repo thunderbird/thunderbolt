@@ -29,6 +29,7 @@ export const getOAuthConfig = async (): Promise<OAuthConfig> => {
       'https://www.googleapis.com/auth/gmail.settings.basic',
       'https://www.googleapis.com/auth/gmail.settings.sharing',
       'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/drive.readonly',
     ].join(' '),
   }
 }

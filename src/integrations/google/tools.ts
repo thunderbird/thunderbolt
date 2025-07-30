@@ -79,6 +79,24 @@ export const checkCalendarSchema = z
   })
   .strict()
 
+export const searchDriveSchema = z
+  .object({
+    query: z
+      .string()
+      .describe('Search query for Google Drive files (supports Drive search syntax like "type:pdf" or "name:contract")'),
+    max_results: z
+      .number()
+      .optional()
+      .default(20)
+      .describe('Maximum number of files to return (default: 20, max: 50)'),
+    include_trashed: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Include files in trash folder'),
+  })
+  .strict()
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -88,6 +106,7 @@ export type SearchEmailsParams = z.infer<typeof searchEmailsSchema>
 export type GetEmailParams = z.infer<typeof getEmailSchema>
 export type DraftEmailParams = z.infer<typeof draftEmailSchema>
 export type CheckCalendarParams = z.infer<typeof checkCalendarSchema>
+export type SearchDriveParams = z.infer<typeof searchDriveSchema>
 
 export type EmailSummary = {
   id: string
@@ -144,6 +163,22 @@ export type CalendarEvent = {
   attendees_count?: number
   meeting_link?: string
   status: 'confirmed' | 'tentative' | 'cancelled'
+}
+
+export type DriveFile = {
+  id: string
+  name: string
+  mime_type: string
+  size_bytes?: number
+  created_time: string
+  modified_time: string
+  web_view_link: string
+  web_content_link?: string
+  is_folder: boolean
+  shared: boolean
+  owned_by_me: boolean
+  parent_folders?: string[]
+  description?: string
 }
 
 // =============================================================================
@@ -486,6 +521,70 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
   }
 }
 
+/**
+ * Search Google Drive files using Drive API
+ */
+export const searchDrive = async (params: SearchDriveParams) => {
+  const credentials = await getGoogleCredentials()
+  const accessToken = await ensureValidGoogleToken(credentials)
+
+  const searchParams = new URLSearchParams()
+  searchParams.set('pageSize', Math.min(params.max_results, 50).toString())
+  searchParams.set('fields', 'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,parents,description,shared,ownedByMe),nextPageToken')
+  
+  // Build the search query
+  let searchQuery = params.query
+  if (!params.include_trashed) {
+    searchQuery = searchQuery ? `${searchQuery} and trashed=false` : 'trashed=false'
+  }
+  
+  if (searchQuery) {
+    searchParams.set('q', searchQuery)
+  }
+
+  try {
+    const response = await ky
+      .get('https://www.googleapis.com/drive/v3/files', {
+        searchParams,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .json<any>()
+
+    const files: DriveFile[] = (response.files || []).map((file: any) => ({
+      id: file.id,
+      name: file.name || 'Untitled',
+      mime_type: file.mimeType || 'application/octet-stream',
+      size_bytes: file.size ? parseInt(file.size, 10) : undefined,
+      created_time: file.createdTime || '',
+      modified_time: file.modifiedTime || '',
+      web_view_link: file.webViewLink || '',
+      web_content_link: file.webContentLink,
+      is_folder: file.mimeType === 'application/vnd.google-apps.folder',
+      shared: file.shared || false,
+      owned_by_me: file.ownedByMe !== false, // Default to true if not specified
+      parent_folders: file.parents || [],
+      description: file.description ? truncateText(file.description, 200) : undefined,
+    }))
+
+    return {
+      files,
+      total_count: files.length,
+      has_more: !!response.nextPageToken,
+    }
+  } catch (error: any) {
+    // Drive API might not be enabled or accessible
+    if (error.response?.status === 403) {
+      return {
+        files: [],
+        total_count: 0,
+        has_more: false,
+        error: 'Google Drive access not available. Please enable Google Drive API access.',
+      }
+    }
+    throw error
+  }
+}
+
 // =============================================================================
 // TOOL CONFIGURATIONS
 // =============================================================================
@@ -493,7 +592,7 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
 /**
  * Google Tools Configuration
  *
- * This file exports 5 high-level, LLM-friendly Google tools that replace
+ * This file exports 6 high-level, LLM-friendly Google tools that replace
  * the previous 70+ low-level API tools. The new tools provide:
  *
  * 1. google_check_inbox - Check Gmail inbox/folders with lightweight conversation summaries
@@ -501,9 +600,10 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
  * 3. google_get_email - Get full details of a specific email
  * 4. google_draft_email - Create email drafts (including replies)
  * 5. google_check_calendar - Check Google Calendar for upcoming events
+ * 6. google_search_drive - Search Google Drive files using Drive API query syntax
  *
  * Benefits:
- * - Reduced cognitive load for LLMs (5 vs 70+ tools)
+ * - Reduced cognitive load for LLMs (6 vs 70+ tools)
  * - Smaller, more manageable response payloads
  * - Higher-level abstractions that accomplish common tasks in single calls
  * - Read-only operations (except drafting) for safer usage
@@ -544,5 +644,12 @@ export const configs: ToolConfig[] = [
     verb: 'Checking Google Calendar',
     parameters: checkCalendarSchema,
     execute: checkCalendar,
+  },
+  {
+    name: 'google_search_drive',
+    description: 'Search Google Drive files using Drive API query syntax (e.g. "type:pdf name:contract" or "modifiedTime>2024-01-01")',
+    verb: 'Searching Google Drive',
+    parameters: searchDriveSchema,
+    execute: searchDrive,
   },
 ]

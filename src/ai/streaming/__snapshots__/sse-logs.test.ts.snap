@@ -110,6 +110,14 @@ exports[`SSE -> UIMessage: 004-get-tasks - Invalid / incomplete tags. 1`] = `
       "type": "step-start"
     },
     {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n.\\n\\n\\n\\n"
+    },
+    {
       "type": "tool-invocation",
       "toolInvocation": {
         "state": "call",

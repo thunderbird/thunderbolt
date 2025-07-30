@@ -1,5 +1,5 @@
 import { UIMessage } from 'ai'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
@@ -20,6 +20,7 @@ const supportedPartTypes = ['reasoning', 'tool-invocation', 'text']
 export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => supportedPartTypes.includes(part.type))
   const [toolsStartTime] = useState(() => Date.now())
+  const toolsEndTimeRef = useRef<number | null>(null)
 
   const partGroups: { expandables: React.ReactElement[]; others: React.ReactElement[]; hasTools: boolean }[] = []
   let currentGroup: { expandables: React.ReactElement[]; others: React.ReactElement[]; hasTools: boolean } = { expandables: [], others: [], hasTools: false }
@@ -94,6 +95,13 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
   // Check if we've streamed past all tools
   const currentStreamingIndex = filteredParts.length - 1
   const pastAllTools = lastToolIndex === -1 || currentStreamingIndex > lastToolIndex
+  
+  // Capture the end time when all tools are completed and we've moved past them
+  useEffect(() => {
+    if (allToolsCompleted && pastAllTools && totalToolCount > 0 && !toolsEndTimeRef.current) {
+      toolsEndTimeRef.current = Date.now()
+    }
+  }, [allToolsCompleted, pastAllTools, totalToolCount])
 
   return (
     <div>
@@ -119,7 +127,7 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
                     ? [<ToolsSummaryPart 
                         key="tools-summary"
                         toolCount={totalToolCount}
-                        duration={Date.now() - toolsStartTime}
+                        duration={(toolsEndTimeRef.current || Date.now()) - toolsStartTime}
                       />]
                     : [])
                 ]}

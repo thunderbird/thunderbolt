@@ -3,12 +3,20 @@ import type {
   CheckCalendarParams,
   CheckInboxParams,
   DraftEmailParams,
-  GetEmailParams,
-  SearchEmailsParams,
-  SearchDriveParams,
   GetDriveFileContentParams,
+  GetEmailParams,
+  SearchDriveParams,
+  SearchEmailsParams,
 } from './tools'
-import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails, searchDrive, getDriveFileContent } from './tools'
+import {
+  checkCalendar,
+  checkInbox,
+  draftEmail,
+  getDriveFileContent,
+  getEmail,
+  searchDrive,
+  searchEmails,
+} from './tools'
 
 // Custom error type for HTTP error mocking
 interface HTTPError extends Error {
@@ -714,7 +722,7 @@ describe('Google Tools', () => {
       // Verify the search query includes trashed=false
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe('type:pdf and trashed=false')
+      expect(searchParams.get('q')).toBe('type:pdf trashed=false')
     })
 
     it('should handle empty search results', async () => {
@@ -914,6 +922,38 @@ describe('Google Tools', () => {
       mockEnsureValidGoogleToken.mockRejectedValue(authError)
 
       await expect(searchDrive(params)).rejects.toThrow('Authentication failed')
+    })
+
+    it('should transform simple date format to RFC 3339 format', async () => {
+      const params: SearchDriveParams = {
+        query: 'name:contract modifiedTime>2024-01-01',
+        max_results: 10,
+        include_trashed: false,
+      }
+
+      mockJson.mockResolvedValue({ files: [] })
+
+      await searchDrive(params)
+
+      const call = mockGet.mock.calls[0]
+      const searchParams = call[1].searchParams
+      expect(searchParams.get('q')).toBe('name:contract modifiedTime>2024-01-01T00:00:00Z trashed=false')
+    })
+
+    it('should preserve existing RFC 3339 dates', async () => {
+      const params: SearchDriveParams = {
+        query: 'name:contract modifiedTime>2024-01-01T10:30:00Z',
+        max_results: 10,
+        include_trashed: false,
+      }
+
+      mockJson.mockResolvedValue({ files: [] })
+
+      await searchDrive(params)
+
+      const call = mockGet.mock.calls[0]
+      const searchParams = call[1].searchParams
+      expect(searchParams.get('q')).toBe('name:contract modifiedTime>2024-01-01T10:30:00Z trashed=false')
     })
   })
 

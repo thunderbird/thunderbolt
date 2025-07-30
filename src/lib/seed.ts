@@ -35,6 +35,15 @@ export const seedModels = async () => {
       },
       {
         id: uuidv7(),
+        name: 'Qwen 3 Thinking',
+        provider: 'thunderbolt' as const,
+        model: 'qwen3-235b-a22b-thinking-2507',
+        isSystem: 0,
+        enabled: 1,
+        isConfidential: 0,
+      },
+      {
+        id: uuidv7(),
         name: 'Kimi K2',
         provider: 'thunderbolt' as const,
         model: 'kimi-k2-instruct',
@@ -44,7 +53,7 @@ export const seedModels = async () => {
       },
       {
         id: uuidv7(),
-        name: 'DeepSeek R1 0528',
+        name: 'DeepSeek R1',
         provider: 'thunderbolt' as const,
         model: 'deepseek-r1-0528',
         isSystem: 0,
@@ -53,7 +62,7 @@ export const seedModels = async () => {
       },
       {
         id: uuidv7(),
-        name: 'Llama 3.1 405B',
+        name: 'Llama 3.1',
         provider: 'thunderbolt' as const,
         model: 'llama-v3p1-405b-instruct',
         isSystem: 0,

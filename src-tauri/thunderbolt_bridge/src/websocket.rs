@@ -24,10 +24,7 @@ pub enum ThunderbirdMessage {
         error: Option<String>,
     },
     #[serde(rename = "test")]
-    Test {
-        timestamp: u64,
-        message: String,
-    },
+    Test { timestamp: u64, message: String },
 }
 
 pub struct WebSocketConnection {
@@ -57,23 +54,30 @@ impl WebSocketServer {
         }
     }
 
-    pub async fn handle_connection(&self, stream: TcpStream, addr: std::net::SocketAddr) -> Result<()> {
+    pub async fn handle_connection(
+        &self,
+        stream: TcpStream,
+        addr: std::net::SocketAddr,
+    ) -> Result<()> {
         tracing::info!("🔌 New WebSocket connection from: {}", addr);
-        
+
         let ws_stream = accept_async(stream).await?;
         let conn_id = Uuid::new_v4();
-        tracing::info!("✅ WebSocket handshake completed for connection: {}", conn_id);
-        
+        tracing::info!(
+            "✅ WebSocket handshake completed for connection: {}",
+            conn_id
+        );
+
         let (tx, rx) = mpsc::unbounded_channel();
         let connection = WebSocketConnection { _id: conn_id, tx };
-        
+
         self.connections.insert(conn_id, connection);
-        
+
         self.handle_messages(conn_id, ws_stream, rx).await?;
-        
+
         self.connections.remove(&conn_id);
         tracing::info!("❌ WebSocket connection {} closed", conn_id);
-        
+
         Ok(())
     }
 
@@ -130,7 +134,8 @@ impl WebSocketServer {
         if let Some(conn) = self.connections.get(&conn_id) {
             let text = serde_json::to_string(&msg)?;
             tracing::info!("📤 Sending message to connection {}: {}", conn_id, text);
-            conn.tx.send(Message::Text(text))
+            conn.tx
+                .send(Message::Text(text))
                 .map_err(|_| crate::BridgeError::NotConnected)?;
             Ok(())
         } else {
@@ -149,8 +154,11 @@ impl WebSocketServer {
 
     pub fn get_active_connection(&self) -> Option<Uuid> {
         let result = self.connections.iter().next().map(|entry| *entry.key());
-        tracing::debug!("🔍 Active connections: {} total, active: {:?}", 
-                       self.connections.len(), result);
+        tracing::debug!(
+            "🔍 Active connections: {} total, active: {:?}",
+            self.connections.len(),
+            result
+        );
         result
     }
 
@@ -165,7 +173,7 @@ pub async fn run_server(config: Arc<RwLock<BridgeConfig>>) -> Result<()> {
     tracing::info!("WebSocket server listening on: {}", addr);
 
     let server = Arc::new(WebSocketServer::new());
-    
+
     // Store server instance for bridge access
     {
         let mut bridge_state = crate::bridge::BRIDGE_STATE.lock().await;
@@ -175,7 +183,7 @@ pub async fn run_server(config: Arc<RwLock<BridgeConfig>>) -> Result<()> {
     loop {
         let (stream, addr) = listener.accept().await?;
         let server = server.clone();
-        
+
         tokio::spawn(async move {
             if let Err(e) = server.handle_connection(stream, addr).await {
                 tracing::error!("Error handling connection: {}", e);

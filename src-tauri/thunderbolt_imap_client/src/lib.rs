@@ -55,7 +55,6 @@ pub struct FetchMessagesResponse {
     pub messages: Vec<EmailMessage>,
 }
 
-
 /// ImapClient provides an object-oriented interface to IMAP operations
 pub struct ImapClient {
     credentials: ImapCredentials,

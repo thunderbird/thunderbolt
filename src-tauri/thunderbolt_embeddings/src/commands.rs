@@ -14,8 +14,7 @@ pub struct EmbeddingsState {
 #[command]
 pub async fn init_embedder(state: State<'_, Mutex<EmbeddingsState>>) -> Result<(), String> {
     // Initialize the embedder
-    let embedder = Embedder::new()
-        .map_err(|e| format!("Failed to initialize embedder: {e}"))?;
+    let embedder = Embedder::new().map_err(|e| format!("Failed to initialize embedder: {e}"))?;
 
     // Store the embedder in state wrapped in an Arc for thread safety
     let mut state_guard = state.lock().await;
@@ -53,4 +52,4 @@ pub async fn generate_embeddings(
     .map_err(|e| format!("Task failed: {e}"))?;
 
     embeddings
-} 
+}

@@ -1,11 +1,11 @@
 use anyhow::Result;
-use thunderbolt_imap_client::{messages_to_json_values, ImapClient, ImapCredentials};
-use thunderbolt_imap_sync::ImapSync;
 use chrono::{DateTime, Utc};
 use serde_json;
 use tauri::{command, Manager};
-use tokio::sync::Mutex;
+use thunderbolt_imap_client::{messages_to_json_values, ImapClient, ImapCredentials};
+use thunderbolt_imap_sync::ImapSync;
 use thunderbolt_libsql::LibsqlState;
+use tokio::sync::Mutex;
 
 /// Application state for the email functionality
 #[derive(Default)]
@@ -72,7 +72,7 @@ pub mod commands {
         // Check if database connection is initialized
         let libsql_state = app_handle.state::<Mutex<LibsqlState>>();
         let libsql_state_guard = libsql_state.lock().await;
-        
+
         if libsql_state_guard.db_pool.is_none() {
             return Err("Database not initialized. Call init_libsql first.".to_string());
         }
@@ -196,10 +196,9 @@ pub mod commands {
             let state_guard = state.lock().await;
 
             // Get sync client
-            let sync_client = state_guard
-                .imap_sync
-                .as_ref()
-                .ok_or_else(|| "IMAP sync not initialized. Call init_imap_sync first.".to_string())?;
+            let sync_client = state_guard.imap_sync.as_ref().ok_or_else(|| {
+                "IMAP sync not initialized. Call init_imap_sync first.".to_string()
+            })?;
 
             // Parse the since date if provided
             let since_date = if let Some(since_str) = since {
@@ -226,4 +225,6 @@ pub mod commands {
 }
 
 // Re-export commands for main app
-pub use commands::{init_imap, init_imap_sync, list_mailboxes, fetch_inbox, fetch_messages, sync_mailbox}; 
+pub use commands::{
+    fetch_inbox, fetch_messages, init_imap, init_imap_sync, list_mailboxes, sync_mailbox,
+};

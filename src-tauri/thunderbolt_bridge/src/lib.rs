@@ -1,7 +1,7 @@
-pub mod websocket;
-pub mod mcp;
 pub mod bridge;
 pub mod error;
+pub mod mcp;
+pub mod websocket;
 
 use std::net::SocketAddr;
 use std::sync::Arc;

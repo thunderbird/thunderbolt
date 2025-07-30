@@ -3,13 +3,13 @@ use libsql::{Connection, Value};
 use serde::{Deserialize, Serialize};
 
 // Make the embedding module public so it can be used in examples
-pub mod embedding;
 pub mod commands;
+pub mod embedding;
 
 use embedding::{generate_embedding, Embedder};
 
 // Re-export the commands and state
-pub use commands::{EmbeddingsState, init_embedder, generate_embeddings};
+pub use commands::{generate_embeddings, init_embedder, EmbeddingsState};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EmailMessage {

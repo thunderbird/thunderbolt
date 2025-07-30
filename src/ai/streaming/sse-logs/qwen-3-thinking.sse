@@ -1,3 +1,8 @@
+---
+description: "qwen3-235b-a22b-thinking-2507 response that is missing opening <think> tag"
+start_with_reasoning: true
+---
+
 data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
 
 data: {"id":"7a10060b-c9f8-42aa-a7d8-df965ad476d5","object":"chat.completion.chunk","created":1753834421,"model":"accounts/fireworks/models/qwen3-235b-a22b-thinking-2507","choices":[{"index":0,"delta":{"content":"Okay,"},"finish_reason":null}],"usage":null}

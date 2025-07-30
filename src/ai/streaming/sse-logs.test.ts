@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Import the function under test
-import { normalizeUIMessage, sseToUIMessage } from './util'
+import { normalizeUIMessage, parseEnhancedSseFile, sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
 // Test Discovery
@@ -12,12 +12,22 @@ import { normalizeUIMessage, sseToUIMessage } from './util'
 /**
  * Discovers all test cases by finding .sse files in the sse-logs directory
  */
-function discoverTestCases(): Array<{ name: string; streamFile: string }> {
+function discoverTestCases(): Array<{
+  name: string
+  streamFile: string
+  description?: string
+  metadata: Record<string, any>
+}> {
   const sseLogsDir = join(__dirname, 'sse-logs')
 
   try {
     const entries = readdirSync(sseLogsDir)
-    const testCases: Array<{ name: string; streamFile: string }> = []
+    const testCases: Array<{
+      name: string
+      streamFile: string
+      description?: string
+      metadata: Record<string, any>
+    }> = []
 
     for (const entry of entries) {
       const entryPath = join(sseLogsDir, entry)
@@ -25,8 +35,9 @@ function discoverTestCases(): Array<{ name: string; streamFile: string }> {
       // Check if it's a .sse file
       if (entry.endsWith('.sse')) {
         try {
-          // Check if file exists and is readable
-          readFileSync(entryPath, 'utf8')
+          // Read and parse the enhanced SSE file
+          const fileContent = readFileSync(entryPath, 'utf8')
+          const { metadata } = parseEnhancedSseFile(fileContent)
 
           // Use filename without extension as test name
           const name = entry.replace('.sse', '')
@@ -34,10 +45,12 @@ function discoverTestCases(): Array<{ name: string; streamFile: string }> {
           testCases.push({
             name,
             streamFile: entryPath,
+            description: metadata.description,
+            metadata,
           })
-        } catch {
-          // Skip if file is not readable
-          console.warn(`Warning: Cannot read SSE file ${entry}`)
+        } catch (error) {
+          // Skip if file is not readable or parseable
+          console.warn(`Warning: Cannot parse SSE file ${entry}:`, error)
         }
       }
     }
@@ -64,9 +77,21 @@ describe('SSE -> UIMessage:', () => {
   }
 
   for (const testCase of testCases) {
-    it(testCase.name, async () => {
-      const sseData = readFileSync(testCase.streamFile, 'utf8')
-      const message = await sseToUIMessage(sseData)
+    const testDescription = testCase.description ? `${testCase.name} - ${testCase.description}` : testCase.name
+
+    it(testDescription, async () => {
+      const fileContent = readFileSync(testCase.streamFile, 'utf8')
+      const { metadata, responses } = parseEnhancedSseFile(fileContent)
+
+      // Use the first response for testing (could be extended to test all responses)
+      const sseData = responses[0]
+
+      const message = await sseToUIMessage(sseData, {
+        startWithReasoning: metadata.start_with_reasoning ?? false,
+        initialDelayInMs: metadata.initial_delay_ms,
+        chunkDelayInMs: metadata.chunk_delay_ms,
+      })
+
       const normalizedMessage = normalizeUIMessage(message)
       expect(JSON.stringify(normalizedMessage, null, 2)).toMatchSnapshot()
     })

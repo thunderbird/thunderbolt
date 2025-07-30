@@ -1,3 +1,7 @@
+---
+description: "Typical response from qwen/qwen3-32b on OpenRouter with unsupported `reasoning` property."
+---
+
 : OPENROUTER PROCESSING
 
 data: {"id":"gen-1753414437-CeMAvOESW7AFS8FkTIpH","provider":"Parasail","model":"qwen/qwen3-32b","object":"chat.completion.chunk","created":1753414437,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"\n","reasoning_details":[]},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}

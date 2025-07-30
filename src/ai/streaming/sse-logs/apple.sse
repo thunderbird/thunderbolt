@@ -1,3 +1,7 @@
+---
+description: "Typical qwen3-235b-a22b response with <think> tags and text response."
+---
+
 data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
 
 data: {"id":"7295f0f2-3fff-41e8-8391-61dc1cf831ad","object":"chat.completion.chunk","created":1753398436,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"content":"<think>\n"},"finish_reason":null}],"usage":null}

@@ -8,6 +8,7 @@ import {
   getGoogleCredentials,
   getHeader,
   parseEmailAddress,
+  transformDriveQuery,
   truncateText,
 } from './utils'
 
@@ -533,62 +534,6 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
 /**
  * Search Google Drive files using Drive API
  */
-/**
- * Transforms date formats in Google Drive queries to RFC 3339 format
- */
-const transformDriveQuery = (query: string): string => {
-  if (!query.trim()) return ''
-
-  // A more robust way to split the query string by spaces, while respecting quoted content.
-  const parts = query.match(/('.*?'|[^'\s]+)+(?=\s*|\s*$)/g) || []
-
-  const typeMapping: Record<string, string> = {
-    document: 'application/vnd.google-apps.document',
-    spreadsheet: 'application/vnd.google-apps.spreadsheet',
-    presentation: 'application/vnd.google-apps.presentation',
-    drawing: 'application/vnd.google-apps.drawing',
-    folder: 'application/vnd.google-apps.folder',
-    pdf: 'application/pdf',
-    image: 'image/',
-    video: 'video/',
-    audio: 'audio/',
-    text: 'text/',
-  }
-
-  const transformedParts = parts.map((part) => {
-    // Note: The order of replacements is important.
-    // 1. Transform name shorthand (e.g., name:doc) to "name contains 'doc'"
-    let transformed = part.replace(/name:'([^']+)'/g, "name contains '$1'")
-    transformed = transformed.replace(/name:([^\s"']+)/g, "name contains '$1'")
-
-    // 2. Transform type shorthand (e.g., type:pdf) to the correct mimeType query
-    transformed = transformed.replace(/type:([^\s]+)/g, (_m, raw) => {
-      const key = raw.toLowerCase()
-      const mime = typeMapping[key] ?? raw
-      if (mime.endsWith('/')) {
-        return `mimeType contains '${mime}'`
-      }
-      return `mimeType='${mime}'`
-    })
-
-    // 3. Transform dates (YYYY-MM-DD to RFC-3339) and wrap in quotes
-    transformed = transformed.replace(
-      /(modifiedTime|createdTime)\s*([><=])\s*(\d{4}-\d{2}-\d{2})(?!T)/g,
-      (_m, field, op, date) => `${field}${op}'${date}T00:00:00Z'`,
-    )
-
-    // 4. Quote existing RFC-3339 timestamps if they are not already quoted
-    transformed = transformed.replace(
-      /(modifiedTime|createdTime)\s*([><=])\s*'?"?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)'?"?/g,
-      (_m, field, op, ts) => `${field}${op}'${ts}'`,
-    )
-
-    return transformed
-  })
-
-  return transformedParts.join(' and ')
-}
-
 export const searchDrive = async (params: SearchDriveParams) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)

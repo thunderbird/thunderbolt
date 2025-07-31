@@ -7,6 +7,7 @@ import {
   getGoogleCredentials,
   getHeader,
   parseEmailAddress,
+  transformDriveQuery,
   truncateText,
 } from './utils'
 
@@ -398,6 +399,72 @@ describe('Google Utils - Auth Utilities', () => {
       const result = await ensureValidGoogleToken(credentials)
       expect(result).toBe('refreshed-token')
       expect(mockRefreshAccessToken).toHaveBeenCalled()
+    })
+  })
+})
+
+describe('Google Utils - Drive Utilities', () => {
+  describe('transformDriveQuery', () => {
+    it('should return empty string for empty input', () => {
+      expect(transformDriveQuery('')).toBe('')
+      expect(transformDriveQuery('   ')).toBe('')
+    })
+
+    it('should transform name queries', () => {
+      expect(transformDriveQuery('name:document')).toBe("name contains 'document'")
+      expect(transformDriveQuery("name:'My Document'")).toBe("name contains 'My Document'")
+    })
+
+    it('should transform type queries to mimeType', () => {
+      expect(transformDriveQuery('type:document')).toBe("mimeType='application/vnd.google-apps.document'")
+      expect(transformDriveQuery('type:pdf')).toBe("mimeType='application/pdf'")
+      expect(transformDriveQuery('type:image')).toBe("mimeType contains 'image/'")
+      expect(transformDriveQuery('type:spreadsheet')).toBe("mimeType='application/vnd.google-apps.spreadsheet'")
+    })
+
+    it('should transform simple dates to RFC 3339', () => {
+      expect(transformDriveQuery('modifiedTime>2024-01-01')).toBe("modifiedTime>'2024-01-01T00:00:00Z'")
+      expect(transformDriveQuery('createdTime<2023-12-31')).toBe("createdTime<'2023-12-31T00:00:00Z'")
+    })
+
+    it('should preserve and quote existing RFC 3339 dates', () => {
+      expect(transformDriveQuery('modifiedTime>2024-01-01T10:30:00Z')).toBe("modifiedTime>'2024-01-01T10:30:00Z'")
+      expect(transformDriveQuery("modifiedTime>'2024-01-01T10:30:00Z'")).toBe("modifiedTime>'2024-01-01T10:30:00Z'")
+    })
+
+    it('should handle complex queries with multiple parts', () => {
+      const input = "name:'Ryan + Chris: Weekly 1:1' type:document modifiedTime>2024-01-01"
+      const expected =
+        "name contains 'Ryan + Chris: Weekly 1:1' and mimeType='application/vnd.google-apps.document' and modifiedTime>'2024-01-01T00:00:00Z'"
+      expect(transformDriveQuery(input)).toBe(expected)
+    })
+
+    it('should handle quoted strings with spaces', () => {
+      const input = "name:'My Important Document' type:pdf"
+      const expected = "name contains 'My Important Document' and mimeType='application/pdf'"
+      expect(transformDriveQuery(input)).toBe(expected)
+    })
+
+    it('should handle unknown file types', () => {
+      expect(transformDriveQuery('type:unknown')).toBe("mimeType='unknown'")
+    })
+
+    it('should handle operators correctly', () => {
+      expect(transformDriveQuery('modifiedTime>=2024-01-01')).toBe("modifiedTime>='2024-01-01T00:00:00Z'")
+      expect(transformDriveQuery('modifiedTime<=2024-01-01')).toBe("modifiedTime<='2024-01-01T00:00:00Z'")
+      expect(transformDriveQuery('modifiedTime=2024-01-01')).toBe("modifiedTime='2024-01-01T00:00:00Z'")
+    })
+
+    it('should preserve existing field queries', () => {
+      expect(transformDriveQuery('trashed=false')).toBe('trashed=false')
+      expect(transformDriveQuery('ownedByMe=true')).toBe('ownedByMe=true')
+    })
+
+    it('should handle mixed queries', () => {
+      const input = 'name:test type:folder trashed=false ownedByMe=true'
+      const expected =
+        "name contains 'test' and mimeType='application/vnd.google-apps.folder' and trashed=false and ownedByMe=true"
+      expect(transformDriveQuery(input)).toBe(expected)
     })
   })
 })

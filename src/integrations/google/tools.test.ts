@@ -36,6 +36,7 @@ const mockParseEmailAddress = mock()
 const mockExtractBody = mock()
 const mockTruncateText = mock()
 const mockBuildRawMessage = mock()
+const mockTransformDriveQuery = mock()
 
 // Mock ky
 mock.module('ky', () => ({
@@ -54,6 +55,7 @@ mock.module('./utils', () => ({
   extractBody: mockExtractBody,
   truncateText: mockTruncateText,
   buildRawMessage: mockBuildRawMessage,
+  transformDriveQuery: mockTransformDriveQuery,
 }))
 
 describe('Google Tools', () => {
@@ -69,6 +71,7 @@ describe('Google Tools', () => {
     mockExtractBody.mockClear()
     mockTruncateText.mockClear()
     mockBuildRawMessage.mockClear()
+    mockTransformDriveQuery.mockClear()
 
     // Setup default mocks
     mockGetGoogleCredentials.mockResolvedValue({
@@ -679,6 +682,7 @@ describe('Google Tools', () => {
 
       mockJson.mockResolvedValue(mockDriveResponse)
       mockTruncateText.mockReturnValue('A sample PDF document')
+      mockTransformDriveQuery.mockReturnValue("mimeType='application/pdf'")
 
       const result = await searchDrive(params)
 
@@ -722,7 +726,10 @@ describe('Google Tools', () => {
       // Verify the search query includes trashed=false
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe('type:pdf trashed=false')
+      expect(searchParams.get('q')).toBe("mimeType='application/pdf' and trashed=false")
+
+      // Verify transformDriveQuery was called with the original query
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith('type:pdf')
     })
 
     it('should handle empty search results', async () => {
@@ -749,13 +756,17 @@ describe('Google Tools', () => {
       }
 
       mockJson.mockResolvedValue({ files: [] })
+      mockTransformDriveQuery.mockReturnValue("name contains 'test'")
 
       await searchDrive(params)
 
       // Verify that trashed=false is NOT added to the query
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe('name:test')
+      expect(searchParams.get('q')).toBe("name contains 'test'")
+
+      // Verify transformDriveQuery was called
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:test')
     })
 
     it('should handle files without optional properties', async () => {
@@ -872,12 +883,16 @@ describe('Google Tools', () => {
       }
 
       mockJson.mockResolvedValue({ files: [] })
+      mockTransformDriveQuery.mockReturnValue('')
 
       await searchDrive(params)
 
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
       expect(searchParams.get('q')).toBe('trashed=false')
+
+      // Verify transformDriveQuery was called
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith('')
     })
 
     it('should respect max_results limit', async () => {
@@ -932,12 +947,18 @@ describe('Google Tools', () => {
       }
 
       mockJson.mockResolvedValue({ files: [] })
+      mockTransformDriveQuery.mockReturnValue("name contains 'contract' and modifiedTime>'2024-01-01T00:00:00Z'")
 
       await searchDrive(params)
 
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe('name:contract modifiedTime>2024-01-01T00:00:00Z trashed=false')
+      expect(searchParams.get('q')).toBe(
+        "name contains 'contract' and modifiedTime>'2024-01-01T00:00:00Z' and trashed=false",
+      )
+
+      // Verify transformDriveQuery was called
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:contract modifiedTime>2024-01-01')
     })
 
     it('should preserve existing RFC 3339 dates', async () => {
@@ -948,12 +969,18 @@ describe('Google Tools', () => {
       }
 
       mockJson.mockResolvedValue({ files: [] })
+      mockTransformDriveQuery.mockReturnValue("name contains 'contract' and modifiedTime>'2024-01-01T10:30:00Z'")
 
       await searchDrive(params)
 
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe('name:contract modifiedTime>2024-01-01T10:30:00Z trashed=false')
+      expect(searchParams.get('q')).toBe(
+        "name contains 'contract' and modifiedTime>'2024-01-01T10:30:00Z' and trashed=false",
+      )
+
+      // Verify transformDriveQuery was called
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:contract modifiedTime>2024-01-01T10:30:00Z')
     })
   })
 

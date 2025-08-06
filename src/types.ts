@@ -34,7 +34,7 @@ export type InitData = {
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
 
-export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: UIMessage[] }) => Promise<void>
+export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
 
 export type AccountsSettings = {
   hostname: string

@@ -2,9 +2,8 @@ import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 import { useDatabase } from '@/hooks/use-database'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage, convertUIMessageToDbChatMessage } from '@/lib/utils'
-import { SaveMessagesFunction } from '@/types'
+import { SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { UIMessage } from 'ai'
 import { eq, sql } from 'drizzle-orm'
 import { useParams } from 'react-router'
 import Chat from './chat'
@@ -14,7 +13,7 @@ export default function ChatDetailPage() {
   const { db } = useDatabase()
   const queryClient = useQueryClient()
 
-  const updateThreadTitle = async (messages: UIMessage[], threadId: string) => {
+  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
     if (!firstUserMessage) return
 
@@ -37,7 +36,7 @@ export default function ChatDetailPage() {
     data: messages,
     isLoading,
     isError,
-  } = useQuery<UIMessage[], Error>({
+  } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', params.chatThreadId],
     queryFn: async () => {
       const chatMessages = await db
@@ -45,13 +44,13 @@ export default function ChatDetailPage() {
         .from(chatMessagesTable)
         .where(eq(chatMessagesTable.chatThreadId, params.chatThreadId!))
         .orderBy(chatMessagesTable.id)
-      return chatMessages.map(convertDbChatMessageToUIMessage)
+      return chatMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     },
     enabled: !!params.chatThreadId,
   })
 
   const addMessagesMutation = useMutation({
-    mutationFn: async (messages: UIMessage[]) => {
+    mutationFn: async (messages: ThunderboltUIMessage[]) => {
       if (!params.chatThreadId) {
         throw new Error('No chat thread ID')
       }

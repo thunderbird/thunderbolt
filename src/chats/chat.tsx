@@ -1,14 +1,13 @@
 import { modelsTable, settingsTable } from '@/db/tables'
 import { useDatabase } from '@/hooks/use-database'
-import { Model, SaveMessagesFunction, Setting } from '@/types'
+import { Model, SaveMessagesFunction, Setting, type ThunderboltUIMessage } from '@/types'
 import { useQuery } from '@tanstack/react-query'
-import { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import ChatState from './chat-state'
 
 interface ChatProps {
   id: string
-  initialMessages: UIMessage[] | undefined
+  initialMessages?: ThunderboltUIMessage[]
   saveMessages: SaveMessagesFunction
 }
 

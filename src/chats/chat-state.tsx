@@ -6,14 +6,14 @@ import { useMCP } from '@/lib/mcp-provider'
 import { Model, Prompt, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { useChat } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
-import { DefaultChatTransport, UIMessage } from 'ai'
+import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 interface ChatStateProps {
   id: string
   models: Model[]
-  initialMessages: UIMessage[] | undefined
+  initialMessages?: ThunderboltUIMessage[]
   saveMessages: SaveMessagesFunction
 }
 
@@ -79,8 +79,11 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
 
   const chatHelpers = useChat<ThunderboltUIMessage>({
     id,
+    messages: initialMessages,
     transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
+    // Automatically send messages when the last one is a user message (used for automations)
+    sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message }) => {
       await saveMessages({
         id,

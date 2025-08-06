@@ -21,7 +21,6 @@ import {
   experimental_createMCPClient,
   stepCountIs,
   streamText,
-  UIMessage,
   wrapLanguageModel,
   type ToolSet,
 } from 'ai'
@@ -100,7 +99,7 @@ export const aiFetchStreamingResponse = async ({
   const body = JSON.parse(options.body)
   const abortSignal: AbortSignal | undefined = options.signal ?? undefined
 
-  const { messages, chatId } = body as { messages: UIMessage[]; chatId: string }
+  const { messages, chatId } = body as { messages: ThunderboltUIMessage[]; chatId: string }
 
   await saveMessages({ id: chatId, messages })
 

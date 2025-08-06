@@ -105,17 +105,22 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
   })
 
   // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet
+  const hasTriggeredRef = useRef(false)
   useEffect(() => {
-    // Ensure we have a model selected before attempting to reload
+    if (hasTriggeredRef.current) return
+
     if (
       selectedModelId &&
       status === 'ready' &&
       chatMessages.length > 0 &&
       chatMessages[chatMessages.length - 1].role === 'user'
     ) {
-      // Trigger LLM response once automatically
-      // @todo need to reimplement this since .reload() is no longer supported
-      // chatHelpers.reload().catch((err) => console.error('Auto reload error', err))
+      hasTriggeredRef.current = true
+      // Regenerate assistant response for the last user message
+      chatHelpers.regenerate().catch((err) => {
+        hasTriggeredRef.current = false
+        console.error('Auto regenerate error', err)
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])

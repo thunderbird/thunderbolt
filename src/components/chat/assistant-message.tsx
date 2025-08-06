@@ -6,7 +6,7 @@ import { ToolInvocationPart } from './tool-part'
 
 interface AssistantMessageProps {
   message: UIMessage
-  isStreaming: boolean
+  isStreaming: boolean // @todo legacy - can remove this
 }
 
 // Animation classes for subtle slide-in effect
@@ -14,7 +14,7 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
 
 const supportedPartTypes = ['reasoning', 'tool', 'text']
 
-export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps) => {
+export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => {
     const type = part.type.split('-')[0]
     return supportedPartTypes.includes(type)

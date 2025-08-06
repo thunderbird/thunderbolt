@@ -30,7 +30,7 @@ interface PromptInputProps {
 export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
   (
     {
-      value,
+      value = '',
       onChange,
       placeholder = 'Say something...',
       models,

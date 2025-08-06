@@ -1,0 +1,82 @@
+import { getToolMetadata, getToolMetadataSync } from '@/lib/tool-metadata'
+import { useQuery } from '@tanstack/react-query'
+import type { ToolUIPart } from 'ai'
+import { Check, Loader2, X } from 'lucide-react'
+import { Expandable } from '../ui/expandable'
+
+export type ToolInvocationPartProps = {
+  part: ToolUIPart
+  isStreaming: boolean
+}
+
+function getToolIcon(state: ToolUIPart['state']) {
+  const baseClass = 'h-4 w-4 flex-shrink-0'
+
+  switch (state) {
+    case 'input-streaming':
+      return <Loader2 className={`${baseClass} animate-spin text-blue-600 dark:text-blue-400`} />
+    case 'output-available':
+      return <Check className={`${baseClass} text-green-600 dark:text-green-400`} />
+    case 'output-error':
+      return <X className={`${baseClass} text-red-600 dark:text-red-400`} />
+    default:
+      return null
+  }
+}
+
+export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
+  const { type, input, state } = part
+  const toolName = type.split('-')[1]
+
+  // Use react-query to fetch metadata with proper caching
+  const { data: metadata } = useQuery({
+    queryKey: ['tool-metadata', toolName, JSON.stringify(input)],
+    queryFn: async () => {
+      const result = await getToolMetadata(toolName, input)
+      return result
+    },
+    // Use sync version as placeholder data for immediate rendering
+    placeholderData: () => getToolMetadataSync(toolName, input),
+    staleTime: Infinity, // Tool metadata doesn't change during runtime
+  })
+
+  const titleNode = metadata ? (
+    <span className="flex items-center gap-2 overflow-hidden">
+      <span className="flex-shrink-0">{metadata.displayName}</span>
+      {state === 'input-streaming' && (
+        <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
+          {metadata.loadingMessage}
+        </span>
+      )}
+    </span>
+  ) : (
+    'Loading...'
+  )
+
+  const renderOutput = () => {
+    if (typeof part.output === 'string') {
+      return (
+        <div className="rounded-md">
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{part.output}</p>
+        </div>
+      )
+    } else {
+      return JSON.stringify(part.output, null, 2)
+    }
+  }
+
+  return (
+    <Expandable
+      className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
+      icon={getToolIcon(state)}
+      defaultOpen={false}
+      title={titleNode}
+    >
+      <div className="tool-result w-full">
+        <div className="rounded-md">
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{renderOutput()}</p>
+        </div>
+      </div>
+    </Expandable>
+  )
+}

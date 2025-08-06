@@ -6,11 +6,10 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import { getOrCreateChatStore } from '@/lib/chat-store-registry'
 import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { useChat } from '@ai-sdk/react'
-import { streamText, wrapLanguageModel } from 'ai'
+import { DefaultChatTransport, stepCountIs, streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -117,7 +116,7 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
             console.log('[Simulator] onStepFinish - Tool calls:', step.toolCalls)
             console.log('[Simulator] onStepFinish - Tool results:', step.toolResults)
           },
-          maxSteps: 5, // Allow multiple steps for tool execution
+          stopWhen: stepCountIs(20),
           tools: createMockToolSet(),
         })
 
@@ -134,14 +133,9 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
     [sseContent, metadata, responses],
   )
 
-  const chatStoreInstance = getOrCreateChatStore(chatId, {
-    initialMessages: [],
-    fetch: customFetch,
-  })
-
   const chatHelpers = useChat({
     id: chatId,
-    chatStore: chatStoreInstance,
+    transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
     onError: (error) => {
       console.error('Simulation error:', error)
@@ -157,7 +151,7 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
     callCountRef.current = 0
 
     const startSimulation = async () => {
-      await chatHelpers.append({
+      await chatHelpers.sendMessage({
         role: 'user',
         parts: [{ type: 'text', text: '<prompt>' }],
       })

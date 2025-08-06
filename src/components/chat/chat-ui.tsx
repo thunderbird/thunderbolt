@@ -1,7 +1,7 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import { Model, type Prompt } from '@/types'
+import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
@@ -12,7 +12,7 @@ import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 
 interface ChatUIProps {
-  chatHelpers: UseChatHelpers
+  chatHelpers: UseChatHelpers<ThunderboltUIMessage>
   models: Model[]
   selectedModelId?: string
   onModelChange: (model: string | null) => void
@@ -61,6 +61,7 @@ const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string
 export default function ChatUI({ chatHelpers, models, selectedModelId, onModelChange, triggerPrompt }: ChatUIProps) {
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
+  const [input, setInput] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
@@ -134,24 +135,23 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
 
   const isStreaming = chatHelpers.status === 'streaming'
 
-  const handleSubmit = () => {
-    // Prevent submitting while streaming
-    if (isStreaming) return
+  const handleSubmit = async () => {
+    // Prevent submitting while streaming or if input is empty
+    if (isStreaming || !input.trim()) return
 
-    if (!chatHelpers.input.trim()) return
+    // Send the message using the new sendMessage API
+    await chatHelpers.sendMessage({ text: input })
 
-    const syntheticEvent = {
-      preventDefault: () => {},
-    } as React.FormEvent<HTMLFormElement>
+    // Clear the input after sending
+    setInput('')
 
-    chatHelpers.handleSubmit(syntheticEvent)
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()
     setTimeout(() => scrollToBottom(), 100)
   }
 
   const handleSelectPrompt = (prompt: string) => {
-    chatHelpers.setInput(prompt)
+    setInput(prompt)
     setTimeout(() => {
       const textareaElement = formRef.current?.querySelector('textarea')
       if (textareaElement) {
@@ -254,8 +254,8 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
           >
             <PromptInput
               ref={formRef}
-              value={chatHelpers.input}
-              onChange={(value: string) => chatHelpers.setInput(value)}
+              value={input}
+              onChange={(value: string) => setInput(value)}
               placeholder="Say something..."
               models={models}
               selectedModelId={selectedModelId}

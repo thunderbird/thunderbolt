@@ -1,12 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import {
-  defaultChatStore,
-  simulateReadableStream,
-  streamText,
-  wrapLanguageModel,
-  type ToolSet,
-  type UIMessage,
-} from 'ai'
+import { simulateReadableStream, streamText, wrapLanguageModel, type ToolSet, type UIMessage } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { createDefaultMiddleware } from '../middleware/default'
 
@@ -181,101 +174,169 @@ export const sseToUIMessage = async (
   const chunks = parseSseLog(sseData)
 
   // ------------------------------------------------------------------
-  // Prepare a custom fetch that mimics the real /api/chat endpoint
-  // but streams from our pre-recorded SSE log. This is the same pattern
-  // used by MessageSimulator (src/devtools/message-simulator.tsx).
+  // Parse the SSE stream and convert to UIMessage format
+  // Use the streamText result directly to get the message content
   // ------------------------------------------------------------------
 
-  const customFetch: typeof fetch = Object.assign(
-    async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
-      // Build a Response that streams UI-Message chunks from the SSE log
-      const simulatedFetch = createSimulatedFetch(chunks, {
-        initialDelayInMs: options.initialDelayInMs,
-        chunkDelayInMs: options.chunkDelayInMs,
-      })
-
-      const provider = createOpenAICompatible({
-        name: 'test-provider',
-        baseURL: 'http://localhost:8000',
-        fetch: simulatedFetch,
-      })
-
-      const baseModel = provider('test-model')
-
-      const wrappedModel = wrapLanguageModel({
-        model: baseModel,
-        middleware: createDefaultMiddleware(options.startWithReasoning ?? false),
-      })
-
-      const result = streamText({
-        model: wrappedModel,
-        prompt: '<test>',
-        tools: createMockToolSet(),
-        abortSignal: (init?.signal ?? undefined) as AbortSignal | undefined,
-      })
-
-      return result.toUIMessageStreamResponse({
-        sendReasoning: true,
-        messageMetadata: () => ({ modelId: 'simulator' }),
-      })
-    },
-    {
-      preconnect: () => Promise.resolve(false),
-    },
-  )
-
-  // ------------------------------------------------------------------
-  // Set up a ChatStore instance (the underlying engine behind useChat)
-  // and submit a user message so that we exercise the exact same code
-  // paths that the real UI uses.
-  // ------------------------------------------------------------------
-
-  const chatStore = defaultChatStore({
-    api: '/api/chat',
-    fetch: customFetch,
-    generateId: uuidv7,
-    maxSteps: 10,
+  const simulatedFetch = createSimulatedFetch(chunks, {
+    initialDelayInMs: options.initialDelayInMs ?? 0,
+    chunkDelayInMs: options.chunkDelayInMs ?? 0,
   })
 
-  const chatId = `test-${uuidv7()}`
-  chatStore.addChat(chatId, [])
-
-  // Submit a single user message (mirrors the MessageSimulator prompt)
-  await chatStore.submitMessage({
-    chatId,
-    message: {
-      role: 'user',
-      parts: [{ type: 'text', text: '<test>' }],
-    } as any,
+  const provider = createOpenAICompatible({
+    name: 'test-provider',
+    baseURL: 'http://localhost:8000',
+    fetch: simulatedFetch,
   })
 
-  // Wait for streaming to finish (status 'ready' or 'error')
-  const waitForChatToFinish = async () => {
-    return await new Promise<void>((resolve, reject) => {
-      const interval = setInterval(() => {
-        const status = chatStore.getStatus(chatId)
-        if (status === 'ready') {
-          clearInterval(interval)
-          resolve()
-        } else if (status === 'error') {
-          clearInterval(interval)
-          reject(chatStore.getError(chatId))
+  const baseModel = provider('test-model')
+
+  const wrappedModel = wrapLanguageModel({
+    model: baseModel,
+    middleware: createDefaultMiddleware(options.startWithReasoning ?? false),
+  })
+
+  const result = streamText({
+    model: wrappedModel,
+    prompt: '<test>',
+    tools: createMockToolSet(),
+  })
+
+  // Consume the stream and build UIMessage parts
+  const parts: any[] = []
+  let hasStepStart = false
+  let currentText = ''
+  let currentReasoning = ''
+
+  // Process chunks from the stream
+  for await (const chunk of result.fullStream) {
+    // Check for reasoning chunks
+    if (chunk.type === 'reasoning-delta') {
+      const delta = (chunk as any).text || ''
+      currentReasoning += delta
+    } else if (chunk.type === 'reasoning-start') {
+      // Start of reasoning section
+      currentReasoning = ''
+    } else if (chunk.type === 'reasoning-end') {
+      // End of reasoning section - save it
+      if (currentReasoning) {
+        parts.push({ type: 'reasoning', text: currentReasoning })
+        currentReasoning = ''
+      }
+    } else if (chunk.type === 'text-delta') {
+      const text = (chunk as any).textDelta || ''
+      currentText += text
+    } else if (chunk.type === 'tool-call') {
+      // Save any accumulated text first
+      if (currentText) {
+        // Check if the text contains think tags before adding
+        const thinkMatch = currentText.match(/<think>([\s\S]*?)<\/think>/)
+        if (thinkMatch) {
+          const reasoningText = thinkMatch[1].trim()
+          const remainingText = currentText.replace(/<think>[\s\S]*?<\/think>/, '').trim()
+
+          if (reasoningText) {
+            parts.push({ type: 'reasoning', text: reasoningText })
+          }
+          if (remainingText) {
+            parts.push({ type: 'text', text: remainingText })
+          }
+        } else if (currentText.trim()) {
+          parts.push({ type: 'text', text: currentText })
         }
-      }, 10)
-    })
+        currentText = ''
+      }
+      // Add tool invocation
+      const toolCall = chunk as any
+      parts.push({
+        type: 'tool-invocation',
+        toolInvocation: {
+          state: 'call',
+          step: 0,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          args: toolCall.args || {},
+        },
+      })
+    }
   }
 
-  await waitForChatToFinish()
+  // Also check the final result
+  const finalText = await result.text
+  const finalToolCalls = await result.toolCalls
 
-  // Collect the assistant's final message
-  const messages = chatStore.getMessages(chatId)
-  const actualMessage = messages.filter((m: any) => m.role === 'assistant').pop()
+  // Check if we captured reasoning from the stream
+  const hasStreamReasoning = parts.some((p) => p.type === 'reasoning')
 
-  if (!actualMessage) {
-    throw new Error('Failed to convert SSE data into UIMessage.')
+  // Try to get reasoning from the result's experimental_reasoning
+  const reasoning = await (result as any).experimental_reasoning
+  if (reasoning && !hasStreamReasoning) {
+    parts.push({ type: 'reasoning', text: reasoning })
   }
 
-  return actualMessage
+  // Add step-start if we have content
+  if ((currentText || currentReasoning || finalText || finalToolCalls?.length) && !hasStepStart) {
+    parts.unshift({ type: 'step-start' })
+  }
+
+  // Process any remaining accumulated reasoning
+  if (currentReasoning && !hasStreamReasoning) {
+    parts.push({ type: 'reasoning', text: currentReasoning })
+  }
+
+  // Process final text
+  const textToProcess = currentText || finalText || ''
+  if (textToProcess) {
+    // Only check for think tags if we don't already have reasoning
+    const hasReasoning = parts.some((p) => p.type === 'reasoning')
+    if (!hasReasoning) {
+      // Check if text contains reasoning pattern (think tags)
+      const thinkMatch = textToProcess.match(/<think>([\s\S]*?)<\/think>/)
+      if (thinkMatch) {
+        const reasoningText = thinkMatch[1].trim()
+        const remainingText = textToProcess.replace(/<think>[\s\S]*?<\/think>/, '').trim()
+
+        if (reasoningText) {
+          parts.push({ type: 'reasoning', text: reasoningText })
+        }
+        if (remainingText) {
+          parts.push({ type: 'text', text: remainingText })
+        }
+      } else if (textToProcess.trim() && parts.filter((p) => p.type === 'text').length === 0) {
+        parts.push({ type: 'text', text: textToProcess })
+      }
+    } else if (textToProcess.trim() && parts.filter((p) => p.type === 'text').length === 0) {
+      parts.push({ type: 'text', text: textToProcess })
+    }
+  }
+
+  // Add tool calls if not already added
+  if (finalToolCalls && finalToolCalls.length > 0) {
+    const existingToolCalls = parts.filter((p) => p.type === 'tool-invocation')
+    if (existingToolCalls.length === 0) {
+      for (const toolCall of finalToolCalls) {
+        parts.push({
+          type: 'tool-invocation',
+          toolInvocation: {
+            state: 'call',
+            step: 0,
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            args: (toolCall as any).input || {},
+          },
+        })
+      }
+    }
+  }
+
+  const message: UIMessage = {
+    id: `test-${uuidv7()}`,
+    role: 'assistant',
+    parts,
+    metadata: { modelId: 'simulator' },
+  }
+
+  return message
 }
 
 /**

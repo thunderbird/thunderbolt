@@ -1,13 +1,12 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
 import { useSetting } from '@/hooks/use-setting'
-import { getOrCreateChatStore } from '@/lib/chat-store-registry'
 import { getDefaultModelForThread, getTriggerPromptForThread } from '@/lib/dal'
 import { useMCP } from '@/lib/mcp-provider'
-import { Model, Prompt, SaveMessagesFunction } from '@/types'
+import { Model, Prompt, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { useChat } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
-import { UIMessage } from 'ai'
+import { DefaultChatTransport, UIMessage } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -78,14 +77,9 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     [getEnabledClients, saveMessages],
   )
 
-  const chatStoreInstance = getOrCreateChatStore(id, {
-    initialMessages: initialMessages ?? [],
-    fetch: customFetch,
-  })
-
-  const chatHelpers = useChat({
+  const chatHelpers = useChat<ThunderboltUIMessage>({
     id,
-    chatStore: chatStoreInstance,
+    transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
     onFinish: async ({ message }) => {
       await saveMessages({
@@ -117,7 +111,8 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       chatMessages[chatMessages.length - 1].role === 'user'
     ) {
       // Trigger LLM response once automatically
-      chatHelpers.reload().catch((err) => console.error('Auto reload error', err))
+      // @todo need to reimplement this since .reload() is no longer supported
+      // chatHelpers.reload().catch((err) => console.error('Auto reload error', err))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])

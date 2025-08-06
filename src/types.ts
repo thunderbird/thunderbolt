@@ -1,6 +1,6 @@
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { Window } from '@tauri-apps/api/window'
-import { UIDataTypes, UIMessage, UIMessagePart } from 'ai'
+import { UIMessage, type UIDataTypes, type UITools } from 'ai'
 import { InferSelectModel } from 'drizzle-orm'
 import type { z } from 'zod'
 import {
@@ -32,8 +32,7 @@ export type InitData = {
   initialThreadId: string
 }
 
-export type ChatMessagePart = UIMessagePart<UIDataTypes>
-export type ChatMessageRole = 'data' | 'system' | 'user' | 'assistant'
+export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: UIMessage[] }) => Promise<void>
 

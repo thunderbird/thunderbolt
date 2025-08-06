@@ -1,8 +1,8 @@
-import { UIMessage } from 'ai'
+import { UIMessage, type ReasoningUIPart, type TextUIPart, type ToolUIPart } from 'ai'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ToolInvocationPart } from './tool-invocation-part'
+import { ToolInvocationPart } from './tool-part'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -12,10 +12,13 @@ interface AssistantMessageProps {
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
 
-const supportedPartTypes = ['reasoning', 'tool-invocation', 'text']
+const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps) => {
-  const filteredParts = message.parts.filter((part) => supportedPartTypes.includes(part.type))
+  const filteredParts = message.parts.filter((part) => {
+    const type = part.type.split('-')[0]
+    return supportedPartTypes.includes(type)
+  })
 
   const partElements = []
 
@@ -24,18 +27,19 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
   }
 
   filteredParts.forEach((part, index) => {
+    const type = part.type.split('-')[0]
     const isLastPart = index === filteredParts.length - 1
     const isPartStreaming = isStreaming && isLastPart
 
-    switch (part.type) {
+    switch (type) {
       case 'reasoning':
-        partElements.push(<ReasoningPart part={part} isStreaming={isPartStreaming} />)
+        partElements.push(<ReasoningPart part={part as ReasoningUIPart} isStreaming={isPartStreaming} />)
         break
-      case 'tool-invocation':
-        partElements.push(<ToolInvocationPart part={part} isStreaming={isPartStreaming} />)
+      case 'tool':
+        partElements.push(<ToolInvocationPart part={part as ToolUIPart} isStreaming={isPartStreaming} />)
         break
       case 'text':
-        partElements.push(<TextPart part={part} isStreaming={isPartStreaming} />)
+        partElements.push(<TextPart part={part as TextUIPart} isStreaming={isPartStreaming} />)
         break
     }
   })

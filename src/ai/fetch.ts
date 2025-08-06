@@ -6,9 +6,10 @@ import { getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { handleFlowerChatStream } from '@/lib/flower'
 import { createToolset, getAvailableTools } from '@/lib/tools'
-import { Model, SaveMessagesFunction } from '@/types'
+import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { LanguageModelV2 } from '@ai-sdk/provider'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -18,19 +19,14 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   convertToModelMessages,
   experimental_createMCPClient,
-  LanguageModel,
+  stepCountIs,
   streamText,
-  ToolInvocation,
   UIMessage,
   wrapLanguageModel,
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createDefaultMiddleware } from './middleware/default'
-
-export type ToolInvocationWithResult<T = object> = ToolInvocation & {
-  result: T
-}
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -48,7 +44,7 @@ type AiFetchStreamingResponseOptions = {
   mcpClients?: MCPClient[]
 }
 
-export const createModel = async (modelConfig: Model): Promise<LanguageModel> => {
+export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = await getCloudUrl()
@@ -165,9 +161,8 @@ export const aiFetchStreamingResponse = async ({
       model: wrappedModel,
       system: systemPrompt,
       messages: convertToModelMessages(messages),
-      toolCallStreaming: supportsTools,
       tools: supportsTools ? toolset : undefined,
-      maxSteps: 10,
+      stopWhen: stepCountIs(20),
       abortSignal,
       // providerOptions: {
       //   custom: {
@@ -184,7 +179,7 @@ export const aiFetchStreamingResponse = async ({
         // When a step includes tool calls, log their names and arguments for easier debugging
         step.toolCalls?.forEach((call, idx) => {
           console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
-          console.log('Arguments:', call.args)
+          console.log('Arguments:', call.input)
           console.groupEnd()
         })
       },
@@ -199,11 +194,11 @@ export const aiFetchStreamingResponse = async ({
         console.error('error', error)
       },
       onChunk: (chunk) => {
-        console.log('chunk', chunk)
+        // console.log('chunk', chunk)
       },
     })
 
-    return result.toUIMessageStreamResponse({
+    return result.toUIMessageStreamResponse<ThunderboltUIMessage>({
       sendReasoning: true,
       // Attach the modelId as metadata so the client knows which model was used
       messageMetadata: () => ({ modelId }),

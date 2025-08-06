@@ -30,7 +30,7 @@ export const weatherSchema = z
     location: z
       .string()
       .describe('The location name to get weather for. Only include the city name, not the state or country.'),
-    days: z.number().describe('Number of days to forecast (1-16, default: 3) - only used for forecast'),
+    days: z.number().describe('Number of days to forecast (1-16)'),
   })
   .strict()
 

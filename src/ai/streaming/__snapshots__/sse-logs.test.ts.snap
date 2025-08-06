@@ -3,9 +3,6 @@
 exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
   "role": "assistant",
   "parts": [
     {
@@ -19,16 +16,16 @@ exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags a
       "type": "text",
       "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨"
     }
-  ]
+  ],
+  "metadata": {
+    "modelId": "simulator"
+  }
 }"
 `;
 
 exports[`SSE -> UIMessage: 002-reasoning-property - Unsupported \`reasoning\` property. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
   "role": "assistant",
   "parts": [
     {
@@ -38,16 +35,16 @@ exports[`SSE -> UIMessage: 002-reasoning-property - Unsupported \`reasoning\` pr
       "type": "text",
       "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊"
     }
-  ]
+  ],
+  "metadata": {
+    "modelId": "simulator"
+  }
 }"
 `;
 
 exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Typical getTasks with <think> tags flow. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
   "role": "assistant",
   "parts": [
     {
@@ -58,10 +55,6 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Typical getTasks with
       "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n"
     },
     {
-      "type": "text",
-      "text": "\\n\\n.\\n\\n\\n\\n"
-    },
-    {
       "type": "tool-invocation",
       "toolInvocation": {
         "state": "call",
@@ -70,17 +63,21 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Typical getTasks with
         "toolName": "getTasks",
         "args": {}
       }
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n"
     }
-  ]
+  ],
+  "metadata": {
+    "modelId": "simulator"
+  }
 }"
 `;
 
 exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
   "role": "assistant",
   "parts": [
     {
@@ -96,16 +93,16 @@ exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 1`] = `
         "args": {}
       }
     }
-  ]
+  ],
+  "metadata": {
+    "modelId": "simulator"
+  }
 }"
 `;
 
 exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
   "role": "assistant",
   "parts": [
     {
@@ -119,6 +116,9 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 1`
       "type": "text",
       "text": "\\n\\n☀️ Good morning! To help you kick off your day, could you share your current location? This way I can check the weather or tailor other updates for you.  \\n\\nAlso, would you like me to:  \\n- Review your **task list** 📝  \\n- Add new tasks for today?  \\n- Share morning news highlights?  \\n\\nJust let me know how I can assist! 😊"
     }
-  ]
+  ],
+  "metadata": {
+    "modelId": "simulator"
+  }
 }"
 `;

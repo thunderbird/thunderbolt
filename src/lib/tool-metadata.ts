@@ -31,14 +31,21 @@ const getToolConfigByName = async (toolName: string): Promise<ToolConfig | undef
 /**
  * Format a verb string with variable substitution
  */
-const formatVerb = (verb: string, maxLength: number = 40, args: Record<string, unknown>): string => {
+const formatVerb = (verb: string, maxLength: number = 40, input: unknown = {}): string => {
   let formattedVerb = verb
+
+  const inputObject = input as Record<string, unknown>
 
   // Replace variables in the format {variable_name} with actual values
   const variablePattern = /\{(\w+)\}/g
   formattedVerb = formattedVerb.replace(variablePattern, (_, varName) => {
-    if (args && args[varName] !== undefined && args[varName] !== null && args[varName] !== '') {
-      const value = args[varName]
+    if (
+      inputObject &&
+      inputObject[varName] !== undefined &&
+      inputObject[varName] !== null &&
+      inputObject[varName] !== ''
+    ) {
+      const value = inputObject[varName]
       // Truncate long values
       if (typeof value === 'string' && value.length > maxLength) {
         return ` "${value.slice(0, maxLength)}..."`
@@ -84,15 +91,12 @@ const formatDisplayName = (toolName: string): string =>
 /**
  * Generates contextual loading message
  */
-const generateLoadingMessage = (
-  toolName: string,
-  category: ToolCategory,
-  args?: Record<string, unknown>,
-  verb?: string,
-): string => {
+const generateLoadingMessage = (toolName: string, category: ToolCategory, input?: unknown, verb?: string): string => {
+  const inputObject = input as Record<string, unknown>
+
   // If verb is provided, use it with variable substitution
   if (verb) {
-    const formattedVerb = formatVerb(verb, 40, args || {})
+    const formattedVerb = formatVerb(verb, 40, input)
     // Capitalize first letter and add ellipsis
     return formattedVerb.charAt(0).toUpperCase() + formattedVerb.slice(1) + '...'
   }
@@ -101,21 +105,21 @@ const generateLoadingMessage = (
   const name = toolName.toLowerCase()
 
   // Context-aware messages with args
-  if (args) {
-    if (name.includes('search') && typeof args.query === 'string') {
-      const query = args.query.slice(0, 20)
-      return `Searching for "${query}${args.query.length > 20 ? '...' : ''}"...`
+  if (input) {
+    if (name.includes('search') && typeof inputObject.query === 'string') {
+      const query = inputObject.query.slice(0, 20)
+      return `Searching for "${query}${inputObject.query.length > 20 ? '...' : ''}"...`
     }
-    if (name.includes('weather') && typeof args.location === 'string') {
-      return `Getting weather for ${args.location}...`
+    if (name.includes('weather') && typeof inputObject.location === 'string') {
+      return `Getting weather for ${inputObject.location}...`
     }
-    if ((name.includes('edit') || name.includes('file')) && typeof args.target_file === 'string') {
-      const fileName = args.target_file.split('/').pop() || args.target_file
+    if ((name.includes('edit') || name.includes('file')) && typeof inputObject.target_file === 'string') {
+      const fileName = inputObject.target_file.split('/').pop() || inputObject.target_file
       return `${name.includes('edit') ? 'Editing' : 'Reading'} ${fileName}...`
     }
-    if (name.includes('grep') && typeof args.query === 'string') {
-      const query = args.query.slice(0, 15)
-      return `Searching for "${query}${args.query.length > 15 ? '...' : ''}"...`
+    if (name.includes('grep') && typeof inputObject.query === 'string') {
+      const query = inputObject.query.slice(0, 15)
+      return `Searching for "${query}${inputObject.query.length > 15 ? '...' : ''}"...`
     }
   }
 
@@ -144,7 +148,7 @@ const generateLoadingMessage = (
 /**
  * Gets tool metadata with caching for performance (async version)
  */
-export const getToolMetadata = async (toolName: string, args?: Record<string, unknown>): Promise<ToolMetadata> => {
+export const getToolMetadata = async (toolName: string, args?: unknown): Promise<ToolMetadata> => {
   const cacheKey = `${toolName}:${JSON.stringify(args || {})}`
 
   if (metadataCache.has(cacheKey)) {
@@ -169,8 +173,8 @@ export const getToolMetadata = async (toolName: string, args?: Record<string, un
  * Gets tool metadata synchronously (without verb support)
  * This is a fallback for components that can't handle async operations
  */
-export const getToolMetadataSync = (toolName: string, args?: Record<string, unknown>): ToolMetadata => {
-  const cacheKey = `${toolName}:${JSON.stringify(args || {})}_sync`
+export const getToolMetadataSync = (toolName: string, input?: unknown): ToolMetadata => {
+  const cacheKey = `${toolName}:${JSON.stringify(input || {})}_sync`
 
   if (metadataCache.has(cacheKey)) {
     return metadataCache.get(cacheKey)!
@@ -179,7 +183,7 @@ export const getToolMetadataSync = (toolName: string, args?: Record<string, unkn
   const category = detectCategory(toolName)
   const metadata: ToolMetadata = {
     displayName: formatDisplayName(toolName),
-    loadingMessage: generateLoadingMessage(toolName, category, args),
+    loadingMessage: generateLoadingMessage(toolName, category, input),
     category,
   }
 

@@ -11,6 +11,6 @@ import { toolCallsMiddleware } from './tool-calls'
  */
 export const createDefaultMiddleware = (startWithReasoning: boolean = false) => [
   stripTagsMiddleware,
-  toolCallsMiddleware,
   extractReasoningMiddleware({ tagName: 'think', startWithReasoning }),
+  toolCallsMiddleware,
 ]

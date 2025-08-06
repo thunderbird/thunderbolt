@@ -14,15 +14,9 @@ export const ReasoningPart = ({ part, isStreaming }: ReasoningPartProps) => {
       className="shadow-none"
       icon={
         isStreaming ? (
-          <Loader2 
-            className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" 
-            data-testid="reasoning-loading"
-          />
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" data-testid="reasoning-loading" />
         ) : (
-          <Check 
-            className="h-4 w-4 text-green-600 dark:text-green-400" 
-            data-testid="reasoning-completed"
-          />
+          <Check className="h-4 w-4 text-green-600 dark:text-green-400" data-testid="reasoning-completed" />
         )
       }
       defaultOpen={false}

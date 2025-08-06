@@ -1,5 +1,5 @@
 import type { ToolConfig } from '@/types'
-import type { ChatOptions, FlowerIntelligence, StreamEvent } from '@flwr/flwr'
+import type { ChatOptions, StreamEvent } from '@flwr/flwr'
 import { convertToModelMessages, type UIMessage } from 'ai'
 import ky from 'ky'
 import { getCloudUrl } from './config'
@@ -16,26 +16,14 @@ export async function getFlowerApiKey(): Promise<string | undefined> {
   return data.api_key
 }
 
-const getFlowerIntelligenceDebug = async (): Promise<FlowerIntelligence> => {
-  // @ts-ignore - Module may not exist in CI environment
-  const { FlowerIntelligence } = await import('../../flower/intelligence/ts/src/index')
-  return FlowerIntelligence.instance as unknown as FlowerIntelligence
-}
-
-const getFlowerIntelligenceRelease = async (): Promise<FlowerIntelligence> => {
-  const moduleUrl = '/flower/intelligence/ts/dist/flowerintelligence.bundled.es.js'
-  const { FlowerIntelligence } = await (eval(`import("${moduleUrl}")`) as Promise<any>)
-  return FlowerIntelligence.instance
-}
-
 export const getFlowerIntelligence = memoize(async () => {
+  const { FlowerIntelligence } = await import('@flwr/flwr')
+  const fi = FlowerIntelligence.instance
+
   const flowerApiKey = await getFlowerApiKey()
   if (!flowerApiKey) {
     throw new Error('Failed to get Flower API key')
   }
-
-  const fi =
-    process.env.NODE_ENV === 'development' ? await getFlowerIntelligenceDebug() : await getFlowerIntelligenceRelease()
 
   fi.apiKey = flowerApiKey
   fi.remoteHandoff = true

@@ -26,29 +26,27 @@ export const AssistantMessage = ({ message, isStreaming }: AssistantMessageProps
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
-  filteredParts.forEach((part, index) => {
+  filteredParts.forEach((part) => {
     const type = part.type.split('-')[0]
-    const isLastPart = index === filteredParts.length - 1
-    const isPartStreaming = isStreaming && isLastPart
 
     switch (type) {
       case 'reasoning':
-        partElements.push(<ReasoningPart part={part as ReasoningUIPart} isStreaming={isPartStreaming} />)
+        partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
       case 'tool':
-        partElements.push(<ToolInvocationPart part={part as ToolUIPart} isStreaming={isPartStreaming} />)
+        partElements.push(<ToolInvocationPart part={part as ToolUIPart} />)
         break
       case 'text':
-        partElements.push(<TextPart part={part as TextUIPart} isStreaming={isPartStreaming} />)
+        partElements.push(<TextPart part={part as TextUIPart} />)
         break
     }
   })
 
   return (
     <div>
-      {partElements.map((part, index) => (
+      {partElements.map((partElement, index) => (
         <div key={index} className={index === 1 ? '' : animationClasses}>
-          {part}
+          {partElement}
         </div>
       ))}
     </div>

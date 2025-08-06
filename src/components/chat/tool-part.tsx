@@ -6,21 +6,28 @@ import { Expandable } from '../ui/expandable'
 
 export type ToolInvocationPartProps = {
   part: ToolUIPart
-  isStreaming: boolean
 }
 
 function getToolIcon(state: ToolUIPart['state']) {
   const baseClass = 'h-4 w-4 flex-shrink-0'
 
   switch (state) {
+    default:
     case 'input-streaming':
+    case 'input-available':
       return <Loader2 className={`${baseClass} animate-spin text-blue-600 dark:text-blue-400`} />
     case 'output-available':
       return <Check className={`${baseClass} text-green-600 dark:text-green-400`} />
     case 'output-error':
       return <X className={`${baseClass} text-red-600 dark:text-red-400`} />
-    default:
-      return null
+  }
+}
+
+const getOutput = (part: ToolUIPart) => {
+  if (typeof part.output === 'string') {
+    return part.output
+  } else {
+    return JSON.stringify(part.output, null, 2)
   }
 }
 
@@ -53,18 +60,6 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
     'Loading...'
   )
 
-  const renderOutput = () => {
-    if (typeof part.output === 'string') {
-      return (
-        <div className="rounded-md">
-          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{part.output}</p>
-        </div>
-      )
-    } else {
-      return JSON.stringify(part.output, null, 2)
-    }
-  }
-
   return (
     <Expandable
       className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
@@ -74,7 +69,7 @@ export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
     >
       <div className="tool-result w-full">
         <div className="rounded-md">
-          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{renderOutput()}</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(part)}</p>
         </div>
       </div>
     </Expandable>

@@ -4,16 +4,17 @@ import { Expandable } from '../ui/expandable'
 
 interface ReasoningPartProps {
   part: ReasoningUIPart
-  isStreaming: boolean
 }
 
-export const ReasoningPart = ({ part, isStreaming }: ReasoningPartProps) => {
+export const ReasoningPart = ({ part }: ReasoningPartProps) => {
+  const state = part.state
+
   return (
     <Expandable
       title={<span className="text-muted-foreground">Thinking</span>}
       className="shadow-none"
       icon={
-        isStreaming ? (
+        state === 'streaming' ? (
           <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" data-testid="reasoning-loading" />
         ) : (
           <Check className="h-4 w-4 text-green-600 dark:text-green-400" data-testid="reasoning-completed" />

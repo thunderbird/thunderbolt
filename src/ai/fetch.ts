@@ -192,8 +192,8 @@ export const aiFetchStreamingResponse = async ({
       onError: (error) => {
         console.error('error', error)
       },
-      onChunk: (chunk) => {
-        // console.log('chunk', chunk)
+      onChunk: () => {
+        // console.log('chunk')
       },
     })
 

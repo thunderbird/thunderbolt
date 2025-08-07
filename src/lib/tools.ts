@@ -40,7 +40,7 @@ export const tools = [...Object.values(tasksTools)]
 export const createTool = (config: ToolConfig) => {
   return tool({
     description: config.description,
-    parameters: config.parameters,
+    inputSchema: config.parameters,
     execute: config.execute,
   })
 }

@@ -1,6 +1,12 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { simulateReadableStream, streamText, wrapLanguageModel, type ToolSet, type UIMessage } from 'ai'
-import { v7 as uuidv7 } from 'uuid'
+import {
+  readUIMessageStream,
+  simulateReadableStream,
+  streamText,
+  wrapLanguageModel,
+  type ToolSet,
+  type UIMessage,
+} from 'ai'
 import { createDefaultMiddleware } from '../middleware/default'
 
 type SimulatedFetchOptions = {
@@ -200,190 +206,79 @@ export const sseToUIMessage = async (
     model: wrappedModel,
     prompt: '<test>',
     tools: createMockToolSet(),
+    _internal: {
+      generateId: () => '<DYNAMIC_ID>',
+    },
   })
 
-  // Consume the stream and build UIMessage parts
-  const parts: any[] = []
-  let hasStepStart = false
-  let currentText = ''
-  let currentReasoning = ''
+  // ------------------------------------------------------------------
+  // Convert the stream to a UIMessage using SDK helpers
+  // ------------------------------------------------------------------
+  const uiStream = result.toUIMessageStream({
+    sendReasoning: true,
+    messageMetadata: () => ({ modelId: 'simulator' }),
+  })
 
-  // Process chunks from the stream
-  for await (const chunk of result.fullStream) {
-    // Check for reasoning chunks
-    if (chunk.type === 'reasoning-delta') {
-      const delta = (chunk as any).text || ''
-      currentReasoning += delta
-    } else if (chunk.type === 'reasoning-start') {
-      // Start of reasoning section
-      currentReasoning = ''
-    } else if (chunk.type === 'reasoning-end') {
-      // End of reasoning section - save it
-      if (currentReasoning) {
-        parts.push({ type: 'reasoning', text: currentReasoning })
-        currentReasoning = ''
-      }
-    } else if (chunk.type === 'text-delta') {
-      const text = (chunk as any).textDelta || ''
-      currentText += text
-    } else if (chunk.type === 'tool-call') {
-      // Save any accumulated text first
-      if (currentText) {
-        // Check if the text contains think tags before adding
-        const thinkMatch = currentText.match(/<think>([\s\S]*?)<\/think>/)
-        if (thinkMatch) {
-          const reasoningText = thinkMatch[1].trim()
-          const remainingText = currentText.replace(/<think>[\s\S]*?<\/think>/, '').trim()
+  const messageIterator = readUIMessageStream({ stream: uiStream })
+  let finalMessage: UIMessage | undefined
+  for await (const msg of messageIterator) {
+    finalMessage = msg
+  }
 
-          if (reasoningText) {
-            parts.push({ type: 'reasoning', text: reasoningText })
-          }
-          if (remainingText) {
-            parts.push({ type: 'text', text: remainingText })
-          }
-        } else if (currentText.trim()) {
-          parts.push({ type: 'text', text: currentText })
-        }
-        currentText = ''
-      }
-      // Add tool invocation
-      const toolCall = chunk as any
-      parts.push({
-        type: 'tool-invocation',
-        toolInvocation: {
-          state: 'call',
-          step: 0,
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.toolName,
-          args: toolCall.args || {},
-        },
-      })
+  if (!finalMessage) {
+    throw new Error('No UIMessage produced from SSE log')
+  }
+
+  return finalMessage
+}
+
+/**
+ * Recursively normalizes common dynamic fields for snapshot testing
+ */
+const normalizeDynamicFields = (obj: any): any => {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(normalizeDynamicFields)
+  }
+
+  const normalized = { ...obj }
+
+  // Normalize IDs
+  if (typeof normalized.id === 'string') {
+    normalized.id = '<DYNAMIC_ID>'
+  }
+  if (typeof normalized.toolCallId === 'string') {
+    normalized.toolCallId = '<DYNAMIC_ID>'
+  }
+
+  // Normalize timestamps
+  if (normalized.timestamp) {
+    normalized.timestamp = '<DYNAMIC_TIMESTAMP>'
+  }
+
+  // Recursively normalize nested objects
+  for (const key in normalized) {
+    if (typeof normalized[key] === 'object' && normalized[key] !== null) {
+      normalized[key] = normalizeDynamicFields(normalized[key])
     }
   }
 
-  // Also check the final result
-  const finalText = await result.text
-  const finalToolCalls = await result.toolCalls
-
-  // Check if we captured reasoning from the stream
-  const hasStreamReasoning = parts.some((p) => p.type === 'reasoning')
-
-  // Try to get reasoning from the result's experimental_reasoning
-  const reasoning = await (result as any).experimental_reasoning
-  if (reasoning && !hasStreamReasoning) {
-    parts.push({ type: 'reasoning', text: reasoning })
-  }
-
-  // Add step-start if we have content
-  if ((currentText || currentReasoning || finalText || finalToolCalls?.length) && !hasStepStart) {
-    parts.unshift({ type: 'step-start' })
-  }
-
-  // Process any remaining accumulated reasoning
-  if (currentReasoning && !hasStreamReasoning) {
-    parts.push({ type: 'reasoning', text: currentReasoning })
-  }
-
-  // Process final text
-  const textToProcess = currentText || finalText || ''
-  if (textToProcess) {
-    // Only check for think tags if we don't already have reasoning
-    const hasReasoning = parts.some((p) => p.type === 'reasoning')
-    if (!hasReasoning) {
-      // Check if text contains reasoning pattern (think tags)
-      const thinkMatch = textToProcess.match(/<think>([\s\S]*?)<\/think>/)
-      if (thinkMatch) {
-        const reasoningText = thinkMatch[1].trim()
-        const remainingText = textToProcess.replace(/<think>[\s\S]*?<\/think>/, '').trim()
-
-        if (reasoningText) {
-          parts.push({ type: 'reasoning', text: reasoningText })
-        }
-        if (remainingText) {
-          parts.push({ type: 'text', text: remainingText })
-        }
-      } else if (textToProcess.trim() && parts.filter((p) => p.type === 'text').length === 0) {
-        parts.push({ type: 'text', text: textToProcess })
-      }
-    } else if (textToProcess.trim() && parts.filter((p) => p.type === 'text').length === 0) {
-      parts.push({ type: 'text', text: textToProcess })
-    }
-  }
-
-  // Add tool calls if not already added
-  if (finalToolCalls && finalToolCalls.length > 0) {
-    const existingToolCalls = parts.filter((p) => p.type === 'tool-invocation')
-    if (existingToolCalls.length === 0) {
-      for (const toolCall of finalToolCalls) {
-        parts.push({
-          type: 'tool-invocation',
-          toolInvocation: {
-            state: 'call',
-            step: 0,
-            toolCallId: toolCall.toolCallId,
-            toolName: toolCall.toolName,
-            args: (toolCall as any).input || {},
-          },
-        })
-      }
-    }
-  }
-
-  const message: UIMessage = {
-    id: `test-${uuidv7()}`,
-    role: 'assistant',
-    parts,
-    metadata: { modelId: 'simulator' },
-  }
-
-  return message
+  return normalized
 }
 
 /**
  * Normalizes dynamic fields in UIMessage for snapshot testing
  */
 export const normalizeUIMessage = (message: any): any => {
-  const normalized = JSON.parse(JSON.stringify(message))
-
-  // Replace dynamic IDs with stable placeholders
-  if (normalized.id) {
-    normalized.id = '<DYNAMIC_ID>'
-  }
-
-  // Normalize tool invocation IDs
-  if (normalized.parts) {
-    normalized.parts = normalized.parts.map((part: any) => {
-      if (part.toolInvocation?.toolCallId) {
-        return {
-          ...part,
-          toolInvocation: {
-            ...part.toolInvocation,
-            toolCallId: '<DYNAMIC_TOOL_CALL_ID>',
-          },
-        }
-      }
-      return part
-    })
-  }
-
-  return normalized
+  return normalizeDynamicFields(JSON.parse(JSON.stringify(message)))
 }
 
 /**
  * Normalizes dynamic fields in test results for snapshot testing
  */
 export const normalizeStepResult = (step: any): any => {
-  const normalized = JSON.parse(JSON.stringify(step))
-
-  // Normalize response properties
-  if (normalized.response) {
-    if (normalized.response.id) {
-      normalized.response.id = '<DYNAMIC_ID>'
-    }
-    if (normalized.response.timestamp) {
-      normalized.response.timestamp = '<DYNAMIC_TIMESTAMP>'
-    }
-  }
-
-  return normalized
+  return normalizeDynamicFields(JSON.parse(JSON.stringify(step)))
 }

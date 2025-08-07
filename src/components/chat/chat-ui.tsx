@@ -137,13 +137,14 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
 
   const handleSubmit = async () => {
     // Prevent submitting while streaming or if input is empty
-    if (isStreaming || !input.trim()) return
+    const textToSend = input.trim()
+    if (isStreaming || !textToSend) return
 
-    // Send the message using the new sendMessage API
-    await chatHelpers.sendMessage({ text: input })
-
-    // Clear the input after sending
+    // Clear the input immediately for responsive UX
     setInput('')
+
+    // Kick off sending without blocking UI
+    void chatHelpers.sendMessage({ text: textToSend })
 
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()

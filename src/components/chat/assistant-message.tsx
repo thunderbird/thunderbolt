@@ -2,7 +2,7 @@ import { UIMessage, type ReasoningUIPart, type TextUIPart, type ToolUIPart } fro
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ToolInvocationPart } from './tool-part'
+import { ToolPart } from './tool-part'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -34,7 +34,7 @@ export const AssistantMessage = ({ message }: AssistantMessageProps) => {
         partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
       case 'tool':
-        partElements.push(<ToolInvocationPart part={part as ToolUIPart} />)
+        partElements.push(<ToolPart part={part as ToolUIPart} />)
         break
       case 'text':
         partElements.push(<TextPart part={part as TextUIPart} />)

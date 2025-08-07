@@ -4,7 +4,7 @@ import type { ToolUIPart } from 'ai'
 import { Check, Loader2, X } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 
-export type ToolInvocationPartProps = {
+export type ToolPartProps = {
   part: ToolUIPart
 }
 
@@ -31,7 +31,7 @@ const getOutput = (part: ToolUIPart) => {
   }
 }
 
-export const ToolInvocationPart = ({ part }: ToolInvocationPartProps) => {
+export const ToolPart = ({ part }: ToolPartProps) => {
   const { type, input, state } = part
   const toolName = type.split('-')[1]
 

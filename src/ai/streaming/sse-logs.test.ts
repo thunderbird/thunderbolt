@@ -80,6 +80,16 @@ describe('SSE -> UIMessage:', () => {
     const testDescription = testCase.description ? `${testCase.name} - ${testCase.description}` : testCase.name
 
     it(testDescription, async () => {
+      // Note on ordering (SDK v5):
+      // We use extractReasoningMiddleware to turn <think>...</think> into a separate
+      // "reasoning" part and strip the tags from the visible text.
+      // The middleware buffers reasoning until the closing </think> tag is seen,
+      // while text (with think-tags removed) can be emitted earlier.
+      // As a result, the aggregated UIMessage produced by toUIMessageStream (which
+      // we snapshot here) can show text before reasoning. In contrast, the live UI
+      // renders chunks as they arrive (reasoning-start before text-delta), so users
+      // still see reasoning first while streaming. This difference is expected and
+      // does not affect UI behavior.
       const fileContent = readFileSync(testCase.streamFile, 'utf8')
       const { metadata, responses } = parseEnhancedSseFile(fileContent)
 

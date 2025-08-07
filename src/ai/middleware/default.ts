@@ -1,5 +1,4 @@
 import { extractReasoningMiddleware } from 'ai'
-import { stripTagsMiddleware } from './strip-tags'
 import { toolCallsMiddleware } from './tool-calls'
 
 /**
@@ -10,7 +9,6 @@ import { toolCallsMiddleware } from './tool-calls'
  * streaming operations.
  */
 export const createDefaultMiddleware = (startWithReasoning: boolean = false) => [
-  stripTagsMiddleware,
   extractReasoningMiddleware({ tagName: 'think', startWithReasoning }),
   toolCallsMiddleware,
 ]

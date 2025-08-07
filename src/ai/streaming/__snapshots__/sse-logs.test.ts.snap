@@ -45,7 +45,7 @@ exports[`SSE -> UIMessage: 002-reasoning-property - Unsupported \`reasoning\` pr
 }"
 `;
 
-exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Typical getTasks with <think> tags flow. 1`] = `
+exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5." 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
   "metadata": {

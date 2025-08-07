@@ -1,5 +1,5 @@
 ---
-description: "Typical getTasks with <think> tags flow."
+description: Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5."
 ---
 
 data: {"id":"013223f5-aef6-4c59-9e56-3757b14fbe81","object":"chat.completion.chunk","created":1753480209,"model":"accounts/fireworks/models/qwen3-235b-a22b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}

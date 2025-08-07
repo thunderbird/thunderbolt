@@ -23,6 +23,7 @@ export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   const partElements = []
 
   if (filteredParts.length === 0) {
+    // isStreaming should always be true because the next part will *replace* this one
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
@@ -45,6 +46,8 @@ export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   return (
     <div>
       {partElements.map((partElement, index) => (
+        // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
+        // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
         <div key={index} className={index === 1 ? '' : animationClasses}>
           {partElement}
         </div>

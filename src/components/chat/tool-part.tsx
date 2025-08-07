@@ -1,4 +1,5 @@
 import { getToolMetadata, getToolMetadataSync } from '@/lib/tool-metadata'
+import { splitPartType } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import type { ToolUIPart } from 'ai'
 import { Check, Loader2, X } from 'lucide-react'
@@ -8,7 +9,7 @@ export type ToolPartProps = {
   part: ToolUIPart
 }
 
-function getToolIcon(state: ToolUIPart['state']) {
+const getToolIcon = (state: ToolUIPart['state']) => {
   const baseClass = 'h-4 w-4 flex-shrink-0'
 
   switch (state) {
@@ -33,7 +34,7 @@ const getOutput = (part: ToolUIPart) => {
 
 export const ToolPart = ({ part }: ToolPartProps) => {
   const { type, input, state } = part
-  const toolName = type.split('-')[1]
+  const [, toolName] = splitPartType(type)
 
   // Use react-query to fetch metadata with proper caching
   const { data: metadata } = useQuery({

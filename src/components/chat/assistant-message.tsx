@@ -1,3 +1,4 @@
+import { splitPartType } from '@/lib/utils'
 import { UIMessage, type ReasoningUIPart, type TextUIPart, type ToolUIPart } from 'ai'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
@@ -16,8 +17,8 @@ const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => {
-    const type = part.type.split('-')[0]
-    return supportedPartTypes.includes(type)
+    const [partType] = splitPartType(part.type)
+    return supportedPartTypes.includes(partType)
   })
 
   const partElements = []
@@ -28,7 +29,7 @@ export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   }
 
   filteredParts.forEach((part) => {
-    const type = part.type.split('-')[0]
+    const [type] = splitPartType(part.type)
 
     switch (type) {
       case 'reasoning':

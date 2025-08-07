@@ -190,3 +190,14 @@ export function formatDate(timestamp: number): string {
 
   return d.format('MMM D, YYYY')
 }
+
+/**
+ * Split UI part types like "tool-read_file" into [type, name]
+ */
+export const splitPartType = (type: string): [string, string] => {
+  const dashIndex = type.indexOf('-')
+  if (dashIndex === -1) {
+    return [type, 'unknown']
+  }
+  return [type.slice(0, dashIndex), type.slice(dashIndex + 1)]
+}

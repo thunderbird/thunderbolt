@@ -20,6 +20,7 @@ type FlowerClient = {
     stream?: boolean
     tools?: unknown
     forceRemote?: boolean
+    encrypt?: boolean
     onStreamEvent?: (event: { chunk?: string }) => void
   }) => Promise<{ content?: string } | void>
 }
@@ -28,6 +29,7 @@ type FlowerProviderOptions = {
   getFlowerClient?: () => Promise<FlowerClient>
   getApiKey?: () => Promise<string | undefined>
   getBaseUrl?: () => Promise<string>
+  encrypt?: boolean
 }
 
 const defaultGetBaseUrl = async (): Promise<string> => {
@@ -145,6 +147,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const client = await this.configureClient()
     const messages = this.convertPromptToFlowerMessages(options.prompt)
     const modelId = this.modelId
+    const encrypt = this.options.encrypt
 
     // Convert tools to Flower-compatible format
     const flowerTools = this.convertToolsToFlowerFormat(options.tools as Record<string, any> | undefined)
@@ -163,6 +166,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
           model: modelId,
           stream: true,
           forceRemote: true,
+          encrypt,
           onStreamEvent: (event: any) => {
             // According to Flower docs, StreamEvent has a 'chunk' property for text
             // and optionally a 'toolCall' property for tool calls
@@ -296,11 +300,12 @@ class FlowerLanguageModel implements LanguageModelV2 {
 }
 
 export const createFlowerProvider = (providerOptions: FlowerProviderOptions = {}) => {
-  const options: Required<FlowerProviderOptions> = {
+  const options = {
     getFlowerClient: providerOptions.getFlowerClient ?? getDefaultFlowerClient,
     getApiKey: providerOptions.getApiKey ?? defaultGetApiKey,
     getBaseUrl: providerOptions.getBaseUrl ?? defaultGetBaseUrl,
-  }
+    encrypt: providerOptions.encrypt ?? false,
+  } as Required<FlowerProviderOptions>
 
   return (modelId: string): LanguageModelV2 => new FlowerLanguageModel(modelId, options)
 }

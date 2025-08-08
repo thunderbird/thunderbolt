@@ -27,16 +27,41 @@ describe('aiFetchStreamingResponse with Flower provider', () => {
     await db.insert(modelsTable).values({
       id: modelId,
       provider: 'flower',
-      name: 'Flower Qwen 3',
+      name: 'Qwen 3',
       model: 'qwen/qwen3-235b',
       enabled: 1,
       isSystem: 0,
       toolUsage: 0,
-      isConfidential: 0,
+      isConfidential: 1,
     })
 
     const init = makeInit([{ id: uuidv7(), role: 'user', content: 'Hello', parts: [] }], uuidv7())
 
+    const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
+    expect(res).toBeInstanceOf(Response)
+    const reader = (res.body as any)?.getReader?.()
+    expect(reader).toBeDefined()
+  })
+
+  it('supports encryption option for confidential models', async () => {
+    const db = DatabaseSingleton.instance.db
+
+    const modelId = uuidv7()
+    await db.insert(modelsTable).values({
+      id: modelId,
+      provider: 'flower',
+      name: 'Qwen 3 Encrypted',
+      model: 'qwen/qwen3-235b',
+      enabled: 1,
+      isSystem: 0,
+      toolUsage: 0,
+      isConfidential: 1,
+    })
+
+    const init = makeInit([{ id: uuidv7(), role: 'user', content: 'Sensitive data test', parts: [] }], uuidv7())
+
+    // Test that we can create a response for a confidential model
+    // The encryption will be handled internally by the Flower provider
     const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
     expect(res).toBeInstanceOf(Response)
     const reader = (res.body as any)?.getReader?.()

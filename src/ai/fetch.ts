@@ -47,7 +47,10 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
   switch (modelConfig.provider) {
     case 'flower': {
       // Use the native Flower provider that wraps the @flwr/flwr SDK
-      const provider = createFlowerProvider()
+      // Enable encryption for confidential models based on the isConfidential flag
+      const provider = createFlowerProvider({
+        encrypt: Boolean(modelConfig.isConfidential),
+      })
       return provider(modelConfig.model)
     }
     case 'thunderbolt': {
@@ -177,6 +180,9 @@ export const aiFetchStreamingResponse = async ({
       //   } satisfies OpenAICompatibleProviderOptions,
       // },
       onStepFinish: (step) => {
+        // Skip logging during tests to keep output clean
+        if (process.env.NODE_ENV === 'test') return
+
         console.log('step', {
           text: step.text,
           finishReason: step.finishReason,
@@ -191,6 +197,9 @@ export const aiFetchStreamingResponse = async ({
         })
       },
       onFinish: (finish) => {
+        // Skip logging during tests to keep output clean
+        if (process.env.NODE_ENV === 'test') return
+
         console.log('finish', {
           text: finish.text,
           finishReason: finish.finishReason,

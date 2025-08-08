@@ -52,13 +52,22 @@ def create_model_transformer(
 
         Only transforms whitelisted Thunderbolt models. Other models pass through unchanged.
         """
+        logger = logging.getLogger(__name__)
         try:
             # Parse the JSON body
             data = json.loads(body.decode("utf-8"))
+            logger.info(f"[ModelTransformer] Original request data: {data}")
 
             # Check if there's a model field
             if "model" in data and isinstance(data["model"], str):
                 model_name = data["model"]
+                logger.info(f"[ModelTransformer] Original model name: {model_name}")
+                logger.info(
+                    f"[ModelTransformer] Model in whitelist: {model_name in THUNDERBOLT_MODEL_WHITELIST}"
+                )
+                logger.info(
+                    f"[ModelTransformer] Whitelist contents: {THUNDERBOLT_MODEL_WHITELIST}"
+                )
 
                 # Check if model needs transformation
                 should_transform = model_name in THUNDERBOLT_MODEL_WHITELIST
@@ -66,19 +75,33 @@ def create_model_transformer(
                 # If check_prefix is provided, also check that model doesn't already have it
                 if check_prefix and model_name.startswith(check_prefix):
                     should_transform = False
+                    logger.info(
+                        f"[ModelTransformer] Model already has prefix {check_prefix}, skipping transform"
+                    )
 
                 if should_transform:
                     # Prepend the prefix for whitelisted models
+                    original_model = data["model"]
                     data["model"] = f"{prefix}{model_name}"
+                    logger.info(
+                        f"[ModelTransformer] Transformed model: {original_model} -> {data['model']}"
+                    )
+                else:
+                    logger.info(
+                        f"[ModelTransformer] Model {model_name} not transformed (not in whitelist or already has prefix)"
+                    )
+
+            transformed_data = json.dumps(data).encode("utf-8")
+            logger.info(
+                f"[ModelTransformer] Final transformed request: {transformed_data.decode('utf-8')}"
+            )
 
             # Return the modified JSON as bytes
-            return json.dumps(data).encode("utf-8")
+            return transformed_data
 
         except Exception as e:
             # If transformation fails, return original body
-            import logging
-
-            logging.getLogger(__name__).warning(f"Failed to transform model: {e}")
+            logger.warning(f"[ModelTransformer] Failed to transform model: {e}")
             return body
 
     return transformer

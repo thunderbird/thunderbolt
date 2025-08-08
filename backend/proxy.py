@@ -1,7 +1,6 @@
 import contextlib
 import gzip
 import logging
-import re
 import zlib
 from collections.abc import Callable
 from typing import Any, cast
@@ -80,6 +79,20 @@ class ProxyService:
         # Implement your auth logic here
         # For now, just check if Authorization header exists
         return "authorization" in request.headers
+
+    def _is_ai_service(self, config: ProxyConfig) -> bool:
+        """Check if the target URL is an AI service that benefits from passthrough."""
+        ai_service_indicators = [
+            "flower",
+            "openai",
+            "anthropic",
+            "cohere",
+            "huggingface",
+            "replicate",
+            "fireworks",
+        ]
+        target_url_lower = config.target_url.lower()
+        return any(indicator in target_url_lower for indicator in ai_service_indicators)
 
     def prepare_headers(self, request: Request, config: ProxyConfig) -> dict[str, str]:
         """Prepare headers for the proxied request"""
@@ -232,6 +245,34 @@ class ProxyService:
         if body is None:
             body = await request.body()
 
+        # Apply request transformer if configured (CRITICAL for Fireworks model prefixes!)
+        if config.request_transformer is not None and body:
+            transformer = cast(Callable[[bytes], bytes], config.request_transformer)
+            try:
+                logger.info(f"[ProxyPassthrough] Applying request transformer to body")
+                body = transformer(body)
+                logger.info(f"[ProxyPassthrough] Request transformation completed")
+            except Exception as e:
+                logger.error(f"[ProxyPassthrough] Request transformation failed: {e}")
+                raise HTTPException(
+                    status_code=400, detail="Invalid request format"
+                ) from e
+
+        # Enhanced logging for Fireworks API debugging in passthrough
+        if "fireworks" in target_url.lower():
+            logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Target URL: {target_url}")
+            if body:
+                try:
+                    body_str = body.decode("utf-8")
+                    logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Final request body: {body_str}")
+                    # Try to parse and extract model specifically
+                    import json
+                    parsed_body = json.loads(body_str)
+                    if "model" in parsed_body:
+                        logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Model field in final request: {parsed_body['model']}")
+                except Exception as e:
+                    logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Could not parse body: {e}")
+
         # Initiate upstream streaming request so we can capture headers/status immediately
         req = self.client.build_request(
             method=request.method,
@@ -240,6 +281,12 @@ class ProxyService:
             content=body,
         )
         upstream = await self.client.send(req, stream=True, follow_redirects=False)
+
+        # Enhanced logging for Fireworks API responses in passthrough
+        if "fireworks" in target_url.lower():
+            logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Response status: {upstream.status_code}")
+            if upstream.status_code != 200:
+                logger.info(f"[ProxyPassthrough] FIREWORKS DEBUG - Error status received: {upstream.status_code}")
 
         # Prepare response metadata
         upstream_headers = dict(upstream.headers)
@@ -274,53 +321,7 @@ class ProxyService:
         with contextlib.suppress(KeyError):
             del streaming.headers["content-length"]
 
-        # Ensure CORS headers are present for streaming responses
-        try:
-            from config import Settings
-
-            settings = Settings()
-            request_origin = request.headers.get("origin", "")
-            allow_origin_header = streaming.headers.get("Access-Control-Allow-Origin")
-
-            def origin_allowed(origin: str) -> bool:
-                if not origin:
-                    return False
-                if settings.cors_origin_regex:
-                    try:
-                        return re.match(settings.cors_origin_regex, origin) is not None
-                    except re.error:
-                        return False
-                allowed = set(settings.cors_origins_list)
-                return origin in allowed or "*" in allowed
-
-            if not allow_origin_header and origin_allowed(request_origin):
-                # If credentials are allowed, echo the origin; otherwise '*' is acceptable
-                if settings.cors_allow_credentials:
-                    streaming.headers["Access-Control-Allow-Origin"] = request_origin
-                else:
-                    if settings.cors_origin_regex or "*" in settings.cors_origins_list:
-                        streaming.headers["Access-Control-Allow-Origin"] = "*"
-                    else:
-                        streaming.headers["Access-Control-Allow-Origin"] = (
-                            request_origin
-                        )
-
-                # Ensure caches vary by Origin
-                vary_val = streaming.headers.get("Vary", "")
-                vary_items = {v.strip() for v in vary_val.split(",") if v.strip()}
-                vary_items.add("Origin")
-                streaming.headers["Vary"] = ", ".join(sorted(vary_items))
-
-            if settings.cors_allow_credentials:
-                streaming.headers["Access-Control-Allow-Credentials"] = "true"
-
-            if settings.cors_expose_headers:
-                streaming.headers["Access-Control-Expose-Headers"] = (
-                    settings.cors_expose_headers
-                )
-        except Exception:
-            # Non-fatal; middleware should normally handle CORS
-            pass
+        # Note: CORS headers are handled by FastAPI middleware
         return streaming
 
     async def proxy_request(
@@ -357,7 +358,12 @@ class ProxyService:
 
         # Use streaming proxy if needed
         if is_streaming:
-            return await self.proxy_streaming_request(request, path, config, body)
+            # For AI services, use passthrough to preserve exact response format
+            if self._is_ai_service(config):
+                logger.info("Using passthrough for AI service streaming request")
+                return await self.proxy_passthrough(request, path, config)
+            else:
+                return await self.proxy_streaming_request(request, path, config, body)
 
         # Build target URL
         target_url = f"{config.target_url}/{path}"
@@ -389,6 +395,37 @@ class ProxyService:
             logger.info(f"[ProxyService] Full target URL: {target_url}")
             logger.info(f"[ProxyService] Request headers: {headers}")
             logger.info(f"[ProxyService] Body length: {len(body) if body else 0}")
+
+            # Enhanced logging for Fireworks API debugging
+            if "fireworks" in target_url.lower():
+                logger.info(
+                    f"[ProxyService] FIREWORKS DEBUG - Target URL: {target_url}"
+                )
+                logger.info(
+                    f"[ProxyService] FIREWORKS DEBUG - Request method: {request.method}"
+                )
+                if body:
+                    try:
+                        body_str = body.decode("utf-8")
+                        logger.info(
+                            f"[ProxyService] FIREWORKS DEBUG - Final request body being sent: {body_str}"
+                        )
+                        # Try to parse and extract model specifically
+                        import json
+
+                        parsed_body = json.loads(body_str)
+                        if "model" in parsed_body:
+                            logger.info(
+                                f"[ProxyService] FIREWORKS DEBUG - Model field in final request: {parsed_body['model']}"
+                            )
+                    except Exception as e:
+                        logger.info(
+                            f"[ProxyService] FIREWORKS DEBUG - Could not parse body as JSON: {e}"
+                        )
+                        logger.info(
+                            f"[ProxyService] FIREWORKS DEBUG - Raw body: {body[:200]!r}"
+                        )
+
             # Log request body for debugging
             if body:
                 try:
@@ -407,6 +444,26 @@ class ProxyService:
             )
             logger.info(f"[ProxyService] Response status: {response.status_code}")
             logger.info(f"[ProxyService] Response headers: {dict(response.headers)}")
+
+            # Enhanced logging for Fireworks API responses
+            if "fireworks" in target_url.lower():
+                logger.info(
+                    f"[ProxyService] FIREWORKS DEBUG - Response status: {response.status_code}"
+                )
+                if response.status_code != 200:
+                    # Get response content to see the error message
+                    content_preview = response.read()
+                    try:
+                        error_text = content_preview.decode("utf-8")
+                        logger.info(
+                            f"[ProxyService] FIREWORKS DEBUG - Error response: {error_text}"
+                        )
+                    except Exception:
+                        logger.info(
+                            f"[ProxyService] FIREWORKS DEBUG - Binary error response: {content_preview[:200]!r}"
+                        )
+                    # Reset content for later processing
+                    response._content = content_preview
 
             # Create response headers
             response_headers = dict(response.headers)

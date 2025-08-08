@@ -26,10 +26,20 @@ export const seedModels = async () => {
     const seedData = [
       {
         id: uuidv7(),
+        name: 'Flower Qwen 3B (System Default)',
+        provider: 'flower' as const,
+        model: 'qwen/qwen3-235b',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 0,
+        toolUsage: 1,
+      },
+      {
+        id: uuidv7(),
         name: 'Qwen 3',
         provider: 'thunderbolt' as const,
         model: 'qwen3-235b-a22b-instruct-2507',
-        isSystem: 1,
+        isSystem: 0,
         enabled: 1,
         isConfidential: 0,
       },

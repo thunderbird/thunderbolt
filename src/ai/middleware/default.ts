@@ -1,5 +1,4 @@
 import { extractReasoningMiddleware } from 'ai'
-import { toolCallsMiddleware } from './tool-calls'
 
 /**
  * Creates a fresh set of middleware instances.
@@ -10,5 +9,4 @@ import { toolCallsMiddleware } from './tool-calls'
  */
 export const createDefaultMiddleware = (startWithReasoning: boolean = false) => [
   extractReasoningMiddleware({ tagName: 'think', startWithReasoning }),
-  toolCallsMiddleware,
 ]

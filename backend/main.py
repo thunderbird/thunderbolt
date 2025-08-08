@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from auth import google_router, microsoft_router
 from config import Settings
@@ -300,12 +300,10 @@ async def flower_proxy_endpoint(
     # Don't override the API key in config - the proxy will pass through existing headers
     config.api_key = ""
 
-    # Proxy the request
-    logger.info(f"Proxying request to {config.target_url}/{path}")
+    # Always passthrough to preserve Flower's exact streaming and headers
     try:
-        result = await proxy_service.proxy_request(request, path, config)
-        logger.info("Proxy request successful")
-        return result
+        logger.info(f"Proxying (passthrough) request to {config.target_url}/{path}")
+        return await proxy_service.proxy_passthrough(request, path, config)
     except Exception as e:
         logger.error(f"Proxy request failed: {str(e)}", exc_info=True)
         raise

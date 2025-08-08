@@ -1,0 +1,68 @@
+--- node_modules/@flwr/flwr/dist/flowerintelligence.es.js.orig	2025-08-08 18:31:32
++++ node_modules/@flwr/flwr/dist/flowerintelligence.es.js	2025-08-08 18:32:18
+@@ -620,7 +620,7 @@
+     g(this, "baseUrl");
+     g(this, "apiKey");
+     g(this, "cryptoHandler");
+-    this.baseUrl = me, this.apiKey = t, this.cryptoHandler = new Oe(this.baseUrl, this.apiKey);
++    this.baseUrl = w.customBaseUrl || me, this.apiKey = t, this.cryptoHandler = new Oe(this.baseUrl, this.apiKey);
+   }
+   async chat(t, r, o, i, a, s, l, y, f, u = !1, p) {
+     if (u) {
+@@ -1170,8 +1170,22 @@
+    */
+   set apiKey(n) {
+     P(w, S, n);
++  }
++  /**
++   * Set base URL for FlowerIntelligence remote endpoint.
++   * @param baseUrl - The base URL to use instead of the default api.flower.ai
++   */
++  static set baseUrl(n) {
++    w.customBaseUrl = n;
+   }
+   /**
++   * Get base URL for FlowerIntelligence remote endpoint.
++   * @returns The custom base URL if set, otherwise the default
++   */
++  static get baseUrl() {
++    return w.customBaseUrl || me;
++  }
++  /**
+    * Downloads and loads a model into memory.
+    * @param model Model name of the model to download.
+    * @param callback A callback function taking a {@link Progress} object to handle the loading event.
+--- node_modules/@flwr/flwr/dist/flowerintelligence.bundled.es.js.orig	2025-08-08 18:42:39
++++ node_modules/@flwr/flwr/dist/flowerintelligence.bundled.es.js	2025-08-08 18:44:16
+@@ -641,7 +641,7 @@
+     aA(this, "baseUrl");
+     aA(this, "apiKey");
+     aA(this, "cryptoHandler");
+-    this.baseUrl = pS, this.apiKey = I, this.cryptoHandler = new cL(this.baseUrl, this.apiKey);
++    this.baseUrl = yB.customBaseUrl || pS, this.apiKey = I, this.cryptoHandler = new cL(this.baseUrl, this.apiKey);
+   }
+   async chat(I, E, B, Q, C, D, M, R, y, i = !1, F) {
+     if (i) {
+@@ -54081,8 +54081,22 @@
+    */
+   set apiKey(g) {
+     vD(yB, VD, g);
++  }
++  /**
++   * Set base URL for FlowerIntelligence remote endpoint.
++   * @param baseUrl - The base URL to use instead of the default api.flower.ai
++   */
++  static set baseUrl(g) {
++    yB.customBaseUrl = g;
+   }
+   /**
++   * Get base URL for FlowerIntelligence remote endpoint.
++   * @returns The custom base URL if set, otherwise the default
++   */
++  static get baseUrl() {
++    return yB.customBaseUrl || pS;
++  }
++  /**
+    * Downloads and loads a model into memory.
+    * @param model Model name of the model to download.
+    * @param callback A callback function taking a {@link Progress} object to handle the loading event.

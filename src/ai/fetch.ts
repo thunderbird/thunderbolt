@@ -4,7 +4,6 @@ import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
 import { getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
-import { handleFlowerChatStream } from '@/lib/flower'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -26,6 +25,7 @@ import {
 } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createDefaultMiddleware } from './middleware/default'
+import { createFlowerProvider } from './providers/flower'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -45,6 +45,11 @@ type AiFetchStreamingResponseOptions = {
 
 export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
   switch (modelConfig.provider) {
+    case 'flower': {
+      // Use the native Flower provider that wraps the @flwr/flwr SDK
+      const provider = createFlowerProvider()
+      return provider(modelConfig.model)
+    }
     case 'thunderbolt': {
       const cloudUrl = await getCloudUrl()
       const openaiCompatible = createOpenAICompatible({
@@ -140,11 +145,7 @@ export const aiFetchStreamingResponse = async ({
     },
   })
 
-  // Flower is a special case that uses a custom SDK that is not compatible with the Vercel AI SDK.
-  if (model.provider === 'flower') {
-    const tools = model.toolUsage === 1 ? await getAvailableTools() : undefined
-    return handleFlowerChatStream({ messages, systemPrompt, model: model.model, tools })
-  }
+  // Flower now uses a custom Vercel AI SDK provider; no special-casing here
 
   try {
     const baseModel = await createModel(model)

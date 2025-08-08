@@ -5,6 +5,7 @@
   "description": "Thunderbolt",
   "type": "module",
   "scripts": {
+    "postinstall": "patch -p0 < patches/@flwr+flwr+0.1.13.patch || true",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
@@ -101,6 +102,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.3.0",
     "jsdom": "^26.1.0",
+    "patch-package": "^8.0.0",
     "prettier": "^3.6.2",
     "tailwindcss": "4.1.11",
     "tsx": "^4.20.3",

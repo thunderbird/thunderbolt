@@ -1,5 +1,6 @@
 import gzip
 import logging
+import re
 import zlib
 from collections.abc import Callable
 from typing import Any, cast
@@ -212,6 +213,117 @@ class ProxyService:
             logger.error(f"Proxy streaming request failed: {e}")
             raise HTTPException(status_code=502, detail="Bad gateway") from e
 
+    async def proxy_passthrough(
+        self, request: Request, path: str, config: ProxyConfig
+    ) -> StreamingResponse:
+        """Raw reverse proxy: forward request and stream back response without inspecting payload."""
+        # Build target URL
+        target_url = f"{config.target_url}/{path}"
+
+        # Query params
+        if request.url.query:
+            query_string = str(request.url.query)
+            if query_string:
+                target_url = f"{target_url}?{query_string}"
+
+        headers = self.prepare_headers(request, config)
+        body = getattr(request, "_body", None)
+        if body is None:
+            body = await request.body()
+
+        # Initiate upstream streaming request so we can capture headers/status immediately
+        req = self.client.build_request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=body,
+        )
+        upstream = await self.client.send(req, stream=True, follow_redirects=False)
+
+        # Prepare response metadata
+        upstream_headers = dict(upstream.headers)
+        # Remove hop-by-hop headers
+        for h in [
+            "transfer-encoding",
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "upgrade",
+        ]:
+            upstream_headers.pop(h, None)
+
+        media_type = upstream_headers.get("content-type")
+
+        async def body_iter():
+            try:
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            finally:
+                # Ensure the upstream connection is closed when streaming completes
+                await upstream.aclose()
+
+        streaming = StreamingResponse(
+            body_iter(), status_code=upstream.status_code, media_type=media_type
+        )
+        streaming.headers.update(upstream_headers)
+        # No content-length for streaming bodies
+        try:
+            del streaming.headers["content-length"]
+        except KeyError:
+            pass
+
+        # Ensure CORS headers are present for streaming responses
+        try:
+            from config import Settings
+
+            settings = Settings()
+            request_origin = request.headers.get("origin", "")
+            allow_origin_header = streaming.headers.get("Access-Control-Allow-Origin")
+
+            def origin_allowed(origin: str) -> bool:
+                if not origin:
+                    return False
+                if settings.cors_origin_regex:
+                    try:
+                        return re.match(settings.cors_origin_regex, origin) is not None
+                    except re.error:
+                        return False
+                allowed = set(settings.cors_origins_list)
+                return origin in allowed or "*" in allowed
+
+            if not allow_origin_header and origin_allowed(request_origin):
+                # If credentials are allowed, echo the origin; otherwise '*' is acceptable
+                if settings.cors_allow_credentials:
+                    streaming.headers["Access-Control-Allow-Origin"] = request_origin
+                else:
+                    if settings.cors_origin_regex or "*" in settings.cors_origins_list:
+                        streaming.headers["Access-Control-Allow-Origin"] = "*"
+                    else:
+                        streaming.headers["Access-Control-Allow-Origin"] = (
+                            request_origin
+                        )
+
+                # Ensure caches vary by Origin
+                vary_val = streaming.headers.get("Vary", "")
+                vary_items = {v.strip() for v in vary_val.split(",") if v.strip()}
+                vary_items.add("Origin")
+                streaming.headers["Vary"] = ", ".join(sorted(vary_items))
+
+            if settings.cors_allow_credentials:
+                streaming.headers["Access-Control-Allow-Credentials"] = "true"
+
+            if settings.cors_expose_headers:
+                streaming.headers["Access-Control-Expose-Headers"] = (
+                    settings.cors_expose_headers
+                )
+        except Exception:
+            # Non-fatal; middleware should normally handle CORS
+            pass
+        return streaming
+
     async def proxy_request(
         self, request: Request, path: str, config: ProxyConfig
     ) -> Response:
@@ -310,7 +422,7 @@ class ProxyService:
 
             # Check if decompression is needed based on content-encoding header
             # httpx may automatically decompress but not remove the content-encoding header
-            if content_encoding:
+            if isinstance(content, (bytes, bytearray)) and content_encoding:
                 try:
                     if content_encoding in ["br", "brotli"]:
                         if HAS_BROTLI:

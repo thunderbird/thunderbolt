@@ -122,11 +122,32 @@ class FlowerLanguageModel implements LanguageModelV2 {
     return client
   }
 
+  private convertToolsToFlowerFormat(tools: Record<string, any> | undefined): unknown {
+    if (!tools || Object.keys(tools).length === 0) {
+      return undefined
+    }
+
+    // Convert AI SDK tools format to OpenAI-compatible format that Flower expects
+    const flowerTools = Object.entries(tools).map(([name, tool]) => ({
+      type: 'function',
+      function: {
+        name,
+        description: tool.description || '',
+        parameters: tool.parameters || { type: 'object', properties: {}, required: [] },
+      },
+    }))
+
+    return flowerTools
+  }
+
   private async streamWithFlower(options: LanguageModelV2CallOptions) {
     const warnings: any[] = []
     const client = await this.configureClient()
     const messages = this.convertPromptToFlowerMessages(options.prompt)
     const modelId = this.modelId
+
+    // Convert tools to Flower-compatible format
+    const flowerTools = this.convertToolsToFlowerFormat(options.tools as Record<string, any> | undefined)
 
     // Generate a unique ID for this stream
     const streamId = `flower-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -137,7 +158,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
         let hasStarted = false
 
         // Start the chat asynchronously
-        const chatArgs = {
+        const chatArgs: any = {
           messages,
           model: modelId,
           stream: true,
@@ -177,11 +198,16 @@ class FlowerLanguageModel implements LanguageModelV2 {
           },
         }
 
+        // Add tools if available
+        if (flowerTools) {
+          chatArgs.tools = flowerTools
+        }
+
         const chatPromise = client.chat(chatArgs)
 
         // Handle completion and errors
         chatPromise
-          .then((result) => {
+          .then((_result) => {
             if (!finished) {
               finished = true
               try {

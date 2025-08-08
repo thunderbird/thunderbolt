@@ -4,6 +4,7 @@
     "": {
       "name": "thunderbolt",
       "dependencies": {
+        "@ai-sdk-tool/parser": "^2.0.11",
         "@ai-sdk/openai": "^2.0.4",
         "@ai-sdk/openai-compatible": "^1.0.2",
         "@ai-sdk/provider-utils": "^3.0.1",
@@ -97,6 +98,8 @@
     },
   },
   "packages": {
+    "@ai-sdk-tool/parser": ["@ai-sdk-tool/parser@2.0.11", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.1" } }, "sha512-+1NplClwiRkPHYukJ+xvgRL6jGt3Fs27gehtQsltQ+gEe8pBCIMLcDa/QBumff005oBVCx1RqGVpNUDuRHjK7w=="],
+
     "@ai-sdk/gateway": ["@ai-sdk/gateway@1.0.3", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.1" }, "peerDependencies": { "zod": "^3.25.76 || ^4" } }, "sha512-QRGz2vH1WR9NvCv8gWocoebAKiXcuqj22mug6i8COeVsp33x5K5cK2DT4TwiQx5SfYbqJbVoBT+UqnHF7A3PHA=="],
 
     "@ai-sdk/openai": ["@ai-sdk/openai@2.0.4", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.1" }, "peerDependencies": { "zod": "^3.25.76 || ^4" } }, "sha512-PnVUFosX2zWk6emiX4SulZrGvGw79YJjh/DgxahpAcBpz71GlQyzVNTFAQx7ycFGLBg/YniJr1M2WJybYZZ3ug=="],

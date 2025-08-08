@@ -24,7 +24,7 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
-import { createDefaultMiddleware } from './middleware/default'
+import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
 import { createFlowerProvider } from './providers/flower'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
@@ -150,10 +150,17 @@ export const aiFetchStreamingResponse = async ({
   try {
     const baseModel = await createModel(model)
 
+    // Use Flower-specific middleware for the Flower provider to enable enhanced tool support
+    // Other providers already have native function calling support
+    const middleware =
+      model.provider === 'flower'
+        ? createFlowerMiddleware(Boolean(model.startWithReasoning))
+        : createDefaultMiddleware(Boolean(model.startWithReasoning))
+
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
       model: baseModel,
-      middleware: createDefaultMiddleware(Boolean(model.startWithReasoning)),
+      middleware,
     })
 
     const result = streamText({

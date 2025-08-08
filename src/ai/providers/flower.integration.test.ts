@@ -1,7 +1,7 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { modelsTable, settingsTable } from '@/db/tables'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -66,5 +66,56 @@ describe('aiFetchStreamingResponse with Flower provider', () => {
     expect(res).toBeInstanceOf(Response)
     const reader = (res.body as any)?.getReader?.()
     expect(reader).toBeDefined()
+  })
+
+  it('respects disable encryption setting for confidential models', async () => {
+    const db = DatabaseSingleton.instance.db
+
+    // Enable the disable encryption setting
+    await db
+      .insert(settingsTable)
+      .values({
+        key: 'disable_flower_encryption',
+        value: 'true',
+      })
+      .onConflictDoUpdate({
+        target: settingsTable.key,
+        set: { value: 'true' },
+      })
+
+    const modelId = uuidv7()
+    await db.insert(modelsTable).values({
+      id: modelId,
+      provider: 'flower',
+      name: 'Qwen 3 No Encryption',
+      model: 'qwen/qwen3-235b',
+      enabled: 1,
+      isSystem: 0,
+      toolUsage: 0,
+      isConfidential: 1, // This is confidential but encryption should be disabled
+    })
+
+    const init = makeInit(
+      [{ id: uuidv7(), role: 'user', content: 'Sensitive data test without encryption', parts: [] }],
+      uuidv7(),
+    )
+
+    // Test that we can create a response for a confidential model with encryption disabled
+    const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
+    expect(res).toBeInstanceOf(Response)
+    const reader = (res.body as any)?.getReader?.()
+    expect(reader).toBeDefined()
+
+    // Reset the setting to default for other tests
+    await db
+      .insert(settingsTable)
+      .values({
+        key: 'disable_flower_encryption',
+        value: 'false',
+      })
+      .onConflictDoUpdate({
+        target: settingsTable.key,
+        set: { value: 'false' },
+      })
   })
 })

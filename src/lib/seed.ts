@@ -112,6 +112,14 @@ export const seedSettings = async () => {
       value: 'false',
     })
     .onConflictDoNothing()
+
+  await db
+    .insert(settingsTable)
+    .values({
+      key: 'disable_flower_encryption',
+      value: 'false',
+    })
+    .onConflictDoNothing()
 }
 
 export const seedTasks = async () => {

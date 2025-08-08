@@ -14,6 +14,9 @@ export default function DevSettingsPage() {
   // Cloud URL setting
   const [cloudUrl, setCloudUrl] = useSetting('cloud_url', '')
 
+  // Disable encryption setting
+  const [disableEncryption, setDisableEncryption] = useBooleanSetting('disable_flower_encryption', false)
+
   // Runtime capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
@@ -64,6 +67,17 @@ export default function DevSettingsPage() {
                 </TooltipContent>
               )}
             </Tooltip>
+          </div>
+
+          {/* Divider between settings */}
+          <div className="border-t -mx-6" />
+
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">Disable Encryption</label>
+              <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
+            </div>
+            <Switch checked={disableEncryption} onCheckedChange={setDisableEncryption} />
           </div>
         </div>
       </SectionCard>

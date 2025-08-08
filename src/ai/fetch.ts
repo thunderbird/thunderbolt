@@ -2,7 +2,7 @@ import { createPrompt } from '@/ai/prompt'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
-import { getSetting } from '@/lib/dal'
+import { getBooleanSetting, getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
@@ -47,9 +47,14 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
   switch (modelConfig.provider) {
     case 'flower': {
       // Use the native Flower provider that wraps the @flwr/flwr SDK
-      // Enable encryption for confidential models based on the isConfidential flag
+      // Check if encryption should be disabled via dev settings
+      const disableEncryption = await getBooleanSetting('disable_flower_encryption', false)
+
+      // Enable encryption for confidential models unless explicitly disabled in dev settings
+      const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableEncryption
+
       const provider = createFlowerProvider({
-        encrypt: Boolean(modelConfig.isConfidential),
+        encrypt: shouldEncrypt,
       })
       return provider(modelConfig.model)
     }

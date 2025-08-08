@@ -94,17 +94,12 @@ describe('Flower provider UI message conversion', () => {
 
     // Verify the UI message structure
     expect(uiMessage.role).toBe('assistant')
-    expect(uiMessage.metadata?.modelId).toBe('flower-test')
+    expect((uiMessage.metadata as any)?.modelId).toBe('flower-test')
 
     // Check the text in parts
-    if (Array.isArray(uiMessage.parts)) {
-      const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
-      expect(textPart).toBeDefined()
-      expect(textPart?.text).toBe('Hello world!')
-    } else {
-      // Fallback to content if parts is not an array
-      expect(uiMessage.content).toBe('Hello world!')
-    }
+    const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
+    expect(textPart).toBeDefined()
+    expect((textPart as any)?.text).toBe('Hello world!')
   })
 
   it('produces correct UIMessage with reasoning (think tags)', async () => {
@@ -127,12 +122,12 @@ describe('Flower provider UI message conversion', () => {
     if (Array.isArray(uiMessage.parts)) {
       const reasoningPart = uiMessage.parts.find((p: any) => p.type === 'reasoning')
       expect(reasoningPart).toBeDefined()
-      expect(reasoningPart?.text || reasoningPart?.content).toContain('Let me think about this request')
-      expect(reasoningPart?.text || reasoningPart?.content).toContain('I should provide a helpful response')
+      expect((reasoningPart as any)?.text).toContain('Let me think about this request')
+      expect((reasoningPart as any)?.text).toContain('I should provide a helpful response')
 
       const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
       expect(textPart).toBeDefined()
-      const textContent = (textPart?.text || textPart?.content || '').trim()
+      const textContent = ((textPart as any)?.text || '').trim()
       expect(textContent).toBe('The answer is 42.')
     }
   })
@@ -152,13 +147,9 @@ describe('Flower provider UI message conversion', () => {
     expect(uiMessage.role).toBe('assistant')
 
     // Check for empty content
-    if (Array.isArray(uiMessage.parts)) {
-      const textParts = uiMessage.parts.filter((p: any) => p.type === 'text')
-      if (textParts.length > 0) {
-        expect(textParts[0]?.text || '').toBe('')
-      }
-    } else {
-      expect(uiMessage.content || '').toBe('')
+    const textParts = uiMessage.parts.filter((p: any) => p.type === 'text')
+    if (textParts.length > 0) {
+      expect((textParts[0] as any)?.text || '').toBe('')
     }
   })
 
@@ -239,19 +230,12 @@ describe('Flower provider UI message conversion', () => {
     const uiMessage = await streamToUIMessage(model, 'Format test')
 
     // Check the formatted text in parts
-    if (Array.isArray(uiMessage.parts)) {
-      const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
-      expect(textPart).toBeDefined()
-      const text = textPart?.text || ''
-      expect(text).toContain('## Heading')
-      expect(text).toContain('- Item 1')
-      expect(text).toContain('**Bold text**')
-    } else {
-      const content = uiMessage.content || ''
-      expect(content).toContain('## Heading')
-      expect(content).toContain('- Item 1')
-      expect(content).toContain('**Bold text**')
-    }
+    const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
+    expect(textPart).toBeDefined()
+    const text = (textPart as any)?.text || ''
+    expect(text).toContain('## Heading')
+    expect(text).toContain('- Item 1')
+    expect(text).toContain('**Bold text**')
   })
 
   it('works with startWithReasoning option', async () => {

@@ -12,52 +12,55 @@ describe('Flower via OpenAI-compatible interface', () => {
       name: 'flower',
       baseURL: `${cloudUrl}/flower/v1`,
       apiKey: apiKey,
-      fetch: async (url, options) => {
-        console.log('Fetch called with URL:', url)
-        console.log('Fetch options:', {
-          method: options?.method,
-          headers: options?.headers,
-          body: options?.body ? JSON.parse(options.body as string) : undefined,
-        })
+      fetch: Object.assign(
+        async (url: RequestInfo | URL, options?: RequestInit) => {
+          console.log('Fetch called with URL:', url)
+          console.log('Fetch options:', {
+            method: options?.method,
+            headers: options?.headers,
+            body: options?.body ? JSON.parse(options.body as string) : undefined,
+          })
 
-        // Simulate a successful streaming response
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream({
-          start(controller) {
-            // Simulate OpenAI-compatible SSE format
-            controller.enqueue(
-              encoder.encode(
-                'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
-              ),
-            )
-            controller.enqueue(
-              encoder.encode(
-                'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
-              ),
-            )
-            controller.enqueue(
-              encoder.encode(
-                'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}\n\n',
-              ),
-            )
-            controller.enqueue(
-              encoder.encode(
-                'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
-              ),
-            )
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-            controller.close()
-          },
-        })
+          // Simulate a successful streaming response
+          const encoder = new TextEncoder()
+          const stream = new ReadableStream({
+            start(controller) {
+              // Simulate OpenAI-compatible SSE format
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                ),
+              )
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+                ),
+              )
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}\n\n',
+                ),
+              )
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"qwen/qwen3-235b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                ),
+              )
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              controller.close()
+            },
+          })
 
-        return new Response(stream, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-          },
-        })
-      },
+          return new Response(stream, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
+          })
+        },
+        { preconnect: () => Promise.resolve(false) },
+      ),
     })
 
     const model = flowerCompatible('qwen/qwen3-235b')

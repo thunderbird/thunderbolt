@@ -1,3 +1,4 @@
+import contextlib
 import gzip
 import logging
 import re
@@ -270,10 +271,8 @@ class ProxyService:
         )
         streaming.headers.update(upstream_headers)
         # No content-length for streaming bodies
-        try:
+        with contextlib.suppress(KeyError):
             del streaming.headers["content-length"]
-        except KeyError:
-            pass
 
         # Ensure CORS headers are present for streaming responses
         try:
@@ -422,7 +421,7 @@ class ProxyService:
 
             # Check if decompression is needed based on content-encoding header
             # httpx may automatically decompress but not remove the content-encoding header
-            if isinstance(content, (bytes, bytearray)) and content_encoding:
+            if isinstance(content, bytes | bytearray) and content_encoding:
                 try:
                     if content_encoding in ["br", "brotli"]:
                         if HAS_BROTLI:

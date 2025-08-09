@@ -1,3 +1,4 @@
+import contextlib
 import gzip
 import logging
 import zlib
@@ -320,28 +321,19 @@ class ProxyService:
                     if content_encoding in ["br", "brotli"]:
                         if HAS_BROTLI:
                             # Try to decompress - if it fails, content was already decompressed
-                            try:
+                            with contextlib.suppress(brotli.error):
                                 content = brotli.decompress(content)
-                            except brotli.error:
-                                # Content was already decompressed by httpx
-                                pass
                         else:
                             raise HTTPException(
                                 status_code=500,
                                 detail="Server configuration error: brotli support not available",
                             )
                     elif content_encoding == "gzip":
-                        try:
+                        with contextlib.suppress(gzip.BadGzipFile):
                             content = gzip.decompress(content)
-                        except gzip.BadGzipFile:
-                            # Content was already decompressed by httpx
-                            pass
                     elif content_encoding == "deflate":
-                        try:
+                        with contextlib.suppress(zlib.error):
                             content = zlib.decompress(content)
-                        except zlib.error:
-                            # Content was already decompressed by httpx
-                            pass
                 except HTTPException:
                     # Re-raise HTTP exceptions (like missing brotli support)
                     raise

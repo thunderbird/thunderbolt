@@ -1,42 +1,22 @@
 # Patches
 
-This directory contains patches for npm packages to fix issues or add functionality.
+Patches modify installed npm packages to fix bugs or add features not available in the published version.
 
-## @flwr/flwr
+## How it works
 
-The Flower SDK has a hardcoded URL to `api.flower.ai` which causes CORS issues when used in the browser. Our patch adds support for configuring a custom base URL.
+Patches are automatically applied during `bun install` via the `postinstall` script. Files follow the pattern `@scope+package+version.patch`.
 
-### Changes Made
+## Creating a patch
 
-1. Added static `baseUrl` setter and getter to `FlowerIntelligence` class
-2. Modified the remote engine constructor to use the custom base URL if set
-3. Updated TypeScript definitions to include the new methods
+1. Make changes to files in `node_modules/package-name/`
+2. Run: `bun patch-package package-name`
+3. Commit the generated `.patch` file
 
-### How It Works
+## Best practices
 
-The patch modifies the SDK to check for a custom base URL before defaulting to `api.flower.ai`. This allows us to redirect all Flower API calls through our backend proxy at `/flower`, avoiding CORS issues.
+- Keep patches minimal
+- Document why changes are needed
+- Update patches when upgrading packages
+- Consider alternatives before patching
 
-### Applying the Patch
-
-The patch is automatically applied during `bun install` via the `postinstall` script in `package.json`.
-
-To manually apply the patch:
-
-```bash
-patch -p0 < patches/@flwr+flwr+0.1.13.patch
-```
-
-### Creating/Updating the Patch
-
-If you need to update the patch after modifying the Flower SDK:
-
-1. Make your changes to `node_modules/@flwr/flwr/dist/flowerintelligence.es.js`
-2. Create the patch:
-   ```bash
-   diff -u node_modules/@flwr/flwr/dist/flowerintelligence.es.js.orig node_modules/@flwr/flwr/dist/flowerintelligence.es.js > patches/@flwr+flwr+0.1.13.patch
-   ```
-3. Test that the patch applies cleanly:
-   ```bash
-   bun run postinstall
-   ```
-
+Patches create dependencies on package internals that may change between versions.

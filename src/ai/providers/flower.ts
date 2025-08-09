@@ -88,7 +88,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
       if (msg.role === 'user' || msg.role === 'assistant') {
         const parts = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: String(msg.content) }]
         const text = parts
-          .map((p) => (p && (p as any).type === 'text' ? (p as any).text : ''))
+          .map((p) => (p && p.type === 'text' ? p.text : ''))
           .join('')
           .trim()
         messages.push({ role: msg.role, content: text })

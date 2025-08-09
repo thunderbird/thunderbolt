@@ -6,7 +6,7 @@ import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { getSetting } from '@/lib/dal'
 import type { ToolConfig } from '@/types'
 import { zodSchema } from '@ai-sdk/provider-utils'
-import type { Tool as FlowerTool } from '@flwr/flwr'
+import type { FlowerTool } from '@/flower'
 import { tool, type Tool } from 'ai'
 
 export const getAvailableTools = async (): Promise<ToolConfig[]> => {

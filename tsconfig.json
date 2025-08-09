@@ -26,6 +26,15 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/src/*": [
+        "./src/*"
+      ],
+      "@/flower": [
+        "./flower/index.ts"
+      ],
+      "@/flower/*": [
+        "./flower/*"
       ]
     },
     /* Types */
@@ -35,7 +44,8 @@
     ]
   },
   "include": [
-    "src"
+    "src",
+    "flower"
   ],
   "exclude": [
     "src/db/bundle-migrations.ts",

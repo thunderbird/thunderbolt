@@ -25,7 +25,7 @@ import {
 } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
-import { createFlowerProvider } from './providers/flower'
+import { createFlowerProvider } from '@/flower'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 

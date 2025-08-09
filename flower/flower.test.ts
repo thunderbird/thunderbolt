@@ -1,28 +1,32 @@
 import { streamText, wrapLanguageModel } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { createDefaultMiddleware } from '../middleware/default'
-import { createFlowerProvider, type FlowerProviderOptions } from './flower'
+import { createDefaultMiddleware } from '@/src/ai/middleware/default'
+import { createFlowerProvider, type FlowerChatArgs, type FlowerClient, type FlowerProviderOptions } from './flower'
 
-const makeMockFlowerClient = (chunks: string[]) => {
-  let capturedArgs: any = null
+type MockFlowerClient = FlowerClient & {
+  captured: FlowerChatArgs | null
+}
+
+const makeMockFlowerClient = (chunks: string[]): MockFlowerClient => {
+  let capturedArgs: FlowerChatArgs | null = null
   return {
     get captured() {
       return capturedArgs
     },
-    async chat(args: any) {
+    async chat(args: FlowerChatArgs) {
       capturedArgs = args
       if (!args.stream) {
         return { content: chunks.join('') }
       }
       // Simulate streaming
       for (const chunk of chunks) {
-        await new Promise((r) => setTimeout(r, 0))
+        await new Promise<void>((r) => setTimeout(r, 0))
         args.onStreamEvent?.({ chunk })
       }
       // Return undefined for streaming mode
       return undefined
     },
-  } as any
+  }
 }
 
 const withProvider = (chunks: string[], opts: Partial<FlowerProviderOptions> = {}) => {
@@ -36,7 +40,7 @@ const withProvider = (chunks: string[], opts: Partial<FlowerProviderOptions> = {
   return { provider, mock }
 }
 
-describe('Flower provider', () => {
+describe('Flower provider unit tests', () => {
   it('streams plain text', async () => {
     const { provider, mock } = withProvider(['Hello', ' ', 'world!'])
     const model = provider('qwen/qwen3-235b')
@@ -48,9 +52,9 @@ describe('Flower provider', () => {
     const text = await result.text
 
     expect(text).toBe('Hello world!')
-    expect(mock.captured.model).toBe('qwen/qwen3-235b')
-    expect(mock.captured.forceRemote).toBe(true)
-    expect(mock.captured.stream).toBe(true)
+    expect(mock.captured?.model).toBe('qwen/qwen3-235b')
+    expect(mock.captured?.forceRemote).toBe(true)
+    expect(mock.captured?.stream).toBe(true)
   })
 
   it('does not parse tool calls when provider returns only text', async () => {

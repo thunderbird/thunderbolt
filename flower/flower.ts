@@ -1,4 +1,4 @@
-import { getCloudUrl } from '@/lib/config'
+import { getCloudUrl } from '@/src/lib/config'
 import {
   type LanguageModelV2,
   type LanguageModelV2CallOptions,
@@ -10,19 +10,21 @@ import ky from 'ky'
 
 type FlowerMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
+type FlowerChatArgs = {
+  messages: FlowerMessage[]
+  model: string
+  stream?: boolean
+  tools?: unknown
+  forceRemote?: boolean
+  encrypt?: boolean
+  onStreamEvent?: (event: { chunk?: string }) => void
+}
+
 type FlowerClient = {
   apiKey?: string
   baseUrl?: string
   remoteHandoff?: boolean
-  chat: (args: {
-    messages: FlowerMessage[]
-    model: string
-    stream?: boolean
-    tools?: unknown
-    forceRemote?: boolean
-    encrypt?: boolean
-    onStreamEvent?: (event: { chunk?: string }) => void
-  }) => Promise<{ content?: string } | void>
+  chat: (args: FlowerChatArgs) => Promise<{ content?: string } | void>
 }
 
 type FlowerProviderOptions = {
@@ -304,7 +306,7 @@ export const createFlowerProvider = (providerOptions: FlowerProviderOptions = {}
   return (modelId: string): LanguageModelV2 => new FlowerLanguageModel(modelId, options)
 }
 
-export type { FlowerProviderOptions }
+export type { FlowerChatArgs, FlowerClient, FlowerMessage, FlowerProviderOptions }
 
 // Expose API key helper to reuse in OpenAI-compatible path
 export const getFlowerApiKey = defaultGetApiKey

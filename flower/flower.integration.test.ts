@@ -1,11 +1,12 @@
-import { aiFetchStreamingResponse } from '@/ai/fetch'
-import { migrate } from '@/db/migrate'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable, settingsTable } from '@/db/tables'
+import { aiFetchStreamingResponse } from '@/src/ai/fetch'
+import { migrate } from '@/src/db/migrate'
+import { DatabaseSingleton } from '@/src/db/singleton'
+import { modelsTable, settingsTable } from '@/src/db/tables'
+import type { ThunderboltUIMessage } from '@/src/types'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 
-const makeInit = (messages: any[], chatId: string): RequestInit => ({
+const makeInit = (messages: ThunderboltUIMessage[], chatId: string): RequestInit => ({
   method: 'POST',
   body: JSON.stringify({ messages, chatId }),
 })
@@ -19,7 +20,7 @@ beforeAll(async () => {
   await migrate(db)
 })
 
-describe('aiFetchStreamingResponse with Flower provider', () => {
+describe('Flower provider integration tests', () => {
   it('creates a streaming response for a Flower model', async () => {
     const db = DatabaseSingleton.instance.db
 
@@ -35,11 +36,14 @@ describe('aiFetchStreamingResponse with Flower provider', () => {
       isConfidential: 1,
     })
 
-    const init = makeInit([{ id: uuidv7(), role: 'user', content: 'Hello', parts: [] }], uuidv7())
+    const init = makeInit(
+      [{ id: uuidv7(), role: 'user', content: 'Hello', parts: [] } as ThunderboltUIMessage],
+      uuidv7(),
+    )
 
     const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
     expect(res).toBeInstanceOf(Response)
-    const reader = (res.body as any)?.getReader?.()
+    const reader = res.body?.getReader?.()
     expect(reader).toBeDefined()
   })
 
@@ -58,13 +62,16 @@ describe('aiFetchStreamingResponse with Flower provider', () => {
       isConfidential: 1,
     })
 
-    const init = makeInit([{ id: uuidv7(), role: 'user', content: 'Sensitive data test', parts: [] }], uuidv7())
+    const init = makeInit(
+      [{ id: uuidv7(), role: 'user', content: 'Sensitive data test', parts: [] } as ThunderboltUIMessage],
+      uuidv7(),
+    )
 
     // Test that we can create a response for a confidential model
     // The encryption will be handled internally by the Flower provider
     const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
     expect(res).toBeInstanceOf(Response)
-    const reader = (res.body as any)?.getReader?.()
+    const reader = res.body?.getReader?.()
     expect(reader).toBeDefined()
   })
 
@@ -96,14 +103,14 @@ describe('aiFetchStreamingResponse with Flower provider', () => {
     })
 
     const init = makeInit(
-      [{ id: uuidv7(), role: 'user', content: 'Sensitive data test without encryption', parts: [] }],
+      [{ id: uuidv7(), role: 'user', content: 'Sensitive data test without encryption', parts: [] } as ThunderboltUIMessage],
       uuidv7(),
     )
 
     // Test that we can create a response for a confidential model with encryption disabled
     const res = await aiFetchStreamingResponse({ init, modelId, saveMessages: async () => {}, mcpClients: [] })
     expect(res).toBeInstanceOf(Response)
-    const reader = (res.body as any)?.getReader?.()
+    const reader = res.body?.getReader?.()
     expect(reader).toBeDefined()
 
     // Reset the setting to default for other tests

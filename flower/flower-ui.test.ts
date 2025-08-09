@@ -1,13 +1,17 @@
 import { readUIMessageStream, streamText, wrapLanguageModel, type UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { createDefaultMiddleware } from '../middleware/default'
-import { createFlowerProvider } from './flower'
+import { createDefaultMiddleware } from '@/src/ai/middleware/default'
+import { createFlowerProvider, type FlowerChatArgs, type FlowerClient } from './flower'
+
+type MockFlowerClient = FlowerClient & {
+  captured: FlowerChatArgs | null
+}
 
 /**
  * Mock Flower client that simulates streaming responses
  */
-const createMockFlowerClient = (chunks: string[], options?: { includeThinkTags?: boolean }) => {
-  let capturedArgs: any = null
+const createMockFlowerClient = (chunks: string[], options?: { includeThinkTags?: boolean }): MockFlowerClient => {
+  let capturedArgs: FlowerChatArgs | null = null
 
   const responseChunks = options?.includeThinkTags
     ? [
@@ -20,20 +24,20 @@ const createMockFlowerClient = (chunks: string[], options?: { includeThinkTags?:
     : chunks
 
   return {
-    apiKey: undefined as string | undefined,
-    baseUrl: undefined as string | undefined,
+    apiKey: undefined,
+    baseUrl: undefined,
     remoteHandoff: false,
     get captured() {
       return capturedArgs
     },
-    async chat(args: any) {
+    async chat(args: FlowerChatArgs) {
       capturedArgs = args
       if (!args.stream) {
         return { content: responseChunks.join('') }
       }
       // Simulate streaming
       for (const chunk of responseChunks) {
-        await new Promise((r) => setTimeout(r, 0))
+        await new Promise<void>((r) => setTimeout(r, 0))
         args.onStreamEvent?.({ chunk })
       }
     },
@@ -94,12 +98,12 @@ describe('Flower provider UI message conversion', () => {
 
     // Verify the UI message structure
     expect(uiMessage.role).toBe('assistant')
-    expect((uiMessage.metadata as any)?.modelId).toBe('flower-test')
+    expect((uiMessage.metadata as { modelId?: string })?.modelId).toBe('flower-test')
 
     // Check the text in parts
-    const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
+    const textPart = uiMessage.parts.find((p) => p.type === 'text')
     expect(textPart).toBeDefined()
-    expect((textPart as any)?.text).toBe('Hello world!')
+    expect((textPart as { type: string; text?: string })?.text).toBe('Hello world!')
   })
 
   it('produces correct UIMessage with reasoning (think tags)', async () => {
@@ -120,14 +124,14 @@ describe('Flower provider UI message conversion', () => {
 
     // Check for reasoning and text parts
     if (Array.isArray(uiMessage.parts)) {
-      const reasoningPart = uiMessage.parts.find((p: any) => p.type === 'reasoning')
+      const reasoningPart = uiMessage.parts.find((p) => p.type === 'reasoning')
       expect(reasoningPart).toBeDefined()
-      expect((reasoningPart as any)?.text).toContain('Let me think about this request')
-      expect((reasoningPart as any)?.text).toContain('I should provide a helpful response')
+      expect((reasoningPart as { type: string; text?: string })?.text).toContain('Let me think about this request')
+      expect((reasoningPart as { type: string; text?: string })?.text).toContain('I should provide a helpful response')
 
-      const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
+      const textPart = uiMessage.parts.find((p) => p.type === 'text')
       expect(textPart).toBeDefined()
-      const textContent = ((textPart as any)?.text || '').trim()
+      const textContent = ((textPart as { type: string; text?: string })?.text || '').trim()
       expect(textContent).toBe('The answer is 42.')
     }
   })
@@ -147,9 +151,9 @@ describe('Flower provider UI message conversion', () => {
     expect(uiMessage.role).toBe('assistant')
 
     // Check for empty content
-    const textParts = uiMessage.parts.filter((p: any) => p.type === 'text')
+    const textParts = uiMessage.parts.filter((p) => p.type === 'text')
     if (textParts.length > 0) {
-      expect((textParts[0] as any)?.text || '').toBe('')
+      expect((textParts[0] as { type: string; text?: string })?.text || '').toBe('')
     }
   })
 
@@ -178,7 +182,7 @@ describe('Flower provider UI message conversion', () => {
     expect(mockClient.apiKey).toBe('my-api-key-123')
     // baseUrl is now set on the FlowerIntelligence class, not the instance
     expect(mockClient.remoteHandoff).toBe(true) // Changed to true for cloud processing
-    expect(mockClient.captured.forceRemote).toBe(true)
+    expect(mockClient.captured?.forceRemote).toBe(true)
   })
 
   it('produces streaming parts in correct order', async () => {
@@ -230,9 +234,9 @@ describe('Flower provider UI message conversion', () => {
     const uiMessage = await streamToUIMessage(model, 'Format test')
 
     // Check the formatted text in parts
-    const textPart = uiMessage.parts.find((p: any) => p.type === 'text')
+    const textPart = uiMessage.parts.find((p) => p.type === 'text')
     expect(textPart).toBeDefined()
-    const text = (textPart as any)?.text || ''
+    const text = (textPart as { type: string; text?: string })?.text || ''
     expect(text).toContain('## Heading')
     expect(text).toContain('- Item 1')
     expect(text).toContain('**Bold text**')
@@ -255,7 +259,7 @@ describe('Flower provider UI message conversion', () => {
 
     // With startWithReasoning, we should still get reasoning parts
     if (Array.isArray(uiMessage.parts)) {
-      const reasoningPart = uiMessage.parts.find((p: any) => p.type === 'reasoning')
+      const reasoningPart = uiMessage.parts.find((p) => p.type === 'reasoning')
       expect(reasoningPart).toBeDefined()
     }
   })

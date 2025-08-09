@@ -56,18 +56,10 @@ def create_model_transformer(
         try:
             # Parse the JSON body
             data = json.loads(body.decode("utf-8"))
-            logger.info(f"[ModelTransformer] Original request data: {data}")
 
             # Check if there's a model field
             if "model" in data and isinstance(data["model"], str):
                 model_name = data["model"]
-                logger.info(f"[ModelTransformer] Original model name: {model_name}")
-                logger.info(
-                    f"[ModelTransformer] Model in whitelist: {model_name in THUNDERBOLT_MODEL_WHITELIST}"
-                )
-                logger.info(
-                    f"[ModelTransformer] Whitelist contents: {THUNDERBOLT_MODEL_WHITELIST}"
-                )
 
                 # Check if model needs transformation
                 should_transform = model_name in THUNDERBOLT_MODEL_WHITELIST
@@ -75,33 +67,17 @@ def create_model_transformer(
                 # If check_prefix is provided, also check that model doesn't already have it
                 if check_prefix and model_name.startswith(check_prefix):
                     should_transform = False
-                    logger.info(
-                        f"[ModelTransformer] Model already has prefix {check_prefix}, skipping transform"
-                    )
 
                 if should_transform:
                     # Prepend the prefix for whitelisted models
-                    original_model = data["model"]
                     data["model"] = f"{prefix}{model_name}"
-                    logger.info(
-                        f"[ModelTransformer] Transformed model: {original_model} -> {data['model']}"
-                    )
-                else:
-                    logger.info(
-                        f"[ModelTransformer] Model {model_name} not transformed (not in whitelist or already has prefix)"
-                    )
-
-            transformed_data = json.dumps(data).encode("utf-8")
-            logger.info(
-                f"[ModelTransformer] Final transformed request: {transformed_data.decode('utf-8')}"
-            )
 
             # Return the modified JSON as bytes
-            return transformed_data
+            return json.dumps(data).encode("utf-8")
 
         except Exception as e:
             # If transformation fails, return original body
-            logger.warning(f"[ModelTransformer] Failed to transform model: {e}")
+            logger.warning(f"Model transformation failed: {e}")
             return body
 
     return transformer
@@ -282,12 +258,8 @@ async def flower_proxy_endpoint(
     """Flower AI proxy endpoint."""
     logger = logging.getLogger(__name__)
 
-    logger.info(f"Flower proxy request: {request.method} /flower/{path}")
-    logger.info(f"Headers: {dict(request.headers)}")
-
     # Handle OPTIONS preflight requests
     if request.method == "OPTIONS":
-        logger.info("Handling OPTIONS preflight request")
         return JSONResponse({"status": "ok"})
 
     # Get the configuration for this path
@@ -296,39 +268,21 @@ async def flower_proxy_endpoint(
         logger.error("Flower AI proxy not configured")
         raise HTTPException(status_code=404, detail="Flower AI proxy not configured")
 
-    # Log the request body if it's a POST
+    # Handle body consumption for POST requests
     if request.method == "POST":
         body = await request.body()
-        logger.info(f"Request body: {body.decode('utf-8') if body else 'empty'}")
         # Store the body so it can be read again by the proxy
         # Note: This is a workaround for FastAPI's request body consumption
         request._body = body  # type: ignore[attr-defined]
-
-    # Check if the client already has an API key in the Authorization header
-    existing_auth = request.headers.get("authorization", "")
-    logger.info(
-        f"Existing authorization header: {existing_auth[:20]}..."
-        if existing_auth
-        else "No existing auth"
-    )
-
-    # For Flower AI, the client already provides the API key, so we just pass it through
-    # We don't need to generate a new one
-    if existing_auth and existing_auth.startswith("Bearer fk_"):
-        logger.info("Using client-provided Flower API key")
-        # Don't modify the config.api_key - let the proxy pass through the existing header
-    else:
-        logger.info("No valid Flower API key in request, request may fail")
 
     # Don't override the API key in config - the proxy will pass through existing headers
     config.api_key = ""
 
     # Use the unified proxy method
     try:
-        logger.info(f"Proxying request to {config.target_url}/{path}")
         return await proxy_service.proxy_request(request, path, config)
     except Exception as e:
-        logger.error(f"Proxy request failed: {str(e)}", exc_info=True)
+        logger.error(f"Flower proxy request failed: {str(e)}", exc_info=True)
         raise
 
 

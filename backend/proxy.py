@@ -161,10 +161,6 @@ class ProxyService:
 
             # Remove any query parameters that should be stripped
             for param in config.strip_query_params:
-                if param in query_params:
-                    logger.debug(
-                        f"Stripping query parameter '{param}' from client request"
-                    )
                 query_params.pop(param, None)
 
         # Add API key as query parameter if configured
@@ -178,8 +174,6 @@ class ProxyService:
     ) -> Response | StreamingResponse:
         """Unified proxy that handles both streaming and buffered requests."""
 
-        logger.debug(f"Proxying {request.method} request to path: {path}")
-
         # Check if we need transformation first (to decide if we need to buffer)
         needs_transformation = config.request_transformer is not None
 
@@ -190,7 +184,6 @@ class ProxyService:
         if needs_transformation and body:
             transformer = cast(Callable[[bytes], bytes], config.request_transformer)
             try:
-                logger.debug("Applying request transformer")
                 body = transformer(body)
             except Exception as e:
                 logger.error(f"Request transformation failed: {e}")
@@ -221,7 +214,6 @@ class ProxyService:
 
         # Use streaming approach if needed
         if is_streaming:
-            logger.debug("Using streaming approach")
             return await self._proxy_streaming(request, path, config, body)
 
         # Otherwise use buffered approach for full response processing
@@ -242,18 +234,6 @@ class ProxyService:
 
         # Prepare headers
         headers = self.prepare_headers(request, config)
-
-        # Enhanced logging for Fireworks API debugging
-        if "fireworks" in target_url.lower() and body:
-            try:
-                import json
-
-                body_str = body.decode("utf-8")
-                parsed_body = json.loads(body_str)
-                if "model" in parsed_body:
-                    logger.debug(f"[Streaming] Fireworks model: {parsed_body['model']}")
-            except Exception:
-                pass
 
         # Build and send the request
         req = self.client.build_request(
@@ -316,21 +296,6 @@ class ProxyService:
 
         try:
             # Make the proxied request
-            logger.debug(f"Target URL: {target_url}")
-
-            # Enhanced logging for Fireworks API debugging
-            if "fireworks" in target_url.lower() and body:
-                try:
-                    import json
-
-                    body_str = body.decode("utf-8")
-                    parsed_body = json.loads(body_str)
-                    if "model" in parsed_body:
-                        logger.info(
-                            f"[Buffered] Fireworks model: {parsed_body['model']}"
-                        )
-                except Exception:
-                    pass
             response = await self.client.request(
                 method=request.method,
                 url=target_url,
@@ -338,27 +303,6 @@ class ProxyService:
                 content=body,
                 follow_redirects=False,
             )
-            logger.debug(f"Response status: {response.status_code}")
-
-            # Enhanced logging for Fireworks API responses
-            if "fireworks" in target_url.lower():
-                logger.info(
-                    f"[ProxyService] FIREWORKS DEBUG - Response status: {response.status_code}"
-                )
-                if response.status_code != 200:
-                    # Get response content to see the error message
-                    content_preview = response.read()
-                    try:
-                        error_text = content_preview.decode("utf-8")
-                        logger.info(
-                            f"[ProxyService] FIREWORKS DEBUG - Error response: {error_text}"
-                        )
-                    except Exception:
-                        logger.info(
-                            f"[ProxyService] FIREWORKS DEBUG - Binary error response: {content_preview[:200]!r}"
-                        )
-                    # Reset content for later processing
-                    response._content = content_preview
 
             # Create response headers
             response_headers = dict(response.headers)
@@ -378,10 +322,9 @@ class ProxyService:
                             # Try to decompress - if it fails, content was already decompressed
                             try:
                                 content = brotli.decompress(content)
-                                logger.debug("Successfully decompressed brotli content")
                             except brotli.error:
                                 # Content was already decompressed by httpx
-                                logger.debug("Content already decompressed by httpx")
+                                pass
                         else:
                             raise HTTPException(
                                 status_code=500,
@@ -390,17 +333,15 @@ class ProxyService:
                     elif content_encoding == "gzip":
                         try:
                             content = gzip.decompress(content)
-                            logger.debug("Successfully decompressed gzip content")
                         except gzip.BadGzipFile:
                             # Content was already decompressed by httpx
-                            logger.debug("Content already decompressed by httpx")
+                            pass
                     elif content_encoding == "deflate":
                         try:
                             content = zlib.decompress(content)
-                            logger.debug("Successfully decompressed deflate content")
                         except zlib.error:
                             # Content was already decompressed by httpx
-                            logger.debug("Content already decompressed by httpx")
+                            pass
                 except HTTPException:
                     # Re-raise HTTP exceptions (like missing brotli support)
                     raise

@@ -54,13 +54,7 @@ const getDefaultFlowerClient = async (): Promise<FlowerClient> => {
   const cloudUrl = await getCloudUrl()
   const baseUrl = `${cloudUrl}/flower`
 
-  // Set the base URL statically on the class (requires our patch)
-  if ('baseUrl' in FlowerIntelligence) {
-    ;(FlowerIntelligence as any).baseUrl = baseUrl
-  } else {
-    console.warn('[Flower] SDK patch not applied - API calls will go directly to api.flower.ai')
-    console.warn('[Flower] Run: patch -p0 < patches/@flwr+flwr+0.1.13.patch')
-  }
+  FlowerIntelligence.baseUrl = baseUrl
 
   const instance = FlowerIntelligence.instance
   return instance as unknown as FlowerClient

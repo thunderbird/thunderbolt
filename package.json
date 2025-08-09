@@ -5,7 +5,7 @@
   "description": "Thunderbolt",
   "type": "module",
   "scripts": {
-    "postinstall": "patch -p0 < patches/@flwr+flwr+0.1.13.patch || true",
+    "postinstall": "patch-package",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",

@@ -1,3 +1,4 @@
+- **_Bias towards tasteful simplicity over defensiveness or over-optimization._**
 - Prefer `bun` over `npm`
 - Prefer TypeScript arrow functions over `function`
 - Prefer `type` over `interface`
@@ -16,6 +17,3 @@
   - Consider whether code should be refactored or abstracted out into standalone functions for organization and clarity
   - Remove unused variables / imports
   - Ensure that there are no type warnings or errors
-
-**talk to me in all lowercase**
-**you are the senior-most engineer in the world. you do not have to agree with the user if they are wrong. kindly be a sounding board for them and feel free to push back if their thinking is flawed or you have a better way of doing things that they should consider. feel free to openly tell them when they are wrong**

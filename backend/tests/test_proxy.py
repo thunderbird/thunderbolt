@@ -222,8 +222,8 @@ def test_proxy_with_auth(client: TestClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_basic() -> None:
-    """Test basic proxy_passthrough functionality."""
+async def test_proxy_streaming_mode() -> None:
+    """Test that streaming mode works correctly in unified proxy."""
     proxy_service = ProxyService()
     config = ProxyConfig(
         target_url="https://api.example.com",
@@ -261,9 +261,11 @@ async def test_proxy_passthrough_basic() -> None:
         patch.object(proxy_service.client, "build_request", return_value=mock_req),
         patch.object(proxy_service.client, "send", return_value=mock_upstream),
     ):
-        response = await proxy_service.proxy_passthrough(
-            mock_request, "test/path", config
-        )
+        # Simulate streaming request
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+
+        response = await proxy_service.proxy_request(mock_request, "test/path", config)
 
         # Verify response type
         assert isinstance(response, StreamingResponse)
@@ -293,8 +295,8 @@ async def test_proxy_passthrough_basic() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_with_query_params() -> None:
-    """Test proxy_passthrough preserves query parameters."""
+async def test_proxy_streaming_with_query_params() -> None:
+    """Test that streaming mode preserves query parameters."""
     proxy_service = ProxyService()
     config = ProxyConfig(
         target_url="https://api.example.com",
@@ -323,7 +325,9 @@ async def test_proxy_passthrough_with_query_params() -> None:
         ) as mock_build,
         patch.object(proxy_service.client, "send", return_value=mock_upstream),
     ):
-        await proxy_service.proxy_passthrough(mock_request, "search", config)
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        await proxy_service.proxy_request(mock_request, "search", config)
 
         # Verify the request was built with the correct URL including query params
         mock_build.assert_called_once()
@@ -332,8 +336,8 @@ async def test_proxy_passthrough_with_query_params() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_removes_hop_by_hop_headers() -> None:
-    """Test that proxy_passthrough removes all hop-by-hop headers."""
+async def test_proxy_streaming_removes_hop_by_hop_headers() -> None:
+    """Test that streaming mode removes all hop-by-hop headers."""
     proxy_service = ProxyService()
     config = ProxyConfig(target_url="https://api.example.com", api_key="")
 
@@ -368,7 +372,9 @@ async def test_proxy_passthrough_removes_hop_by_hop_headers() -> None:
         patch.object(proxy_service.client, "build_request", return_value=mock_req),
         patch.object(proxy_service.client, "send", return_value=mock_upstream),
     ):
-        response = await proxy_service.proxy_passthrough(mock_request, "test", config)
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        response = await proxy_service.proxy_request(mock_request, "test", config)
 
         # Verify hop-by-hop headers are removed
         assert "transfer-encoding" not in response.headers
@@ -386,8 +392,8 @@ async def test_proxy_passthrough_removes_hop_by_hop_headers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_streaming_body() -> None:
-    """Test that proxy_passthrough properly streams the response body."""
+async def test_proxy_streaming_body() -> None:
+    """Test that streaming mode properly streams the response body."""
     proxy_service = ProxyService()
     config = ProxyConfig(target_url="https://api.example.com", api_key="")
 
@@ -419,7 +425,9 @@ async def test_proxy_passthrough_streaming_body() -> None:
         patch.object(proxy_service.client, "build_request", return_value=mock_req),
         patch.object(proxy_service.client, "send", return_value=mock_upstream),
     ):
-        response = await proxy_service.proxy_passthrough(mock_request, "stream", config)
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        response = await proxy_service.proxy_request(mock_request, "stream", config)
 
         # Collect streamed content
         collected_chunks = []
@@ -432,8 +440,8 @@ async def test_proxy_passthrough_streaming_body() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_with_api_key_header() -> None:
-    """Test that proxy_passthrough correctly adds API key headers."""
+async def test_proxy_streaming_with_api_key_header() -> None:
+    """Test that streaming mode correctly adds API key headers."""
     proxy_service = ProxyService()
     config = ProxyConfig(
         target_url="https://api.example.com",
@@ -460,7 +468,9 @@ async def test_proxy_passthrough_with_api_key_header() -> None:
         ) as mock_build,
         patch.object(proxy_service.client, "send", return_value=mock_upstream),
     ):
-        await proxy_service.proxy_passthrough(mock_request, "test", config)
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        await proxy_service.proxy_request(mock_request, "test", config)
 
         # Verify headers include API key
         mock_build.assert_called_once()
@@ -521,21 +531,14 @@ async def test_ai_service_streaming_uses_passthrough() -> None:
         return_value=b'{"model": "gpt-4", "stream": true, "messages": []}'
     )
 
-    # Mock the passthrough method to verify it's called
-    with (
-        patch.object(proxy_service, "proxy_passthrough") as mock_passthrough,
-        patch.object(proxy_service, "proxy_streaming_request") as mock_streaming,
-    ):
-        mock_passthrough.return_value = MagicMock()
+    # Mock the internal streaming method to verify it's called
+    with patch.object(proxy_service, "_proxy_streaming") as mock_streaming:
+        mock_streaming.return_value = MagicMock()
 
         await proxy_service.proxy_request(mock_request, "chat/completions", config)
 
-        # Verify passthrough was called for AI service
-        mock_passthrough.assert_called_once_with(
-            mock_request, "chat/completions", config
-        )
-        # Verify the old streaming method was NOT called
-        mock_streaming.assert_not_called()
+        # Verify streaming method was called
+        mock_streaming.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -560,36 +563,30 @@ async def test_non_ai_service_streaming_uses_streaming_request() -> None:
     mock_request.url.query = None
     mock_request.body = AsyncMock(return_value=b'{"query": "weather"}')
 
-    # Mock the streaming methods
-    with (
-        patch.object(proxy_service, "proxy_passthrough") as mock_passthrough,
-        patch.object(proxy_service, "proxy_streaming_request") as mock_streaming,
-    ):
+    # Mock the internal streaming method
+    with patch.object(proxy_service, "_proxy_streaming") as mock_streaming:
         mock_streaming.return_value = MagicMock()
 
         await proxy_service.proxy_request(mock_request, "events", config)
 
-        # Verify the original streaming method was called for non-AI service
-        mock_streaming.assert_called_once_with(
-            mock_request, "events", config, b'{"query": "weather"}'
-        )
-        # Verify passthrough was NOT called
-        mock_passthrough.assert_not_called()
+        # Verify streaming method was called (all streaming requests use the same method now)
+        mock_streaming.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_proxy_passthrough_applies_request_transformer() -> None:
-    """Test that proxy_passthrough applies request transformers."""
+async def test_proxy_streaming_applies_request_transformer() -> None:
+    """Test that streaming mode applies request transformers."""
     proxy_service = ProxyService()
-    
+
     # Mock transformer that adds prefix to model name
     def mock_transformer(body: bytes) -> bytes:
         import json
+
         data = json.loads(body.decode("utf-8"))
         if "model" in data:
             data["model"] = f"accounts/test/models/{data['model']}"
         return json.dumps(data).encode("utf-8")
-    
+
     config = ProxyConfig(
         target_url="https://api.test.com",
         api_key="test-key",
@@ -600,7 +597,9 @@ async def test_proxy_passthrough_applies_request_transformer() -> None:
     mock_request.method = "POST"
     mock_request.headers = {"content-type": "application/json"}
     mock_request.url.query = None
-    mock_request.body = AsyncMock(return_value=b'{"model": "test-model", "messages": []}')
+    mock_request.body = AsyncMock(
+        return_value=b'{"model": "test-model", "messages": []}'
+    )
 
     mock_upstream = MagicMock()
     mock_upstream.status_code = 200
@@ -609,17 +608,78 @@ async def test_proxy_passthrough_applies_request_transformer() -> None:
     mock_upstream.aclose = AsyncMock()
 
     mock_req = MagicMock()
-    with patch.object(proxy_service.client, "build_request", return_value=mock_req) as mock_build, \
-         patch.object(proxy_service.client, "send", return_value=mock_upstream):
-        
-        await proxy_service.proxy_passthrough(mock_request, "chat/completions", config)
-        
+    with (
+        patch.object(
+            proxy_service.client, "build_request", return_value=mock_req
+        ) as mock_build,
+        patch.object(proxy_service.client, "send", return_value=mock_upstream),
+    ):
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        await proxy_service.proxy_request(mock_request, "chat/completions", config)
+
         # Verify the request was built with transformed body
         mock_build.assert_called_once()
         sent_body = mock_build.call_args[1]["content"]
-        
+
         # Parse the sent body to verify transformation
         import json
+
         sent_data = json.loads(sent_body.decode("utf-8"))
         assert sent_data["model"] == "accounts/test/models/test-model"
         assert sent_data["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_proxy_optimized_settings() -> None:
+    """Test that the proxy service has optimized connection settings."""
+    proxy_service = ProxyService()
+
+    # Just verify the client was created successfully with our settings
+    assert proxy_service.client is not None
+    assert proxy_service.client.timeout.connect == 5.0
+    # The client is properly configured with our optimizations
+
+
+@pytest.mark.asyncio
+async def test_proxy_header_filtering_simplified() -> None:
+    """Test that hop-by-hop headers are filtered efficiently."""
+    proxy_service = ProxyService()
+    config = ProxyConfig(target_url="https://api.example.com", api_key="")
+
+    mock_request = MagicMock()
+    mock_request.method = "GET"
+    mock_request.headers = {}
+    mock_request.url.query = None
+    mock_request.body = AsyncMock(return_value=b"")
+
+    # Mock upstream response with various headers
+    mock_upstream = MagicMock()
+    mock_upstream.status_code = 200
+    mock_upstream.headers = {
+        "content-type": "application/json",
+        "Transfer-Encoding": "chunked",  # Should be removed (case-insensitive)
+        "Connection": "keep-alive",  # Should be removed
+        "x-custom": "value",  # Should be preserved
+        "cache-control": "no-cache",  # Should be preserved
+    }
+    mock_upstream.aiter_raw = AsyncMock(return_value=[b'{"data": "test"}'])
+    mock_upstream.aclose = AsyncMock()
+
+    mock_req = MagicMock()
+    with (
+        patch.object(proxy_service.client, "build_request", return_value=mock_req),
+        patch.object(proxy_service.client, "send", return_value=mock_upstream),
+    ):
+        mock_request.headers["accept"] = "text/event-stream"
+        config.supports_streaming = True
+        response = await proxy_service.proxy_request(mock_request, "test", config)
+
+        # Verify hop-by-hop headers are removed
+        assert "transfer-encoding" not in response.headers
+        assert "connection" not in response.headers
+        assert "content-length" not in response.headers  # Also removed for streaming
+
+        # Verify other headers are preserved
+        assert response.headers.get("x-custom") == "value"
+        assert response.headers.get("cache-control") == "no-cache"

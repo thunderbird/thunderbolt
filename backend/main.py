@@ -323,10 +323,10 @@ async def flower_proxy_endpoint(
     # Don't override the API key in config - the proxy will pass through existing headers
     config.api_key = ""
 
-    # Always passthrough to preserve Flower's exact streaming and headers
+    # Use the unified proxy method
     try:
-        logger.info(f"Proxying (passthrough) request to {config.target_url}/{path}")
-        return await proxy_service.proxy_passthrough(request, path, config)
+        logger.info(f"Proxying request to {config.target_url}/{path}")
+        return await proxy_service.proxy_request(request, path, config)
     except Exception as e:
         logger.error(f"Proxy request failed: {str(e)}", exc_info=True)
         raise

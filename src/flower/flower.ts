@@ -1,4 +1,3 @@
-import { getCloudUrl } from '@/src/lib/config'
 import {
   type LanguageModelV2,
   type LanguageModelV2CallOptions,
@@ -6,7 +5,6 @@ import {
   type LanguageModelV2Prompt,
   type LanguageModelV2StreamPart,
 } from '@ai-sdk/provider'
-import ky from 'ky'
 
 type FlowerMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
@@ -28,38 +26,10 @@ type FlowerClient = {
 }
 
 type FlowerProviderOptions = {
-  getFlowerClient?: () => Promise<FlowerClient>
-  getApiKey?: () => Promise<string | undefined>
-  getBaseUrl?: () => Promise<string>
+  client: FlowerClient
+  apiKey?: string
+  baseUrl?: string
   encrypt?: boolean
-}
-
-const defaultGetBaseUrl = async (): Promise<string> => {
-  // Use backend proxy to avoid CORS issues
-  // Backend /flower endpoint forwards to https://api.flower.ai
-  const cloudUrl = await getCloudUrl()
-  return `${cloudUrl}/flower/v1`
-}
-
-const defaultGetApiKey = async (): Promise<string | undefined> => {
-  const cloudUrl = await getCloudUrl()
-  const response = await ky.post(`${cloudUrl}/flower/api-key`, { json: {} })
-  const data = await response.json<{ api_key: string }>()
-  return data.api_key
-}
-
-const getDefaultFlowerClient = async (): Promise<FlowerClient> => {
-  const { FlowerIntelligence } = await import('@flwr/flwr')
-
-  // Configure the SDK to use our backend proxy
-  // The @flwr/flwr package has been patched to support custom base URLs
-  const cloudUrl = await getCloudUrl()
-  const baseUrl = `${cloudUrl}/flower`
-
-  FlowerIntelligence.baseUrl = baseUrl
-
-  const instance = FlowerIntelligence.instance
-  return instance as unknown as FlowerClient
 }
 
 class FlowerLanguageModel implements LanguageModelV2 {
@@ -69,7 +39,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
 
   constructor(
     modelId: string,
-    private readonly options: Required<FlowerProviderOptions>,
+    private readonly options: FlowerProviderOptions,
   ) {
     this.modelId = modelId
   }
@@ -102,24 +72,6 @@ class FlowerLanguageModel implements LanguageModelV2 {
     return messages
   }
 
-  private async configureClient(): Promise<FlowerClient> {
-    const client = await this.options.getFlowerClient()
-    const apiKey = await this.options.getApiKey()
-
-    if (apiKey) {
-      client.apiKey = apiKey
-    }
-
-    // Enable remote handoff for cloud-based processing
-    // This is important for the SDK to actually send requests
-    client.remoteHandoff = true
-
-    // Note: The Flower SDK has api.flower.ai hardcoded, so we intercept fetch
-    // in getDefaultFlowerClient to redirect to our backend proxy
-
-    return client
-  }
-
   private convertToolsToFlowerFormat(tools: Record<string, any> | undefined): unknown {
     if (!tools || Object.keys(tools).length === 0) {
       return undefined
@@ -140,7 +92,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
 
   private async streamWithFlower(options: LanguageModelV2CallOptions) {
     const warnings: any[] = []
-    const client = await this.configureClient()
+    const client = this.options.client
     const messages = this.convertPromptToFlowerMessages(options.prompt)
     const modelId = this.modelId
     const encrypt = this.options.encrypt
@@ -186,6 +138,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
                   delta: textChunk,
                 } as LanguageModelV2StreamPart)
               } catch (e) {
+                console.error('error sending text chunk', e)
                 // Stream might be closed
                 finished = true
               }
@@ -241,6 +194,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
                 } as LanguageModelV2StreamPart)
                 controller.close()
               } catch (e) {
+                console.error('error sending text chunk', e)
                 // Stream might already be closed
               }
             }
@@ -251,6 +205,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
               try {
                 controller.error(err)
               } catch (e) {
+                console.error('error sending text chunk', e)
                 // Stream might already be closed
               }
             }
@@ -295,18 +250,14 @@ class FlowerLanguageModel implements LanguageModelV2 {
   }
 }
 
-export const createFlowerProvider = (providerOptions: FlowerProviderOptions = {}) => {
-  const options = {
-    getFlowerClient: providerOptions.getFlowerClient ?? getDefaultFlowerClient,
-    getApiKey: providerOptions.getApiKey ?? defaultGetApiKey,
-    getBaseUrl: providerOptions.getBaseUrl ?? defaultGetBaseUrl,
-    encrypt: providerOptions.encrypt ?? false,
-  } as Required<FlowerProviderOptions>
-
-  return (modelId: string): LanguageModelV2 => new FlowerLanguageModel(modelId, options)
+export const createFlowerProvider = (providerOptions: FlowerProviderOptions) => {
+  return (modelId: string): LanguageModelV2 =>
+    new FlowerLanguageModel(modelId, {
+      client: providerOptions.client,
+      apiKey: providerOptions.apiKey,
+      baseUrl: providerOptions.baseUrl ?? providerOptions.client.baseUrl ?? 'https://api.flower.ai',
+      encrypt: providerOptions.encrypt ?? false,
+    })
 }
 
 export type { FlowerChatArgs, FlowerClient, FlowerMessage, FlowerProviderOptions }
-
-// Expose API key helper to reuse in OpenAI-compatible path
-export const getFlowerApiKey = defaultGetApiKey

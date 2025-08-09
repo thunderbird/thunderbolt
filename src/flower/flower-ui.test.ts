@@ -88,9 +88,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient(chunks)
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -111,9 +111,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient(chunks, { includeThinkTags: true })
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -140,9 +140,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient([])
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -161,10 +161,14 @@ describe('Flower provider UI message conversion', () => {
     const chunks = ['Test']
     const mockClient = createMockFlowerClient(chunks)
 
+    // Pre-configure the mock client (simulating what createConfiguredFlowerClient would do)
+    mockClient.apiKey = 'my-api-key-123'
+    mockClient.baseUrl = 'http://localhost:8000/flower/v1' 
+    mockClient.remoteHandoff = true
+
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'my-api-key-123',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      encrypt: false,
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -178,10 +182,10 @@ describe('Flower provider UI message conversion', () => {
     // Consume the stream to trigger configuration
     await result.consumeStream()
 
-    // Verify the client was configured correctly
+    // Verify the pre-configured client values are maintained
     expect(mockClient.apiKey).toBe('my-api-key-123')
-    // baseUrl is now set on the FlowerIntelligence class, not the instance
-    expect(mockClient.remoteHandoff).toBe(true) // Changed to true for cloud processing
+    expect(mockClient.baseUrl).toBe('http://localhost:8000/flower/v1')
+    expect(mockClient.remoteHandoff).toBe(true)
     expect(mockClient.captured?.forceRemote).toBe(true)
   })
 
@@ -190,9 +194,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient(chunks)
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -225,9 +229,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient(chunks)
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')
@@ -247,9 +251,9 @@ describe('Flower provider UI message conversion', () => {
     const mockClient = createMockFlowerClient(chunks, { includeThinkTags: true })
 
     const provider = createFlowerProvider({
-      getFlowerClient: async () => mockClient,
-      getApiKey: async () => 'test-key',
-      getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
     })
 
     const model = provider('qwen/qwen3-235b')

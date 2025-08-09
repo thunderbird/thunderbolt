@@ -15,6 +15,7 @@ import { LanguageModelV2 } from '@ai-sdk/provider'
 // OpenRouter is working on a new version of their SDK that is compatible with Vercel AI SDK v5. We'll uncomment this when it's ready.
 // import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
+import { createFlowerProvider } from '@/flower'
 import {
   convertToModelMessages,
   experimental_createMCPClient,
@@ -24,8 +25,8 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
+import { createConfiguredFlowerClient } from './flower'
 import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
-import { createFlowerProvider } from '@/flower'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -53,9 +54,13 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
       // Enable encryption for confidential models unless explicitly disabled in dev settings
       const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableEncryption
 
+      const client = await createConfiguredFlowerClient()
+
       const provider = createFlowerProvider({
+        client,
         encrypt: shouldEncrypt,
       })
+
       return provider(modelConfig.model)
     }
     case 'thunderbolt': {

@@ -31,10 +31,10 @@
         "./src/*"
       ],
       "@/flower": [
-        "./flower/index.ts"
+        "src/flower/index.ts"
       ],
       "@/flower/*": [
-        "./flower/*"
+        "src/flower/*"
       ]
     },
     /* Types */
@@ -45,7 +45,7 @@
   },
   "include": [
     "src",
-    "flower"
+    "src/flower"
   ],
   "exclude": [
     "src/db/bundle-migrations.ts",

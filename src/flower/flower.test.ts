@@ -32,9 +32,9 @@ const makeMockFlowerClient = (chunks: string[]): MockFlowerClient => {
 const withProvider = (chunks: string[], opts: Partial<FlowerProviderOptions> = {}) => {
   const mock = makeMockFlowerClient(chunks)
   const provider = createFlowerProvider({
-    getFlowerClient: async () => mock,
-    getApiKey: async () => 'test-api-key',
-    getBaseUrl: async () => 'http://localhost:8000/flower/v1',
+    client: mock,
+    apiKey: 'test-api-key',
+    baseUrl: 'http://localhost:8000/flower/v1',
     ...opts,
   })
   return { provider, mock }

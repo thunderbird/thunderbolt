@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { DraftEmailParams } from './tools'
+
+// Debug: Log what we're importing
+console.log('Test file: Attempting to import from ./utils')
+
 import {
   buildRawMessage,
   ensureValidGoogleToken,
@@ -10,6 +14,11 @@ import {
   transformDriveQuery,
   truncateText,
 } from './utils'
+
+// Debug: Check if functions are defined
+console.log('parseEmailAddress type:', typeof parseEmailAddress)
+console.log('getHeader type:', typeof getHeader)
+console.log('extractBody type:', typeof extractBody)
 
 // Mock external dependencies
 const mockGetSetting = mock()

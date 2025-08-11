@@ -1,14 +1,6 @@
-// Debug: Log when utils.ts is loaded
-console.log('utils.ts: Loading module')
-
-import { refreshAccessToken } from '../../lib/auth'
-import { getSetting, updateSetting } from '../../lib/dal'
+import { refreshAccessToken } from '@/lib/auth'
+import { getSetting, updateSetting } from '@/lib/dal'
 import type { DraftEmailParams } from './tools'
-
-// Debug: Check if imports worked
-console.log('utils.ts: refreshAccessToken type:', typeof refreshAccessToken)
-console.log('utils.ts: getSetting type:', typeof getSetting)
-console.log('utils.ts: updateSetting type:', typeof updateSetting)
 
 // =============================================================================
 // EMAIL UTILITY FUNCTIONS

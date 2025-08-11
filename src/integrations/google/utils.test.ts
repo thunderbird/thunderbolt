@@ -1,25 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-
-// Mock external dependencies FIRST, before any other imports
-const mockGetSetting = mock()
-const mockUpdateSetting = mock()
-const mockRefreshAccessToken = mock()
-
-mock.module('../../lib/dal', () => ({
-  getSetting: mockGetSetting,
-  updateSetting: mockUpdateSetting,
-}))
-
-mock.module('../../lib/auth', () => ({
-  refreshAccessToken: mockRefreshAccessToken,
-}))
-
-// Now import types and the module being tested
 import type { DraftEmailParams } from './tools'
-
-// Debug: Log what we're importing
-console.log('Test file: Attempting to import from ./utils')
-
 import {
   buildRawMessage,
   ensureValidGoogleToken,
@@ -31,10 +11,19 @@ import {
   truncateText,
 } from './utils'
 
-// Debug: Check if functions are defined
-console.log('parseEmailAddress type:', typeof parseEmailAddress)
-console.log('getHeader type:', typeof getHeader)
-console.log('extractBody type:', typeof extractBody)
+// Mock external dependencies
+const mockGetSetting = mock()
+const mockUpdateSetting = mock()
+const mockRefreshAccessToken = mock()
+
+mock.module('@/lib/dal', () => ({
+  getSetting: mockGetSetting,
+  updateSetting: mockUpdateSetting,
+}))
+
+mock.module('@/lib/auth', () => ({
+  refreshAccessToken: mockRefreshAccessToken,
+}))
 
 describe('Google Utils - Email Utilities', () => {
   describe('parseEmailAddress', () => {

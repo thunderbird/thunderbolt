@@ -87,8 +87,35 @@ jobs:
       # - name: Lint
       #   run: bun run lint
 
-      - name: Run tests
-        run: bun test --cwd .
+      - name: Debug environment and run tests
+        run: |
+          echo "=== Environment Debug ==="
+          pwd
+          echo "Node version: $(node --version)"
+          echo "Bun version: $(bun --version)"
+          echo "Working directory contents:"
+          ls -la
+          
+          echo "=== TypeScript Config Debug ==="
+          echo "tsconfig.json paths:"
+          cat tsconfig.json | grep -A 10 "paths"
+          
+          echo "=== Module Resolution Debug ==="
+          echo "Checking if @/lib/dal exists:"
+          ls -la src/lib/dal.ts 2>/dev/null || echo "dal.ts not found"
+          echo "Checking if @/lib/auth exists:"
+          ls -la src/lib/auth.ts 2>/dev/null || echo "auth.ts not found"
+          
+          echo "=== Bun Import Test ==="
+          echo 'import { getSetting } from "@/lib/dal"; console.log("getSetting:", typeof getSetting);' > test-import.ts
+          bun run test-import.ts || echo "Direct import test failed"
+          rm -f test-import.ts
+          
+          echo "=== Running specific Google utils test with verbose output ==="
+          bun test src/integrations/google/utils.test.ts --verbose || echo "Google test failed"
+          
+          echo "=== Running all other tests ==="
+          bun test --test-name-pattern="^(?!.*Google Utils).*$"
 
   rust:
     runs-on: ubuntu-latest

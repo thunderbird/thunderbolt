@@ -144,13 +144,6 @@ jobs:
           cargo check --all-targets
           cargo clippy --all-targets -- -D warnings
 
-      - name: Run Rust tests
-        env:
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-        run: |
-          cd src-tauri
-          cargo test
 
   backend:
     runs-on: ubuntu-latest

@@ -47,14 +47,14 @@ type AiFetchStreamingResponseOptions = {
 export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
   switch (modelConfig.provider) {
     case 'flower': {
-      // Use the native Flower provider that wraps the @flwr/flwr SDK
       // Check if encryption should be disabled via dev settings
       const disableEncryption = await getBooleanSetting('disable_flower_encryption', false)
 
       // Enable encryption for confidential models unless explicitly disabled in dev settings
       const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableEncryption
 
-      const client = await createConfiguredFlowerClient()
+      const cloudUrl = await getCloudUrl()
+      const client = await createConfiguredFlowerClient(cloudUrl)
 
       const provider = createFlowerProvider({
         client,
@@ -158,8 +158,6 @@ export const aiFetchStreamingResponse = async ({
     },
   })
 
-  // Flower now uses a custom Vercel AI SDK provider; no special-casing here
-
   try {
     const baseModel = await createModel(model)
 
@@ -190,7 +188,6 @@ export const aiFetchStreamingResponse = async ({
       //   } satisfies OpenAICompatibleProviderOptions,
       // },
       onStepFinish: (step) => {
-        // Skip logging during tests to keep output clean
         if (process.env.NODE_ENV === 'test') return
 
         console.log('step', {
@@ -207,7 +204,6 @@ export const aiFetchStreamingResponse = async ({
         })
       },
       onFinish: (finish) => {
-        // Skip logging during tests to keep output clean
         if (process.env.NODE_ENV === 'test') return
 
         console.log('finish', {

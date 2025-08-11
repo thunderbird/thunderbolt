@@ -1,15 +1,5 @@
 import { type FlowerClient } from '@/flower'
-import { getCloudUrl } from '@/lib/config'
 import ky from 'ky'
-
-/**
- * Fetches API key from the backend for Flower authentication
- */
-export const getFlowerApiKey = async (cloudUrl: string): Promise<string | undefined> => {
-  const response = await ky.post(`${cloudUrl}/flower/api-key`, { json: {} })
-  const data = await response.json<{ api_key: string }>()
-  return data.api_key
-}
 
 export type FlowerClientOptions = {
   apiKey?: string
@@ -27,12 +17,12 @@ export const createFlowerClient = async ({
 }: FlowerClientOptions): Promise<FlowerClient> => {
   const { FlowerIntelligence } = await import('@flwr/flwr')
 
-  // Set the base URL on the class (static property) - this is what the patch enables
-  if (baseUrl) {
-    FlowerIntelligence.baseUrl = baseUrl
-  }
-
   const client = FlowerIntelligence.instance as unknown as FlowerClient
+
+  // This currently DOES NOT have any effect - waiting for a fix in the @flwr/flwr package
+  if (baseUrl) {
+    client.baseUrl = baseUrl
+  }
 
   if (apiKey) {
     client.apiKey = apiKey
@@ -43,8 +33,16 @@ export const createFlowerClient = async ({
   return client
 }
 
-export const createConfiguredFlowerClient = async (): Promise<FlowerClient> => {
-  const cloudUrl = await getCloudUrl()
+/**
+ * Fetches API key from the backend for Flower authentication
+ */
+export const getFlowerApiKey = async (cloudUrl: string): Promise<string | undefined> => {
+  const response = await ky.post(`${cloudUrl}/flower/api-key`, { json: {} })
+  const data = await response.json<{ api_key: string }>()
+  return data.api_key
+}
+
+export const createConfiguredFlowerClient = async (cloudUrl: string): Promise<FlowerClient> => {
   const baseUrl = `${cloudUrl}/flower`
 
   const apiKey = await getFlowerApiKey(cloudUrl)
@@ -54,8 +52,6 @@ export const createConfiguredFlowerClient = async (): Promise<FlowerClient> => {
     remoteHandoff: true,
     apiKey,
   })
-
-  console.log('created flower client', client.baseUrl)
 
   return client
 }

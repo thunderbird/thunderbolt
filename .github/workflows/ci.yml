@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
+  typescript:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -25,37 +25,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-          cache: false
-
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -76,9 +45,6 @@ jobs:
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-
-
-      - name: Install Tauri CLI
-        run: bun install -g @tauri-apps/cli
 
       - name: Install dependencies
         run: bun install
@@ -118,6 +84,48 @@ jobs:
       - name: Type check
         run: bun run tsc --noEmit
 
+      - name: Lint
+        run: bun run lint
+
+      - name: Run tests
+        run: bun test --cwd .
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
       - name: Check Rust code
         env:
           CARGO_INCREMENTAL: 0
@@ -126,6 +134,14 @@ jobs:
           cd src-tauri
           cargo check --all-targets
           cargo clippy --all-targets -- -D warnings
+
+      - name: Run Rust tests
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          cd src-tauri
+          cargo test
 
   backend:
     runs-on: ubuntu-latest

@@ -18,7 +18,14 @@ const supportedPartTypes = ['reasoning', 'tool', 'text']
 export const AssistantMessage = ({ message }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => {
     const [partType] = splitPartType(part.type)
-    return supportedPartTypes.includes(partType)
+    if (!supportedPartTypes.includes(partType)) {
+      return false
+    }
+    if (partType === 'text') {
+      // Currently there is a bug in the Vercel AI SDK where empty text parts are emitted - we must remove them in order to avoid rendering empty gaps in the UI
+      return (part as TextUIPart).text.trim() !== ''
+    }
+    return true
   })
 
   const partElements = []

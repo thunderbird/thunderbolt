@@ -116,8 +116,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-rust-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-rust-
             ${{ runner.os }}-cargo-
 
       - name: Install system dependencies

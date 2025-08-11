@@ -16,12 +16,12 @@ const mockGetSetting = mock()
 const mockUpdateSetting = mock()
 const mockRefreshAccessToken = mock()
 
-mock.module('@/lib/dal', () => ({
+mock.module('../../lib/dal', () => ({
   getSetting: mockGetSetting,
   updateSetting: mockUpdateSetting,
 }))
 
-mock.module('@/lib/auth', () => ({
+mock.module('../../lib/auth', () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }))
 

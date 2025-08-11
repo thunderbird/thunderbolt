@@ -23,6 +23,7 @@ import { getOrCreateChatThread } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { desc, eq } from 'drizzle-orm'
 import {
+    AlarmClock,
   ArrowLeft,
   Bot,
   CheckSquare,
@@ -192,6 +193,15 @@ export default function ChatSidebar() {
                   >
                     <Server className="size-4" />
                     <span>MCP Servers</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => handleSettingsNavigation('/settings/schedules')}
+                    className="cursor-pointer"
+                  >
+                    <AlarmClock className="size-4" />
+                    <span>Scheduled Tasks</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

@@ -52,6 +52,7 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
+import SchedulesSettingsPage from '@/settings/schedules'
 
 const queryClient = new QueryClient()
 
@@ -79,6 +80,8 @@ function AppContent({ initData }: { initData: InitData }) {
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
+            <Route path="schedules" element={<SchedulesSettingsPage />} />
+
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="accounts" element={<AccountsSettingsPage />} />
             <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />

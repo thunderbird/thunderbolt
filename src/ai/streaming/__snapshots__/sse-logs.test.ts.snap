@@ -25,7 +25,7 @@ exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags a
 }"
 `;
 
-exports[`SSE -> UIMessage: 002-reasoning-property - Unsupported \`reasoning\` property. 1`] = `
+exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 1`] = `
 "{
   "id": "<DYNAMIC_ID>",
   "metadata": {
@@ -35,6 +35,11 @@ exports[`SSE -> UIMessage: 002-reasoning-property - Unsupported \`reasoning\` pr
   "parts": [
     {
       "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
+      "state": "done"
     },
     {
       "type": "text",

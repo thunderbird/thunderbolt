@@ -1,5 +1,5 @@
-import { refreshAccessToken } from '@/lib/auth'
-import { getSetting, updateSetting } from '@/lib/dal'
+import { refreshAccessToken } from '../../lib/auth'
+import { getSetting, updateSetting } from '../../lib/dal'
 import type { DraftEmailParams } from './tools'
 
 // =============================================================================

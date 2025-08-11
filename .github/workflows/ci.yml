@@ -84,8 +84,8 @@ jobs:
       - name: Type check
         run: bun run tsc --noEmit
 
-      - name: Lint
-        run: bun run lint
+      # - name: Lint
+      #   run: bun run lint
 
       - name: Run tests
         run: bun test

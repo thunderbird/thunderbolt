@@ -179,11 +179,13 @@ export const seedPrompts = async () => {
       title: 'Daily Brief',
       prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
-1. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list.
+1. If you know my location, use the get_weather_forecast tool to check today's weather for my location. I only need to know the weather for today. If not, skip this section.
 
-2. If you know my location, use the get_weather_forecast tool to check today's weather for my location. I only need to know the weather for today. If not, skip this section.
+2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list.
 
-3. If you have access to email tools, check my inbox and tell me the 10 most important items that I should be aware of. If not, skip this section.
+3. If you have access to email tools, check my inbox and give me a summary of what has come on over the last 24 hours, focusing on what looks most important. If not, skip this section.
+
+4. If you access to calendar tools, check my calendar and give me a summary of what is coming up for the current day. Please provide this as a personal assistant might. If not, skip this section.
 
 Please format the brief as follows:
 
@@ -191,21 +193,23 @@ Good <morning/afternoon/evening> <user's name if available>,
 
 Some friendly, witty variation of "I've put together a daily brief for you!" with an emoji.
 
+# Weather
+
+Today's forecast is ____.
+
 # News
 
 1. <headline>
 2. <headline>
 3. <headline>
 
-# Weather
-
-Today's forecast is ____.
-
 # Inbox
 
-1. <subject line> [From: <person's name>]
-2. <subject line> [From: <person's name>]
-3. <subject line> [From: <person's name>]
+This is what's in your inbox that you should be aware of...
+
+# Calendar
+
+This is what you've got on your calendar today...
 
 Do not show skipped sections at all, even placeholders - just skip them entirely.`,
       modelId: defaultModelId,

@@ -16,6 +16,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import ChatDetailPage from '@/chats/detail'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { usePageTracking } from '@/hooks/use-analytics'
+import { PostHogProvider } from '@/lib/analytics'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
@@ -62,6 +64,15 @@ function AppContent({ initData }: { initData: InitData }) {
 
   return (
     <BrowserRouter>
+      <AppRoutes initData={initData} />
+    </BrowserRouter>
+  )
+}
+
+function AppRoutes({ initData }: { initData: InitData }) {
+  usePageTracking()
+
+  return (
       <Routes>
         <Route path="/" element={<Layout />}>
           {/* Home routes with HomeLayout */}
@@ -92,7 +103,6 @@ function AppContent({ initData }: { initData: InitData }) {
         {/* OAuth callback route */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
       </Routes>
-    </BrowserRouter>
   )
 }
 
@@ -230,21 +240,23 @@ export const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="system" storageKey="ui_theme">
-        <TrayProvider tray={initData.tray} window={initData.window}>
-          <MCPProvider>
-            <ImapProvider client={initData.imap}>
-              <ImapSyncProvider client={initData.imapSync}>
-                <SidebarProvider>
-                  <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                    <AppContent initData={initData} />
-                  </SideviewProvider>
-                </SidebarProvider>
-              </ImapSyncProvider>
-            </ImapProvider>
-          </MCPProvider>
-        </TrayProvider>
-      </ThemeProvider>
+      <PostHogProvider>
+        <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+          <TrayProvider tray={initData.tray} window={initData.window}>
+            <MCPProvider>
+              <ImapProvider client={initData.imap}>
+                <ImapSyncProvider client={initData.imapSync}>
+                  <SidebarProvider>
+                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
+                      <AppContent initData={initData} />
+                    </SideviewProvider>
+                  </SidebarProvider>
+                </ImapSyncProvider>
+              </ImapProvider>
+            </MCPProvider>
+          </TrayProvider>
+        </ThemeProvider>
+      </PostHogProvider>
     </QueryClientProvider>
   )
 }

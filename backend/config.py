@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # General settings
     log_level: str = "INFO"  # Default log level
 
+    # Analytics settings
+    posthog_host: str = "https://us.i.posthog.com"
+
     # CORS settings
     cors_origins: str = "http://localhost:1420"
     cors_origin_regex: str = ""

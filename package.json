@@ -69,6 +69,7 @@
     "framer-motion": "^12.23.1",
     "ky": "^1.8.1",
     "lucide-react": "^0.525.0",
+    "posthog-js": "^1.259.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.60.0",

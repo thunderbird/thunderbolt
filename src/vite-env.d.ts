@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_THUNDERBOLT_CLOUD_URL?: string
+  readonly VITE_POSTHOG_API_KEY?: string
 }
 
 interface ImportMeta {

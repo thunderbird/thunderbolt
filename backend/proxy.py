@@ -245,7 +245,7 @@ class ProxyService:
         )
         upstream = await self.client.send(req, stream=True, follow_redirects=False)
 
-        # Clean response headers - remove hop-by-hop headers
+        # Clean response headers - remove hop-by-hop headers and problematic CORS headers
         hop_by_hop = {
             "transfer-encoding",
             "connection",
@@ -256,6 +256,9 @@ class ProxyService:
             "trailers",
             "upgrade",
             "content-length",
+            "cross-origin-resource-policy",  # Remove problematic CORS header
+            "cross-origin-embedder-policy",  # Remove problematic CORS header
+            "cross-origin-opener-policy",  # Also remove COOP header
         }
         upstream_headers = {
             k: v for k, v in upstream.headers.items() if k.lower() not in hop_by_hop
@@ -305,8 +308,22 @@ class ProxyService:
                 follow_redirects=False,
             )
 
-            # Create response headers
+            # Create response headers and remove problematic CORS headers immediately
             response_headers = dict(response.headers)
+
+            # Remove problematic CORS headers (case-insensitive)
+            problematic_headers = [
+                "cross-origin-resource-policy",
+                "cross-origin-embedder-policy",
+                "cross-origin-opener-policy",
+            ]
+            headers_to_remove = []
+            for key in response_headers:
+                if key.lower() in problematic_headers:
+                    headers_to_remove.append(key)
+
+            for key in headers_to_remove:
+                del response_headers[key]
 
             # Check for compression
             content_encoding = response_headers.get("content-encoding", "").lower()

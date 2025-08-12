@@ -84,7 +84,7 @@ jobs:
       - name: Type check
         run: bun run tsc --noEmit
 
-      # - name: Lint
+      # - name: Lint  
       #   run: bun run lint
 
       - name: Run tests
@@ -143,21 +143,14 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Check Rust code
+      - name: Build and check Rust code
         env:
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
         run: |
           cd src-tauri
-          cargo check --all-targets
+          cargo build --all-targets
           cargo clippy --all-targets -- -D warnings
-
-      - name: Run Rust tests
-        env:
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-        run: |
-          cd src-tauri
           cargo test
 
 

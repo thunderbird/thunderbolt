@@ -36,6 +36,26 @@ pub async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Resul
 }
 
 #[command]
+pub fn run_schedule_installer() -> Result<(), String> {
+
+    println!("You did the thing! This is coming from Rust!!");
+    #[cfg(target_os = "macos")]
+    {
+        println!("Hello macOS!");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        println!("Hello windows!");
+    }
+    #[cfg(target_os = "linux")]
+    {
+        println!("Hello linux!");
+    }
+
+    Ok(())
+}
+
+#[command]
 pub fn get_env(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }

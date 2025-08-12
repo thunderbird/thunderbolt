@@ -47,6 +47,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
             commands::get_env,
+            commands::run_schedule_installer,
             commands::capabilities,
             #[cfg(feature = "bridge")]
             commands::init_bridge,

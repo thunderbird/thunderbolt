@@ -107,11 +107,27 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
+          cache: false
 
-      - name: Cache Rust dependencies and build artifacts  
-        uses: Swatinem/rust-cache@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v4
         with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target/
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-
 
       - name: Install system dependencies
         run: |

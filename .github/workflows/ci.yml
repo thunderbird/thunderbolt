@@ -175,9 +175,9 @@ jobs:
           path: |
             ~/.cache/uv
             backend/.venv
-          key: uv-${{ hashFiles('backend/uv.lock') }}
+          key: uv-${{ github.repository }}-${{ hashFiles('backend/uv.lock') }}
           restore-keys: |
-            uv-
+            uv-${{ github.repository }}-
 
       - name: Install dependencies
         run: |

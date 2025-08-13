@@ -17,10 +17,11 @@ import ChatDetailPage from '@/chats/detail'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { usePageTracking } from '@/hooks/use-analytics'
-import { PostHogProvider } from '@/lib/analytics'
+import { useIsTauri } from '@/hooks/use-is-tauri'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
+import { PostHogProvider } from '@/lib/analytics'
 import { getOrCreateChatThread } from '@/lib/dal'
 import { seedAccounts, seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
 import { ThemeProvider } from '@/lib/theme-provider'
@@ -31,6 +32,7 @@ import IntegrationsPage from '@/settings/integrations'
 import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
+import SchedulesSettingsPage from '@/settings/schedules'
 import ThunderboltBridgeSettingsPage from '@/settings/thunderbolt-bridge'
 import TasksPage from '@/tasks'
 import { useEffect, useState } from 'react'
@@ -54,8 +56,6 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
-import SchedulesSettingsPage from '@/settings/schedules'
-import { useIsTauri } from '@/hooks/use-is-tauri';
 
 const queryClient = new QueryClient()
 
@@ -63,7 +63,6 @@ function AppContent({ initData }: { initData: InitData }) {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
-  const isTauri = useIsTauri();
 
   return (
     <BrowserRouter>
@@ -73,43 +72,43 @@ function AppContent({ initData }: { initData: InitData }) {
 }
 
 function AppRoutes({ initData }: { initData: InitData }) {
+  const isTauri = useIsTauri()
+
   usePageTracking()
 
   return (
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          {/* Home routes with HomeLayout */}
-          <Route element={<ChatLayout />}>
-            <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
-            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="automations" element={<AutomationsPage />} />
-            <Route path="message-simulator" element={<MessageSimulatorPage />} />
-          </Route>
-
-          {/* Settings routes with SettingsLayout */}
-          <Route path="settings" element={<SettingsLayout />}>
-            <Route index element={<Settings />} />
-            <Route path="preferences" element={<PreferencesSettingsPage />} />
-            <Route path="models" element={<ModelsPage />} />
-            <Route path="mcp-servers" element={<McpServersPage />} />
-            { isTauri && (
-              <Route path="schedules" element={<SchedulesSettingsPage />} />
-            )}
-
-            <Route path="integrations" element={<IntegrationsPage />} />
-            <Route path="accounts" element={<AccountsSettingsPage />} />
-            <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />
-            <Route path="dev-settings" element={<DevSettingsPage />} />
-          </Route>
-
-          <Route path="ui-kit" element={<UiKitPage />} />
-          <Route path="devtools" element={<DevToolsPage />} />
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        {/* Home routes with HomeLayout */}
+        <Route element={<ChatLayout />}>
+          <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
+          <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="automations" element={<AutomationsPage />} />
+          <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 
-        {/* OAuth callback route */}
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-      </Routes>
+        {/* Settings routes with SettingsLayout */}
+        <Route path="settings" element={<SettingsLayout />}>
+          <Route index element={<Settings />} />
+          <Route path="preferences" element={<PreferencesSettingsPage />} />
+          <Route path="models" element={<ModelsPage />} />
+          <Route path="mcp-servers" element={<McpServersPage />} />
+          {isTauri && <Route path="schedules" element={<SchedulesSettingsPage />} />}
+
+          <Route path="integrations" element={<IntegrationsPage />} />
+          <Route path="accounts" element={<AccountsSettingsPage />} />
+          <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />
+          <Route path="dev-settings" element={<DevSettingsPage />} />
+        </Route>
+
+        <Route path="ui-kit" element={<UiKitPage />} />
+        <Route path="devtools" element={<DevToolsPage />} />
+      </Route>
+
+      {/* OAuth callback route */}
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+    </Routes>
   )
 }
 

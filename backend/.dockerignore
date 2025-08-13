@@ -52,4 +52,4 @@ test_*.py
 
 # Misc
 .editorconfig
-.pre-commit-config.yaml 
+.pre-commit-config.yaml

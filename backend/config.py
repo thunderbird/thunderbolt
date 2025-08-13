@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     flower_proj_id: str = ""  # Flower project ID
     exa_api_key: str = ""  # Exa AI API key
 
+    # Health Check Configuration
+    monitoring_token: str = ""  # Secret token for health check endpoints
+
     # OAuth Settings
     google_client_id: str = ""  # Google OAuth client ID
     google_client_secret: str = ""  # Google OAuth client secret

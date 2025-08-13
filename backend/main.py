@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from auth import google_router, microsoft_router
 from config import Settings
 from flower_auth import get_flower_api_key
+from healthcheck import router as healthcheck_router
 from pro.routes import create_pro_tools_app
 from proxy import ProxyConfig, ProxyService, get_proxy_service
 
@@ -423,6 +424,7 @@ async def proxy_endpoint(
 
 app.include_router(google_router)
 app.include_router(microsoft_router)
+app.include_router(healthcheck_router)
 
 
 # ---------------------------------------------------------------------------

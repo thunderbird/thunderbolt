@@ -8,18 +8,39 @@ import { ReactNode, useEffect, useState } from 'react'
 
 let posthogClient: PostHog | null = null
 
+const ROUTE_PATTERNS = ['/chats/:chatThreadId'] as const
+
+/**
+ * Replaces dynamic URL segments with their parameter placeholders so analytics do not collect raw IDs.
+ * @param url - Full URL or pathname
+ * @returns URL with pathname replaced to match the route pattern
+ */
+export const sanitizeUrl = (url: string): string => {
+  const pathname = (() => {
+    try {
+      return new URL(url, 'http://localhost').pathname
+    } catch {
+      return url.startsWith('/') ? url : `/${url}`
+    }
+  })()
+
+  for (const pattern of ROUTE_PATTERNS) {
+    const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
+    if (regex.test(pathname)) return url.replace(pathname, pattern)
+  }
+
+  return url
+}
+
 /**
  * Initialize Posthog analytics and return the client
  */
 export const initPosthog = async (): Promise<PostHog | null> => {
   const cloudUrl = await getCloudUrl()
 
-  // Fetch public analytics config from backend
-  const { posthog_api_key: posthogApiKey }: { posthog_api_key?: string } = await ky
-    .get(`${cloudUrl}/analytics/config`)
-    .json()
+  const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/analytics/config`).json<{ posthog_api_key?: string }>()
 
-  if (!posthogApiKey) {
+  if (!apiKey) {
     console.log('Posthog analytics disabled - no API key provided')
     return null
   }
@@ -29,13 +50,30 @@ export const initPosthog = async (): Promise<PostHog | null> => {
 
   if (!posthogClient) {
     const enableDebug = await getBooleanSetting('debug_posthog', false)
-    posthogClient = posthog.init(posthogApiKey, {
+    posthogClient = posthog.init(apiKey, {
       api_host: apiHost,
       debug: enableDebug,
       autocapture: false,
       capture_pageview: false,
       capture_pageleave: false,
       persistence: 'localStorage',
+      before_send: (event) => {
+        if (!event) return null
+        if (event.event === '$pageview' || event.event === '$pageleave') {
+          if (typeof event.properties?.$current_url === 'string') {
+            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
+          }
+        }
+
+        if (typeof event.properties?.url === 'string') {
+          event.properties.url = sanitizeUrl(event.properties.url)
+        }
+        if (typeof event.properties?.$pathname === 'string') {
+          event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
+        }
+
+        return event
+      },
     }) as PostHog
   }
 

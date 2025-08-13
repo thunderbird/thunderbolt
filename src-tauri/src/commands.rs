@@ -81,10 +81,17 @@ pub fn run_schedule_installer(app_handle: tauri::AppHandle, mut args: Vec<String
             .expect("Failed to resolve resource for script path.");
 
         let output = Command::new("powershell")
-            .args(&["-ExecutionPolicy", "Bypass"])
+            .args(&["-ExecutionPolicy", "Bypass"
             .arg("-File")
             .arg(script_path)
             .args(args)
+            .args(&[
+                "-Silent",      // No prompts
+                "-Force",       // Auto-replace
+                "-Json",        // Structured output
+                "-TaskName",
+                "Ghostcat.Daily"
+            ])
             .output()
             .map_err(|e| e.to_string())?;
 

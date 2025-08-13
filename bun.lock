@@ -13,7 +13,7 @@
         "@dnd-kit/modifiers": "^9.0.0",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
-        "@flwr/flwr": "^0.1.13",
+        "@flwr/flwr": "^0.2.0",
         "@hookform/resolvers": "^5.1.1",
         "@modelcontextprotocol/sdk": "^1.15.0",
         "@openrouter/ai-sdk-provider": "^1.1.2",
@@ -262,7 +262,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.9", "", {}, "sha512-MDWhGtE+eHw5JW7lq4qhc5yRLS11ERl1c7Z6Xd0a58DozHES6EnNNwUWbMiG4J9Cgj053Bhk8zvlhFYKVhULwg=="],
 
-    "@flwr/flwr": ["@flwr/flwr@0.1.13", "", { "dependencies": { "@huggingface/transformers": "^3.4.0", "@mlc-ai/web-llm": "^0.2.79", "get-random-values": "^3.0.0" } }, "sha512-aUsD1SuK/xO3LuHuz8W1fPBUaaUer6sd6W4rXsd2Ce58d0ItZvp1gPra9H9Nbu+s1rFQCiBXYSUqch9Sz12lcA=="],
+    "@flwr/flwr": ["@flwr/flwr@0.2.0", "", { "dependencies": { "@huggingface/transformers": "^3.4.0", "@mlc-ai/web-llm": "^0.2.79", "get-random-values": "^3.0.0" } }, "sha512-1TI7N8B0RB+QeupP4hooFt/1/lZqj/ABPlOquh4eGgCrDeSS7FRAr52C+DBfjuzh/V95a65/NcuxFQEeoF7KTw=="],
 
     "@hookform/resolvers": ["@hookform/resolvers@5.1.1", "", { "dependencies": { "@standard-schema/utils": "^0.3.0" }, "peerDependencies": { "react-hook-form": "^7.55.0" } }, "sha512-J/NVING3LMAEvexJkyTLjruSm7aOFx7QX21pzkiJfMoNG0wl5aFEjLTl7ay7IQb9EWY6AkrBy7tHL2Alijpdcg=="],
 

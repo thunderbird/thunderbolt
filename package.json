@@ -29,7 +29,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@flwr/flwr": "^0.1.13",
+    "@flwr/flwr": "^0.2.0",
     "@hookform/resolvers": "^5.1.1",
     "@modelcontextprotocol/sdk": "^1.15.0",
     "@openrouter/ai-sdk-provider": "^1.1.2",

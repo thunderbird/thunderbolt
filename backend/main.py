@@ -6,7 +6,7 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -423,3 +423,24 @@ async def proxy_endpoint(
 
 app.include_router(google_router)
 app.include_router(microsoft_router)
+
+
+# ---------------------------------------------------------------------------
+# Analytics configuration endpoint
+# ---------------------------------------------------------------------------
+analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+@analytics_router.get("/config")
+async def analytics_config() -> dict[str, str]:
+    """Return public analytics configuration for the frontend.
+
+    Exposes only non-sensitive values required for client initialization.
+    """
+    settings = get_settings()
+    return {
+        "posthog_api_key": settings.posthog_api_key,
+    }
+
+
+app.include_router(analytics_router)

@@ -1,4 +1,3 @@
-import React from 'react'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -45,7 +44,7 @@ export default function SchedulesSettingsPage() {
             <FormField
               control={nameForm.control}
               name="preferredName"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel>Install the Scheduled Task?!</FormLabel>
                   <FormControl>

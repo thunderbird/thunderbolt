@@ -53,6 +53,7 @@ import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
 import SchedulesSettingsPage from '@/settings/schedules'
+import { useIsTauri } from '@/hooks/use-is-tauri';
 
 const queryClient = new QueryClient()
 
@@ -60,6 +61,7 @@ function AppContent({ initData }: { initData: InitData }) {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
+  const isTauri = useIsTauri();
 
   return (
     <BrowserRouter>
@@ -80,7 +82,9 @@ function AppContent({ initData }: { initData: InitData }) {
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
-            <Route path="schedules" element={<SchedulesSettingsPage />} />
+            {isTauri && (
+              <Route path="schedules" element={<SchedulesSettingsPage />} />
+            )}
 
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="accounts" element={<AccountsSettingsPage />} />

@@ -39,6 +39,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router'
+import { useIsTauri } from '@/hooks/use-is-tauri';
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -47,6 +48,7 @@ export default function ChatSidebar() {
   const queryClient = useQueryClient()
   const { setOpenMobile } = useSidebar()
   const isMobile = useIsMobile()
+  const isTauri = useIsTauri();
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
@@ -195,15 +197,17 @@ export default function ChatSidebar() {
                     <span>MCP Servers</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => handleSettingsNavigation('/settings/schedules')}
-                    className="cursor-pointer"
-                  >
-                    <AlarmClock className="size-4" />
-                    <span>Scheduled Tasks</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {isTauri && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => handleSettingsNavigation('/settings/schedules')}
+                      className="cursor-pointer"
+                    >
+                      <AlarmClock className="size-4" />
+                      <span>Scheduled Tasks</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

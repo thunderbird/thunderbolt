@@ -195,7 +195,7 @@ main() {
   echo "1) Load (enable and start) the new agent:"
   echo "   launchctl bootstrap gui/\$(id -u) \"$PLIST_DEST_FILE\""
   echo "2) To test it immediately (without waiting for the schedule):"
-  echo "   launchctl kickstart -k gui/\$(id -u)/${APP_ID}"
+  echo "   launchctl kickstart -k gui/\$(id -u)/'${APP_ID}'"
   echo "3) Check status:"
   echo "   launchctl print gui/\$(id -u)/${APP_ID}"
   echo "4) View logs:"

@@ -1,0 +1,9 @@
+[Unit]
+Description=PLACEHOLDER_DESCRIPTION
+
+[Timer]
+OnCalendar=*-*-* PLACEHOLDER_HOUR:PLACEHOLDER_MINUTE:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

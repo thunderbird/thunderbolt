@@ -1,0 +1,6 @@
+[Unit]
+Description=PLACEHOLDER_DESCRIPTION
+
+[Service]
+Type=oneshot
+ExecStart=PLACEHOLDER_EXE_PATH

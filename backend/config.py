@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,3 +51,9 @@ class Settings(BaseSettings):
             for method in self.cors_allow_methods.split(",")
             if method.strip()
         ]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a cached Settings instance to avoid re-parsing env vars."""
+    return Settings()

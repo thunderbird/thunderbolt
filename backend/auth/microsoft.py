@@ -5,14 +5,13 @@ implemented immediately while backend logic is pending.
 """
 
 import logging
-from functools import lru_cache
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from config import Settings
+from config import get_settings, Settings
 
 # ---------------------------------------------------------------------------
 # Router & settings helpers
@@ -21,11 +20,7 @@ from config import Settings
 router = APIRouter(prefix="/auth/microsoft", tags=["auth-microsoft"])
 
 
-@lru_cache
-def get_settings() -> Settings:
-    """Return cached Settings instance to avoid re-parsing env vars."""
-
-    return Settings()
+ 
 
 
 # ---------------------------------------------------------------------------

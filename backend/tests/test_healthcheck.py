@@ -15,7 +15,7 @@ class TestHealthCheckEndpoints:
 
     def test_health_check_invalid_token(self, client: TestClient) -> None:
         """Test health check endpoint with invalid monitoring token."""
-        with patch("healthcheck.get_settings") as mock_settings:
+        with patch("config.get_settings") as mock_settings:
             mock_settings.return_value.monitoring_token = "valid_token"
             response = client.get(
                 "/healthcheck/flower/qwen/qwen3-235b?token=invalid_token"
@@ -25,7 +25,7 @@ class TestHealthCheckEndpoints:
 
     def test_health_check_no_monitoring_configured(self, client: TestClient) -> None:
         """Test health check when monitoring token is not configured."""
-        with patch("healthcheck.get_settings") as mock_settings:
+        with patch("config.get_settings") as mock_settings:
             mock_settings.return_value.monitoring_token = ""
             response = client.get("/healthcheck/flower/qwen/qwen3-235b?token=any_token")
             assert response.status_code == 503
@@ -35,7 +35,7 @@ class TestHealthCheckEndpoints:
         self, client: TestClient
     ) -> None:
         """Test health check works with any model name using default configuration."""
-        with patch("healthcheck.get_settings") as mock_settings:
+        with patch("config.get_settings") as mock_settings:
             mock_settings.return_value.monitoring_token = "valid_token"
             mock_settings.return_value.flower_mgmt_key = "test_key"
             mock_settings.return_value.flower_proj_id = "test_proj"
@@ -54,7 +54,7 @@ class TestHealthCheckEndpoints:
 
     def test_health_check_flower_not_configured(self, client: TestClient) -> None:
         """Test health check when Flower AI is not configured."""
-        with patch("healthcheck.get_settings") as mock_settings:
+        with patch("config.get_settings") as mock_settings:
             mock_settings.return_value.monitoring_token = "valid_token"
             mock_settings.return_value.flower_mgmt_key = ""
             mock_settings.return_value.flower_proj_id = ""
@@ -77,7 +77,7 @@ class TestHealthCheckEndpoints:
     ) -> None:
         """Test successful health check with correct response."""
         # Mock settings
-        with patch("healthcheck.get_settings") as mock_settings:
+        with patch("config.get_settings") as mock_settings:
             mock_settings.return_value.monitoring_token = "valid_token"
             mock_settings.return_value.flower_mgmt_key = "test_key"
             mock_settings.return_value.flower_proj_id = "test_proj"
@@ -237,7 +237,7 @@ class TestHealthCheckEndpointsAsync:
     async def test_health_check_success_async(self, async_client: AsyncClient) -> None:
         """Test successful health check with async client."""
         with (
-            patch("healthcheck.get_settings") as mock_settings,
+            patch("config.get_settings") as mock_settings,
             patch("healthcheck.httpx.AsyncClient") as mock_client_class,
             patch("healthcheck.get_flower_api_key") as mock_get_api_key,
         ):

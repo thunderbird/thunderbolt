@@ -2,7 +2,6 @@ import json
 import logging
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -10,19 +9,14 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import config
 from auth import google_router, microsoft_router
 from config import Settings
 from flower_auth import get_flower_api_key
 from healthcheck import router as healthcheck_router
 from pro.routes import create_pro_tools_app
 from proxy import ProxyConfig, ProxyService, get_proxy_service
-
-
-@lru_cache
-def get_settings() -> Settings:
-    """Get cached settings instance."""
-    return Settings()
-
+from request_utils import build_user_id_hash
 
 # Global whitelist of Thunderbolt-provided model names (provider-agnostic)
 THUNDERBOLT_MODEL_WHITELIST = {
@@ -148,6 +142,9 @@ async def proxy_lifespan(app: FastAPI) -> Any:
 
 pro_tools_app = create_pro_tools_app()
 
+# Expose get_settings for tests and internal use
+get_settings = config.get_settings
+
 logging.basicConfig(
     level=getattr(logging, get_settings().log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -241,13 +238,8 @@ async def get_flower_api_key_endpoint(request: Request) -> dict[str, str]:
     if not settings.flower_mgmt_key or not settings.flower_proj_id:
         raise HTTPException(status_code=503, detail="Flower AI not configured")
 
-    # For now, we'll use a simple user ID hash based on request headers
-    # In a real implementation, you'd want proper user authentication
-    user_agent = request.headers.get("user-agent", "")
-    client_ip = "unknown"
-    if request.client is not None:
-        client_ip = getattr(request.client, "host", "unknown")
-    user_id_hash = f"{user_agent}:{client_ip}"
+    # Derive a stable, non-PII user identifier for per-user API keys
+    user_id_hash = build_user_id_hash(request, fallback="unknown")
 
     try:
         api_key = get_flower_api_key(user_id_hash, settings=settings)
@@ -446,3 +438,6 @@ async def analytics_config() -> dict[str, str]:
 
 
 app.include_router(analytics_router)
+
+# Re-export for tests that import from main
+get_settings = config.get_settings

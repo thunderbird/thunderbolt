@@ -7,17 +7,25 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+import config
 from config import Settings
+
+
+def get_settings() -> Settings:
+    """Return current Settings via central config getter.
+
+    Wrapper ensures tests can patch either healthcheck.get_settings or
+    config.get_settings and still affect call sites.
+    """
+    return config.get_settings()
+
+
 from flower_auth import get_flower_api_key
+from request_utils import build_user_id_hash
 
 # Constants
 FLOWER_CHAT_COMPLETIONS_URL = "https://api.flower.ai/v1/chat/completions"
 HEALTHCHECK_USER_AGENT = "Thunderbolt-HealthCheck/1.0"
-
-
-def get_settings() -> Settings:
-    """Get settings instance."""
-    return Settings()
 
 
 def utc_now() -> str:
@@ -62,13 +70,45 @@ async def validate_monitoring_token(token: str = Query(..., alias="token")) -> N
         raise HTTPException(status_code=401, detail="Invalid monitoring token")
 
 
-def build_user_id_hash(request: Request) -> str:
-    """Build a stable user identifier for healthcheck API key generation."""
-    user_agent = request.headers.get("user-agent", "healthcheck")
-    client_ip = "healthcheck"
-    if request.client is not None:
-        client_ip = getattr(request.client, "host", "healthcheck")
-    return f"{user_agent}:{client_ip}"
+def _success_response(
+    *, model: str, service: str, timestamp: str, latency_ms: float, response: str
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "model": model,
+            "service": service,
+            "latency_ms": latency_ms,
+            "timestamp": timestamp,
+            "response": response,
+            "error": None,
+        },
+    )
+
+
+def _error_response(
+    *,
+    status_code: int,
+    model: str,
+    service: str,
+    timestamp: str,
+    latency_ms: float,
+    error: str,
+    response: str | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "ok": False,
+            "model": model,
+            "service": service,
+            "latency_ms": latency_ms,
+            "timestamp": timestamp,
+            "error": error,
+            "response": response,
+        },
+    )
 
 
 async def collect_streamed_content(response: httpx.Response) -> str:
@@ -145,21 +185,19 @@ async def health_check_flower_model(
     settings = get_settings()
 
     # Get model configuration (use default if not specifically configured)
-    config = HEALTH_CHECK_CONFIGS.get(model, DEFAULT_HEALTH_CHECK_CONFIG)
+    model_config = HEALTH_CHECK_CONFIGS.get(model, DEFAULT_HEALTH_CHECK_CONFIG)
 
     # Early return if Flower AI not configured
     if not settings.flower_mgmt_key or not settings.flower_proj_id:
-        return JSONResponse(
+        latency_ms = round((time.time() - start_time) * 1000, 2)
+        return _error_response(
             status_code=503,
-            content={
-                "ok": False,
-                "model": model,
-                "service": "flower",
-                "timestamp": timestamp,
-                "error": "Flower AI not configured",
-                "latency_ms": round((time.time() - start_time) * 1000, 2),
-                "response": None,
-            },
+            model=model,
+            service="flower",
+            timestamp=timestamp,
+            latency_ms=latency_ms,
+            error="Flower AI not configured",
+            response=None,
         )
 
     try:
@@ -174,7 +212,7 @@ async def health_check_flower_model(
             "messages": [
                 {
                     "role": "user",
-                    "content": config["prompt"],
+                    "content": model_config["prompt"],
                 }
             ],
             "stream": True,
@@ -190,12 +228,12 @@ async def health_check_flower_model(
             "User-Agent": HEALTHCHECK_USER_AGENT,
         }
 
-        async with httpx.AsyncClient(timeout=config["timeout"]) as client:
+        async with httpx.AsyncClient(timeout=model_config["timeout"]) as client:
             response = await client.post(
                 target_url,
                 headers=headers,
                 json=payload,
-                timeout=config["timeout"],
+                timeout=model_config["timeout"],
             )
             response.raise_for_status()
 
@@ -205,50 +243,38 @@ async def health_check_flower_model(
             latency_ms = round((time.time() - start_time) * 1000, 2)
 
             # Validate response matches exactly what we expect
-            expected = config["expected_response"]
+            expected = model_config["expected_response"]
             actual = collected_content.strip()
 
             if actual == expected:
-                return JSONResponse(
-                    status_code=200,
-                    content={
-                        "ok": True,
-                        "model": model,
-                        "service": "flower",
-                        "latency_ms": latency_ms,
-                        "timestamp": timestamp,
-                        "response": actual,
-                        "error": None,
-                    },
+                return _success_response(
+                    model=model,
+                    service="flower",
+                    latency_ms=latency_ms,
+                    timestamp=timestamp,
+                    response=actual,
                 )
-            else:
-                return JSONResponse(
-                    status_code=503,
-                    content={
-                        "ok": False,
-                        "model": model,
-                        "service": "flower",
-                        "latency_ms": latency_ms,
-                        "timestamp": timestamp,
-                        "response": actual,
-                        "error": f"Response mismatch: expected '{expected}' but got '{actual}'",
-                    },
-                )
+            return _error_response(
+                status_code=503,
+                model=model,
+                service="flower",
+                latency_ms=latency_ms,
+                timestamp=timestamp,
+                error=f"Response mismatch: expected '{expected}' but got '{actual}'",
+                response=actual,
+            )
 
     except httpx.TimeoutException:
         latency_ms = round((time.time() - start_time) * 1000, 2)
         logger.error(f"Health check timeout for {model}")
-        return JSONResponse(
+        return _error_response(
             status_code=503,
-            content={
-                "ok": False,
-                "model": model,
-                "service": "flower",
-                "latency_ms": latency_ms,
-                "timestamp": timestamp,
-                "error": f"Request timeout after {config['timeout']}s",
-                "response": None,
-            },
+            model=model,
+            service="flower",
+            latency_ms=latency_ms,
+            timestamp=timestamp,
+            error=f"Request timeout after {model_config['timeout']}s",
+            response=None,
         )
     except httpx.HTTPStatusError as e:
         latency_ms = round((time.time() - start_time) * 1000, 2)
@@ -267,32 +293,26 @@ async def health_check_flower_model(
         except Exception:
             pass
 
-        return JSONResponse(
+        return _error_response(
             status_code=503,
-            content={
-                "ok": False,
-                "model": model,
-                "service": "flower",
-                "latency_ms": latency_ms,
-                "timestamp": timestamp,
-                "error": error_message,
-                "response": None,
-            },
+            model=model,
+            service="flower",
+            latency_ms=latency_ms,
+            timestamp=timestamp,
+            error=error_message,
+            response=None,
         )
     except Exception as e:
         latency_ms = round((time.time() - start_time) * 1000, 2)
         logger.error(f"Health check failed for {model}: {str(e)}", exc_info=True)
-        return JSONResponse(
+        return _error_response(
             status_code=503,
-            content={
-                "ok": False,
-                "model": model,
-                "service": "flower",
-                "latency_ms": latency_ms,
-                "timestamp": timestamp,
-                "error": str(e),
-                "response": None,
-            },
+            model=model,
+            service="flower",
+            latency_ms=latency_ms,
+            timestamp=timestamp,
+            error=str(e),
+            response=None,
         )
 
 

@@ -16,8 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from config import get_settings, Settings
-
+from config import Settings, get_settings
 
 router = APIRouter(prefix="/auth/google", tags=["auth-google"])
 

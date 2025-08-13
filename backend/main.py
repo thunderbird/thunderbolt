@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 
 import config
 from auth import google_router, microsoft_router
-from config import Settings
 from flower_auth import get_flower_api_key
 from healthcheck import router as healthcheck_router
 from pro.routes import create_pro_tools_app

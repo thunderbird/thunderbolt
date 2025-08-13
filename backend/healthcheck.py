@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 
 import config
 from config import Settings
+from flower_auth import get_flower_api_key
+from request_utils import build_user_id_hash
 
 
 def get_settings() -> Settings:
@@ -19,9 +21,6 @@ def get_settings() -> Settings:
     """
     return config.get_settings()
 
-
-from flower_auth import get_flower_api_key
-from request_utils import build_user_id_hash
 
 # Constants
 FLOWER_CHAT_COMPLETIONS_URL = "https://api.flower.ai/v1/chat/completions"

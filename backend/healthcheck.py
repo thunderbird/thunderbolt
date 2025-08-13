@@ -17,8 +17,9 @@ def get_settings() -> Settings:
 
 
 def utc_now() -> str:
-   """Return current UTC time as RFC3339 with a trailing Z."""
-   return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    """Return current UTC time as RFC3339 with a trailing Z."""
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
 
 # Health check configurations for different models
 HEALTH_CHECK_CONFIGS = {
@@ -249,7 +250,7 @@ async def health_check_flower_model(
                     error_message = f"Model '{model}' is not available in your Flower AI project. Please check your project configuration or use a different model name."
                 elif isinstance(detail, str):
                     error_message = detail
-        except:
+        except Exception:
             pass
 
         return JSONResponse(

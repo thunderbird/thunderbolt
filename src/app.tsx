@@ -82,7 +82,7 @@ function AppContent({ initData }: { initData: InitData }) {
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
-            {isTauri && (
+            { isTauri && (
               <Route path="schedules" element={<SchedulesSettingsPage />} />
             )}
 

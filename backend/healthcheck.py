@@ -10,6 +10,10 @@ from fastapi.responses import JSONResponse
 from config import Settings
 from flower_auth import get_flower_api_key
 
+# Constants
+FLOWER_CHAT_COMPLETIONS_URL = "https://api.flower.ai/v1/chat/completions"
+HEALTHCHECK_USER_AGENT = "Thunderbolt-HealthCheck/1.0"
+
 
 def get_settings() -> Settings:
     """Get settings instance."""
@@ -58,6 +62,63 @@ async def validate_monitoring_token(token: str = Query(..., alias="token")) -> N
         raise HTTPException(status_code=401, detail="Invalid monitoring token")
 
 
+def build_user_id_hash(request: Request) -> str:
+    """Build a stable user identifier for healthcheck API key generation."""
+    user_agent = request.headers.get("user-agent", "healthcheck")
+    client_ip = "healthcheck"
+    if request.client is not None:
+        client_ip = getattr(request.client, "host", "healthcheck")
+    return f"{user_agent}:{client_ip}"
+
+
+async def collect_streamed_content(response: httpx.Response) -> str:
+    """Collect content from a streaming-like response into a single string.
+
+    Accepts Flower-style SSE payloads and variants that may not prefix with data:.
+    """
+    collected_content = ""
+    async for line in response.aiter_lines():
+        if not line:
+            continue
+
+        if line.startswith("data: "):
+            data_str = line[6:]
+        elif line.startswith("data:"):
+            data_str = line[5:]
+        else:
+            data_str = line
+
+        data_str = data_str.strip()
+        if not data_str or data_str == "[DONE]":
+            if data_str == "[DONE]":
+                break
+            continue
+
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError:
+            continue
+
+        if "choices" not in data or not data["choices"]:
+            continue
+
+        choice = data["choices"][0]
+        delta = choice.get("delta", {})
+        content = delta.get("content", "")
+
+        if not content and "text" in choice:
+            content = choice["text"]
+
+        if not content and "message" in choice:
+            message = choice["message"]
+            content = message.get("content", "")
+
+        if content:
+            collected_content += content
+
+    return collected_content
+
+
 @router.get("/flower/{model:path}")
 async def health_check_flower_model(
     model: str,
@@ -103,11 +164,7 @@ async def health_check_flower_model(
 
     try:
         # Get Flower API key using existing auth system
-        user_agent = request.headers.get("user-agent", "healthcheck")
-        client_ip = "healthcheck"
-        if request.client is not None:
-            client_ip = getattr(request.client, "host", "healthcheck")
-        user_id_hash = f"{user_agent}:{client_ip}"
+        user_id_hash = build_user_id_hash(request)
 
         api_key = get_flower_api_key(user_id_hash, settings=settings)
 
@@ -126,11 +183,11 @@ async def health_check_flower_model(
         }
 
         # Make streaming request to Flower AI
-        target_url = "https://api.flower.ai/v1/chat/completions"
+        target_url = FLOWER_CHAT_COMPLETIONS_URL
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "Thunderbolt-HealthCheck/1.0",
+            "User-Agent": HEALTHCHECK_USER_AGENT,
         }
 
         async with httpx.AsyncClient(timeout=config["timeout"]) as client:
@@ -142,50 +199,7 @@ async def health_check_flower_model(
             )
             response.raise_for_status()
 
-            # Collect streaming response content
-            collected_content = ""
-
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-
-                # Handle different streaming formats
-                if line.startswith("data: "):
-                    data_str = line[6:]  # Remove "data: " prefix
-                elif line.startswith("data:"):
-                    data_str = line[5:]  # Remove "data:" prefix
-                else:
-                    # Some services might not prefix with "data:"
-                    data_str = line
-
-                data_str = data_str.strip()
-                if data_str == "[DONE]":
-                    break
-
-                if not data_str:
-                    continue
-
-                try:
-                    data = json.loads(data_str)
-
-                    if "choices" in data and len(data["choices"]) > 0:
-                        choice = data["choices"][0]
-                        delta = choice.get("delta", {})
-                        content = delta.get("content", "")
-
-                        # Also check for non-delta format
-                        if not content and "text" in choice:
-                            content = choice["text"]
-
-                        # Also check for message content format
-                        if not content and "message" in choice:
-                            message = choice["message"]
-                            content = message.get("content", "")
-
-                        if content:
-                            collected_content += content
-                except json.JSONDecodeError:
-                    continue
+            collected_content = await collect_streamed_content(response)
 
             # Calculate final latency
             latency_ms = round((time.time() - start_time) * 1000, 2)

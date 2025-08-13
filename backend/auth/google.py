@@ -10,20 +10,13 @@ Provides the following endpoints under the prefix ``/auth/google``:
 """
 
 import logging
-from functools import lru_cache
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from config import Settings
-
-
-@lru_cache
-def get_settings() -> Settings:  # Local cache avoids re-parsing env repeatedly
-    return Settings()
-
+from config import Settings, get_settings
 
 router = APIRouter(prefix="/auth/google", tags=["auth-google"])
 

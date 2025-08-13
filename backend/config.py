@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +10,9 @@ class Settings(BaseSettings):
     flower_proj_id: str = ""  # Flower project ID
     exa_api_key: str = ""  # Exa AI API key
 
+    # Health Check Configuration
+    monitoring_token: str = ""  # Secret token for health check endpoints
+
     # OAuth Settings
     google_client_id: str = ""  # Google OAuth client ID
     google_client_secret: str = ""  # Google OAuth client secret
@@ -16,6 +21,10 @@ class Settings(BaseSettings):
 
     # General settings
     log_level: str = "INFO"  # Default log level
+
+    # Analytics settings
+    posthog_host: str = "https://us.i.posthog.com"
+    posthog_api_key: str = ""
 
     # CORS settings
     cors_origins: str = "http://localhost:1420"
@@ -42,3 +51,9 @@ class Settings(BaseSettings):
             for method in self.cors_allow_methods.split(",")
             if method.strip()
         ]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a cached Settings instance to avoid re-parsing env vars."""
+    return Settings()

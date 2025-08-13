@@ -17,6 +17,9 @@ export default function DevSettingsPage() {
   // Disable encryption setting
   const [disableEncryption, setDisableEncryption] = useBooleanSetting('disable_flower_encryption', false)
 
+  // Debug PostHog analytics
+  const [debugPosthog, setDebugPosthog] = useBooleanSetting('debug_posthog', false)
+
   // Runtime capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
@@ -78,6 +81,17 @@ export default function DevSettingsPage() {
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
             <Switch checked={disableEncryption} onCheckedChange={setDisableEncryption} />
+          </div>
+
+          {/* Divider between settings */}
+          <div className="border-t -mx-6" />
+
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">Debug PostHog</label>
+              <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
+            </div>
+            <Switch checked={debugPosthog} onCheckedChange={setDebugPosthog} />
           </div>
         </div>
       </SectionCard>

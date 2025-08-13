@@ -120,6 +120,14 @@ export const seedSettings = async () => {
       value: 'false',
     })
     .onConflictDoNothing()
+
+  await db
+    .insert(settingsTable)
+    .values({
+      key: 'debug_posthog',
+      value: 'false',
+    })
+    .onConflictDoNothing()
 }
 
 export const seedTasks = async () => {

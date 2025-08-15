@@ -33,13 +33,14 @@ import {
   Lock,
   MoreHorizontal,
   Plug,
+  Search,
   Server,
   Settings,
   SlidersHorizontal,
   SquarePen,
   Zap,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 
@@ -60,6 +61,17 @@ export default function ChatSidebar() {
   const isSettingsRoute = location.pathname.startsWith('/settings')
 
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) {
+      // Small delay to ensure the element is visible before focusing
+      setTimeout(() => {
+        searchInputRef.current?.focus()
+      }, 100)
+    }
+  }, [showSearch])
 
   const { data } = useQuery({
     queryKey: ['chatThreads'],
@@ -292,36 +304,59 @@ export default function ChatSidebar() {
         <SidebarSeparator className="m-0" />
 
         <SidebarGroup className="flex-1 overflow-y-auto">
-          <SearchInput
-            className="bg-muted"
-            containerClassName="mb-2"
-            placeholder="Search chats..."
-            debouncedOnChange={setDebouncedSearchQuery}
-          />
           <div className="flex items-center justify-between">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <SidebarMenuButton
-                    onClick={() => deleteAllChatsDialogRef.current?.open()}
-                    className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
-                    disabled={deleteAllChatsMutation.isPending}
-                  >
-                    {deleteAllChatsMutation.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Flame className="size-4" />
-                    )}
-                  </SidebarMenuButton>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>Clear all chats</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="flex items-center gap-0.5">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <SidebarMenuButton
+                      onClick={() => setShowSearch(!showSearch)}
+                      className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+                    >
+                      <Search className={`size-4 ${debouncedSearchQuery ? 'text-blue-500' : ''}`} />
+                    </SidebarMenuButton>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Search chats</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <SidebarMenuButton
+                      onClick={() => deleteAllChatsDialogRef.current?.open()}
+                      className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+                      disabled={deleteAllChatsMutation.isPending}
+                    >
+                      {deleteAllChatsMutation.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Flame className="size-4" />
+                      )}
+                    </SidebarMenuButton>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Clear all chats</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
-          <SidebarMenu className="flex-1 overflow-y-auto">
+          <div
+            className={`transition-all duration-300 ease-in-out ${
+              showSearch ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0 overflow-hidden'
+            }`}
+          >
+            <SearchInput
+              ref={searchInputRef}
+              containerClassName="mb-1"
+              placeholder="Search chats..."
+              debouncedOnChange={setDebouncedSearchQuery}
+            />
+          </div>
+          <SidebarMenu className="flex-1 overflow-y-auto mt-2">
             {chatThreads.map((thread) => (
               <DropdownMenu key={thread.id}>
                 <SidebarMenuItem>
@@ -354,7 +389,7 @@ export default function ChatSidebar() {
             ))}
             {chatThreads.length === 0 && debouncedSearchQuery && (
               <div className="text-center text-sm py-12 px-4 text-muted-foreground">
-                No chats found matching "{debouncedSearchQuery}"
+                No matches for "{debouncedSearchQuery}"
               </div>
             )}
           </SidebarMenu>

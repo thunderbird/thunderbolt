@@ -28,7 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
-import { CheckCircle2, GripVertical, Plus, Search, Square } from 'lucide-react'
+import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 

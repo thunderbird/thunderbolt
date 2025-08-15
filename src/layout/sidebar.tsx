@@ -1,6 +1,7 @@
 import { SidebarFooter } from '@/components/sidebar-footer'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { NavLink } from '@/components/ui/nav-link'
+import { SearchInput } from '@/components/ui/search-input'
 import {
   Sidebar,
   SidebarContent,
@@ -38,7 +39,7 @@ import {
   SquarePen,
   Zap,
 } from 'lucide-react'
-import { useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 
@@ -58,12 +59,22 @@ export default function ChatSidebar() {
   // Simple route check: any /settings/* path triggers the settings sidebar variant on mobile
   const isSettingsRoute = location.pathname.startsWith('/settings')
 
-  const { data: chatThreads = [] } = useQuery({
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+
+  const { data } = useQuery({
     queryKey: ['chatThreads'],
     queryFn: async () => {
       return db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
     },
   })
+
+  const chatThreads = useMemo(() => {
+    if (!data) {
+      return []
+    }
+
+    return data.filter((thread) => thread.title?.toLowerCase().includes(debouncedSearchQuery?.toLowerCase()))
+  }, [data, debouncedSearchQuery])
 
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
@@ -280,6 +291,12 @@ export default function ChatSidebar() {
         <SidebarSeparator className="m-0" />
 
         <SidebarGroup className="flex-1 overflow-y-auto">
+          <SearchInput
+            className="bg-muted"
+            containerClassName="mb-2"
+            placeholder="Search chats..."
+            debouncedOnChange={setDebouncedSearchQuery}
+          />
           <div className="flex items-center justify-between">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <TooltipProvider>
@@ -334,6 +351,11 @@ export default function ChatSidebar() {
                 </SidebarMenuItem>
               </DropdownMenu>
             ))}
+            {chatThreads.length === 0 && debouncedSearchQuery && (
+              <div className="text-center text-sm py-12 px-4 text-muted-foreground">
+                No chats found matching "{debouncedSearchQuery}"
+              </div>
+            )}
           </SidebarMenu>
         </SidebarGroup>
 

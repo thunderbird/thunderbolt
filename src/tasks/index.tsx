@@ -1,10 +1,9 @@
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { tasksTable } from '@/db/tables'
 import { useDatabase } from '@/hooks/use-database'
-import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import { Task } from '@/types'
 import type { DropAnimation } from '@dnd-kit/core'
@@ -245,13 +244,12 @@ export default function TasksPage() {
   const queryClient = useQueryClient()
 
   // State
-  const [searchQuery, setSearchQuery] = useState('')
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const [optimisticOrder, setOptimisticOrder] = useState<string[]>([])
 
-  const debouncedSearchQuery = useDebounce(searchQuery, 30)
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -478,7 +476,7 @@ export default function TasksPage() {
   const activeTask = useMemo(() => tasks.find((t) => t.id === activeId), [tasks, activeId])
 
   // Check if we should show empty state
-  const showEmptyState = !isLoading && !isPlaceholderData && totalCount === 0 && !searchQuery && !isAddingNew
+  const showEmptyState = !isLoading && !isPlaceholderData && totalCount === 0 && !debouncedSearchQuery && !isAddingNew
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -504,15 +502,7 @@ export default function TasksPage() {
           </div>
 
           {/* Search - always visible to maintain focus and avoid flicker */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <SearchInput placeholder="Search tasks..." debouncedOnChange={(value) => setDebouncedSearchQuery(value)} />
 
           {showEmptyState ? (
             <div className="flex items-center justify-center p-16">
@@ -561,9 +551,9 @@ export default function TasksPage() {
                         />
                       ))}
 
-                      {tasks.length === 0 && searchQuery && (
+                      {tasks.length === 0 && debouncedSearchQuery && (
                         <div className="text-center py-12 text-muted-foreground">
-                          No tasks found matching "{searchQuery}"
+                          No tasks found matching "{debouncedSearchQuery}"
                         </div>
                       )}
 

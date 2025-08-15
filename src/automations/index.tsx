@@ -11,12 +11,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
-import { useDebounce } from '@/hooks/use-debounce'
 import { useBooleanSetting } from '@/hooks/use-setting'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
@@ -27,17 +25,18 @@ import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 import { runAutomation } from './runner'
+import { SearchInput } from '@/components/ui/search-input'
 
 export default function AutomationsPage() {
   const db = DatabaseSingleton.instance.db
 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null)
   const [deletingPromptId, setDeletingPromptId] = useState<string | null>(null)
-  const debouncedSearchQuery = useDebounce(searchQuery, 50)
+
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 
   const { data: prompts = [], isLoading } = useQuery({
     queryKey: ['prompts', debouncedSearchQuery],
@@ -94,15 +93,10 @@ export default function AutomationsPage() {
           </div>
 
           {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search automations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            placeholder="Search automations..."
+            debouncedOnChange={(value) => setDebouncedSearchQuery(value)}
+          />
 
           {/* Content */}
           <div className="flex-1">

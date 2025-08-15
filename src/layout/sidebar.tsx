@@ -66,6 +66,7 @@ export default function ChatSidebar() {
     queryFn: async () => {
       return db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
     },
+    placeholderData: (previousData) => previousData,
   })
 
   const chatThreads = useMemo(() => {
@@ -320,7 +321,7 @@ export default function ChatSidebar() {
               </Tooltip>
             </TooltipProvider>
           </div>
-          <SidebarMenu>
+          <SidebarMenu className="flex-1 overflow-y-auto">
             {chatThreads.map((thread) => (
               <DropdownMenu key={thread.id}>
                 <SidebarMenuItem>

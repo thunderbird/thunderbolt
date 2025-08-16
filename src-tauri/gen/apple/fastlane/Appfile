@@ -1,0 +1,11 @@
+app_identifier("net.thunderbird.thunderbolt")
+
+app_store_connect_api_key_id(ENV["APP_STORE_CONNECT_API_KEY_ID"])
+app_store_connect_api_issuer_id(ENV["APP_STORE_CONNECT_ISSUER_ID"])
+app_store_connect_api_key_path("./fastlane/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_ID']}.p8")
+
+team_id(ENV["APPLE_TEAM_ID"]) # Developer Portal Team ID
+
+# For local development, uncomment and set these manually:
+# apple_id("your-apple-id@example.com") # Your Apple ID email address
+# team_id("YOUR_TEAM_ID") # Your actual Team ID

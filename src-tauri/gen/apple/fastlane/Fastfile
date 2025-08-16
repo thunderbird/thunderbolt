@@ -1,0 +1,111 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#     https://docs.fastlane.tools/plugins/available-plugins
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    # Skip git status check in CI environment
+    if ENV["CI"]
+      puts "Running in CI environment, skipping git status check"
+    else
+      ensure_git_status_clean
+    end
+    
+    # Increment build number automatically
+    increment_build_number(
+      xcodeproj: "thunderbolt.xcodeproj"
+    )
+    
+    # Build the app
+    build_app(
+      scheme: "thunderbolt_iOS",
+      export_method: "app-store",
+      export_options: {
+        method: "app-store",
+        teamID: ENV["APPLE_TEAM_ID"],
+        provisioningProfiles: {
+          "net.thunderbird.thunderbolt" => "Thunderbolt Experiment"
+        },
+        signingStyle: "manual",
+        uploadBitcode: false,
+        uploadSymbols: true,
+        compileBitcode: false
+      }
+    )
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key_path: "./fastlane/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_ID']}.p8",
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: "Automated build from GitHub Actions"
+    )
+    
+    puts "🚀 Successfully uploaded to TestFlight!"
+  end
+  
+  desc "Build for App Store release"
+  lane :release do
+    # Ensure we're in the right directory
+    ensure_git_status_clean
+    
+    # Build the app
+    build_app(
+      scheme: "thunderbolt_iOS",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "net.thunderbird.thunderbolt" => "Thunderbolt App Store"
+        }
+      }
+    )
+    
+    # Upload to App Store Connect for review
+    upload_to_app_store(
+      force: true,
+      reject_if_possible: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      submit_for_review: false
+    )
+  end
+  
+  desc "Download certificates and provisioning profiles"
+  lane :certificates do
+    # Option 1: Use match (recommended for team development)
+    # match(type: "appstore")
+    
+    # Option 2: Use cert and sigh for manual certificate management
+    cert
+    sigh(force: true)
+  end
+  
+  desc "Run tests"
+  lane :test do
+    run_tests(
+      scheme: "thunderbolt_iOS",
+      device: "iPhone 15 Pro"
+    )
+  end
+  
+  # Error handling
+  error do |lane, exception|
+    # slack(
+    #   message: "Error occurred in lane #{lane}: #{exception}",
+    #   success: false
+    # )
+  end
+end

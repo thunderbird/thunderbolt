@@ -1,6 +1,6 @@
 name: thunderbolt
 options:
-  bundleIdPrefix: org.mozilla.thunderbolt
+  bundleIdPrefix: net.thunderbird.thunderbolt
   deploymentTarget:
     iOS: 13.0
 fileGroups: [../../src]
@@ -11,7 +11,7 @@ settingGroups:
   app:
     base:
       PRODUCT_NAME: Thunderbolt
-      PRODUCT_BUNDLE_IDENTIFIER: org.mozilla.thunderbolt
+      PRODUCT_BUNDLE_IDENTIFIER: net.thunderbird.thunderbolt
 targetTemplates:
   app:
     type: application

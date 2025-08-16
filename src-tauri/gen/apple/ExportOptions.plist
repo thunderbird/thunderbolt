@@ -3,6 +3,21 @@
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>debugging</string>
+    <string>app-store</string>
+    <key>teamID</key>
+    <string>BUMSKVQ3D9</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>net.thunderbird.thunderbolt</key>
+        <string>hunderbolt Experiment</string>
+    </dict>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>compileBitcode</key>
+    <false/>
 </dict>
 </plist>

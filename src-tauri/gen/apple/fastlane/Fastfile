@@ -22,6 +22,15 @@ platform :ios do
       ensure_git_status_clean
     end
     
+    # Set version if provided via workflow input
+    if ENV["VERSION_INPUT"] && !ENV["VERSION_INPUT"].empty?
+      puts "📝 Setting version to: #{ENV['VERSION_INPUT']}"
+      increment_version_number(
+        version_number: ENV["VERSION_INPUT"],
+        xcodeproj: "thunderbolt.xcodeproj"
+      )
+    end
+    
     # Increment build number automatically
     increment_build_number(
       xcodeproj: "thunderbolt.xcodeproj"

@@ -24,25 +24,25 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: 'lts/*'
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6fb9b0667a7a675313a4a # v2.0.1
 
       - name: Install Rust nightly toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
         with:
           toolchain: nightly
           cache: false
           rustflags: ''
 
       - name: Cache Cargo registry and build
-        uses: actions/cache@v3
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: |
             ~/.cargo/registry
@@ -57,12 +57,12 @@ jobs:
         run: rustup target add aarch64-apple-ios
 
       - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
         with:
           xcode-version: latest-stable
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@52753b7da854d5c07df37391a986c76ab4615999 # v1.191.0
         with:
           ruby-version: '3.0'
           bundler-cache: true
@@ -120,10 +120,6 @@ jobs:
         env:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
 
-      - name: Generate Xcode project
-        working-directory: src-tauri
-        run: bun tauri ios init
-
       - name: Build and deploy to TestFlight
         working-directory: src-tauri/gen/apple
         env:
@@ -139,13 +135,14 @@ jobs:
 
       - name: Upload build artifacts (if build fails)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
-          name: ios-build-logs
+          name: ios-build-logs-${{ github.run_id }}
           path: |
             src-tauri/gen/apple/fastlane/logs/
             src-tauri/gen/apple/*.log
             ~/Library/Logs/gym/
+          retention-days: 7
 
       - name: Clean up keychain
         if: always()

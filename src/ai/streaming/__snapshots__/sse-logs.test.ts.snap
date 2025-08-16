@@ -1,4 +1,4 @@
-// Bun Snapshot v1, https://goo.gl/fbAQLP
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 1`] = `
 "{
@@ -12,13 +12,13 @@ exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags a
       "type": "step-start"
     },
     {
-      "type": "text",
-      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
       "state": "done"
     },
     {
-      "type": "reasoning",
-      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
+      "type": "text",
+      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
       "state": "done"
     }
   ]
@@ -62,13 +62,13 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call t
       "type": "step-start"
     },
     {
-      "type": "text",
-      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n",
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n",
       "state": "done"
     },
     {
-      "type": "reasoning",
-      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n",
+      "type": "text",
+      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n",
       "state": "done"
     },
     {
@@ -114,13 +114,13 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 1`
       "type": "step-start"
     },
     {
-      "type": "text",
-      "text": "\\n\\n☀️ Good morning! To help you kick off your day, could you share your current location? This way I can check the weather or tailor other updates for you.  \\n\\nAlso, would you like me to:  \\n- Review your **task list** 📝  \\n- Add new tasks for today?  \\n- Share morning news highlights?  \\n\\nJust let me know how I can assist! 😊",
+      "type": "reasoning",
+      "text": "Okay, the user said \\"Good morning\\". I need to respond appropriately. Let me check the current date and time: 2025-07-30T00:13:40.623Z. Wait, that's midnight UTC, but the user might be in a different time zone. Since they said \\"Good morning\\", it's probably morning where they are. But the system note says the user hasn't provided a location, so I shouldn't assume.\\n\\nMy role is to be a helpful executive assistant. The user might want to start their day with tasks or check the weather. But without knowing their location, I can't get the weather. The tools available include get_current_weather and get_weather_forecast, which require a location. The instructions say to ask for location before using location-based tools.\\n\\nSo first, I should greet them back and ask for their location to provide relevant info like weather. Also, maybe check if they need help with tasks. Let me structure the response: friendly greeting, ask for location, offer task assistance. Keep it concise and pleasant. Avoid mentioning tools explicitly. Make sure not to invent info. Since they said good morning, maybe add a morning-related emoji like ☀️.\\n\\nWait, the user hasn't asked a specific question yet, just a greeting. So the response should be welcoming and prompt for more details to assist better. Yes, that's right. So the main points are: respond to good morning, ask for location to help with weather or other location-based needs, and offer to manage tasks.\\n",
       "state": "done"
     },
     {
-      "type": "reasoning",
-      "text": "Okay, the user said \\"Good morning\\". I need to respond appropriately. Let me check the current date and time: 2025-07-30T00:13:40.623Z. Wait, that's midnight UTC, but the user might be in a different time zone. Since they said \\"Good morning\\", it's probably morning where they are. But the system note says the user hasn't provided a location, so I shouldn't assume.\\n\\nMy role is to be a helpful executive assistant. The user might want to start their day with tasks or check the weather. But without knowing their location, I can't get the weather. The tools available include get_current_weather and get_weather_forecast, which require a location. The instructions say to ask for location before using location-based tools.\\n\\nSo first, I should greet them back and ask for their location to provide relevant info like weather. Also, maybe check if they need help with tasks. Let me structure the response: friendly greeting, ask for location, offer task assistance. Keep it concise and pleasant. Avoid mentioning tools explicitly. Make sure not to invent info. Since they said good morning, maybe add a morning-related emoji like ☀️.\\n\\nWait, the user hasn't asked a specific question yet, just a greeting. So the response should be welcoming and prompt for more details to assist better. Yes, that's right. So the main points are: respond to good morning, ask for location to help with weather or other location-based needs, and offer to manage tasks.\\n",
+      "type": "text",
+      "text": "\\n\\n☀️ Good morning! To help you kick off your day, could you share your current location? This way I can check the weather or tailor other updates for you.  \\n\\nAlso, would you like me to:  \\n- Review your **task list** 📝  \\n- Add new tasks for today?  \\n- Share morning news highlights?  \\n\\nJust let me know how I can assist! 😊",
       "state": "done"
     }
   ]

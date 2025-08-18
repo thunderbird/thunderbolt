@@ -4,11 +4,9 @@
 use anyhow::Result;
 use thunderbolt_lib::create_app;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    create_app()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-
-    Ok(())
+// CHANGE: Desktop now calls the same entry `run()` used by mobile.
+// WHY: Single bootstrap path = fewer divergences and easier maintenance.
+// Also removes the unnecessary Tokio runtime here (the Tauri runtime manages it).
+fn main() {
+    thunderbolt_lib::run();
 }

@@ -90,14 +90,17 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     builder
 }
 
-// For iOS - this is the function that the iOS bindings expect
-#[no_mangle]
-pub extern "C" fn start_app() {
+// CHANGE: Add a single, shared entry point for **mobile** (and reuse on desktop).
+// WHY: `#[cfg_attr(mobile, tauri::mobile_entry_point)]` exports the runtime symbol
+// that Tauri Mobile expects in the .so. Without it, Android complains that the
+// library “does not include required runtime symbols”. Unifying into `run()`
+// also lets desktop call the same code path, keeping platform bootstrap consistent.
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    // Optional but handy when debugging native crashes
     std::env::set_var("RUST_BACKTRACE", "1");
-    
-    tauri::async_runtime::block_on(async {
-        create_app()
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
-    });
+
+    create_app()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

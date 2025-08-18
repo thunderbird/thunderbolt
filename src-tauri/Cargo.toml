@@ -30,7 +30,7 @@ members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embe
 [workspace.dependencies]
 # Use Thunderbird's fork with Windows build fix
 # See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { version = "0.9.11", default-features = false, features = ["core", "encryption"] }
+libsql = { version = "0.9.11", default-features = false, features = ["core"] }
 anyhow = "1.0.98"
 serde = { version = "1.0.219", features = ["derive"] }
 thunderbolt-lib = { path = "." }

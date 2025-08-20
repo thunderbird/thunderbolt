@@ -106,9 +106,25 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         let finished = false
-        let hasStarted = false
 
-        // Start the chat asynchronously
+        // We need an ID that is guaranteed to be available for `text-start`, any deltas and the final
+        // `text-end`.  Some downstream middlewares (e.g. `hermesToolMiddleware`) expect the `text-start`
+        // to have been emitted *before* they perform any processing of the first text token.  If we wait
+        // until the first chunk arrives there is a race where the middleware might transform the stream
+        // (dropping or buffering the very first token) and therefore never see the `text-start` event.
+        // This ultimately leads to `process-ui-message-stream` not having an entry in
+        // `state.activeTextParts` when it later receives the `text-end` event resulting in a runtime
+        // error (THU-24).
+
+        // To avoid this we eagerly enqueue the `text-start` event as soon as the stream starts so that
+        // every consumer is guaranteed to have initialised its internal bookkeeping before any deltas
+        // are emitted.
+
+        controller.enqueue({
+          type: 'text-start',
+          id: streamId,
+        } as LanguageModelV2StreamPart)
+
         const chatArgs: any = {
           messages,
           model: modelId,
@@ -122,16 +138,6 @@ class FlowerLanguageModel implements LanguageModelV2 {
               const textChunk = event.chunk
 
               try {
-                // Send text-start on the first chunk
-                if (!hasStarted) {
-                  hasStarted = true
-                  controller.enqueue({
-                    type: 'text-start',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                }
-
-                // Send the text delta
                 controller.enqueue({
                   type: 'text-delta',
                   id: streamId,
@@ -164,23 +170,11 @@ class FlowerLanguageModel implements LanguageModelV2 {
             if (!finished) {
               finished = true
               try {
-                // Send text-end if we started
-                if (hasStarted) {
-                  controller.enqueue({
-                    type: 'text-end',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                } else {
-                  // If we never started, send an empty response
-                  controller.enqueue({
-                    type: 'text-start',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                  controller.enqueue({
-                    type: 'text-end',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                }
+                // We always emit `text-start` eagerly, so we can safely close with a single `text-end`.
+                controller.enqueue({
+                  type: 'text-end',
+                  id: streamId,
+                } as LanguageModelV2StreamPart)
 
                 // Send finish event
                 controller.enqueue({

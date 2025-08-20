@@ -106,7 +106,6 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         let finished = false
-        let hasStarted = false
 
         // Start the chat asynchronously
         const chatArgs: any = {
@@ -122,16 +121,9 @@ class FlowerLanguageModel implements LanguageModelV2 {
               const textChunk = event.chunk
 
               try {
-                // Send text-start on the first chunk
-                if (!hasStarted) {
-                  hasStarted = true
-                  controller.enqueue({
-                    type: 'text-start',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                }
-
-                // Send the text delta
+                // Emit only text-delta events to avoid ID conflicts with middleware
+                // Middleware like hermesToolMiddleware will handle text-start/text-end
+                // with consistent IDs. This prevents the "textPart is undefined" error.
                 controller.enqueue({
                   type: 'text-delta',
                   id: streamId,
@@ -164,23 +156,8 @@ class FlowerLanguageModel implements LanguageModelV2 {
             if (!finished) {
               finished = true
               try {
-                // Send text-end if we started
-                if (hasStarted) {
-                  controller.enqueue({
-                    type: 'text-end',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                } else {
-                  // If we never started, send an empty response
-                  controller.enqueue({
-                    type: 'text-start',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                  controller.enqueue({
-                    type: 'text-end',
-                    id: streamId,
-                  } as LanguageModelV2StreamPart)
-                }
+                // Don't emit text-end - let middleware handle text boundaries
+                // This prevents ID mismatches with hermesToolMiddleware
 
                 // Send finish event
                 controller.enqueue({

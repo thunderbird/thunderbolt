@@ -1,6 +1,6 @@
+import { createFlowerMiddleware } from '@/src/ai/middleware/default'
 import { streamText, wrapLanguageModel } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { createDefaultMiddleware } from '@/src/ai/middleware/default'
 import { createFlowerProvider, type FlowerChatArgs, type FlowerClient, type FlowerProviderOptions } from './flower'
 
 type MockFlowerClient = FlowerClient & {
@@ -45,7 +45,7 @@ describe('Flower provider unit tests', () => {
     const { provider, mock } = withProvider(['Hello', ' ', 'world!'])
     const model = provider('qwen/qwen3-235b')
 
-    const wrapped = wrapLanguageModel({ model, middleware: createDefaultMiddleware(false) })
+    const wrapped = wrapLanguageModel({ model, middleware: createFlowerMiddleware(false) })
     const result = streamText({ model: wrapped, prompt: 'ping' })
 
     await result.consumeStream()
@@ -62,7 +62,7 @@ describe('Flower provider unit tests', () => {
     const { provider } = withProvider(chunks)
     const model = provider('qwen/qwen3-235b')
 
-    const wrapped = wrapLanguageModel({ model, middleware: createDefaultMiddleware(false) })
+    const wrapped = wrapLanguageModel({ model, middleware: createFlowerMiddleware(false) })
     const result = streamText({ model: wrapped, prompt: 'ping' })
 
     await result.consumeStream()

@@ -1,6 +1,6 @@
+import { createFlowerMiddleware } from '@/src/ai/middleware/default'
 import { readUIMessageStream, streamText, wrapLanguageModel, type UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { createDefaultMiddleware } from '@/src/ai/middleware/default'
 import { createFlowerProvider, type FlowerChatArgs, type FlowerClient } from './flower'
 
 type MockFlowerClient = FlowerClient & {
@@ -54,7 +54,7 @@ const streamToUIMessage = async (
 ): Promise<UIMessage> => {
   const wrappedModel = wrapLanguageModel({
     model,
-    middleware: createDefaultMiddleware(options?.startWithReasoning ?? false),
+    middleware: createFlowerMiddleware(options?.startWithReasoning ?? false),
   })
 
   const result = streamText({
@@ -163,7 +163,7 @@ describe('Flower provider UI message conversion', () => {
 
     // Pre-configure the mock client (simulating what createConfiguredFlowerClient would do)
     mockClient.apiKey = 'my-api-key-123'
-    mockClient.baseUrl = 'http://localhost:8000/flower/v1' 
+    mockClient.baseUrl = 'http://localhost:8000/flower/v1'
     mockClient.remoteHandoff = true
 
     const provider = createFlowerProvider({
@@ -202,7 +202,7 @@ describe('Flower provider UI message conversion', () => {
     const model = provider('qwen/qwen3-235b')
     const wrappedModel = wrapLanguageModel({
       model,
-      middleware: createDefaultMiddleware(false),
+      middleware: createFlowerMiddleware(false),
     })
 
     const result = streamText({

@@ -1,5 +1,6 @@
 import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
 import { extractReasoningMiddleware } from 'ai'
+import { textBoundaryMiddleware } from './text-boundary'
 
 /**
  * Creates a fresh set of middleware instances.
@@ -10,6 +11,7 @@ import { extractReasoningMiddleware } from 'ai'
  */
 export const createDefaultMiddleware = (startWithReasoning: boolean = false) => [
   extractReasoningMiddleware({ tagName: 'think', startWithReasoning }),
+  textBoundaryMiddleware,
 ]
 
 /**

@@ -10,11 +10,11 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
   middlewareVersion: 'v2',
   wrapStream: async ({ doStream }) => {
     const { stream, ...rest } = await doStream()
-    
+
     let currentTextId: string | null = null
     let hasEmittedTextStart = false
     let hasSeenTextStart = false
-    
+
     const transformStream = new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
       transform(chunk, controller) {
         if (chunk.type === 'finish') {
@@ -30,20 +30,20 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
           controller.enqueue(chunk)
           return
         }
-        
+
         if (chunk.type === 'text-start') {
           // Provider already handles text boundaries properly
           hasSeenTextStart = true
           controller.enqueue(chunk)
           return
         }
-        
+
         if (chunk.type === 'text-end') {
           // Provider already handles text boundaries properly
           controller.enqueue(chunk)
           return
         }
-        
+
         if (chunk.type === 'text-delta') {
           // Only intervene if we haven't seen a text-start (orphaned deltas)
           if (!hasSeenTextStart && !currentTextId) {
@@ -53,7 +53,7 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
               id: currentTextId,
             })
             hasEmittedTextStart = true
-            
+
             // Re-emit the delta with our consistent ID
             controller.enqueue({
               type: 'text-delta',
@@ -64,7 +64,7 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
             // Continue using our ID for subsequent deltas
             controller.enqueue({
               type: 'text-delta',
-              id: currentTextId,
+              id: currentTextId!,
               delta: chunk.delta,
             })
           } else {
@@ -73,12 +73,12 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
           }
           return
         }
-        
+
         // Pass through all other events unchanged
         controller.enqueue(chunk)
       },
     })
-    
+
     return {
       stream: stream.pipeThrough(transformStream),
       ...rest,

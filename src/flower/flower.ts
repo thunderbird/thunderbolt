@@ -106,7 +106,6 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         let finished = false
-        let hasStarted = false
 
         // Start the chat asynchronously
         const chatArgs: any = {
@@ -130,7 +129,6 @@ class FlowerLanguageModel implements LanguageModelV2 {
                   id: streamId,
                   delta: textChunk,
                 } as LanguageModelV2StreamPart)
-                hasStarted = true
               } catch (e) {
                 console.error('error sending text chunk', e)
                 // Stream might be closed

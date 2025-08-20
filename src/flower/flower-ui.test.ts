@@ -1,6 +1,6 @@
 import { readUIMessageStream, streamText, wrapLanguageModel, type UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { createDefaultMiddleware } from '@/src/ai/middleware/default'
+import { createDefaultMiddleware, createFlowerMiddleware } from '@/src/ai/middleware/default'
 import { createFlowerProvider, type FlowerChatArgs, type FlowerClient } from './flower'
 
 type MockFlowerClient = FlowerClient & {
@@ -266,5 +266,73 @@ describe('Flower provider UI message conversion', () => {
       const reasoningPart = uiMessage.parts.find((p) => p.type === 'reasoning')
       expect(reasoningPart).toBeDefined()
     }
+  })
+
+  it('does not crash with Hermes middleware and SSE-like empty chunks', async () => {
+    // This sequence simulates the SSE stream reported in the issue, including empty-string deltas
+    const chunks = [
+      '',
+      'Hi',
+      ' Chris',
+      '!',
+      ' ',
+      '',
+      '\u0669',
+      '(',
+      '\u25d5',
+      '\u203f',
+      '\u25d5',
+      '\uff61',
+      ')',
+      '',
+      '\u06f6',
+      ' How',
+      ' can',
+      ' I',
+      ' assist',
+      ' you',
+      ' today',
+      '?',
+      '',
+    ]
+
+    const mockClient = createMockFlowerClient(chunks)
+
+    const provider = createFlowerProvider({
+      client: mockClient,
+      apiKey: 'test-key',
+      baseUrl: 'http://localhost:8000/flower/v1',
+    })
+
+    const model = provider('qwen/qwen3-235b')
+
+    const wrappedModel = wrapLanguageModel({
+      model,
+      middleware: createFlowerMiddleware(false),
+    })
+
+    // Convert to UI message stream
+    const result = streamText({
+      model: wrappedModel,
+      prompt: 'Say hello',
+    })
+
+    const uiStream = result.toUIMessageStream({
+      sendReasoning: true,
+      messageMetadata: () => ({ modelId: 'flower-test' }),
+    })
+
+    // Read the final UI message and ensure it contains the full text without throwing
+    const iterator = readUIMessageStream({ stream: uiStream })
+    let finalMessage: UIMessage | undefined
+    for await (const msg of iterator) {
+      finalMessage = msg
+    }
+
+    expect(finalMessage).toBeDefined()
+    const textPart = finalMessage!.parts.find((p) => p.type === 'text') as { type: string; text?: string }
+    const text = (textPart?.text || '').trim()
+    expect(text).toContain('Hi Chris!')
+    expect(text).toContain('How can I assist you today?')
   })
 })

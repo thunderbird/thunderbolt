@@ -106,7 +106,10 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         let finished = false
+        // Tracks whether we've emitted a text-start for a non-empty text delta
         let hasStarted = false
+        // Tracks whether we've emitted any non-empty text delta at all
+        let hasEmittedNonEmptyDelta = false
 
         // Start the chat asynchronously
         const chatArgs: any = {
@@ -122,7 +125,12 @@ class FlowerLanguageModel implements LanguageModelV2 {
               const textChunk = event.chunk
 
               try {
-                // Send text-start on the first chunk
+                // Ignore empty string chunks. Some providers emit empty deltas as keep-alives.
+                if (typeof textChunk === 'string' && textChunk.length === 0) {
+                  return
+                }
+
+                // Send text-start on the first non-empty chunk
                 if (!hasStarted) {
                   hasStarted = true
                   controller.enqueue({
@@ -137,6 +145,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
                   id: streamId,
                   delta: textChunk,
                 } as LanguageModelV2StreamPart)
+                hasEmittedNonEmptyDelta = true
               } catch (e) {
                 console.error('error sending text chunk', e)
                 // Stream might be closed
@@ -164,14 +173,15 @@ class FlowerLanguageModel implements LanguageModelV2 {
             if (!finished) {
               finished = true
               try {
-                // Send text-end if we started
-                if (hasStarted) {
+                // Send text-end only if we've emitted a non-empty text delta to avoid
+                // double-closing caused by downstream middleware.
+                if (hasEmittedNonEmptyDelta) {
                   controller.enqueue({
                     type: 'text-end',
                     id: streamId,
                   } as LanguageModelV2StreamPart)
                 } else {
-                  // If we never started, send an empty response
+                  // If we never emitted text, send an explicit empty part
                   controller.enqueue({
                     type: 'text-start',
                     id: streamId,

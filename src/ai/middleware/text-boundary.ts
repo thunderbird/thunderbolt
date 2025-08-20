@@ -13,11 +13,12 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
     
     let currentTextId: string | null = null
     let hasEmittedTextStart = false
+    let hasSeenTextStart = false
     
     const transformStream = new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
       transform(chunk, controller) {
         if (chunk.type === 'finish') {
-          // Emit text-end if we have an active text part
+          // Emit text-end if we have an active text part that we created
           if (currentTextId && hasEmittedTextStart) {
             controller.enqueue({
               type: 'text-end',
@@ -30,23 +31,46 @@ export const textBoundaryMiddleware: LanguageModelV2Middleware = {
           return
         }
         
+        if (chunk.type === 'text-start') {
+          // Provider already handles text boundaries properly
+          hasSeenTextStart = true
+          controller.enqueue(chunk)
+          return
+        }
+        
+        if (chunk.type === 'text-end') {
+          // Provider already handles text boundaries properly
+          controller.enqueue(chunk)
+          return
+        }
+        
         if (chunk.type === 'text-delta') {
-          // Emit text-start if this is the first delta
-          if (!currentTextId) {
+          // Only intervene if we haven't seen a text-start (orphaned deltas)
+          if (!hasSeenTextStart && !currentTextId) {
             currentTextId = generateId()
             controller.enqueue({
               type: 'text-start',
               id: currentTextId,
             })
             hasEmittedTextStart = true
+            
+            // Re-emit the delta with our consistent ID
+            controller.enqueue({
+              type: 'text-delta',
+              id: currentTextId,
+              delta: chunk.delta,
+            })
+          } else if (hasEmittedTextStart) {
+            // Continue using our ID for subsequent deltas
+            controller.enqueue({
+              type: 'text-delta',
+              id: currentTextId,
+              delta: chunk.delta,
+            })
+          } else {
+            // Provider handles boundaries, pass through unchanged
+            controller.enqueue(chunk)
           }
-          
-          // Re-emit the delta with our consistent ID
-          controller.enqueue({
-            type: 'text-delta',
-            id: currentTextId,
-            delta: chunk.delta,
-          })
           return
         }
         

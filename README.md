@@ -24,6 +24,7 @@
 - Vite - frontend package bundler
 - UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
 - Rust: imap, mail-parser, html2text - for syncing and parsing emails
+- Storybook: build, test & document components
 
 ## Rust Setup
 
@@ -141,6 +142,18 @@ cargo build --bin mistral --release
 # embed - must be built for release to work!
 cargo build --bin embed --release
 ./target/release/embed
+```
+
+## Run Storybook
+
+Check the [official](https://storybook.js.org/) documentation for usage instructions and examples.
+
+```sh
+bun storybook
+# open in your browser http://localhost:6006/
+
+# to build
+bun build-storybook
 ```
 
 ## Analyze Vite Modules

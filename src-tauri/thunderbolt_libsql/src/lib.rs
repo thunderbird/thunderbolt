@@ -101,7 +101,7 @@ pub mod commands {
 
         let connection_arc = pool.get_connection().await;
         let connection = connection_arc.lock().await;
-        let mut stmt = connection.prepare(&query).await.map_err(|e| e.to_string())?;
+        let stmt = connection.prepare(&query).await.map_err(|e| e.to_string())?;
 
         let rows_affected_usize: usize = if let Some(params) = values {
             let libsql_params: Vec<libsql::Value> = params
@@ -146,7 +146,7 @@ pub mod commands {
 
         let connection_arc = pool.get_connection().await;
         let connection = connection_arc.lock().await;
-        let mut stmt = connection.prepare(&query).await.map_err(|e| e.to_string())?;
+        let stmt = connection.prepare(&query).await.map_err(|e| e.to_string())?;
 
         let rows = if let Some(params) = values {
             let libsql_params: Vec<libsql::Value> = params

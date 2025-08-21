@@ -82,11 +82,44 @@ export const checkCalendarSchema = z
 
 export const searchDriveSchema = z
   .object({
-    query: z
-      .string()
-      .describe(
-        'Search query for Google Drive files (supports Drive search syntax like "type:pdf", "name:contract", or "modifiedTime>2024-01-01T00:00:00Z"). Use RFC 3339 format for dates.',
-      ),
+    query: z.string().describe(
+      `Google Drive search query using Google's native API syntax. Format: query_term operator 'value'
+
+QUERY TERMS:
+• name: File name (operators: contains, =, !=)
+• fullText: Content and metadata search (operator: contains)  
+• mimeType: File type (operators: =, !=)
+• modifiedTime: Last modification date (operators: <, <=, =, !=, >, >=)
+• viewedByMeTime: Last viewed date (operators: <, <=, =, !=, >, >=)
+• createdTime: Creation date (operators: <, <=, =, !=, >, >=)
+• trashed: In trash (operators: =, !=, values: true/false)
+• starred: Starred status (operators: =, !=, values: true/false)
+• sharedWithMe: Shared with user (operators: =, !=, values: true/false)
+• parents: Parent folder ID (operator: in, format: 'folderId' in parents)
+• owners: Owner email (operator: in, format: 'user@example.com' in owners)
+• writers: Write permission (operator: in, format: 'user@example.com' in writers)
+• readers: Read permission (operator: in, format: 'user@example.com' in readers)
+• properties: Public properties (operator: has, format: properties has {key='dept' and value='sales'})
+• appProperties: Private properties (operator: has)
+• visibility: Visibility level (operators: =, !=)
+
+OPERATORS: contains, =, !=, <, <=, >, >=, in, has, and, or, not
+
+VALUE FORMATTING:
+• Strings: Enclose in single quotes, escape quotes with \\'
+• Booleans: true or false (no quotes)  
+• Dates: RFC 3339 format '2025-01-01T00:00:00Z'
+• Use parentheses for grouping: (condition1 or condition2) and condition3
+
+EXAMPLES:
+• name contains 'report'
+• mimeType = 'application/pdf'  
+• modifiedTime > '2025-01-01T00:00:00Z'
+• name contains 'budget' and trashed = false
+• (name contains 'report' or fullText contains 'summary') and modifiedTime > '2024-12-01T00:00:00Z'
+• 'parentFolderId' in parents
+• starred = true and mimeType = 'application/vnd.google-apps.document'`,
+    ),
     max_results: z.number().optional().default(20).describe('Maximum number of files to return (default: 20, max: 50)'),
     include_trashed: z.boolean().optional().default(false).describe('Include files in trash folder'),
   })

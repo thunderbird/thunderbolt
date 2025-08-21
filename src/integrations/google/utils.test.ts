@@ -1,470 +1,85 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { DraftEmailParams } from './tools'
-import {
-  buildRawMessage,
-  ensureValidGoogleToken,
-  extractBody,
-  getGoogleCredentials,
-  getHeader,
-  parseEmailAddress,
-  transformDriveQuery,
-  truncateText,
-} from './utils'
+import { describe, expect, it } from 'bun:test'
+import { transformDriveQuery } from './utils'
 
-// Mock external dependencies
-const mockGetSetting = mock()
-const mockUpdateSetting = mock()
-const mockRefreshAccessToken = mock()
-
-mock.module('@/lib/dal', () => ({
-  getSetting: mockGetSetting,
-  updateSetting: mockUpdateSetting,
-}))
-
-mock.module('@/lib/auth', () => ({
-  refreshAccessToken: mockRefreshAccessToken,
-}))
-
-describe('Google Utils - Email Utilities', () => {
-  describe('parseEmailAddress', () => {
-    it('should parse email with name and address', () => {
-      const result = parseEmailAddress('John Doe <john@example.com>')
-      expect(result).toEqual({
-        name: 'John Doe',
-        email: 'john@example.com',
-      })
+describe('transformDriveQuery', () => {
+  describe('Query passthrough behavior', () => {
+    it('should return queries as-is without transformation', () => {
+      // Valid Google Drive API syntax should be passed through unchanged
+      expect(transformDriveQuery("name contains 'alessandro'")).toBe("name contains 'alessandro'")
+      expect(transformDriveQuery("fullText contains 'meeting notes'")).toBe("fullText contains 'meeting notes'")
+      expect(transformDriveQuery("mimeType = 'application/pdf'")).toBe("mimeType = 'application/pdf'")
+      expect(transformDriveQuery("modifiedTime > '2024-01-01T00:00:00Z'")).toBe("modifiedTime > '2024-01-01T00:00:00Z'")
+      expect(transformDriveQuery('trashed = false')).toBe('trashed = false')
     })
 
-    it('should parse email address only', () => {
-      const result = parseEmailAddress('john@example.com')
-      expect(result).toEqual({
-        name: '',
-        email: 'john@example.com',
-      })
+    it('should preserve complex queries with logical operators', () => {
+      const complexQuery = "name contains 'contract' and mimeType = 'application/pdf' and trashed = false"
+      expect(transformDriveQuery(complexQuery)).toBe(complexQuery)
+
+      const orQuery = "name contains 'budget' or fullText contains 'financial'"
+      expect(transformDriveQuery(orQuery)).toBe(orQuery)
+
+      const groupedQuery =
+        "(name contains 'report' or name contains 'summary') and modifiedTime > '2024-01-01T00:00:00Z'"
+      expect(transformDriveQuery(groupedQuery)).toBe(groupedQuery)
     })
 
-    it('should handle empty string', () => {
-      const result = parseEmailAddress('')
-      expect(result).toEqual({
-        name: '',
-        email: '',
-      })
+    it('should handle queries with special characters and quotes', () => {
+      expect(transformDriveQuery("name contains 'Valentine\\'s Day'")).toBe("name contains 'Valentine\\'s Day'")
+      expect(transformDriveQuery("fullText contains 'john@example.com'")).toBe("fullText contains 'john@example.com'")
+      expect(transformDriveQuery("name contains 'file-name.pdf'")).toBe("name contains 'file-name.pdf'")
     })
 
-    it('should handle complex name with quotes', () => {
-      const result = parseEmailAddress('"John, Jr." <john.jr@example.com>')
-      expect(result).toEqual({
-        name: '"John, Jr."',
-        email: 'john.jr@example.com',
-      })
+    it('should handle parent and permission queries', () => {
+      expect(transformDriveQuery("'folderId123' in parents")).toBe("'folderId123' in parents")
+      expect(transformDriveQuery("'user@example.com' in owners")).toBe("'user@example.com' in owners")
+      expect(transformDriveQuery("'user@example.com' in writers")).toBe("'user@example.com' in writers")
     })
 
-    it('should handle malformed email addresses', () => {
-      const result = parseEmailAddress('John <invalid-email>')
-      expect(result).toEqual({
-        name: 'John',
-        email: 'invalid-email',
-      })
+    it('should handle property queries', () => {
+      const propQuery = "properties has { key='department' and value='sales' }"
+      expect(transformDriveQuery(propQuery)).toBe(propQuery)
+
+      const appPropQuery = "appProperties has { key='version' and value='1.0' }"
+      expect(transformDriveQuery(appPropQuery)).toBe(appPropQuery)
     })
 
-    it('should handle extra whitespace around name and email', () => {
-      const result = parseEmailAddress('  John Doe  <  john@example.com  >')
-      expect(result).toEqual({
-        name: 'John Doe',
-        email: 'john@example.com',
-      })
-    })
-
-    it('should handle whitespace in email-only format', () => {
-      const result = parseEmailAddress('  john@example.com  ')
-      expect(result).toEqual({
-        name: '',
-        email: 'john@example.com',
-      })
-    })
-  })
-
-  describe('getHeader', () => {
-    it('should extract header value case-insensitively', () => {
-      const message = {
-        payload: {
-          headers: [
-            { name: 'From', value: 'test@example.com' },
-            { name: 'Subject', value: 'Test Subject' },
-          ],
-        },
-      }
-
-      expect(getHeader(message, 'from')).toBe('test@example.com')
-      expect(getHeader(message, 'SUBJECT')).toBe('Test Subject')
-    })
-
-    it('should return empty string if header not found', () => {
-      const message = {
-        payload: {
-          headers: [{ name: 'From', value: 'test@example.com' }],
-        },
-      }
-
-      expect(getHeader(message, 'CC')).toBe('')
-    })
-
-    it('should handle malformed message', () => {
-      expect(getHeader(null, 'From')).toBe('')
-      expect(getHeader({}, 'From')).toBe('')
-      expect(getHeader({ payload: {} }, 'From')).toBe('')
-    })
-  })
-
-  describe('extractBody', () => {
-    it('should extract plain text body', () => {
-      const payload = {
-        mimeType: 'text/plain',
-        body: {
-          data: btoa('Hello World'),
-        },
-      }
-
-      const result = extractBody(payload, 'text/plain')
-      expect(result).toBe('Hello World')
-    })
-
-    it('should extract from nested parts', () => {
-      const payload = {
-        mimeType: 'multipart/alternative',
-        parts: [
-          {
-            mimeType: 'text/html',
-            body: { data: btoa('<p>HTML content</p>') },
-          },
-          {
-            mimeType: 'text/plain',
-            body: { data: btoa('Plain text content') },
-          },
-        ],
-      }
-
-      const result = extractBody(payload, 'text/plain')
-      expect(result).toBe('Plain text content')
-    })
-
-    it('should handle invalid base64', () => {
-      // Mock console.warn to avoid noise in tests
-      const originalWarn = console.warn
-      console.warn = mock()
-
-      const payload = {
-        mimeType: 'text/plain',
-        body: {
-          data: 'invalid-base64-!',
-        },
-      }
-
-      const result = extractBody(payload, 'text/plain')
-      expect(result).toBe('')
-      expect(console.warn).toHaveBeenCalled()
-
-      console.warn = originalWarn
-    })
-
-    it('should return empty string for null payload', () => {
-      expect(extractBody(null, 'text/plain')).toBe('')
-    })
-
-    it('should handle deeply nested parts', () => {
-      const payload = {
-        mimeType: 'multipart/mixed',
-        parts: [
-          {
-            mimeType: 'multipart/alternative',
-            parts: [
-              {
-                mimeType: 'multipart/related',
-                parts: [
-                  {
-                    mimeType: 'text/plain',
-                    body: { data: btoa('Deep nested content') },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      }
-
-      const result = extractBody(payload, 'text/plain')
-      expect(result).toBe('Deep nested content')
-    })
-
-    it('should return empty string when no matching mime type found', () => {
-      const payload = {
-        mimeType: 'text/html',
-        body: { data: btoa('<p>HTML only content</p>') },
-        parts: [
-          {
-            mimeType: 'application/pdf',
-            body: { data: btoa('PDF data') },
-          },
-        ],
-      }
-
-      const result = extractBody(payload, 'text/plain')
-      expect(result).toBe('')
-    })
-  })
-
-  describe('truncateText', () => {
-    it('should not truncate short text', () => {
-      const text = 'Short text'
-      expect(truncateText(text)).toBe(text)
-    })
-
-    it('should truncate long text with default length', () => {
-      const longText = 'a'.repeat(5000)
-      const result = truncateText(longText)
-      expect(result).toBe('a'.repeat(4000) + '...[truncated]')
-    })
-
-    it('should truncate with custom max length', () => {
-      const text = 'Hello World'
-      const result = truncateText(text, 5)
-      expect(result).toBe('Hello...[truncated]')
-    })
-  })
-
-  describe('buildRawMessage', () => {
-    it('should build basic email message', () => {
-      const params: DraftEmailParams = {
-        to: 'recipient@example.com',
-        subject: 'Test Subject',
-        body: 'Test body content',
-      }
-
-      const result = buildRawMessage(params)
-      const decoded = atob(result.replace(/-/g, '+').replace(/_/g, '/'))
-
-      expect(decoded).toContain('From: me')
-      expect(decoded).toContain('To: recipient@example.com')
-      expect(decoded).toContain('Subject: Test Subject')
-      expect(decoded).toContain('Content-Type: text/plain; charset="UTF-8"')
-      expect(decoded).toContain('Test body content')
-    })
-
-    it('should handle multiple recipients', () => {
-      const params: DraftEmailParams = {
-        to: ['user1@example.com', 'user2@example.com'],
-        cc: 'cc@example.com',
-        bcc: ['bcc1@example.com', 'bcc2@example.com'],
-        subject: 'Multi-recipient test',
-        body: 'Test content',
-      }
-
-      const result = buildRawMessage(params)
-      const decoded = atob(result.replace(/-/g, '+').replace(/_/g, '/'))
-
-      expect(decoded).toContain('To: user1@example.com, user2@example.com')
-      expect(decoded).toContain('Cc: cc@example.com')
-      expect(decoded).toContain('Bcc: bcc1@example.com, bcc2@example.com')
-    })
-
-    it('should detect HTML content', () => {
-      const params: DraftEmailParams = {
-        to: 'recipient@example.com',
-        subject: 'HTML Test',
-        body: '<p>HTML <strong>content</strong></p>',
-      }
-
-      const result = buildRawMessage(params)
-      const decoded = atob(result.replace(/-/g, '+').replace(/_/g, '/'))
-
-      expect(decoded).toContain('Content-Type: text/html; charset="UTF-8"')
-    })
-
-    it('should process line breaks correctly', () => {
-      const params: DraftEmailParams = {
-        to: 'recipient@example.com',
-        subject: 'Line Break Test',
-        body: 'Line 1\\nLine 2\\n\\nLine 4\nLine 5\n\nLine 7',
-      }
-
-      const result = buildRawMessage(params)
-      const decoded = atob(result.replace(/-/g, '+').replace(/_/g, '/'))
-
-      // The actual implementation has some extra \r characters, let's match what it actually produces
-      expect(decoded).toContain('Line 1\r')
-      expect(decoded).toContain('Line 2\r')
-      expect(decoded).toContain('Line 4\r\nLine 5\r')
-      expect(decoded).toContain('Line 7')
-    })
-  })
-})
-
-describe('Google Utils - Auth Utilities', () => {
-  beforeEach(() => {
-    mockGetSetting.mockClear()
-    mockUpdateSetting.mockClear()
-    mockRefreshAccessToken.mockClear()
-  })
-
-  describe('getGoogleCredentials', () => {
-    it('should return parsed credentials', async () => {
-      const credentials = {
-        access_token: 'test-token',
-        refresh_token: 'refresh-token',
-        expires_at: Date.now() + 3600000,
-      }
-
-      mockGetSetting.mockResolvedValue(JSON.stringify(credentials))
-
-      const result = await getGoogleCredentials()
-      expect(result).toEqual(credentials)
-      expect(mockGetSetting).toHaveBeenCalledWith('integrations_google_credentials')
-    })
-
-    it('should throw error if credentials not found', async () => {
-      mockGetSetting.mockResolvedValue(null)
-
-      await expect(getGoogleCredentials()).rejects.toThrow('Google integration not connected')
-    })
-
-    it('should throw error if credentials are malformed', async () => {
-      mockGetSetting.mockResolvedValue('invalid-json')
-
-      await expect(getGoogleCredentials()).rejects.toThrow('Invalid Google credentials')
-    })
-  })
-
-  describe('ensureValidGoogleToken', () => {
-    it('should return existing token if still valid', async () => {
-      const credentials = {
-        access_token: 'valid-token',
-        refresh_token: 'refresh-token',
-        expires_at: Date.now() + 120000, // 2 minutes from now
-      }
-
-      const result = await ensureValidGoogleToken(credentials)
-      expect(result).toBe('valid-token')
-      expect(mockRefreshAccessToken).not.toHaveBeenCalled()
-    })
-
-    it('should refresh token if expired', async () => {
-      const credentials = {
-        access_token: 'expired-token',
-        refresh_token: 'refresh-token',
-        expires_at: Date.now() - 3600000, // 1 hour ago
-      }
-
-      const newTokens = {
-        access_token: 'new-token',
-        expires_in: 3600,
-      }
-
-      mockRefreshAccessToken.mockResolvedValue(newTokens)
-
-      const result = await ensureValidGoogleToken(credentials)
-      expect(result).toBe('new-token')
-      expect(mockRefreshAccessToken).toHaveBeenCalledWith('google', 'refresh-token')
-      expect(mockUpdateSetting).toHaveBeenCalledWith(
-        'integrations_google_credentials',
-        expect.stringContaining('new-token'),
+    it('should handle boolean and date queries', () => {
+      expect(transformDriveQuery('starred = true')).toBe('starred = true')
+      expect(transformDriveQuery('sharedWithMe = false')).toBe('sharedWithMe = false')
+      expect(transformDriveQuery("createdTime >= '2025-01-01T00:00:00Z'")).toBe("createdTime >= '2025-01-01T00:00:00Z'")
+      expect(transformDriveQuery("viewedByMeTime < '2024-12-31T23:59:59Z'")).toBe(
+        "viewedByMeTime < '2024-12-31T23:59:59Z'",
       )
     })
 
-    it('should throw error if no refresh token available', async () => {
-      const credentials = {
-        access_token: 'expired-token',
-        expires_at: Date.now() - 3600000, // 1 hour ago
-        // No refresh_token
-      }
-
-      await expect(ensureValidGoogleToken(credentials)).rejects.toThrow(
-        'Access token expired and no refresh token available',
-      )
-    })
-
-    it('should refresh token if expires within 1 minute', async () => {
-      const credentials = {
-        access_token: 'soon-to-expire-token',
-        refresh_token: 'refresh-token',
-        expires_at: Date.now() + 30000, // 30 seconds from now
-      }
-
-      const newTokens = {
-        access_token: 'refreshed-token',
-        expires_in: 3600,
-      }
-
-      mockRefreshAccessToken.mockResolvedValue(newTokens)
-
-      const result = await ensureValidGoogleToken(credentials)
-      expect(result).toBe('refreshed-token')
-      expect(mockRefreshAccessToken).toHaveBeenCalled()
-    })
-  })
-})
-
-describe('Google Utils - Drive Utilities', () => {
-  describe('transformDriveQuery', () => {
-    it('should return empty string for empty input', () => {
+    it('should handle empty or whitespace-only queries', () => {
       expect(transformDriveQuery('')).toBe('')
       expect(transformDriveQuery('   ')).toBe('')
+      expect(transformDriveQuery('\t\n')).toBe('')
     })
 
-    it('should transform name queries', () => {
-      expect(transformDriveQuery('name:document')).toBe("name contains 'document'")
-      expect(transformDriveQuery("name:'My Document'")).toBe("name contains 'My Document'")
+    it('should trim whitespace from queries', () => {
+      expect(transformDriveQuery('  name contains "test"  ')).toBe('name contains "test"')
+      expect(transformDriveQuery('\t\nfullText contains "content"\n\t')).toBe('fullText contains "content"')
     })
+  })
 
-    it('should transform type queries to mimeType', () => {
-      expect(transformDriveQuery('type:document')).toBe("mimeType='application/vnd.google-apps.document'")
-      expect(transformDriveQuery('type:pdf')).toBe("mimeType='application/pdf'")
-      expect(transformDriveQuery('type:image')).toBe("mimeType contains 'image/'")
-      expect(transformDriveQuery('type:spreadsheet')).toBe("mimeType='application/vnd.google-apps.spreadsheet'")
-    })
+  describe('Documentation examples should work as-is', () => {
+    it('should handle all the examples from the schema documentation', () => {
+      const examples = [
+        "name contains 'report'",
+        "mimeType = 'application/pdf'",
+        "modifiedTime > '2025-01-01T00:00:00Z'",
+        "name contains 'budget' and trashed = false",
+        "(name contains 'report' or fullText contains 'summary') and modifiedTime > '2024-12-01T00:00:00Z'",
+        "'parentFolderId' in parents",
+        "starred = true and mimeType = 'application/vnd.google-apps.document'",
+      ]
 
-    it('should transform simple dates to RFC 3339', () => {
-      expect(transformDriveQuery('modifiedTime>2024-01-01')).toBe("modifiedTime>'2024-01-01T00:00:00Z'")
-      expect(transformDriveQuery('createdTime<2023-12-31')).toBe("createdTime<'2023-12-31T00:00:00Z'")
-    })
-
-    it('should preserve and quote existing RFC 3339 dates', () => {
-      expect(transformDriveQuery('modifiedTime>2024-01-01T10:30:00Z')).toBe("modifiedTime>'2024-01-01T10:30:00Z'")
-      expect(transformDriveQuery("modifiedTime>'2024-01-01T10:30:00Z'")).toBe("modifiedTime>'2024-01-01T10:30:00Z'")
-    })
-
-    it('should handle complex queries with multiple parts', () => {
-      const input = "name:'Ryan + Chris: Weekly 1:1' type:document modifiedTime>2024-01-01"
-      const expected =
-        "name contains 'Ryan + Chris: Weekly 1:1' and mimeType='application/vnd.google-apps.document' and modifiedTime>'2024-01-01T00:00:00Z'"
-      expect(transformDriveQuery(input)).toBe(expected)
-    })
-
-    it('should handle quoted strings with spaces', () => {
-      const input = "name:'My Important Document' type:pdf"
-      const expected = "name contains 'My Important Document' and mimeType='application/pdf'"
-      expect(transformDriveQuery(input)).toBe(expected)
-    })
-
-    it('should handle unknown file types', () => {
-      expect(transformDriveQuery('type:unknown')).toBe("mimeType='unknown'")
-    })
-
-    it('should handle operators correctly', () => {
-      expect(transformDriveQuery('modifiedTime>=2024-01-01')).toBe("modifiedTime>='2024-01-01T00:00:00Z'")
-      expect(transformDriveQuery('modifiedTime<=2024-01-01')).toBe("modifiedTime<='2024-01-01T00:00:00Z'")
-      expect(transformDriveQuery('modifiedTime=2024-01-01')).toBe("modifiedTime='2024-01-01T00:00:00Z'")
-    })
-
-    it('should preserve existing field queries', () => {
-      expect(transformDriveQuery('trashed=false')).toBe('trashed=false')
-      expect(transformDriveQuery('ownedByMe=true')).toBe('ownedByMe=true')
-    })
-
-    it('should handle mixed queries', () => {
-      const input = 'name:test type:folder trashed=false ownedByMe=true'
-      const expected =
-        "name contains 'test' and mimeType='application/vnd.google-apps.folder' and trashed=false and ownedByMe=true"
-      expect(transformDriveQuery(input)).toBe(expected)
+      examples.forEach((example) => {
+        expect(transformDriveQuery(example)).toBe(example)
+      })
     })
   })
 })

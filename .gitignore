@@ -33,3 +33,5 @@ dist-isolation
 *.key
 tauri.key
 .tauri/
+*storybook.log
+storybook-static

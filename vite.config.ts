@@ -1,10 +1,15 @@
+/// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import { bundleMigrations } from './src/db/bundle-migrations'
+import { fileURLToPath } from 'node:url'
+import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
+const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
+// More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 const host = process.env.TAURI_DEV_HOST
 
 // Import will happen eagerly, but the plugin is only activated when requested.
@@ -26,7 +31,6 @@ export default defineConfig({
         })
       },
     },
-
     tailwindcss(),
     react(),
     // Include the bundle analyzer plugin only when explicitly requested.
@@ -49,13 +53,11 @@ export default defineConfig({
       },
     },
   ],
-
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors
@@ -82,5 +84,33 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+  },
+  test: {
+    projects: [
+      {
+        extends: true,
+        plugins: [
+          // The plugin will run tests for the stories defined in your Storybook config
+          // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
+          storybookTest({
+            configDir: path.join(dirname, '.storybook'),
+          }),
+        ],
+        test: {
+          name: 'storybook',
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: 'playwright',
+            instances: [
+              {
+                browser: 'chromium',
+              },
+            ],
+          },
+          setupFiles: ['.storybook/vitest.setup.ts'],
+        },
+      },
+    ],
   },
 })

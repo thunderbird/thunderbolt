@@ -3,6 +3,7 @@
 <!-- CI Cache Test Trigger #1 -->
 <!-- CI Cache Test Trigger #2 -->
 <!-- CI Cache Test #3 - After CARGO_INCREMENTAL fix -->
+<!-- CI Cache Test #4 - Final cache verification -->
 
 **_(Formerly known as Mozilla Assist(ant))_**
 

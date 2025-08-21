@@ -99,9 +99,25 @@ The Rust build step in GitHub Actions was taking 9 minutes regardless of whether
 
 ## Test Commits for Timing Verification
 
-- **Initial Fix Commit**: `bb28aa3` - "Optimize Rust caching in CI workflow using Swatinem/rust-cache"
-- **Cache Test Commit**: `2a33842` - "test: trigger CI to verify Rust caching effectiveness"
-- **Cache Test #2**: `e8e839a` - "test: third cache test commit - verify consistent caching"
+- **Initial Fix Commit**: `bb28aa3` - "Optimize Rust caching in CI workflow using Swatinem/rust-cache" 
+  - **Result**: 8min 5sec (19:24:59 -> 19:33:04)
+- **Cache Test Commit**: `2a33842` - "test: trigger CI to verify Rust caching effectiveness" (cancelled)
+- **Cache Test #2**: `e8e839a` - "test: third cache test commit - verify consistent caching" (cancelled)
+- **Final Test**: `eff562a` - "docs: finalize verification guide and cleanup"
+  - **Result**: 8min 27sec (19:43:15 -> 19:51:42) 
+- **Critical Fix**: `047aa2b` - "fix: remove CARGO_INCREMENTAL=0 to enable effective caching"
+- **Verification Test**: `7f37d1c` - "test: verify caching after CARGO_INCREMENTAL fix" (in progress)
+
+## 🚨 Root Cause Identified
+
+**CARGO_INCREMENTAL=0** was explicitly disabling incremental compilation at line 134:
+```yaml
+env:
+  CARGO_INCREMENTAL: 0  # ← This prevented effective caching!
+  RUSTC_WRAPPER: ''
+```
+
+This environment variable forced Rust to rebuild everything from scratch on every run, making caching almost useless despite having `Swatinem/rust-cache@v2` properly configured.
 
 ## Files Modified
 

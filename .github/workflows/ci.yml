@@ -131,7 +131,6 @@ jobs:
 
       - name: Build and check Rust code
         env:
-          CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
         run: |
           cd src-tauri

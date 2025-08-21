@@ -177,11 +177,22 @@ export const ensureValidGoogleToken = async (credentials: {
  * - name:foo -> name contains 'foo'
  * - type:document -> mimeType='application/vnd.google-apps.document'
  * - modifiedTime>2024-01-01 -> modifiedTime>'2024-01-01T00:00:00Z'
+ * - simple text -> name contains 'text'
  */
 export const transformDriveQuery = (query: string): string => {
   if (!query.trim()) return ''
 
-  // A more robust way to split the query string by spaces, while respecting quoted content.
+  // Check if this is a simple text search (no field specifiers or operators)
+  const hasFieldSpecifiers = /(?:name|type|mimeType|modifiedTime|createdTime|trashed|starred|shared|ownedByMe)[:><=]/.test(query)
+  const hasQuotes = /'.*'/.test(query)
+  const hasLogicalOperators = /\s+(and|or)\s+/i.test(query)
+  
+  // If it's a simple text search without field specifiers, wrap it in name contains
+  if (!hasFieldSpecifiers && !hasQuotes && !hasLogicalOperators) {
+    return `name contains '${query.trim()}'`
+  }
+
+  // For more complex queries, parse parts more carefully
   const parts = query.match(/('.*?'|[^'\s]+)+(?=\s*|\s*$)/g) || []
 
   const typeMapping: Record<string, string> = {
@@ -198,6 +209,11 @@ export const transformDriveQuery = (query: string): string => {
   }
 
   const transformedParts = parts.map((part) => {
+    // Skip logical operators (and, or) as they should remain as-is
+    if (/^(and|or)$/i.test(part)) {
+      return part.toLowerCase()
+    }
+
     // Note: The order of replacements is important.
     // 1. Transform name shorthand (e.g., name:doc) to "name contains 'doc'"
     let transformed = part.replace(/name:'([^']+)'/g, "name contains '$1'")
@@ -228,5 +244,6 @@ export const transformDriveQuery = (query: string): string => {
     return transformed
   })
 
-  return transformedParts.join(' and ')
+  // Join parts with spaces, not ' and ' - let existing logical operators handle the joining
+  return transformedParts.join(' ')
 }

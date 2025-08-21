@@ -17,6 +17,7 @@ import {
   searchDrive,
   searchEmails,
 } from './tools'
+import { transformDriveQuery } from './utils'
 
 // Custom error type for HTTP error mocking
 interface HTTPError extends Error {
@@ -1132,6 +1133,61 @@ describe('Google Tools', () => {
 
       expect(result.truncated).toBe(true)
       expect(mockTruncateText).toHaveBeenCalledWith(longContent, 50000)
+    })
+  })
+
+  describe('transformDriveQuery', () => {
+    it('should handle simple text searches by wrapping in name contains', () => {
+      expect(transformDriveQuery('alessandro')).toBe("name contains 'alessandro'")
+      expect(transformDriveQuery('meeting notes')).toBe("name contains 'meeting notes'")
+      expect(transformDriveQuery('  simple text  ')).toBe("name contains 'simple text'")
+    })
+
+    it('should handle name field specifiers correctly', () => {
+      expect(transformDriveQuery('name:alessandro')).toBe("name contains 'alessandro'")
+      expect(transformDriveQuery("name:'my document'")).toBe("name contains 'my document'")
+    })
+
+    it('should handle type field specifiers correctly', () => {
+      expect(transformDriveQuery('type:pdf')).toBe("mimeType='application/pdf'")
+      expect(transformDriveQuery('type:document')).toBe("mimeType='application/vnd.google-apps.document'")
+      expect(transformDriveQuery('type:image')).toBe("mimeType contains 'image/'")
+    })
+
+    it('should handle complex queries with logical operators', () => {
+      expect(transformDriveQuery('name:contract and type:pdf')).toBe("name contains 'contract' and mimeType='application/pdf'")
+      expect(transformDriveQuery('type:document or type:spreadsheet')).toBe("mimeType='application/vnd.google-apps.document' or mimeType='application/vnd.google-apps.spreadsheet'")
+    })
+
+    it('should handle date transformations correctly', () => {
+      expect(transformDriveQuery('modifiedTime>2024-01-01')).toBe("modifiedTime>'2024-01-01T00:00:00Z'")
+      expect(transformDriveQuery('createdTime<=2024-12-31')).toBe("createdTime<='2024-12-31T00:00:00Z'")
+    })
+
+    it('should preserve existing RFC 3339 dates', () => {
+      expect(transformDriveQuery('modifiedTime>2024-01-01T10:30:00Z')).toBe("modifiedTime>'2024-01-01T10:30:00Z'")
+    })
+
+    it('should handle empty queries', () => {
+      expect(transformDriveQuery('')).toBe('')
+      expect(transformDriveQuery('   ')).toBe('')
+    })
+
+    it('should handle queries that already contain field specifications', () => {
+      expect(transformDriveQuery("name contains 'alessandro'")).toBe("name contains 'alessandro'")
+      expect(transformDriveQuery("mimeType='application/pdf'")).toBe("mimeType='application/pdf'")
+    })
+
+    it('should handle complex mixed queries', () => {
+      expect(transformDriveQuery('name:contract modifiedTime>2024-01-01 and type:pdf')).toBe(
+        "name contains 'contract' modifiedTime>'2024-01-01T00:00:00Z' and mimeType='application/pdf'"
+      )
+    })
+
+    it('should not break queries that are already properly formatted', () => {
+      expect(transformDriveQuery("name contains 'test' and trashed=false")).toBe(
+        "name contains 'test' and trashed=false"
+      )
     })
   })
 })

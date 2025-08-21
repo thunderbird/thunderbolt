@@ -42,6 +42,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, variant, inputSize, state, ...props }, ref) => {
     return (
       <input
+        aria-invalid={state === 'error' ? 'true' : undefined}
         type={type}
         data-slot="input"
         className={cn(inputVariants({ variant, inputSize, state, className }))}
@@ -49,8 +50,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {...props}
       />
     )
-  }
+  },
 )
-Input.displayName = "Input"
+Input.displayName = 'Input'
 
 export { Input, inputVariants }

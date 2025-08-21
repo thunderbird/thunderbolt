@@ -1,12 +1,12 @@
-import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { fn } from 'storybook/test'
 
 // More on how to set up stories at: https://storybook.js.org/docs/writing-stories#default-export
 const meta = {
-  title: 'ui/Button',
-  component: Button,
+  title: 'ui/Input',
+  component: Input,
   parameters: {
     // Optional parameter to center the component in the Canvas. More info: https://storybook.js.org/docs/configure/story-layout
     layout: 'centered',
@@ -19,20 +19,27 @@ const meta = {
       table: {
         defaultValue: { summary: 'default' },
       },
-      options: ['default', 'destructive', 'outline', 'secondary', 'ghost', 'link'],
+      options: ['default', 'filled', 'outline', 'ghost'],
       control: { type: 'radio' },
     },
-    size: {
+    inputSize: {
       table: {
         defaultValue: { summary: 'default' },
       },
-      options: ['default', 'sm', 'lg', 'icon'],
+      options: ['default', 'sm', 'lg', 'xl'],
+      control: { type: 'radio' },
+    },
+    state: {
+      table: {
+        defaultValue: { summary: 'default' },
+      },
+      options: ['default', 'error', 'success'],
       control: { type: 'radio' },
     },
   },
   // Use `fn` to spy on the onClick arg, which will appear in the actions panel once invoked: https://storybook.js.org/docs/essentials/actions#action-args
   args: { onClick: fn(), variant: 'default' },
-} satisfies Meta<typeof Button>
+} satisfies Meta<typeof Input>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -40,8 +47,8 @@ type Story = StoryObj<typeof meta>
 // More on writing stories with args: https://storybook.js.org/docs/writing-stories/args
 export const Basic: Story = {
   args: {
-    children: 'Button',
+    placeholder: 'Type here...',
     variant: 'default',
-    size: 'default',
+    inputSize: 'default',
   },
 }

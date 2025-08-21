@@ -107,27 +107,10 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-          cache: false
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: src-tauri/target/
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-build-
+          # Enable built-in caching for Rust toolchain and dependencies
+          cache: true
+          # Cache target directory with workspace-aware key  
+          cache-directories: src-tauri/target
 
       - name: Install system dependencies
         run: |
@@ -145,8 +128,8 @@ jobs:
 
       - name: Build and check Rust code
         env:
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
+          # Enable incremental compilation for faster builds
+          CARGO_INCREMENTAL: 1
         run: |
           cd src-tauri
           cargo build --all-targets

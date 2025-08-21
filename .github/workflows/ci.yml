@@ -16,6 +16,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Detect file changes to optimize CI performance (THU-28)
+  # Skip Rust build step when no Rust-related files have changed
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect changed files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - 'src-tauri/**/*.rs'
+              - 'src-tauri/**/Cargo.toml'
+              - 'src-tauri/**/Cargo.lock'
+              - 'src-tauri/build.rs'
+              - 'src-tauri/rust-toolchain.toml'
+              - 'src-tauri/.cargo/**'
+
   typescript:
     runs-on: ubuntu-latest
     permissions:
@@ -99,6 +122,8 @@ jobs:
           bun test --test-name-pattern="^(?!.*Google Utils).*$"
 
   rust:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

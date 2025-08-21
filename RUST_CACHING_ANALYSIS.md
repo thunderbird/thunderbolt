@@ -92,10 +92,16 @@ The Rust build step in GitHub Actions was taking 9 minutes regardless of whether
 
 ## Verification Steps
 
-1. Push this fix to trigger a workflow run
-2. Make a non-Rust change (e.g., README update) and push again
-3. Compare build times between the two runs
+1. ✅ Push this fix to trigger a workflow run (Commit: bb28aa3)
+2. ✅ Make a non-Rust change (README update) and push again (Commit: 2a33842)
+3. 🔄 Compare build times between the two runs
 4. Expected result: Second run should be significantly faster
+
+## Test Commits for Timing Verification
+
+- **Initial Fix Commit**: `bb28aa3` - "Optimize Rust caching in CI workflow using Swatinem/rust-cache"
+- **Cache Test Commit**: `2a33842` - "test: trigger CI to verify Rust caching effectiveness"
+- **Cache Test #2**: (This commit) - Follow-up test for caching verification
 
 ## Files Modified
 

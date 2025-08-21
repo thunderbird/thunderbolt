@@ -73,6 +73,10 @@ describe('Google Tools', () => {
     mockBuildRawMessage.mockClear()
     mockTransformDriveQuery.mockClear()
 
+    // Set default mock behavior for transformDriveQuery to pass through queries
+    // This matches the new simplified implementation that just returns query.trim()
+    mockTransformDriveQuery.mockImplementation((query: string) => query?.trim() || '')
+
     // Setup default mocks
     mockGetGoogleCredentials.mockResolvedValue({
       access_token: 'test-token',
@@ -644,7 +648,7 @@ describe('Google Tools', () => {
   describe('searchDrive', () => {
     it('should search drive files with query', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 10,
         include_trashed: false,
       }
@@ -682,7 +686,7 @@ describe('Google Tools', () => {
 
       mockJson.mockResolvedValue(mockDriveResponse)
       mockTruncateText.mockReturnValue('A sample PDF document')
-      mockTransformDriveQuery.mockReturnValue("mimeType='application/pdf'")
+      // No need to override - default mock implementation handles passthrough
 
       const result = await searchDrive(params)
 
@@ -726,15 +730,15 @@ describe('Google Tools', () => {
       // Verify the search query includes trashed=false
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
-      expect(searchParams.get('q')).toBe("mimeType='application/pdf' and trashed=false")
+      expect(searchParams.get('q')).toBe("mimeType = 'application/pdf' and trashed=false")
 
       // Verify transformDriveQuery was called with the original query
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith('type:pdf')
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith("mimeType = 'application/pdf'")
     })
 
     it('should handle empty search results', async () => {
       const params: SearchDriveParams = {
-        query: 'name:nonexistent',
+        query: "name contains 'nonexistent'",
         max_results: 20,
         include_trashed: false,
       }
@@ -750,13 +754,13 @@ describe('Google Tools', () => {
 
     it('should include trashed files when requested', async () => {
       const params: SearchDriveParams = {
-        query: 'name:test',
+        query: "name contains 'test'",
         max_results: 20,
         include_trashed: true,
       }
 
       mockJson.mockResolvedValue({ files: [] })
-      mockTransformDriveQuery.mockReturnValue("name contains 'test'")
+      // No need to override - default mock implementation handles passthrough
 
       await searchDrive(params)
 
@@ -766,12 +770,12 @@ describe('Google Tools', () => {
       expect(searchParams.get('q')).toBe("name contains 'test'")
 
       // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:test')
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'test'")
     })
 
     it('should handle files without optional properties', async () => {
       const params: SearchDriveParams = {
-        query: 'type:document',
+        query: "mimeType = 'application/vnd.google-apps.document'",
         max_results: 10,
         include_trashed: false,
       }
@@ -811,7 +815,7 @@ describe('Google Tools', () => {
 
     it('should handle pagination with nextPageToken', async () => {
       const params: SearchDriveParams = {
-        query: 'type:image',
+        query: "mimeType contains 'image/'",
         max_results: 5,
         include_trashed: false,
       }
@@ -840,7 +844,7 @@ describe('Google Tools', () => {
 
     it('should handle drive access error', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 20,
         include_trashed: false,
       }
@@ -861,7 +865,7 @@ describe('Google Tools', () => {
 
     it('should propagate other drive errors', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 20,
         include_trashed: false,
       }
@@ -897,7 +901,7 @@ describe('Google Tools', () => {
 
     it('should respect max_results limit', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 100, // Above the 50 limit
         include_trashed: false,
       }
@@ -913,7 +917,7 @@ describe('Google Tools', () => {
 
     it('should handle network errors', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 20,
         include_trashed: false,
       }
@@ -928,7 +932,7 @@ describe('Google Tools', () => {
 
     it('should handle authentication errors', async () => {
       const params: SearchDriveParams = {
-        query: 'type:pdf',
+        query: "mimeType = 'application/pdf'",
         max_results: 20,
         include_trashed: false,
       }
@@ -941,46 +945,46 @@ describe('Google Tools', () => {
 
     it('should transform simple date format to RFC 3339 format', async () => {
       const params: SearchDriveParams = {
-        query: 'name:contract modifiedTime>2024-01-01',
+        query: "name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'",
         max_results: 10,
         include_trashed: false,
       }
 
       mockJson.mockResolvedValue({ files: [] })
-      mockTransformDriveQuery.mockReturnValue("name contains 'contract' and modifiedTime>'2024-01-01T00:00:00Z'")
+      // No need to override - default mock implementation handles passthrough
 
       await searchDrive(params)
 
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
       expect(searchParams.get('q')).toBe(
-        "name contains 'contract' and modifiedTime>'2024-01-01T00:00:00Z' and trashed=false",
+        "name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z' and trashed=false",
       )
 
       // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:contract modifiedTime>2024-01-01')
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'")
     })
 
     it('should preserve existing RFC 3339 dates', async () => {
       const params: SearchDriveParams = {
-        query: 'name:contract modifiedTime>2024-01-01T10:30:00Z',
+        query: "name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'",
         max_results: 10,
         include_trashed: false,
       }
 
       mockJson.mockResolvedValue({ files: [] })
-      mockTransformDriveQuery.mockReturnValue("name contains 'contract' and modifiedTime>'2024-01-01T10:30:00Z'")
+      // No need to override - default mock implementation handles passthrough
 
       await searchDrive(params)
 
       const call = mockGet.mock.calls[0]
       const searchParams = call[1].searchParams
       expect(searchParams.get('q')).toBe(
-        "name contains 'contract' and modifiedTime>'2024-01-01T10:30:00Z' and trashed=false",
+        "name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z' and trashed=false",
       )
 
       // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith('name:contract modifiedTime>2024-01-01T10:30:00Z')
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'")
     })
   })
 

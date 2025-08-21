@@ -112,6 +112,20 @@ jobs:
           # Cache target directory with workspace-aware key  
           cache-directories: src-tauri/target
 
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-${{ runner.os }}-v1
+          restore-keys: |
+            sccache-${{ runner.os }}-
+
+      - name: Install sccache
+        run: |
+          if ! command -v sccache &> /dev/null; then
+            cargo install sccache
+          fi
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -130,11 +144,19 @@ jobs:
         env:
           # Enable incremental compilation for faster builds
           CARGO_INCREMENTAL: 1
+          # Configure sccache for optimal performance
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
         run: |
           cd src-tauri
+          # Start sccache server
+          sccache --start-server || true
+          # Build and test
           cargo build --all-targets
           cargo clippy --all-targets -- -D warnings
           cargo test
+          # Show sccache stats
+          sccache --show-stats
 
 
   backend:

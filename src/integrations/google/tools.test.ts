@@ -962,7 +962,9 @@ describe('Google Tools', () => {
       )
 
       // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'")
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith(
+        "name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'",
+      )
     })
 
     it('should preserve existing RFC 3339 dates', async () => {
@@ -984,7 +986,9 @@ describe('Google Tools', () => {
       )
 
       // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'")
+      expect(mockTransformDriveQuery).toHaveBeenCalledWith(
+        "name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'",
+      )
     })
   })
 

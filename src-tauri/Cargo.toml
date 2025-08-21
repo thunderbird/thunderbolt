@@ -30,8 +30,8 @@ members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embe
 [workspace.dependencies]
 # Use Thunderbird's fork with Windows build fix
 # See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { version = "0.9.11", default-features = false, features = ["core", "encryption"] }
-anyhow = "1.0.98"
+libsql = { version = "0.9.20", default-features = false, features = ["core", "encryption"] }
+anyhow = "1.0.99"
 serde = { version = "1.0.219", features = ["derive"] }
 thunderbolt-lib = { path = "." }
 
@@ -40,21 +40,21 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.3.0", features = [] }
+tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.6.2", features = [ "tray-icon", "devtools"] }
-tauri-plugin-opener = "2.4.0"
+tauri = { version = "2.8.2", features = [ "tray-icon", "devtools"] }
+tauri-plugin-opener = "2.5.0"
 tauri-plugin-shell = "2.3.0"
-tauri-plugin-os = "2.3.0"
+tauri-plugin-os = "2.3.1"
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-anyhow = "1.0.98"
-tokio = "1.46.1"
-tauri-plugin-devtools = "2.0.0"
-tauri-plugin-http = "2.5.0"
+serde_json = "1.0.143"
+anyhow = "1.0.99"
+tokio = "1.47.1"
+tauri-plugin-devtools = "2.0.1"
+tauri-plugin-http = "2.5.2"
 tauri-plugin-process = "2.3.0"
-tauri-plugin-fs = "2.4.0"
+tauri-plugin-fs = "2.4.2"
 thunderbolt-imap-client = { package = "thunderbolt-imap-client", path = "./thunderbolt_imap_client", optional = true }
 thunderbolt-imap-sync = { package = "thunderbolt-imap-sync", path = "./thunderbolt_imap_sync", optional = true }
 thunderbolt-embeddings = { package = "thunderbolt-embeddings", path = "./thunderbolt_embeddings", optional = true }

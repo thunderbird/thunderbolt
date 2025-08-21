@@ -101,11 +101,37 @@ The Rust build step in GitHub Actions was taking 9 minutes regardless of whether
 
 - **Initial Fix Commit**: `bb28aa3` - "Optimize Rust caching in CI workflow using Swatinem/rust-cache"
 - **Cache Test Commit**: `2a33842` - "test: trigger CI to verify Rust caching effectiveness"
-- **Cache Test #2**: (This commit) - Follow-up test for caching verification
+- **Cache Test #2**: `e8e839a` - "test: third cache test commit - verify consistent caching"
 
 ## Files Modified
 
 - `.github/workflows/ci.yml`: Optimized Rust caching configuration
+
+## Manual Verification Instructions
+
+Since GitHub CLI requires authentication, here's how to manually verify the caching improvements:
+
+### Option 1: GitHub Web Interface
+1. Navigate to: https://github.com/thunderbird/thunderbolt/actions
+2. Filter by branch: `cursor/fix-github-actions-rust-caching-0cbf`
+3. Compare "rust" job timing across the three test commits above
+
+### Option 2: GitHub CLI (after authentication)
+```bash
+# Authenticate first
+gh auth login
+
+# Check workflow runs on our test branch
+gh run list --branch cursor/fix-github-actions-rust-caching-0cbf --limit 10
+
+# Get detailed timing for each run
+gh run view <RUN_ID> --json jobs | jq '.jobs[] | select(.name=="rust") | {name: .name, duration: .conclusion, started_at: .started_at, completed_at: .completed_at}'
+```
+
+### Expected Results Pattern
+- **Run 1** (bb28aa3): ~8-9 minutes (cache miss, building from scratch)
+- **Run 2** (2a33842): ~1-3 minutes (cache hit, significant speedup)
+- **Run 3** (e8e839a): ~1-3 minutes (cache hit, consistent performance)
 
 ## Technical Details
 
@@ -113,3 +139,10 @@ The Rust build step in GitHub Actions was taking 9 minutes regardless of whether
 - **Total Rust Files**: 28 source files across all crates
 - **Cache Strategy**: Swatinem/rust-cache with workspace awareness
 - **Cache Scope**: All crates and dependencies
+
+## Troubleshooting
+
+If caching doesn't improve build times as expected:
+1. Check if cache size limits are being hit (10GB GitHub limit)
+2. Verify all Rust files are properly detected by the cache action
+3. Check for any `CARGO_INCREMENTAL=0` or similar flags that disable incremental builds

@@ -4,6 +4,7 @@
 <!-- CI Cache Test Trigger #2 -->
 <!-- CI Cache Test #3 - After CARGO_INCREMENTAL fix -->
 <!-- CI Cache Test #4 - Final cache verification -->
+<!-- CI Cache Test #5 - Testing workspace crate caching -->
 
 **_(Formerly known as Mozilla Assist(ant))_**
 

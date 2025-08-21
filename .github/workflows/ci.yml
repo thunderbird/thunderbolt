@@ -107,24 +107,23 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-          # Enable built-in caching for Rust toolchain and dependencies
-          cache: true
-          # Cache target directory with workspace-aware key  
-          cache-directories: src-tauri/target
+          # Disable built-in caching to avoid conflicts with dedicated caching actions
+          cache: false
 
-      - name: Cache sccache
-        uses: actions/cache@v4
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
         with:
-          path: ~/.cargo/bin/sccache
-          key: sccache-${{ runner.os }}-v1
-          restore-keys: |
-            sccache-${{ runner.os }}-
-
-      - name: Install sccache
-        run: |
-          if ! command -v sccache &> /dev/null; then
-            cargo install sccache
-          fi
+          # Specify workspace root and target
+          workspaces: "src-tauri -> target"
+          # Include Cargo.lock in cache key for better invalidation
+          cache-all-crates: true
+          # Cache on toolchain and dependencies, not source changes
+          shared-key: "v1"
+          # Save cache even on failure for partial progress
+          save-if: true
 
       - name: Install system dependencies
         run: |
@@ -138,26 +137,79 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            lld
 
       - name: Build and check Rust code
         env:
           # Enable incremental compilation for faster builds
           CARGO_INCREMENTAL: 1
-          # Configure sccache for optimal performance
+          # Use all available cores for faster compilation
+          CARGO_BUILD_JOBS: 0
+          # Configure sccache
           SCCACHE_GHA_ENABLED: "true"
-          RUSTC_WRAPPER: sccache
+          RUSTC_WRAPPER: "sccache"
         run: |
           cd src-tauri
-          # Start sccache server
-          sccache --start-server || true
-          # Build and test
-          cargo build --all-targets
-          cargo clippy --all-targets -- -D warnings
-          cargo test
-          # Show sccache stats
+          # Build only default features (excludes heavy ML dependencies)
+          cargo build --locked --no-default-features --features "libsql,native_fetch"
+          cargo clippy --locked --no-default-features --features "libsql,native_fetch" -- -D warnings
+          cargo test --locked --lib --no-default-features --features "libsql,native_fetch"
+          # Show cache statistics
           sccache --show-stats
 
+  rust-full:
+    # Test all features including heavy ML dependencies (embeddings)
+    # This job runs in parallel but may take longer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Setup Rust caching (full features)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          cache-all-crates: true
+          shared-key: "v1-full"
+          save-if: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            lld
+
+      - name: Build and test all features
+        env:
+          CARGO_INCREMENTAL: 1
+          CARGO_BUILD_JOBS: 0
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: "sccache"
+        run: |
+          cd src-tauri
+          # Test compilation of all features (including embeddings)
+          cargo build --locked --features "all"
+          cargo clippy --locked --features "all" -- -D warnings
+          cargo test --locked --features "all"
+          sccache --show-stats
 
   backend:
     runs-on: ubuntu-latest

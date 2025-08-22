@@ -23,6 +23,8 @@ dist-isolation
 *.njsproj
 *.sln
 *.sw?
+.zed/*
+.zedscratches/*
 
 # Environment variables
 .env
@@ -39,3 +41,4 @@ storybook-static
 # Dev Ex custom things
 mise*.toml
 mise.toml
+mise.lock

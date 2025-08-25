@@ -495,7 +495,7 @@ export default function PreferencesSettingsPage() {
                     <p className="text-sm text-muted-foreground">
                       Help us improve the app by sending only anonymous usage info such as crashes, performance, and
                       usage. No personal data is collected or stored. Read more about our{' '}
-                      <Link className="text-primary underline-offset-4 hover:underline" to="/privacy">
+                      <Link className="text-primary underline-offset-4 hover:underline" to="/privacy-policy">
                         privacy policy
                       </Link>
                       .

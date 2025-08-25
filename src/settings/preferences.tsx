@@ -31,6 +31,8 @@ import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { Switch } from '@/components/ui/switch'
+import { Link } from 'react-router'
 
 interface LocationData {
   name: string
@@ -43,6 +45,10 @@ interface LocationData {
 
 const nameFormSchema = z.object({
   preferredName: z.string().optional(),
+})
+
+const privacyFormSchema = z.object({
+  dataCollection: z.boolean(),
 })
 
 const locationFormSchema = z.object({
@@ -68,12 +74,15 @@ export default function PreferencesSettingsPage() {
       const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
       const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
       const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
+      const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
 
       return {
         locationName: nameData[0]?.value || '',
         locationLat: latData[0]?.value || '',
         locationLng: lngData[0]?.value || '',
         preferredName: preferredNameData[0]?.value || '',
+        // if not explicitly set to false, default to true
+        dataCollection: dataCollection[0]?.value === 'false' ? false : true,
       }
     },
   })
@@ -82,6 +91,13 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(nameFormSchema),
     defaultValues: {
       preferredName: '',
+    },
+  })
+
+  const privacyForm = useForm<z.infer<typeof privacyFormSchema>>({
+    resolver: zodResolver(privacyFormSchema),
+    defaultValues: {
+      dataCollection: true,
     },
   })
 
@@ -101,6 +117,10 @@ export default function PreferencesSettingsPage() {
         preferredName: settings.preferredName as string,
       })
 
+      privacyForm.reset({
+        dataCollection: settings.dataCollection,
+      })
+
       locationForm.reset({
         locationName: settings.locationName as string,
         locationLat:
@@ -109,7 +129,7 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm])
+  }, [settings, nameForm, locationForm, privacyForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -186,6 +206,23 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  // Save data collection mutation
+  const saveDataCollectionMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
+      // Upsert the setting
+      await db
+        .insert(settingsTable)
+        .values({ key: 'data_collection', value: values.dataCollection ? 'true' : 'false' })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.dataCollection ? 'true' : 'false' },
+        })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+  })
+
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
@@ -227,6 +264,10 @@ export default function PreferencesSettingsPage() {
   const handleNameBlur = async (value: string) => {
     // Save the value directly
     await saveNameMutation.mutateAsync({ preferredName: value })
+  }
+
+  const handleDataCollectionToggle = async (value: boolean) => {
+    await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -432,6 +473,35 @@ export default function PreferencesSettingsPage() {
             </AlertDialogContent>
           </AlertDialog>
         </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Privacy">
+        <Form {...privacyForm}>
+          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={privacyForm.control}
+              name="dataCollection"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Data Collection</label>
+                    <p className="text-sm text-muted-foreground">
+                      Help us improve the app by sending only anonymous usage info such as crashes and performance. No
+                      personal data is collected or stored. Read more about our{' '}
+                      <Link className="text-primary underline-offset-4 hover:underline" to="/privacy">
+                        privacy policy
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
       </SectionCard>
     </div>
   )

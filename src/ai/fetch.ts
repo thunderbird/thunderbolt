@@ -4,6 +4,7 @@ import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
 import { getBooleanSetting, getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
+import { createTokenLimitErrorMessage, wouldExceedTokenLimit } from '@/lib/token-counter'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -133,6 +134,27 @@ export const aiFetchStreamingResponse = async ({
   })
 
   if (!model) throw new Error('Model not found')
+
+  // Validate token limits before processing
+  const tokenValidation = wouldExceedTokenLimit(messages, model.model)
+  if (tokenValidation.exceeds) {
+    const errorMessage = createTokenLimitErrorMessage(tokenValidation.tokenCount, tokenValidation.limit)
+    console.warn('Token limit exceeded:', {
+      model: model.model,
+      tokenCount: tokenValidation.tokenCount,
+      limit: tokenValidation.limit,
+    })
+    
+    return new Response(JSON.stringify({ 
+      error: errorMessage,
+      code: 'TOKEN_LIMIT_EXCEEDED',
+      tokenCount: tokenValidation.tokenCount,
+      limit: tokenValidation.limit,
+    }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   const supportsTools = model.toolUsage !== 0
 

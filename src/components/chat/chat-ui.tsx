@@ -1,5 +1,6 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTokenValidation, useTokenCount } from '@/hooks/use-token-validation'
 import { cn } from '@/lib/utils'
 import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
@@ -65,6 +66,13 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
+
+  // Find the selected model to get its name for token validation
+  const selectedModel = models.find(m => m.id === selectedModelId)
+  
+  // Token validation for the current conversation + new input
+  const tokenValidation = useTokenValidation(chatHelpers.messages, selectedModel?.model, input.trim() || undefined)
+  const tokenCount = useTokenCount(chatHelpers.messages, selectedModel?.model)
 
   const {
     scrollContainerRef,

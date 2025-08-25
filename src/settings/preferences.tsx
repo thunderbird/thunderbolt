@@ -33,6 +33,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
 import { Link } from 'react-router'
+import { usePostHog } from 'posthog-js/react'
 
 interface LocationData {
   name: string
@@ -65,6 +66,8 @@ export default function PreferencesSettingsPage() {
   const [locations, setLocations] = React.useState<LocationData[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [isResetting, setIsResetting] = React.useState(false)
+
+  const postHog = usePostHog()
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
@@ -218,8 +221,10 @@ export default function PreferencesSettingsPage() {
           set: { value: values.dataCollection ? 'true' : 'false' },
         })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      variables.dataCollection ? postHog.opt_in_capturing() : postHog.opt_out_capturing()
     },
   })
 
@@ -488,8 +493,8 @@ export default function PreferencesSettingsPage() {
                   <div>
                     <label className="text-sm font-medium">Data Collection</label>
                     <p className="text-sm text-muted-foreground">
-                      Help us improve the app by sending only anonymous usage info such as crashes and performance. No
-                      personal data is collected or stored. Read more about our{' '}
+                      Help us improve the app by sending only anonymous usage info such as crashes, performance, and
+                      usage. No personal data is collected or stored. Read more about our{' '}
                       <Link className="text-primary underline-offset-4 hover:underline" to="/privacy">
                         privacy policy
                       </Link>

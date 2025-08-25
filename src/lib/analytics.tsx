@@ -49,8 +49,10 @@ export const initPosthog = async (): Promise<PostHog | null> => {
   const apiHost = `${cloudUrl}/posthog`
 
   if (!posthogClient) {
+    const isDataCollectionEnabled = await getBooleanSetting('data_collection', true)
     const enableDebug = await getBooleanSetting('debug_posthog', false)
     posthogClient = posthog.init(apiKey, {
+      opt_out_capturing_by_default: !isDataCollectionEnabled,
       api_host: apiHost,
       debug: enableDebug,
       autocapture: false,

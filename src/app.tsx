@@ -54,7 +54,6 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
-import PrivacyPolicy from './components/privacy-policy'
 
 const queryClient = new QueryClient()
 
@@ -103,7 +102,6 @@ function AppRoutes({ initData }: { initData: InitData }) {
 
       {/* OAuth callback route */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
-      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
     </Routes>
   )
 }

@@ -84,7 +84,6 @@ export default function PreferencesSettingsPage() {
         locationLat: latData[0]?.value || '',
         locationLng: lngData[0]?.value || '',
         preferredName: preferredNameData[0]?.value || '',
-        // if not explicitly set to false, default to true
         dataCollection: dataCollection[0]?.value === 'false' ? false : true,
       }
     },
@@ -449,6 +448,39 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
+      <SectionCard title="Privacy">
+        <Form {...privacyForm}>
+          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={privacyForm.control}
+              name="dataCollection"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Data Collection</label>
+                    <p className="text-sm text-muted-foreground">
+                      Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
+                      No personal data is collected or stored. Read more about our{' '}
+                      <a
+                        className="text-primary underline-offset-4 hover:underline"
+                        href="https://www.thunderbird.net/en-US/privacy/"
+                        target="_blank"
+                      >
+                        privacy policy
+                      </a>
+                      .
+                    </p>
+                  </div>
+                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
       <SectionCard title="Local Database">
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
@@ -478,35 +510,6 @@ export default function PreferencesSettingsPage() {
             </AlertDialogContent>
           </AlertDialog>
         </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Privacy">
-        <Form {...privacyForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={privacyForm.control}
-              name="dataCollection"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Data Collection</label>
-                    <p className="text-sm text-muted-foreground">
-                      Help us improve the app by sending only anonymous usage info such as crashes, performance, and
-                      usage. No personal data is collected or stored. Read more about our{' '}
-                      <Link className="text-primary underline-offset-4 hover:underline" to="/privacy-policy">
-                        privacy policy
-                      </Link>
-                      .
-                    </p>
-                  </div>
-                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
       </SectionCard>
     </div>
   )

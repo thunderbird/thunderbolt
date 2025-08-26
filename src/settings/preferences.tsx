@@ -32,7 +32,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
-import { Link } from 'react-router'
 import { usePostHog } from 'posthog-js/react'
 
 interface LocationData {

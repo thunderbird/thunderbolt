@@ -124,6 +124,14 @@ const init = async (): Promise<InitData> => {
   await seedTasks()
   await seedPrompts()
 
+  // Initialize tokenizers for better performance
+  // This is done asynchronously and won't block the app startup
+  import('@/ai/tokenizer-preloader').then(({ initializeTokenizers }) => {
+    initializeTokenizers().catch(error => {
+      console.warn('Failed to initialize tokenizers:', error)
+    })
+  })
+
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()
 

@@ -1,4 +1,5 @@
 import { createPrompt } from '@/ai/prompt'
+import { validateTokenLimit, getTokenLimitErrorMessage } from '@/ai/tokenizer'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
@@ -157,6 +158,57 @@ export const aiFetchStreamingResponse = async ({
       lng: locationLng ? parseFloat(locationLng as string) : undefined,
     },
   })
+
+  // Validate token limits before processing
+  try {
+    // Convert UI messages to model messages format for token counting
+    const modelMessages = convertToModelMessages(messages)
+    const conversationMessages = modelMessages.map(msg => ({
+      role: msg.role,
+      content: typeof msg.content === 'string' ? msg.content : 
+        Array.isArray(msg.content) ? msg.content.map(part => 
+          typeof part === 'string' ? part : 
+          'text' in part ? part.text :
+          JSON.stringify(part)
+        ).join('\n') : JSON.stringify(msg.content)
+    }))
+    
+    const tokenValidation = await validateTokenLimit(conversationMessages, systemPrompt, model)
+    
+    if (!tokenValidation.isWithinLimit) {
+      const errorMessage = getTokenLimitErrorMessage(tokenValidation)
+      console.error('Token limit exceeded:', {
+        tokens: tokenValidation.tokens,
+        maxTokens: tokenValidation.maxTokens,
+        contextWindow: tokenValidation.contextWindow,
+        model: model.model
+      })
+      
+      return new Response(JSON.stringify({ 
+        error: errorMessage,
+        type: 'TOKEN_LIMIT_EXCEEDED',
+        details: {
+          tokens: tokenValidation.tokens,
+          maxTokens: tokenValidation.maxTokens,
+          contextWindow: tokenValidation.contextWindow,
+          overhead: tokenValidation.overhead
+        }
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    
+    console.log('Token validation passed:', {
+      tokens: tokenValidation.tokens,
+      maxTokens: tokenValidation.maxTokens,
+      contextWindow: tokenValidation.contextWindow,
+      model: model.model
+    })
+  } catch (tokenError) {
+    console.warn('Token validation failed, proceeding without validation:', tokenError)
+    // Continue execution if token validation fails - don't block the user completely
+  }
 
   try {
     const baseModel = await createModel(model)

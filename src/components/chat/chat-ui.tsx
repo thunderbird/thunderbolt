@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
+import { ChatErrorHandler, enhanceError } from './error-handler'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 
@@ -206,12 +207,23 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
 
             {/* Show error message if there's an error */}
             {chatHelpers.error && (
-              <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto w-full">
-                <p className="text-destructive font-medium mb-1">Error</p>
-                <p className="text-destructive/80 text-sm">
-                  {chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}
-                </p>
-              </div>
+              <ChatErrorHandler 
+                error={enhanceError(chatHelpers.error)}
+                onRetry={() => {
+                  // Retry the last user message
+                  if (chatHelpers.messages.length > 0) {
+                    chatHelpers.regenerate()
+                  }
+                }}
+                onStartNewChat={() => {
+                  // Clear the current conversation and redirect to new chat
+                  window.location.href = '/'
+                }}
+                onClearMessages={() => {
+                  // Clear messages and reset the conversation
+                  chatHelpers.setMessages([])
+                }}
+              />
             )}
 
             <div ref={scrollTargetRef} />

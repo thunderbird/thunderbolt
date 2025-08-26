@@ -37,16 +37,19 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
  */
 export async function generateEmbeddingsCloud(texts: string[]): Promise<number[][]> {
   try {
-    const response = await fetch('https://router.huggingface.co/hf-inference/pipeline/feature-extraction/intfloat/e5-small-v2', {
-      headers: {
-        Authorization: 'Bearer LOL_OOPS',
-        'Content-Type': 'application/json',
+    const response = await fetch(
+      'https://router.huggingface.co/hf-inference/pipeline/feature-extraction/intfloat/e5-small-v2',
+      {
+        headers: {
+          Authorization: 'Bearer LOL_OOPS',
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        body: JSON.stringify({
+          inputs: texts,
+        }),
       },
-      method: 'POST',
-      body: JSON.stringify({
-        inputs: texts,
-      }),
-    })
+    )
 
     const embeddings = await response.json()
     return embeddings
@@ -75,7 +78,9 @@ export async function search(db: AnyDrizzleDatabase, searchText: string, limit: 
     // Get the top matching threads based on embedding similarity with aggregated messages
     const results = await db
       .select({
-        distance: sql`vector_distance_cos(${embeddingsTable.embedding}, vector32(${JSON.stringify(embedding)}))`.as('distance'),
+        distance: sql`vector_distance_cos(${embeddingsTable.embedding}, vector32(${JSON.stringify(embedding)}))`.as(
+          'distance',
+        ),
         email_thread_id: emailThreadsTable.id,
         email_thread: emailThreadsTable,
         as_text: embeddingsTable.asText,
@@ -90,13 +95,17 @@ export async function search(db: AnyDrizzleDatabase, searchText: string, limit: 
     // Fetch messages for each thread
     const resultsWithMessages = await Promise.all(
       results.map(async (result) => {
-        const email_messages = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.emailThreadId, result.email_thread_id!)).orderBy(emailMessagesTable.sentAt)
+        const email_messages = await db
+          .select()
+          .from(emailMessagesTable)
+          .where(eq(emailMessagesTable.emailThreadId, result.email_thread_id!))
+          .orderBy(emailMessagesTable.sentAt)
 
         return {
           ...result,
           email_messages,
         }
-      })
+      }),
     )
 
     console.log('Results:', resultsWithMessages)

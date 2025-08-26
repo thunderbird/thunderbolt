@@ -79,7 +79,15 @@ export default function SearchSection() {
                   render={({ field }) => (
                     <FormItem className="w-16">
                       <FormControl>
-                        <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} className="p-1 text-sm" min="1" max="100" disabled={isSearching} />
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          className="p-1 text-sm"
+                          min="1"
+                          max="100"
+                          disabled={isSearching}
+                        />
                       </FormControl>
                     </FormItem>
                   )}
@@ -104,17 +112,30 @@ export default function SearchSection() {
             <div className="bg-gray-100 dark:bg-gray-800 rounded-md p-4 overflow-auto max-h-96">
               <Accordion type="single" className="w-full">
                 {results.map((result, index) => (
-                  <AccordionItem key={index} value={`item-${index}`} className="mb-4 bg-white dark:bg-gray-900 rounded-md shadow-sm">
+                  <AccordionItem
+                    key={index}
+                    value={`item-${index}`}
+                    className="mb-4 bg-white dark:bg-gray-900 rounded-md shadow-sm"
+                  >
                     <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-t-md w-full">
                       <div className="grid grid-cols-3 w-full text-left gap-2">
                         <div className="flex items-center">
                           <div className="w-12 h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden mr-2">
-                            <div className="h-full bg-green-500" style={{ width: `${(1 - (result.distance || 0)) * 100}%` }} />
+                            <div
+                              className="h-full bg-green-500"
+                              style={{ width: `${(1 - (result.distance || 0)) * 100}%` }}
+                            />
                           </div>
                           <span className="text-sm font-medium">{(1 - (result.distance || 0)).toFixed(3)}</span>
                         </div>
-                        <div className="text-sm font-medium truncate">{result.email_thread?.subject || 'No subject'}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 text-right">{result.email_thread?.date ? new Date(result.email_thread.date).toLocaleString() : 'Unknown date'}</div>
+                        <div className="text-sm font-medium truncate">
+                          {result.email_thread?.subject || 'No subject'}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
+                          {result.email_thread?.date
+                            ? new Date(result.email_thread.date).toLocaleString()
+                            : 'Unknown date'}
+                        </div>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="border-t border-gray-100 dark:border-gray-800">
@@ -131,7 +152,9 @@ export default function SearchSection() {
                                 <div key={msgIndex} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
                                   <div className="flex justify-between mb-2">
                                     <div className="font-medium">{message.fromAddress}</div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">{new Date(message.sentAt).toUTCString()}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                      {new Date(message.sentAt).toUTCString()}
+                                    </div>
                                   </div>
                                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                                     <span className="mr-4">Thread ID: {result.email_thread?.id || 'N/A'}</span>
@@ -150,7 +173,9 @@ export default function SearchSection() {
 
                         <TabsContent value="embedding" className="px-4 pb-4">
                           <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
-                            <div className="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-60">{result.as_text || 'No embedding text available'}</div>
+                            <div className="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-60">
+                              {result.as_text || 'No embedding text available'}
+                            </div>
                           </div>
                         </TabsContent>
                       </Tabs>

@@ -53,7 +53,14 @@ export class ImapSyncer {
    * Get the current syncing status
    * @returns An object containing the current syncing status
    */
-  getStatus(): { messagesProcessed: number; messagesSynced: number; totalMessages: number; threadsCreated: number; isSyncing: boolean; progress: number } {
+  getStatus(): {
+    messagesProcessed: number
+    messagesSynced: number
+    totalMessages: number
+    threadsCreated: number
+    isSyncing: boolean
+    progress: number
+  } {
     return {
       messagesProcessed: this.messagesProcessed,
       messagesSynced: this.messagesSynced,
@@ -223,11 +230,16 @@ export class ImapSyncer {
               imapId: message.imapId,
               references: message.references,
             },
-            message.imapId
+            message.imapId,
           )
         } else {
           // Try to find existing thread with this root message
-          const thread = await this.db.select().from(emailThreadsTable).where(eq(emailThreadsTable.rootImapId, rootImapId)).limit(1).get()
+          const thread = await this.db
+            .select()
+            .from(emailThreadsTable)
+            .where(eq(emailThreadsTable.rootImapId, rootImapId))
+            .limit(1)
+            .get()
 
           if (thread) {
             threadId = thread.id
@@ -252,7 +264,7 @@ export class ImapSyncer {
                 imapId: message.imapId,
                 references: message.references,
               },
-              rootImapId
+              rootImapId,
             )
           }
         }
@@ -295,7 +307,10 @@ export class ImapSyncer {
    * @param rootImapId The imap id of the root email message
    * @returns A promise that resolves to the thread ID when created
    */
-  private async createThread(message: { subject: string; sentAt: number; imapId: string; references: string[] | undefined }, rootImapId: string): Promise<string> {
+  private async createThread(
+    message: { subject: string; sentAt: number; imapId: string; references: string[] | undefined },
+    rootImapId: string,
+  ): Promise<string> {
     const id = uuidv7()
 
     await this.db.insert(emailThreadsTable).values({

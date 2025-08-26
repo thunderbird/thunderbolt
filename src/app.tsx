@@ -73,36 +73,36 @@ function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
   return (
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          {/* Home routes with HomeLayout */}
-          <Route element={<ChatLayout />}>
-            <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
-            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="automations" element={<AutomationsPage />} />
-            <Route path="message-simulator" element={<MessageSimulatorPage />} />
-          </Route>
-
-          {/* Settings routes with SettingsLayout */}
-          <Route path="settings" element={<SettingsLayout />}>
-            <Route index element={<Settings />} />
-            <Route path="preferences" element={<PreferencesSettingsPage />} />
-            <Route path="models" element={<ModelsPage />} />
-            <Route path="mcp-servers" element={<McpServersPage />} />
-            <Route path="integrations" element={<IntegrationsPage />} />
-            <Route path="accounts" element={<AccountsSettingsPage />} />
-            <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />
-            <Route path="dev-settings" element={<DevSettingsPage />} />
-          </Route>
-
-          <Route path="ui-kit" element={<UiKitPage />} />
-          <Route path="devtools" element={<DevToolsPage />} />
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        {/* Home routes with HomeLayout */}
+        <Route element={<ChatLayout />}>
+          <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
+          <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="automations" element={<AutomationsPage />} />
+          <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 
-        {/* OAuth callback route */}
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-      </Routes>
+        {/* Settings routes with SettingsLayout */}
+        <Route path="settings" element={<SettingsLayout />}>
+          <Route index element={<Settings />} />
+          <Route path="preferences" element={<PreferencesSettingsPage />} />
+          <Route path="models" element={<ModelsPage />} />
+          <Route path="mcp-servers" element={<McpServersPage />} />
+          <Route path="integrations" element={<IntegrationsPage />} />
+          <Route path="accounts" element={<AccountsSettingsPage />} />
+          <Route path="thunderbolt-bridge" element={<ThunderboltBridgeSettingsPage />} />
+          <Route path="dev-settings" element={<DevSettingsPage />} />
+        </Route>
+
+        <Route path="ui-kit" element={<UiKitPage />} />
+        <Route path="devtools" element={<DevToolsPage />} />
+      </Route>
+
+      {/* OAuth callback route */}
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+    </Routes>
   )
 }
 

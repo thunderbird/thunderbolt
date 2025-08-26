@@ -17,7 +17,11 @@ interface SideviewProviderProps {
   sideviewId?: string | null
 }
 
-export function SideviewProvider({ children, sideviewType: initialSideviewType = null, sideviewId: initialSideviewId = null }: SideviewProviderProps) {
+export function SideviewProvider({
+  children,
+  sideviewType: initialSideviewType = null,
+  sideviewId: initialSideviewId = null,
+}: SideviewProviderProps) {
   const [sideviewType, setSideviewType] = useState<SideviewType | null>(initialSideviewType)
   const [sideviewId, setSideviewId] = useState<string | null>(initialSideviewId)
   const setSideview = (type: SideviewType | null, id: string | null) => {

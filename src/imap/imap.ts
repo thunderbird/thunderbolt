@@ -89,7 +89,7 @@ export default class ImapClient {
   async fetchMessages(
     mailbox: string,
     startIndex?: number,
-    count?: number
+    count?: number,
   ): Promise<{
     index: number
     total: number

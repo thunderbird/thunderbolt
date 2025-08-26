@@ -1,10 +1,12 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTokenValidation } from '@/hooks/use-token-validation'
 import { cn } from '@/lib/utils'
 import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
+import { AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
@@ -62,9 +64,11 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [input, setInput] = useState('')
+  const [tokenLimitError, setTokenLimitError] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
+  const { validateMessages, lastValidation, getTokenWarningLevel } = useTokenValidation()
 
   const {
     scrollContainerRef,
@@ -140,6 +144,20 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
 
+    // Find the selected model
+    const selectedModel = models.find((m) => m.id === selectedModelId) || null
+
+    // Validate token limit before submission
+    const validation = await validateMessages(chatHelpers.messages, selectedModel, textToSend)
+
+    if (!validation.valid) {
+      setTokenLimitError(validation.message || 'Token limit exceeded')
+      return
+    }
+
+    // Clear any previous errors
+    setTokenLimitError(null)
+
     // Clear the input immediately for responsive UX
     setInput('')
 
@@ -160,6 +178,25 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
       }
     }, 0)
   }
+
+  // Update token count when input or messages change
+  useEffect(() => {
+    const updateTokenCount = async () => {
+      if (!selectedModelId) return
+
+      const selectedModel = models.find((m) => m.id === selectedModelId)
+      if (!selectedModel) return
+
+      // Only validate if we have input or messages
+      if (input || chatHelpers.messages.length > 0) {
+        await validateMessages(chatHelpers.messages, selectedModel, input)
+      }
+    }
+
+    // Debounce the validation to avoid too many calculations
+    const timeoutId = setTimeout(updateTokenCount, 300)
+    return () => clearTimeout(timeoutId)
+  }, [input, chatHelpers.messages, selectedModelId, models, validateMessages])
 
   return (
     <div
@@ -205,12 +242,25 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
             })}
 
             {/* Show error message if there's an error */}
-            {chatHelpers.error && (
+            {(chatHelpers.error || tokenLimitError) && (
               <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto w-full">
-                <p className="text-destructive font-medium mb-1">Error</p>
-                <p className="text-destructive/80 text-sm">
-                  {chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}
-                </p>
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="size-5 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-destructive font-medium mb-1">Error</p>
+                    <p className="text-destructive/80 text-sm">
+                      {tokenLimitError ||
+                        chatHelpers.error?.message ||
+                        'An unexpected error occurred. Please try again.'}
+                    </p>
+                    {tokenLimitError && (
+                      <p className="text-destructive/60 text-xs mt-2">
+                        The conversation has exceeded the maximum token limit. Consider starting a new conversation or
+                        shortening your message.
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -253,23 +303,44 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
               duration: 0.25,
             }}
           >
-            <PromptInput
-              ref={formRef}
-              value={input}
-              onChange={(value: string) => setInput(value)}
-              placeholder="Say something..."
-              models={models}
-              selectedModelId={selectedModelId}
-              onModelChange={onModelChange}
-              showSubmitButton
-              onSubmit={handleSubmit}
-              isLoading={chatHelpers.status === 'streaming'}
-              isStreaming={isStreaming}
-              onStop={() => chatHelpers.stop()}
-              autoFocus
-              submitOnEnter={!isStreaming}
-              className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
-            />
+            <div className="flex flex-col gap-2 w-full">
+              {/* Token usage indicator */}
+              {lastValidation && (
+                <div className="flex justify-between items-center text-xs text-muted-foreground px-2">
+                  <span>
+                    {lastValidation.tokenCount.toLocaleString()} / {lastValidation.limit.toLocaleString()} tokens
+                  </span>
+                  {getTokenWarningLevel(lastValidation.tokenCount, lastValidation.limit) === 'warning' && (
+                    <span className="text-yellow-600 dark:text-yellow-400">Approaching limit</span>
+                  )}
+                  {getTokenWarningLevel(lastValidation.tokenCount, lastValidation.limit) === 'danger' && (
+                    <span className="text-destructive">Near token limit</span>
+                  )}
+                </div>
+              )}
+
+              <PromptInput
+                ref={formRef}
+                value={input}
+                onChange={(value: string) => {
+                  setInput(value)
+                  // Clear token error when user types
+                  if (tokenLimitError) setTokenLimitError(null)
+                }}
+                placeholder="Say something..."
+                models={models}
+                selectedModelId={selectedModelId}
+                onModelChange={onModelChange}
+                showSubmitButton
+                onSubmit={handleSubmit}
+                isLoading={chatHelpers.status === 'streaming'}
+                isStreaming={isStreaming}
+                onStop={() => chatHelpers.stop()}
+                autoFocus
+                submitOnEnter={!isStreaming}
+                className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+              />
+            </div>
           </motion.div>
 
           {!hasMessages && !(isMobile && isKeyboardVisible) && (

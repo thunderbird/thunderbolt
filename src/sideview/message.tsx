@@ -7,7 +7,13 @@ import { formatDate } from '@/lib/utils'
 import { EmailMessageWithAddresses } from '@/types'
 import { Fragment, useEffect, useState } from 'react'
 
-export function EmailMessageView({ message, isOpen: defaultIsOpen = true }: { message: EmailMessageWithAddresses; isOpen?: boolean }) {
+export function EmailMessageView({
+  message,
+  isOpen: defaultIsOpen = true,
+}: {
+  message: EmailMessageWithAddresses
+  isOpen?: boolean
+}) {
   const [isOpen, setIsOpen] = useState(defaultIsOpen)
 
   useEffect(() => {

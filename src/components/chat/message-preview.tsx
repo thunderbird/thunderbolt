@@ -23,7 +23,10 @@ export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProp
     queryKey: ['messages', messageId, imapId],
     queryFn: async () => {
       const message = await db.query.emailMessagesTable.findFirst({
-        where: or(messageId ? eq(emailMessagesTable.id, messageId) : undefined, imapId ? eq(emailMessagesTable.imapId, imapId) : undefined),
+        where: or(
+          messageId ? eq(emailMessagesTable.id, messageId) : undefined,
+          imapId ? eq(emailMessagesTable.imapId, imapId) : undefined,
+        ),
         with: {
           sender: true,
           recipients: {

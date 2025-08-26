@@ -68,7 +68,7 @@ export class LibSQLTauriDatabase implements DatabaseInterface {
       {
         schema,
         // logger: process.env.NODE_ENV === 'development',
-      }
+      },
     )
   }
 

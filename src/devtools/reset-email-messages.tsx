@@ -58,10 +58,18 @@ export default function ResetEmailMessagesSection() {
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-            <Button onClick={handleResetAll} disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending} variant="destructive">
+            <Button
+              onClick={handleResetAll}
+              disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending}
+              variant="destructive"
+            >
               {resetAllMutation.isPending ? 'Deleting...' : 'Delete All Email Data'}
             </Button>
-            <Button onClick={handleResetEmbeddings} disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending} variant="destructive">
+            <Button
+              onClick={handleResetEmbeddings}
+              disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending}
+              variant="destructive"
+            >
               {resetEmbeddingsMutation.isPending ? 'Deleting...' : 'Delete All Embeddings'}
             </Button>
           </div>

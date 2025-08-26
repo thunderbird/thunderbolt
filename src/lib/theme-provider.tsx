@@ -24,7 +24,12 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
-export function ThemeProvider({ children, defaultTheme = 'system', storageKey = 'ui-theme', ...props }: ThemeProviderProps) {
+export function ThemeProvider({
+  children,
+  defaultTheme = 'system',
+  storageKey = 'ui-theme',
+  ...props
+}: ThemeProviderProps) {
   const { db } = useDatabase()
   const queryClient = useQueryClient()
   const [theme, setTheme] = useState<Theme>(defaultTheme)

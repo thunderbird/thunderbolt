@@ -87,17 +87,35 @@ export default function ImapSyncSection() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Mailbox</label>
-              <input type="text" className="w-full p-2 border rounded" value={mailbox} onChange={(e) => setMailbox(e.target.value)} disabled={status.isSyncing} />
+              <input
+                type="text"
+                className="w-full p-2 border rounded"
+                value={mailbox}
+                onChange={(e) => setMailbox(e.target.value)}
+                disabled={status.isSyncing}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Page Size</label>
-              <input type="number" className="w-full p-2 border rounded" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} disabled={status.isSyncing} />
+              <input
+                type="number"
+                className="w-full p-2 border rounded"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                disabled={status.isSyncing}
+              />
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">Sync Since (optional)</label>
-            <input type="date" className="w-full p-2 border rounded" value={syncSinceInput} onChange={handleSyncSinceChange} disabled={status.isSyncing} />
+            <input
+              type="date"
+              className="w-full p-2 border rounded"
+              value={syncSinceInput}
+              onChange={handleSyncSinceChange}
+              disabled={status.isSyncing}
+            />
           </div>
 
           <div className="flex justify-between items-center">

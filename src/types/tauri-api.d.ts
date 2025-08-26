@@ -16,7 +16,17 @@ declare module '@tauri-apps/api/core' {
 // @tauri-apps/plugin-os
 // ---------------------------------------------------------------------------
 declare module '@tauri-apps/plugin-os' {
-  export type Platform = 'linux' | 'macos' | 'ios' | 'android' | 'windows' | 'freebsd' | 'dragonfly' | 'netbsd' | 'openbsd' | 'solaris'
+  export type Platform =
+    | 'linux'
+    | 'macos'
+    | 'ios'
+    | 'android'
+    | 'windows'
+    | 'freebsd'
+    | 'dragonfly'
+    | 'netbsd'
+    | 'openbsd'
+    | 'solaris'
 
   export function platform(): Platform
 }

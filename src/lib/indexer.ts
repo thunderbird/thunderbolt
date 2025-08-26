@@ -57,7 +57,7 @@ export class Indexer {
           thread: thread.email_threads,
           messages,
         }
-      })
+      }),
     )
 
     return threadsWithMessages

@@ -9,6 +9,7 @@ import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { LanguageModelV2 } from '@ai-sdk/provider'
+import { tokenizerService } from '@/services/tokenizer'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -157,6 +158,32 @@ export const aiFetchStreamingResponse = async ({
       lng: locationLng ? parseFloat(locationLng as string) : undefined,
     },
   })
+
+  // Validate token limit before processing
+  const validation = await tokenizerService.validateTokenLimit(
+    messages,
+    model.model,
+    model.provider,
+    systemPrompt,
+    4096, // Reserve tokens for response
+  )
+
+  if (!validation.valid) {
+    console.error('Token limit exceeded:', validation)
+    return new Response(
+      JSON.stringify({
+        error: validation.message,
+        tokenCount: validation.tokenCount,
+        limit: validation.limit,
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  }
+
+  console.log(`Token count: ${validation.tokenCount}/${validation.limit} tokens`)
 
   try {
     const baseModel = await createModel(model)

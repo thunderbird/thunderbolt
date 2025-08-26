@@ -55,7 +55,10 @@ export default function GenerateEmbeddingsOptimizedSection() {
     setStatus(`Processing batch ${startIndex + 1}-${endIndex} of ${emails.length}...`)
 
     // Extract text bodies for embedding or use custom text
-    const textsToEmbed = useCustomText && customText ? Array(batch.length).fill(customText) : batch.map((email) => removeQuotedText(email.textBody || ''))
+    const textsToEmbed =
+      useCustomText && customText
+        ? Array(batch.length).fill(customText)
+        : batch.map((email) => removeQuotedText(email.textBody || ''))
 
     console.log(textsToEmbed)
 
@@ -147,7 +150,8 @@ export default function GenerateEmbeddingsOptimizedSection() {
     setStatus('Stopping generation after current batch completes...')
   }
 
-  const progressPercentage = progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
+  const progressPercentage =
+    progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
 
   return (
     <Card>
@@ -172,27 +176,53 @@ export default function GenerateEmbeddingsOptimizedSection() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">Batch Size:</span>
-            <input type="number" value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} className="w-20 p-1 text-sm border rounded" min="1" max="100" disabled={isGenerating} />
+            <input
+              type="number"
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number(e.target.value))}
+              className="w-20 p-1 text-sm border rounded"
+              min="1"
+              max="100"
+              disabled={isGenerating}
+            />
           </div>
         </div>
 
         <div className="flex items-center space-x-2 mt-2">
-          <Switch id="custom-text-toggle" checked={useCustomText} onCheckedChange={setUseCustomText} disabled={isGenerating} />
+          <Switch
+            id="custom-text-toggle"
+            checked={useCustomText}
+            onCheckedChange={setUseCustomText}
+            disabled={isGenerating}
+          />
           <Label htmlFor="custom-text-toggle">Use custom text for performance testing</Label>
         </div>
 
         {useCustomText && (
-          <Textarea placeholder="Enter custom text to embed repeatedly..." value={customText} onChange={(e) => setCustomText(e.target.value)} className="min-h-[100px]" disabled={isGenerating} />
+          <Textarea
+            placeholder="Enter custom text to embed repeatedly..."
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            className="min-h-[100px]"
+            disabled={isGenerating}
+          />
         )}
 
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-          <div className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out" style={{ width: `${progressPercentage}%` }}></div>
+          <div
+            className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out"
+            style={{ width: `${progressPercentage}%` }}
+          ></div>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400 text-center">
           {progress.processed} of {progress.total} emails processed ({progressPercentage}%)
         </div>
 
-        {msPerMessage > 0 && <div className="text-sm text-gray-600 dark:text-gray-400 text-center">Average processing time: {msPerMessage.toFixed(2)} ms per message</div>}
+        {msPerMessage > 0 && (
+          <div className="text-sm text-gray-600 dark:text-gray-400 text-center">
+            Average processing time: {msPerMessage.toFixed(2)} ms per message
+          </div>
+        )}
 
         {status && (
           <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-md">

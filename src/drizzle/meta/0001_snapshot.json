@@ -53,9 +53,7 @@
       "indexes": {
         "accounts_id_unique": {
           "name": "accounts_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -106,9 +104,7 @@
       "indexes": {
         "chat_messages_id_unique": {
           "name": "chat_messages_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -117,12 +113,8 @@
           "name": "chat_messages_chat_thread_id_chat_threads_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "chat_threads",
-          "columnsFrom": [
-            "chat_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -167,9 +159,7 @@
       "indexes": {
         "chat_threads_id_unique": {
           "name": "chat_threads_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -178,12 +168,8 @@
           "name": "chat_threads_triggered_by_prompts_id_fk",
           "tableFrom": "chat_threads",
           "tableTo": "prompts",
-          "columnsFrom": [
-            "triggered_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["triggered_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -227,9 +213,7 @@
       "indexes": {
         "contacts_id_unique": {
           "name": "contacts_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -283,12 +267,8 @@
           "name": "email_addresses_contact_id_contacts_id_fk",
           "tableFrom": "email_addresses",
           "tableTo": "contacts",
-          "columnsFrom": [
-            "contact_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["contact_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "cascade"
         }
@@ -381,16 +361,12 @@
       "indexes": {
         "email_messages_id_unique": {
           "name": "email_messages_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         },
         "email_messages_imap_id_unique": {
           "name": "email_messages_imap_id_unique",
-          "columns": [
-            "imap_id"
-          ],
+          "columns": ["imap_id"],
           "isUnique": true
         }
       },
@@ -399,12 +375,8 @@
           "name": "email_messages_from_address_email_addresses_address_fk",
           "tableFrom": "email_messages",
           "tableTo": "email_addresses",
-          "columnsFrom": [
-            "from_address"
-          ],
-          "columnsTo": [
-            "address"
-          ],
+          "columnsFrom": ["from_address"],
+          "columnsTo": ["address"],
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
@@ -412,12 +384,8 @@
           "name": "email_messages_email_thread_id_email_threads_id_fk",
           "tableFrom": "email_messages",
           "tableTo": "email_threads",
-          "columnsFrom": [
-            "email_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["email_thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -457,12 +425,8 @@
           "name": "email_messages_to_addresses_email_message_id_email_messages_id_fk",
           "tableFrom": "email_messages_to_addresses",
           "tableTo": "email_messages",
-          "columnsFrom": [
-            "email_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["email_message_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -470,22 +434,15 @@
           "name": "email_messages_to_addresses_email_address_id_email_addresses_address_fk",
           "tableFrom": "email_messages_to_addresses",
           "tableTo": "email_addresses",
-          "columnsFrom": [
-            "email_address_id"
-          ],
-          "columnsTo": [
-            "address"
-          ],
+          "columnsFrom": ["email_address_id"],
+          "columnsTo": ["address"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {
         "email_messages_to_addresses_email_message_id_email_address_id_pk": {
-          "columns": [
-            "email_message_id",
-            "email_address_id"
-          ],
+          "columns": ["email_message_id", "email_address_id"],
           "name": "email_messages_to_addresses_email_message_id_email_address_id_pk"
         }
       },
@@ -534,9 +491,7 @@
       "indexes": {
         "email_threads_id_unique": {
           "name": "email_threads_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -587,23 +542,17 @@
       "indexes": {
         "embeddings_id_unique": {
           "name": "embeddings_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         },
         "embeddings_email_message_id_unique": {
           "name": "embeddings_email_message_id_unique",
-          "columns": [
-            "email_message_id"
-          ],
+          "columns": ["email_message_id"],
           "isUnique": true
         },
         "embeddings_email_thread_id_unique": {
           "name": "embeddings_email_thread_id_unique",
-          "columns": [
-            "email_thread_id"
-          ],
+          "columns": ["email_thread_id"],
           "isUnique": true
         }
       },
@@ -612,12 +561,8 @@
           "name": "embeddings_email_message_id_email_messages_id_fk",
           "tableFrom": "embeddings",
           "tableTo": "email_messages",
-          "columnsFrom": [
-            "email_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["email_message_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -625,12 +570,8 @@
           "name": "embeddings_email_thread_id_email_threads_id_fk",
           "tableFrom": "embeddings",
           "tableTo": "email_threads",
-          "columnsFrom": [
-            "email_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["email_thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -713,9 +654,7 @@
       "indexes": {
         "mcp_servers_id_unique": {
           "name": "mcp_servers_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -805,9 +744,7 @@
       "indexes": {
         "models_id_unique": {
           "name": "models_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -851,9 +788,7 @@
       "indexes": {
         "prompts_id_unique": {
           "name": "prompts_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -862,12 +797,8 @@
           "name": "prompts_model_id_models_id_fk",
           "tableFrom": "prompts",
           "tableTo": "models",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -952,16 +883,12 @@
       "indexes": {
         "tasks_id_unique": {
           "name": "tasks_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         },
         "tasks_email_message_id_unique": {
           "name": "tasks_email_message_id_unique",
-          "columns": [
-            "email_message_id"
-          ],
+          "columns": ["email_message_id"],
           "isUnique": true
         }
       },
@@ -970,12 +897,8 @@
           "name": "tasks_email_message_id_email_messages_id_fk",
           "tableFrom": "tasks",
           "tableTo": "email_messages",
-          "columnsFrom": [
-            "email_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["email_message_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -1027,9 +950,7 @@
       "indexes": {
         "triggers_id_unique": {
           "name": "triggers_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         }
       },
@@ -1038,12 +959,8 @@
           "name": "triggers_prompt_id_prompts_id_fk",
           "tableFrom": "triggers",
           "tableTo": "prompts",
-          "columnsFrom": [
-            "prompt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["prompt_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }

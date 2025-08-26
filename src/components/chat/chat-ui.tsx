@@ -1,5 +1,6 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTokenValidation } from '@/hooks/use-token-validation'
 import { cn } from '@/lib/utils'
 import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
@@ -8,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
+import { TokenValidationError } from './token-validation-error'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 
@@ -65,6 +67,17 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
+  
+  // Token validation
+  const {
+    currentTokens,
+    maxTokens,
+    newMessageTokens,
+    errorMessage,
+    isLoading: isTokenValidating,
+    validateMessage,
+    resetValidation
+  } = useTokenValidation()
 
   const {
     scrollContainerRef,
@@ -140,8 +153,20 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
 
+    // Validate token limits before submitting
+    if (selectedModelId) {
+      const isValid = await validateMessage(textToSend, chatHelpers.messages, selectedModelId)
+      if (!isValid) {
+        // Don't submit if token limit would be exceeded
+        return
+      }
+    }
+
     // Clear the input immediately for responsive UX
     setInput('')
+    
+    // Reset validation state
+    resetValidation()
 
     // Kick off sending without blocking UI
     void chatHelpers.sendMessage({ text: textToSend })
@@ -160,6 +185,25 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
       }
     }, 0)
   }
+
+  // Validate tokens when input changes or model changes (debounced)
+  useEffect(() => {
+    if (!selectedModelId || !input.trim()) {
+      resetValidation()
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      void validateMessage(input, chatHelpers.messages, selectedModelId)
+    }, 500) // Debounce for 500ms
+
+    return () => clearTimeout(timeoutId)
+  }, [input, selectedModelId, chatHelpers.messages, validateMessage, resetValidation])
+
+  // Reset validation when model changes
+  useEffect(() => {
+    resetValidation()
+  }, [selectedModelId, resetValidation])
 
   return (
     <div
@@ -203,6 +247,17 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
 
               return null
             })}
+
+            {/* Show token validation error */}
+            {errorMessage && (
+              <TokenValidationError
+                errorMessage={errorMessage}
+                currentTokens={currentTokens}
+                maxTokens={maxTokens}
+                newMessageTokens={newMessageTokens}
+                onDismiss={resetValidation}
+              />
+            )}
 
             {/* Show error message if there's an error */}
             {chatHelpers.error && (
@@ -263,12 +318,14 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
               onModelChange={onModelChange}
               showSubmitButton
               onSubmit={handleSubmit}
-              isLoading={chatHelpers.status === 'streaming'}
+              isLoading={chatHelpers.status === 'streaming' || isTokenValidating}
               isStreaming={isStreaming}
               onStop={() => chatHelpers.stop()}
               autoFocus
               submitOnEnter={!isStreaming}
               className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+              isTokenValidating={isTokenValidating}
+              tokenValidationError={errorMessage}
             />
           </motion.div>
 

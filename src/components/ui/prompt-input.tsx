@@ -21,6 +21,8 @@ interface PromptInputProps {
   noForm?: boolean
   isStreaming?: boolean
   onStop?: () => void
+  isTokenValidating?: boolean
+  tokenValidationError?: string | null
 }
 
 /**
@@ -45,6 +47,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       noForm = false,
       isStreaming = false,
       onStop,
+      tokenValidationError = null,
     },
     ref,
   ) => {
@@ -110,12 +113,19 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 type="submit"
                 variant="default"
                 className="h-6 w-6 rounded-full flex items-center justify-center"
-                disabled={isLoading || !value.trim()}
+                disabled={isLoading || !value.trim() || (tokenValidationError !== null)}
               >
                 <ArrowUp className="size-4" />
               </Button>
             ))}
         </div>
+
+        {/* Show token validation error inline */}
+        {tokenValidationError && (
+          <div className="text-xs text-destructive mt-1">
+            {tokenValidationError}
+          </div>
+        )}
       </>
     )
 

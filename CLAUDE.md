@@ -9,6 +9,7 @@
 - Always add JSDOC comments to new utility functions
 - Heavily prefer using `const` over `let` and create helper functions with early return instead of setting `let` variables inside of if statements.
 - Only add comments if it helps clarify unusual, confusing, or hard to read code - don't just add it before every line
+- Example of useless comment: "// Save data collection mutation" just before the method "saveDataCollection"
 - Aim for concise, readable, maintainable, and robust code that is very clear and well-written
 - Prefer optimistic code over defensive code in order to keep the code clean and concise - do not wrap everything in try/catch statements defensively - instead aim to handle edge cases and errors through deeper understanding of what is really likely to fail, when, and why. Aim to have errors caught at a higher level such as error handling middleware.
 - Research best practices and available libraries before implementing new features and look at how other respected projects are structuring their code and approaching problems

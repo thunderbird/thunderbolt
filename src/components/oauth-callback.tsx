@@ -1,6 +1,6 @@
+import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { Loader2 } from 'lucide-react'
 
 export default function OAuthCallback() {
   const navigate = useNavigate()
@@ -59,9 +59,7 @@ export default function OAuthCallback() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center min-h-screen bg-background">
       <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-        <h1 className="text-xl font-semibold">Completing Authentication...</h1>
-        <p className="text-muted-foreground">Please wait while we complete the authentication process.</p>
+        <Loading />
       </div>
     </div>
   )

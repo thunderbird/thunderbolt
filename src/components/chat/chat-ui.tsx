@@ -5,6 +5,7 @@ import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
+import { countTokensForSend } from '@/ai/tokenization'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
@@ -62,6 +63,7 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [input, setInput] = useState('')
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const isMobile = useIsMobile()
@@ -140,8 +142,28 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
 
+    // Token preflight: block if prompt would exceed context
+    try {
+      const result = await countTokensForSend({
+        model: models.find((m) => m.id === (selectedModelId || ''))!,
+        messages: chatHelpers.messages,
+        pendingUserText: textToSend,
+      })
+
+      if (result.willExceedLimit) {
+        setSubmitError(
+          'The conversation (including tool call data) has used the maximum number of tokens and is too long. Consider starting a new conversation or shortening your message.',
+        )
+        return
+      }
+    } catch (e) {
+      // If tokenization fails, fail open but log
+      console.error('Token counting failed', e)
+    }
+
     // Clear the input immediately for responsive UX
     setInput('')
+    if (submitError) setSubmitError(null)
 
     // Kick off sending without blocking UI
     void chatHelpers.sendMessage({ text: textToSend })
@@ -205,11 +227,11 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
             })}
 
             {/* Show error message if there's an error */}
-            {chatHelpers.error && (
+            {(chatHelpers.error || submitError) && (
               <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto w-full">
                 <p className="text-destructive font-medium mb-1">Error</p>
                 <p className="text-destructive/80 text-sm">
-                  {chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}
+                  {submitError || chatHelpers.error?.message || 'An unexpected error occurred. Please try again.'}
                 </p>
               </div>
             )}

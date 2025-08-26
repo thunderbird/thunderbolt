@@ -27,6 +27,7 @@ import {
 import { eq } from 'drizzle-orm'
 import { createConfiguredFlowerClient } from './flower'
 import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
+import { countTokensForSend } from './tokenization'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -159,6 +160,22 @@ export const aiFetchStreamingResponse = async ({
   })
 
   try {
+    // Preflight token validation to prevent provider errors
+    try {
+      const tokenCheck = await countTokensForSend({ model, messages })
+      if (tokenCheck.willExceedLimit) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'The conversation (including tool call data) has used the maximum number of tokens and is too long. Consider starting a new conversation or shortening your message.',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+    } catch (e) {
+      console.warn('Token preflight failed, proceeding anyway', e)
+    }
+
     const baseModel = await createModel(model)
 
     // Use Flower-specific middleware for the Flower provider to enable enhanced tool support

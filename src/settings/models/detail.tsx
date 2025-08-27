@@ -21,7 +21,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { modelsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -64,7 +64,7 @@ const formSchema = z
 export default function ModelDetailPage() {
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [showSaved, setShowSaved] = React.useState(false)
 

@@ -1,5 +1,5 @@
 import { settingsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import React, { createContext, useContext, useEffect, useState } from 'react'
@@ -24,8 +24,13 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
-export function ThemeProvider({ children, defaultTheme = 'system', storageKey = 'ui-theme', ...props }: ThemeProviderProps) {
-  const { db } = useDatabase()
+export function ThemeProvider({
+  children,
+  defaultTheme = 'system',
+  storageKey = 'ui-theme',
+  ...props
+}: ThemeProviderProps) {
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [theme, setTheme] = useState<Theme>(defaultTheme)
 

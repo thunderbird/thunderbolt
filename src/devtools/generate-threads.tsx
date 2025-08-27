@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { emailMessagesTable } from '@/db/tables'
 import { EmailThreader } from '@/lib/email'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@radix-ui/react-accordion'
@@ -9,12 +9,16 @@ import { AlertCircle, Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateThreadsSection() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(10)
   const [status, setStatus] = useState<string>('')
   const [progress, setProgress] = useState<{ processed: number; total: number }>({ processed: 0, total: 0 })
-  const [threaderStatus, setThreaderStatus] = useState<{ threadsCreated: number; messagesProcessed: number; isProcessing: boolean }>({
+  const [threaderStatus, setThreaderStatus] = useState<{
+    threadsCreated: number
+    messagesProcessed: number
+    isProcessing: boolean
+  }>({
     threadsCreated: 0,
     messagesProcessed: 0,
     isProcessing: false,
@@ -167,7 +171,8 @@ export default function GenerateThreadsSection() {
     }
   }
 
-  const progressPercentage = progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
+  const progressPercentage =
+    progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
 
   return (
     <Card>
@@ -182,7 +187,12 @@ export default function GenerateThreadsSection() {
               <Play size={16} />
               {isProcessing ? 'Processing...' : 'Start'}
             </Button>
-            <Button onClick={handleStepProcessing} disabled={isProcessing} variant="outline" className="flex items-center gap-2">
+            <Button
+              onClick={handleStepProcessing}
+              disabled={isProcessing}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
               <SkipForward size={16} />
               Step
             </Button>
@@ -195,12 +205,23 @@ export default function GenerateThreadsSection() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">Batch Size:</span>
-            <input type="number" value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} className="w-20 p-1 text-sm border rounded" min="1" max="100" disabled={isProcessing} />
+            <input
+              type="number"
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number(e.target.value))}
+              className="w-20 p-1 text-sm border rounded"
+              min="1"
+              max="100"
+              disabled={isProcessing}
+            />
           </div>
         </div>
 
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden mt-4">
-          <div className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out" style={{ width: `${progressPercentage}%` }}></div>
+          <div
+            className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out"
+            style={{ width: `${progressPercentage}%` }}
+          ></div>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400 text-center">
           {progress.processed} of {progress.total} emails processed ({progressPercentage}%)

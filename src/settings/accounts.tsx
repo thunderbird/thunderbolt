@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { accountsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import ImapClient from '@/imap/imap'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -30,7 +30,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>
 
 export default function AccountsSettingsPage() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [showDialog, setShowDialog] = React.useState(false)
   const [showSaved, setShowSaved] = React.useState(false)

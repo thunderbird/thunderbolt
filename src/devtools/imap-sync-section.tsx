@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { ImapSyncer } from '@/imap/sync'
 import { Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 export default function ImapSyncSection() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const [syncer, setSyncer] = useState<ImapSyncer | null>(null)
   const [status, setStatus] = useState({
     messagesProcessed: 0,
@@ -87,17 +87,35 @@ export default function ImapSyncSection() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Mailbox</label>
-              <input type="text" className="w-full p-2 border rounded" value={mailbox} onChange={(e) => setMailbox(e.target.value)} disabled={status.isSyncing} />
+              <input
+                type="text"
+                className="w-full p-2 border rounded"
+                value={mailbox}
+                onChange={(e) => setMailbox(e.target.value)}
+                disabled={status.isSyncing}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Page Size</label>
-              <input type="number" className="w-full p-2 border rounded" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} disabled={status.isSyncing} />
+              <input
+                type="number"
+                className="w-full p-2 border rounded"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                disabled={status.isSyncing}
+              />
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">Sync Since (optional)</label>
-            <input type="date" className="w-full p-2 border rounded" value={syncSinceInput} onChange={handleSyncSinceChange} disabled={status.isSyncing} />
+            <input
+              type="date"
+              className="w-full p-2 border rounded"
+              value={syncSinceInput}
+              onChange={handleSyncSinceChange}
+              disabled={status.isSyncing}
+            />
           </div>
 
           <div className="flex justify-between items-center">

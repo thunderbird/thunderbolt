@@ -1,5 +1,5 @@
 import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
@@ -11,7 +11,7 @@ import Chat from './chat'
 
 export default function ChatDetailPage() {
   const params = useParams()
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {

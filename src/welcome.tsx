@@ -1,4 +1,3 @@
-import { useDatabase } from '@/hooks/use-database'
 import { CheckCircle2, ChevronDown, RefreshCw, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from './components/ui/button'
@@ -9,10 +8,11 @@ import { useSetting } from './hooks/use-setting'
 import { useImap } from './imap/provider'
 import { refreshTasks } from './lib/tasks'
 import { useSideview } from './sideview/provider'
+import { DatabaseSingleton } from '@/db/singleton'
 
 export default function WelcomePage() {
   const { client: imapClient } = useImap()
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const { setSideview } = useSideview()
   const [_inboxSummary, setInboxSummary] = useState<string | null>(null)
   const [tasksList, setTasksList] = useState<{ item: string; emailMessageId?: string | null }[]>([])

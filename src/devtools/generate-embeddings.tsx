@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { Indexer } from '@/lib/indexer'
 import { useTray } from '@/lib/tray'
 import { EmailMessage } from '@/types'
@@ -11,7 +11,7 @@ import { AlertCircle, Pause, Play, SkipForward } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsSection() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const { tray } = useTray()
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(1)
@@ -165,7 +165,8 @@ export default function GenerateEmbeddingsSection() {
     }
   }
 
-  const progressPercentage = progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
+  const progressPercentage =
+    progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
 
   return (
     <Card>
@@ -180,7 +181,12 @@ export default function GenerateEmbeddingsSection() {
               <Play size={16} />
               {isGenerating ? 'Generating...' : 'Start'}
             </Button>
-            <Button onClick={handleStepGeneration} disabled={isGenerating} variant="outline" className="flex items-center gap-2">
+            <Button
+              onClick={handleStepGeneration}
+              disabled={isGenerating}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
               <SkipForward size={16} />
               Step
             </Button>
@@ -193,26 +199,58 @@ export default function GenerateEmbeddingsSection() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">Batch Size:</span>
-            <input type="number" value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} className="w-20 p-1 text-sm border rounded" min="1" max="100" disabled={isGenerating} />
+            <input
+              type="number"
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number(e.target.value))}
+              className="w-20 p-1 text-sm border rounded"
+              min="1"
+              max="100"
+              disabled={isGenerating}
+            />
           </div>
         </div>
 
         <div className="flex items-center gap-2 mt-2">
           <span className="text-sm text-gray-600 dark:text-gray-400">Max Batch Time (ms):</span>
-          <input type="number" value={maxBatchTime} onChange={(e) => setMaxBatchTime(Number(e.target.value))} className="w-24 p-1 text-sm border rounded" min="1000" disabled={isGenerating} />
+          <input
+            type="number"
+            value={maxBatchTime}
+            onChange={(e) => setMaxBatchTime(Number(e.target.value))}
+            className="w-24 p-1 text-sm border rounded"
+            min="1000"
+            disabled={isGenerating}
+          />
         </div>
 
         <div className="flex items-center gap-2 mt-2">
-          <Switch checked={useCustomText} onCheckedChange={setUseCustomText} id="custom-text-toggle" disabled={isGenerating} />
+          <Switch
+            checked={useCustomText}
+            onCheckedChange={setUseCustomText}
+            id="custom-text-toggle"
+            disabled={isGenerating}
+          />
           <label htmlFor="custom-text-toggle" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
             Use custom text instead of thread content
           </label>
         </div>
 
-        {useCustomText && <Textarea placeholder="Enter custom text to embed..." value={customText} onChange={(e) => setCustomText(e.target.value)} className="mt-2" rows={3} disabled={isGenerating} />}
+        {useCustomText && (
+          <Textarea
+            placeholder="Enter custom text to embed..."
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            className="mt-2"
+            rows={3}
+            disabled={isGenerating}
+          />
+        )}
 
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden mt-4">
-          <div className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out" style={{ width: `${progressPercentage}%` }}></div>
+          <div
+            className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out"
+            style={{ width: `${progressPercentage}%` }}
+          ></div>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400 text-center">
           {progress.processed} of {progress.total} threads processed ({progressPercentage}%)
@@ -268,9 +306,14 @@ export default function GenerateEmbeddingsSection() {
                           <AccordionContent>
                             <div className="max-h-60 overflow-y-auto">
                               {batch.emails.map((email, emailIndex) => (
-                                <div key={emailIndex} className="p-2 border-t border-gray-200 dark:border-gray-700 text-xs">
+                                <div
+                                  key={emailIndex}
+                                  className="p-2 border-t border-gray-200 dark:border-gray-700 text-xs"
+                                >
                                   <div className="font-medium">Email #{emailIndex + 1}</div>
-                                  <pre className="whitespace-pre-wrap mt-1 text-xs overflow-x-auto">{email.textBody || '(No text body)'}</pre>
+                                  <pre className="whitespace-pre-wrap mt-1 text-xs overflow-x-auto">
+                                    {email.textBody || '(No text body)'}
+                                  </pre>
                                 </div>
                               ))}
                             </div>
@@ -300,7 +343,9 @@ export default function GenerateEmbeddingsSection() {
                         <span className="font-medium">Thread ID</span>
                         <span className="text-red-500">{threadId}</span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">Processing time exceeded {indexerRef.current?.getStatus().debug.slowThreadThreshold || 1000}ms</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Processing time exceeded {indexerRef.current?.getStatus().debug.slowThreadThreshold || 1000}ms
+                      </div>
                     </div>
                   ))}
                 </div>

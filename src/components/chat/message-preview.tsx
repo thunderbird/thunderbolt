@@ -1,5 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { emailMessagesTable } from '@/db/tables'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
@@ -16,14 +16,17 @@ interface ChatMessagePreviewProps {
 export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProps) {
   if (!messageId && !imapId) throw new Error('Either messageId or imapId must be provided')
 
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const { setSideview } = useSideview()
 
   const { data: message } = useQuery<EmailMessageWithAddresses>({
     queryKey: ['messages', messageId, imapId],
     queryFn: async () => {
       const message = await db.query.emailMessagesTable.findFirst({
-        where: or(messageId ? eq(emailMessagesTable.id, messageId) : undefined, imapId ? eq(emailMessagesTable.imapId, imapId) : undefined),
+        where: or(
+          messageId ? eq(emailMessagesTable.id, messageId) : undefined,
+          imapId ? eq(emailMessagesTable.imapId, imapId) : undefined,
+        ),
         with: {
           sender: true,
           recipients: {

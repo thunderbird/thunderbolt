@@ -1,11 +1,11 @@
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
 import { useMCP } from '@/lib/mcp-provider'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 export function useMcpSync() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const { servers, addServer, removeServer, updateServerStatus } = useMCP()
 
   const { data: dbServers = [] } = useQuery({

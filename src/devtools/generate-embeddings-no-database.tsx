@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { emailMessagesTable } from '@/db/tables'
 // import { getEmbedding } from '@/lib/embeddings'
 import { EmailMessage } from '@/types'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsFrontendNoDatabaseSection() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
   const [batchSize, setBatchSize] = useState<number>(10)
   const [status, setStatus] = useState<string>('')
@@ -87,7 +87,8 @@ export default function GenerateEmbeddingsFrontendNoDatabaseSection() {
     setStatus('Stopping generation after current email completes...')
   }
 
-  const progressPercentage = progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
+  const progressPercentage =
+    progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : 0
 
   return (
     <Card>
@@ -109,12 +110,23 @@ export default function GenerateEmbeddingsFrontendNoDatabaseSection() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">Batch Size:</span>
-            <input type="number" value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} className="w-20 p-1 text-sm border rounded" min="1" max="100" disabled={isGenerating} />
+            <input
+              type="number"
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number(e.target.value))}
+              className="w-20 p-1 text-sm border rounded"
+              min="1"
+              max="100"
+              disabled={isGenerating}
+            />
           </div>
         </div>
 
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-          <div className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out" style={{ width: `${progressPercentage}%` }}></div>
+          <div
+            className="bg-blue-600 h-4 rounded-full transition-all duration-300 ease-in-out"
+            style={{ width: `${progressPercentage}%` }}
+          ></div>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400 text-center">
           {progress.processed} of {progress.total} emails processed ({progressPercentage}%)

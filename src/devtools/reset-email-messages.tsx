@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { emailThreadsTable, embeddingsTable } from '@/db/tables'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 
 export default function ResetEmailMessagesSection() {
   const [status, setStatus] = useState<string>('')
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
 
   const resetAllMutation = useMutation({
     mutationFn: async () => {
@@ -58,10 +58,18 @@ export default function ResetEmailMessagesSection() {
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-            <Button onClick={handleResetAll} disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending} variant="destructive">
+            <Button
+              onClick={handleResetAll}
+              disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending}
+              variant="destructive"
+            >
               {resetAllMutation.isPending ? 'Deleting...' : 'Delete All Email Data'}
             </Button>
-            <Button onClick={handleResetEmbeddings} disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending} variant="destructive">
+            <Button
+              onClick={handleResetEmbeddings}
+              disabled={resetAllMutation.isPending || resetEmbeddingsMutation.isPending}
+              variant="destructive"
+            >
               {resetEmbeddingsMutation.isPending ? 'Deleting...' : 'Delete All Embeddings'}
             </Button>
           </div>

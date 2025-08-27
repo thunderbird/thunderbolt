@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { modelsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import React from 'react'
@@ -10,7 +10,7 @@ import { Outlet, useNavigate, useParams } from 'react-router'
 export default function ModelsLayout() {
   const navigate = useNavigate()
   const { modelId } = useParams()
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],

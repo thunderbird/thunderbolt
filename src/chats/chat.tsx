@@ -1,5 +1,5 @@
 import { modelsTable, settingsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { Model, SaveMessagesFunction, Setting, type ThunderboltUIMessage } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
@@ -12,7 +12,7 @@ interface ChatProps {
 }
 
 export default function Chat({ id, initialMessages, saveMessages }: ChatProps) {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
 
   const { data: models = [] } = useQuery<Model[]>({
     queryKey: ['models'],

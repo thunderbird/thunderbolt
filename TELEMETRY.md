@@ -1,6 +1,6 @@
 # Telemetry
 
-## Privacy
+## Privacy Policy - [[PAGE]](https://www.thunderbird.net/en-US/privacy/)
 
 Event tracking respects user privacy settings and can be disabled through the application settings. No personally identifiable information is collected without explicit user consent.
 

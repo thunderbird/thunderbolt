@@ -95,7 +95,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       // Track send reply event
       trackEvent('chat_send_reply', {
         model: selectedModelIdRef.current,
-        token_count: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
+        length: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
         reply_number: chatMessages.length + 1,
       })
     },

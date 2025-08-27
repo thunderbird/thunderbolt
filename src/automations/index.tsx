@@ -77,7 +77,7 @@ export default function AutomationsPage() {
       trackEvent('automation_run', {
         automation_id: promptId,
         model: prompt.modelId,
-        token_count: prompt.prompt.length,
+        length: prompt.prompt.length,
       })
     }
 

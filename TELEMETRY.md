@@ -101,3 +101,4 @@ To add a new event:
 2. Use the `<feature>_<action>` naming convention
 3. Add the tracking call in the appropriate component
 4. Include relevant properties for analytics insights
+5. Update this file to document it

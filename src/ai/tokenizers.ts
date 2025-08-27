@@ -21,8 +21,8 @@ const estimateTokensFromText = (text: string): number => {
  * @returns Whether the model is supported for context tracking
  */
 export const isModelSupported = (model: { contextWindow?: number | null; tokenizer?: string | null }): boolean => {
-  // Model supports context tracking if it has both contextWindow and tokenizer defined
-  return Boolean(model.contextWindow && model.tokenizer)
+  // Model supports context tracking if it has a contextWindow defined
+  return Boolean(model.contextWindow)
 }
 
 /**

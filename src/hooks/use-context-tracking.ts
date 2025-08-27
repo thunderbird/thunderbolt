@@ -1,6 +1,6 @@
-import { estimateTokensForMessages, estimateTokensForText, isModelSupported } from '@/ai/tokenizers'
-import type { Model, ThunderboltUIMessage } from '@/types'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { estimateTokensForText } from '@/ai/tokenizers'
+import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import { useCallback, useMemo } from 'react'
 
 interface UseContextTrackingProps {
   model?: Model | null
@@ -17,52 +17,51 @@ interface UseContextTrackingReturn {
   estimateTokensForInput: (input: string) => number
 }
 
-const SLACK_TOKENS = 150
-
 /**
- * Hook to track context usage and detect overflow conditions
- * Uses simple character-based estimation, not real tokenization
+ * Hook to track context usage using actual token counts from the database
+ * Uses the total token count from the most recent message's metadata
  */
 export const useContextTracking = ({
   model,
   messages,
   currentInput,
 }: UseContextTrackingProps): UseContextTrackingReturn => {
-  const [inputTokens, setInputTokens] = useState(0)
-
   // Derive context window information from model
   const maxTokens = model?.contextWindow ?? undefined
-  const tokenizerName = model?.tokenizer ?? undefined
-  const isModelSupportedForTracking = model ? isModelSupported(model) : false
-  const isContextKnown = Boolean(maxTokens && tokenizerName && isModelSupportedForTracking)
+  const isContextKnown = Boolean(maxTokens)
 
-  // Memoize message token count to avoid recalculating during streaming
-  // Only recalculates when the messages array reference changes (not during streaming)
-  const messageTokens = useMemo(() => {
-    if (!isContextKnown) {
+  // Get actual token count from the most recent message's metadata
+  const actualTokensFromLastMessage = useMemo(() => {
+    if (!messages.length) {
       return 0
     }
 
-    console.log('Calculating tokens for', messages.length, 'messages')
-    return estimateTokensForMessages(messages)
-  }, [messages, isContextKnown])
-
-  // Update input tokens when current input changes
-  useEffect(() => {
-    if (!isContextKnown || !currentInput.trim()) {
-      setInputTokens(0)
-      return
+    // Find the most recent message with token usage data
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      const metadata = message.metadata as UIMessageMetadata | undefined
+      if (metadata?.usage?.totalTokens) {
+        return metadata.usage.totalTokens
+      }
     }
 
-    const tokens = estimateTokensForText(currentInput)
-    setInputTokens(tokens)
-  }, [currentInput, isContextKnown])
+    return 0
+  }, [messages])
 
-  // Calculate total tokens and overflow status
-  const totalTokens = messageTokens + inputTokens + SLACK_TOKENS
+  // Simple estimation for current input (only used for overflow preview)
+  const inputTokenEstimate = useMemo(() => {
+    if (!currentInput.trim()) {
+      return 0
+    }
+    return estimateTokensForText(currentInput)
+  }, [currentInput])
+
+  // The actual tokens already represent the full conversation history
+  // Only add input estimate for overflow checking when user is typing
+  const totalTokens = actualTokensFromLastMessage + (currentInput.trim() ? inputTokenEstimate : 0)
   const isOverflowing = isContextKnown && maxTokens ? totalTokens > maxTokens : false
 
-  // Function to estimate tokens for arbitrary input
+  // Function to estimate tokens for arbitrary input (for input preview)
   const estimateTokensForInput = useCallback((input: string): number => {
     if (!input.trim()) {
       return 0
@@ -71,11 +70,11 @@ export const useContextTracking = ({
   }, [])
 
   return {
-    usedTokens: totalTokens,
+    usedTokens: actualTokensFromLastMessage, // Show actual tokens used (not including current input)
     maxTokens,
     isContextKnown,
     isOverflowing,
-    isLoading: false, // No async loading anymore
+    isLoading: false,
     estimateTokensForInput,
   }
 }

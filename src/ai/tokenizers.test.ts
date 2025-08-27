@@ -4,23 +4,17 @@ import { estimateTokensForMessages, estimateTokensForText, formatTokenCount, isM
 
 describe('tokenizers', () => {
   describe('isModelSupported', () => {
-    it('should return true for models with both contextWindow and tokenizer', () => {
+    it('should return true for models with contextWindow', () => {
       expect(isModelSupported({ contextWindow: 256000, tokenizer: 'qwen3' })).toBe(true)
       expect(isModelSupported({ contextWindow: 4096, tokenizer: 'gpt-4' })).toBe(true)
       expect(isModelSupported({ contextWindow: 100000, tokenizer: 'claude' })).toBe(true)
+      expect(isModelSupported({ contextWindow: 256000, tokenizer: null })).toBe(true)
+      expect(isModelSupported({ contextWindow: 256000 })).toBe(true)
     })
 
     it('should return false for models missing contextWindow', () => {
       expect(isModelSupported({ contextWindow: null, tokenizer: 'qwen3' })).toBe(false)
       expect(isModelSupported({ tokenizer: 'qwen3' })).toBe(false)
-    })
-
-    it('should return false for models missing tokenizer', () => {
-      expect(isModelSupported({ contextWindow: 256000, tokenizer: null })).toBe(false)
-      expect(isModelSupported({ contextWindow: 256000 })).toBe(false)
-    })
-
-    it('should return false for models missing both fields', () => {
       expect(isModelSupported({})).toBe(false)
       expect(isModelSupported({ contextWindow: null, tokenizer: null })).toBe(false)
     })

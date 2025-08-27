@@ -19,13 +19,22 @@ export function uuidv7ToDate(uuid: string) {
 }
 
 export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage {
+  const metadata: UIMessageMetadata = {}
+
+  // Include actual token count from database if available
+  if (message.tokensActual) {
+    metadata.usage = {
+      totalTokens: message.tokensActual,
+      inputTokens: undefined, // Not tracked separately in our DB
+      outputTokens: undefined, // Not tracked separately in our DB
+    }
+  }
+
   return {
     id: message.id,
     parts: message.parts ?? [],
     role: message.role,
-    metadata: {
-      createdAt: uuidv7ToDate(message.id),
-    },
+    metadata,
   }
 }
 

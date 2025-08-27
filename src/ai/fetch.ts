@@ -224,9 +224,22 @@ export const aiFetchStreamingResponse = async ({
     return result.toUIMessageStreamResponse<ThunderboltUIMessage>({
       sendReasoning: true,
       messageMetadata: ({ part }) => {
-        return {
-          modelId,
-          usage: part.type === 'finish' ? part.totalUsage : undefined,
+        switch (part.type) {
+          case 'finish-step':
+            return {
+              modelId,
+              usage: part.usage,
+            }
+          case 'finish':
+            return {
+              modelId,
+              // If you wanted to get the total usage for the entire conversation, you could do this:
+              // usage: part.totalUsage,
+            }
+          default:
+            return {
+              modelId,
+            }
         }
       },
     })

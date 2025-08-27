@@ -1,7 +1,6 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useTokenEstimation } from '@/hooks/use-token-estimation'
 import { getOrCreateChatThread } from '@/lib/dal'
 import { cn } from '@/lib/utils'
 import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
@@ -82,9 +81,6 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     messages: chatHelpers.messages,
     currentInput: input,
   })
-
-  // Token estimation for user messages
-  const { saveEstimatedTokens } = useTokenEstimation()
 
   const {
     scrollContainerRef,
@@ -169,23 +165,10 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     // Clear the input immediately for responsive UX
     setInput('')
 
-    // Send the message and save estimated tokens
+    // Send the message
     void (async () => {
       try {
-        // Send the message
         await chatHelpers.sendMessage({ text: textToSend })
-
-        // Save estimated tokens for the user message after it's sent
-        if (selectedModel) {
-          // Get the latest user message that was just sent
-          setTimeout(async () => {
-            const allMessages = chatHelpers.messages
-            const latestUserMessage = allMessages.filter((m) => m.role === 'user').pop()
-            if (latestUserMessage) {
-              await saveEstimatedTokens(latestUserMessage.id, selectedModel, allMessages)
-            }
-          }, 500) // Small delay to ensure message is in the list
-        }
       } catch (error) {
         console.error('Failed to send message:', error)
       }

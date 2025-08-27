@@ -43,6 +43,8 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
     .notNull()
     .references(() => chatThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   modelId: text('model_id').references(() => modelsTable.id),
+  tokensActual: integer('tokens_actual'), // provider-reported input tokens for the entire request
+  tokensEstimate: integer('tokens_estimate'), // tokenizer-reported input tokens for the entire request
 })
 
 export const contactsTable = sqliteTable('contacts', {
@@ -110,6 +112,8 @@ export const modelsTable = sqliteTable('models', {
   toolUsage: integer('tool_usage').default(1).notNull(),
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
+  contextWindow: integer('context_window'), // max tokens for this model
+  tokenizer: text('tokenizer'), // tokenizer identifier (e.g., 'qwen3')
 })
 
 export const embeddingsTable = sqliteTable('embeddings', {

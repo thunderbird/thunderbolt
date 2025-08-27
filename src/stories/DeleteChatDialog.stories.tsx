@@ -1,7 +1,7 @@
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Button } from '@/components/ui/button'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useRef } from 'react'
+import React, { useRef } from 'react'
 
 import { fn } from 'storybook/test'
 
@@ -10,21 +10,45 @@ const meta = {
   title: 'components/delete-chat-dialog',
   component: DeleteChatDialog,
   parameters: {
-    // Optional parameter to center the component in the Canvas. More info: https://storybook.js.org/docs/configure/story-layout
     layout: 'centered',
+    docs: {
+      story: {
+        inline: false,
+        iframeHeight: 400,
+      },
+    },
   },
-  // This component will have an automatically generated Autodocs entry: https://storybook.js.org/docs/writing-docs/autodocs
   tags: ['autodocs'],
-  // More on argTypes: https://storybook.js.org/docs/api/argtypes
   argTypes: {},
-  // Use `fn` to spy on the onClick arg, which will appear in the actions panel once invoked: https://storybook.js.org/docs/essentials/actions#action-args
-  args: { onCancel: fn(() => alert('Cancelled')), onConfirm: fn(() => alert('Deleted')) },
+  args: { onCancel: fn(), onConfirm: fn() },
 } satisfies Meta<typeof DeleteChatDialog>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-// More on writing stories with args: https://storybook.js.org/docs/writing-stories/args
+export const Open: Story = {
+  render: ({ onConfirm, onCancel, ...args }) => {
+    const ref = useRef<DeleteChatDialogRef>(null)
+
+    const handleConfirm = () => {
+      onConfirm()
+      ref.current?.close()
+    }
+
+    const handleCancel = () => {
+      onCancel()
+      ref.current?.close()
+    }
+
+    // Auto-open the dialog when component mounts
+    React.useEffect(() => {
+      ref.current?.open()
+    }, [])
+
+    return <DeleteChatDialog ref={ref} onConfirm={handleConfirm} onCancel={handleCancel} {...args} />
+  },
+}
+
 export const Basic: Story = {
   render: ({ onConfirm, ...args }) => {
     const ref = useRef<DeleteChatDialogRef>(null)

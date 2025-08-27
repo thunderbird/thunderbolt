@@ -33,6 +33,7 @@ export const seedModels = async () => {
         enabled: 1,
         isConfidential: 1,
         toolUsage: 1,
+        // No contextWindow or tokenizer - this model doesn't support context tracking
       },
       {
         id: uuidv7(),
@@ -42,6 +43,8 @@ export const seedModels = async () => {
         isSystem: 0,
         enabled: 1,
         isConfidential: 0,
+        contextWindow: 256000,
+        tokenizer: 'qwen3',
       },
       {
         id: uuidv7(),
@@ -52,6 +55,8 @@ export const seedModels = async () => {
         enabled: 1,
         isConfidential: 0,
         startWithReasoning: 1,
+        contextWindow: 256000,
+        tokenizer: 'qwen3',
       },
       {
         id: uuidv7(),

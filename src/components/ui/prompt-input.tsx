@@ -1,5 +1,7 @@
+import { isModelSupported } from '@/ai/tokenizers'
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
+import { ContextUsageIndicator } from '@/components/context-usage-indicator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
@@ -21,6 +23,12 @@ interface PromptInputProps {
   noForm?: boolean
   isStreaming?: boolean
   onStop?: () => void
+  // Context tracking props
+  usedTokens?: number
+  maxTokens?: number
+  isContextKnown?: boolean
+  isOverflowing?: boolean
+  onOverflowAction?: () => void
 }
 
 /**
@@ -45,14 +53,21 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       noForm = false,
       isStreaming = false,
       onStop,
+      usedTokens,
+      maxTokens,
+      isContextKnown,
+      isOverflowing = false,
+      onOverflowAction,
     },
     ref,
   ) => {
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      // Prevent submission while streaming
-      if (!isStreaming) {
+      // Prevent submission while streaming or if overflowing
+      if (!isStreaming && !isOverflowing) {
         onSubmit?.()
+      } else if (isOverflowing) {
+        onOverflowAction?.()
       }
     }
 
@@ -78,43 +93,55 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none"
         />
 
-        <div className="flex gap-2 justify-end items-center w-full">
-          <Select value={selectedModelId} onValueChange={onModelChange}>
-            <SelectTrigger className="rounded-full" size="sm">
-              <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  <div className="flex items-center gap-2">
-                    {model.isConfidential ? <Lock className="size-3.5" /> : null}
-                    <p className="text-left">{model.name}</p>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex gap-2 justify-between items-center w-full">
+          <div className="flex items-center gap-2">
+            {(() => {
+              const selectedModel = models.find((m) => m.id === selectedModelId)
+              const modelSupportsContext = selectedModel ? isModelSupported(selectedModel) : false
+              return modelSupportsContext ? (
+                <ContextUsageIndicator usedTokens={usedTokens} maxTokens={maxTokens} isKnown={isContextKnown} />
+              ) : null
+            })()}
+          </div>
 
-          {showSubmitButton &&
-            (isStreaming ? (
-              <Button
-                type="button"
-                variant="default"
-                className="h-6 w-6 rounded-full flex items-center justify-center"
-                onClick={onStop}
-              >
-                <Square className="size-3" />
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                variant="default"
-                className="h-6 w-6 rounded-full flex items-center justify-center"
-                disabled={isLoading || !value.trim()}
-              >
-                <ArrowUp className="size-4" />
-              </Button>
-            ))}
+          <div className="flex gap-2 items-center">
+            <Select value={selectedModelId} onValueChange={onModelChange}>
+              <SelectTrigger className="rounded-full" size="sm">
+                <SelectValue placeholder="Select a model" />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    <div className="flex items-center gap-2">
+                      {model.isConfidential ? <Lock className="size-3.5" /> : null}
+                      <p className="text-left">{model.name}</p>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {showSubmitButton &&
+              (isStreaming ? (
+                <Button
+                  type="button"
+                  variant="default"
+                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  onClick={onStop}
+                >
+                  <Square className="size-3" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  variant="default"
+                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  disabled={isLoading || !value.trim() || isOverflowing}
+                >
+                  <ArrowUp className="size-4" />
+                </Button>
+              ))}
+          </div>
         </div>
       </>
     )

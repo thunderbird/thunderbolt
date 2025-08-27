@@ -277,6 +277,8 @@ export default function ModelsPage() {
         isSystem: 0,
         enabled: 1,
         toolUsage: values.toolUsage ? 1 : 0,
+        contextWindow: null,
+        tokenizer: null,
       })
     },
     onSuccess: () => {
@@ -361,7 +363,14 @@ export default function ModelsPage() {
       }
 
       // Use the same createModel function as the chat
-      const modelConfigWithDefaults = { ...modelConfig, toolUsage: 1, isConfidential: 0, startWithReasoning: 0 }
+      const modelConfigWithDefaults = {
+        ...modelConfig,
+        toolUsage: 1,
+        isConfidential: 0,
+        startWithReasoning: 0,
+        contextWindow: null,
+        tokenizer: null,
+      }
       const model = await createModel(modelConfigWithDefaults)
 
       // Test with a minimal prompt - race against timeout

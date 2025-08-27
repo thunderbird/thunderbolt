@@ -338,7 +338,8 @@ export default function TasksPage() {
         isComplete: 0,
       })
     },
-    onSuccess: () => {
+    onSuccess: (_, item) => {
+      trackEvent('task_add', { task_length: item.length })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
@@ -348,7 +349,8 @@ export default function TasksPage() {
     mutationFn: async ({ id, item }: { id: string; item: string }) => {
       await db.update(tasksTable).set({ item }).where(eq(tasksTable.id, id))
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      trackEvent('task_update_text', { task_id: variables.id, new_length: variables.item.length })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
@@ -369,13 +371,22 @@ export default function TasksPage() {
         updates.map(({ id, order }) => db.update(tasksTable).set({ order }).where(eq(tasksTable.id, id))),
       )
     },
+    onSuccess: (_, updates) => {
+      trackEvent('task_reorder', {
+        moved_task_id: updates[0].id,
+        new_position: updates[0].order,
+        old_position: updates[0].order,
+        total_tasks: updates.length,
+      })
+    },
   })
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
       await db.update(tasksTable).set({ isComplete: 1 }).where(eq(tasksTable.id, id))
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      trackEvent('task_mark_complete', { task_id: id })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
@@ -385,7 +396,6 @@ export default function TasksPage() {
   const handleAddTask = useCallback(
     (item: string) => {
       addTaskMutation.mutate(item)
-      trackEvent('task_add', { task_length: item.length })
       setIsAddingNew(false)
     },
     [addTaskMutation],
@@ -394,7 +404,6 @@ export default function TasksPage() {
   const handleEditTask = useCallback(
     (id: string, item: string) => {
       updateTaskMutation.mutate({ id, item })
-      trackEvent('task_update_text', { task_id: id, new_length: item.length })
     },
     [updateTaskMutation],
   )
@@ -409,7 +418,6 @@ export default function TasksPage() {
   const handleCompleteTask = useCallback(
     (id: string) => {
       setCompletingTasks((prev) => new Set(prev).add(id))
-      trackEvent('task_mark_complete', { task_id: id })
 
       setTimeout(() => {
         completeTaskMutation.mutate(id)
@@ -468,12 +476,6 @@ export default function TasksPage() {
 
           if (updates.length > 0) {
             updateOrderMutation.mutate(updates)
-            trackEvent('task_reorder', {
-              moved_task_id: active.id as string,
-              new_position: newIndex,
-              old_position: oldIndex,
-              total_tasks: newOrder.length,
-            })
           }
         }
       }

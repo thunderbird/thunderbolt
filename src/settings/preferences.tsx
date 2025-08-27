@@ -276,8 +276,18 @@ export default function PreferencesSettingsPage() {
         throw error
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (settings?.locationName) {
+        trackEvent('settings_location_update', {
+          location_name: variables.locationName,
+        })
+      } else {
+        trackEvent('settings_location_set', {
+          location_name: variables.locationName,
+        })
+      }
     },
   })
 
@@ -311,9 +321,6 @@ export default function PreferencesSettingsPage() {
     }
 
     await saveLocationMutation.mutateAsync(values)
-    trackEvent('settings_location_update', {
-      location_name: location.name,
-    })
   }
 
   const handleSelectLocation = (location: LocationData) => {
@@ -321,9 +328,6 @@ export default function PreferencesSettingsPage() {
     locationForm.setValue('locationLat', String(location.coordinates.lat))
     locationForm.setValue('locationLng', String(location.coordinates.lng))
     setOpen(false)
-    trackEvent('settings_location_set', {
-      location_name: location.name,
-    })
 
     // Save immediately after selection, passing the location data directly
     handleLocationSave(location)

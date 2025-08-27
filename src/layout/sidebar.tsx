@@ -95,9 +95,9 @@ export default function ChatSidebar() {
       await db.delete(chatThreadsTable).where(eq(chatThreadsTable.id, id))
     },
     onSuccess: () => {
+      trackEvent('chat_delete', { chat_id: threadIdRef.current })
       deleteChatDialogRef.current?.close()
       queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-      trackEvent('chat_delete', { chat_id: threadIdRef.current })
       threadIdRef.current = null
     },
   })
@@ -110,11 +110,11 @@ export default function ChatSidebar() {
       return chatThreadId
     },
     onSuccess: async (chatThreadId) => {
+      trackEvent('chat_clear_all')
       deleteAllChatsDialogRef.current?.close()
       // Invalidate queries after the new thread is created
       await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate(`/chats/${chatThreadId}`)
-      trackEvent('chat_clear_all')
     },
   })
 

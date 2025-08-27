@@ -144,6 +144,7 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     trackEvent('chat_send_prompt', {
       model: selectedModelId,
       length: textToSend.length,
+      prompt_number: chatHelpers.messages.length + 1,
     })
 
     // Clear the input immediately for responsive UX

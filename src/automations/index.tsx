@@ -66,6 +66,7 @@ export default function AutomationsPage() {
       await db.delete(promptsTable).where(eq(promptsTable.id, promptId))
     },
     onSuccess: () => {
+      trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
       setDeletingPromptId(null)
     },
@@ -73,15 +74,18 @@ export default function AutomationsPage() {
 
   const handleRunPrompt = (promptId: string) => {
     const prompt = prompts.find((p) => p.id === promptId)
-    if (prompt) {
-      trackEvent('automation_run', {
-        automation_id: promptId,
-        model: prompt.modelId,
-        length: prompt.prompt.length,
-      })
-    }
 
-    runAutomation(promptId, navigate).catch(console.error)
+    runAutomation(promptId, navigate)
+      .then(() => {
+        if (prompt) {
+          trackEvent('automation_run', {
+            automation_id: promptId,
+            model: prompt.modelId,
+            length: prompt.prompt.length,
+          })
+        }
+      })
+      .catch(console.error)
   }
 
   const handleEditPrompt = (prompt: Prompt) => {
@@ -207,7 +211,6 @@ export default function AutomationsPage() {
                 <AlertDialogAction
                   onClick={() => {
                     if (deletingPromptId) {
-                      trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
                       deletePromptMutation.mutate(deletingPromptId)
                     }
                   }}

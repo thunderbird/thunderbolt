@@ -161,13 +161,12 @@ export default function AutomationFormModal({
           isEnabled: 1,
         })
       }
-
-      trackEvent('automation_create', {
-        model: values.modelId,
-        triggerType: values.triggerType,
-      })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      trackEvent('automation_create', {
+        model: variables.modelId,
+        triggerType: variables.triggerType,
+      })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
       onOpenChange(false)
       onSuccess?.()
@@ -220,14 +219,13 @@ export default function AutomationFormModal({
           await db.delete(triggersTable).where(eq(triggersTable.promptId, prompt.id))
         }
       }
-
-      trackEvent('automation_update', {
-        automation_id: prompt.id,
-        old_model: prompt.modelId,
-        new_model: values.modelId,
-      })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      trackEvent('automation_update', {
+        automation_id: prompt?.id,
+        old_model: prompt?.modelId,
+        new_model: variables.modelId,
+      })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
       queryClient.invalidateQueries({ queryKey: ['triggers'] })
       onOpenChange(false)

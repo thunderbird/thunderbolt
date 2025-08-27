@@ -19,13 +19,14 @@ import { useBooleanSetting } from '@/hooks/use-setting'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { asc, eq, like } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 import { runAutomation } from './runner'
 import { SearchInput } from '@/components/ui/search-input'
+import { getAllPrompts } from '@/lib/dal'
 import { trackEvent } from '@/lib/analytics'
 
 export default function AutomationsPage() {
@@ -41,18 +42,7 @@ export default function AutomationsPage() {
 
   const { data: prompts = [], isLoading } = useQuery({
     queryKey: ['prompts', debouncedSearchQuery],
-    queryFn: async (): Promise<Prompt[]> => {
-      if (debouncedSearchQuery) {
-        return db
-          .select()
-          .from(promptsTable)
-          .where(like(promptsTable.prompt, `%${debouncedSearchQuery}%`))
-          .orderBy(asc(promptsTable.id))
-          .limit(50)
-      }
-
-      return db.select().from(promptsTable).orderBy(asc(promptsTable.id)).limit(50)
-    },
+    queryFn: () => getAllPrompts(debouncedSearchQuery),
     placeholderData: (previousData) => previousData,
   })
 

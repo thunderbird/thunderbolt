@@ -1,27 +1,19 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { modelsTable } from '@/db/tables'
-import { DatabaseSingleton } from '@/db/singleton'
+
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import React from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
+import { getAllModels } from '@/lib/dal'
 
 export default function ModelsLayout() {
   const navigate = useNavigate()
   const { modelId } = useParams()
-  const db = DatabaseSingleton.instance.db
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
-    queryFn: async () => {
-      const results = await db.select().from(modelsTable)
-      return results.map((model) => ({
-        ...model,
-        api_key: model.apiKey || undefined,
-        is_system: model.isSystem || undefined,
-      }))
-    },
+    queryFn: getAllModels,
   })
   // Find the currently selected model
   const currentModel = models.find((model) => model.id === modelId)

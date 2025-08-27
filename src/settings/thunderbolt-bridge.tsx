@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { getBridgeSettings } from '@/lib/dal'
 
 export default function ThunderboltBridgeSettingsPage() {
   const db = DatabaseSingleton.instance.db
@@ -29,12 +30,7 @@ export default function ThunderboltBridgeSettingsPage() {
   // Get bridge settings from database
   const { data: settings, isLoading } = useQuery({
     queryKey: ['bridge-settings'],
-    queryFn: async () => {
-      const enabledData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'bridge_enabled'))
-      return {
-        enabled: enabledData[0]?.value === 'true',
-      }
-    },
+    queryFn: getBridgeSettings,
   })
 
   // Check bridge status periodically

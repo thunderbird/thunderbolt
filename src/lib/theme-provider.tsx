@@ -1,8 +1,9 @@
 import { settingsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
+
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { getThemeSetting } from '@/lib/dal'
 
 type Theme = 'dark' | 'light' | 'system'
 
@@ -35,16 +36,13 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(defaultTheme)
 
   const { data: savedTheme } = useQuery({
-    queryKey: ['theme'],
-    queryFn: async () => {
-      const result = await db.select().from(settingsTable).where(eq(settingsTable.key, storageKey))
-      return (result[0]?.value as Theme) || defaultTheme
-    },
+    queryKey: ['theme-setting'],
+    queryFn: () => getThemeSetting(storageKey, defaultTheme),
   })
 
   useEffect(() => {
     if (savedTheme) {
-      setTheme(savedTheme)
+      setTheme(savedTheme as Theme)
     }
   }, [savedTheme])
 

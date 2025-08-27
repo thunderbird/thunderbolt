@@ -34,6 +34,7 @@ import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent } from '@/lib/analytics'
+import { getPreferencesSettings } from '@/lib/dal'
 
 interface LocationData {
   name: string
@@ -71,22 +72,8 @@ export default function PreferencesSettingsPage() {
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => {
-      const nameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name'))
-      const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
-      const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
-      const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
-      const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
-
-      return {
-        locationName: nameData[0]?.value || '',
-        locationLat: latData[0]?.value || '',
-        locationLng: lngData[0]?.value || '',
-        preferredName: preferredNameData[0]?.value || '',
-        dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-      }
-    },
+    queryKey: ['preferences-settings'],
+    queryFn: getPreferencesSettings,
   })
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
@@ -204,7 +191,7 @@ export default function PreferencesSettingsPage() {
         })
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
 
       if (values.preferredName?.trim()) {
         if (settings?.preferredName) {
@@ -231,7 +218,7 @@ export default function PreferencesSettingsPage() {
         })
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
 
       if (values.dataCollection) {
         postHog.opt_in_capturing()
@@ -277,7 +264,7 @@ export default function PreferencesSettingsPage() {
       }
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
 
       if (settings?.locationName) {
         trackEvent('settings_location_update', {

@@ -1,14 +1,17 @@
-import { desc, eq, notExists, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, like, notExists, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import {
+  accountsTable,
   chatMessagesTable,
   chatThreadsTable,
   emailMessagesTable,
   emailThreadsTable,
+  mcpServersTable,
   modelsTable,
   promptsTable,
   settingsTable,
+  tasksTable,
 } from '../db/tables'
 import {
   EmailThreadWithMessagesAndAddresses,
@@ -16,13 +19,47 @@ import {
   type Prompt,
   type ThunderboltUIMessage,
   type UIMessageMetadata,
+  type Task,
 } from '../types'
 import { convertUIMessageToDbChatMessage } from './utils'
 
+// ============================================================================
+// MODELS
+// ============================================================================
+
+/**
+ * Gets all models from the database
+ */
+export const getAllModels = async (): Promise<Model[]> => {
+  const db = DatabaseSingleton.instance.db
+  const results = await db.select().from(modelsTable)
+
+  return results.map((model) => ({
+    ...model,
+    api_key: model.apiKey || undefined,
+    is_system: model.isSystem || undefined,
+  }))
+}
+
+/**
+ * Gets all available (enabled) models from the database
+ */
+export const getAvailableModels = async (): Promise<Model[]> => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
+}
+
+/**
+ * Gets a specific model by ID
+ */
+export const getModelById = async (id: string): Promise<Model | null> => {
+  const db = DatabaseSingleton.instance.db
+  const model = await db.select().from(modelsTable).where(eq(modelsTable.id, id)).get()
+  return model || null
+}
+
 /**
  * Gets the currently selected model or falls back to the system default model
- * @returns The selected model or system default model
- * @throws Error if no system model is found
  */
 export const getSelectedModel = async (): Promise<Model> => {
   const db = DatabaseSingleton.instance.db
@@ -52,8 +89,6 @@ export const getSelectedModel = async (): Promise<Model> => {
 
 /**
  * Gets the default model for a chat thread based on the last message in the thread, falling back to the selected_model setting.
- * @param threadId The ID of the chat thread
- * @returns The default model for the chat thread
  */
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
   const db = DatabaseSingleton.instance.db
@@ -93,9 +128,108 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
   return await getSelectedModel()
 }
 
+// ============================================================================
+// SETTINGS
+// ============================================================================
+
+/**
+ * Gets all settings from the database
+ */
+export const getAllSettings = async () => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(settingsTable)
+}
+
+/**
+ * Gets preferences settings with specific structure
+ */
+export const getPreferencesSettings = async () => {
+  const db = DatabaseSingleton.instance.db
+  const nameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name'))
+  const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
+  const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
+  const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
+  const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
+
+  return {
+    locationName: nameData[0]?.value || '',
+    locationLat: latData[0]?.value || '',
+    locationLng: lngData[0]?.value || '',
+    preferredName: preferredNameData[0]?.value || '',
+    dataCollection: dataCollection[0]?.value === 'false' ? false : true,
+  }
+}
+
+/**
+ * Gets theme setting with proper typing
+ */
+export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
+  const db = DatabaseSingleton.instance.db
+  const result = await db.select().from(settingsTable).where(eq(settingsTable.key, storageKey))
+  return (result[0]?.value as string) || defaultTheme
+}
+
+/**
+ * Gets bridge settings with specific structure
+ */
+export const getBridgeSettings = async () => {
+  const db = DatabaseSingleton.instance.db
+  const enabledData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'bridge_enabled'))
+  return {
+    enabled: enabledData[0]?.value === 'true',
+  }
+}
+
+/**
+ * Get a setting value from the settings table
+ */
+export const getSetting = async <T = string>(key: string, defaultValue: T | null = null): Promise<T | null> => {
+  const db = DatabaseSingleton.instance.db
+  const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
+  return (setting?.value as T) || defaultValue
+}
+
+/**
+ * Get a boolean setting value from the settings table
+ */
+export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
+  const setting = await getSetting(key, defaultValue.toString())
+  return setting === 'true'
+}
+
+/**
+ * Update or create a setting in the settings table
+ */
+export const updateSetting = async (key: string, value: string | null): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
+    target: settingsTable.key,
+    set: { value },
+  })
+}
+
+// ============================================================================
+// CHAT THREADS
+// ============================================================================
+
+/**
+ * Gets all chat threads ordered by creation date
+ */
+export const getAllChatThreads = async () => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
+}
+
+/**
+ * Gets a specific chat thread by ID
+ */
+export const getChatThreadById = async (id: string) => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, id)).get()
+}
+
 /**
  * Gets an existing empty chat thread or creates a new one
- * @returns The ID of the chat thread to use
  */
 export const getOrCreateChatThread = async (isEncrypted: boolean = false): Promise<string> => {
   const db = DatabaseSingleton.instance.db
@@ -128,6 +262,143 @@ export const getOrCreateChatThread = async (isEncrypted: boolean = false): Promi
   await db.insert(chatThreadsTable).values({ id: chatThreadId, title: 'New Chat', isEncrypted: isEncrypted ? 1 : 0 })
   return chatThreadId
 }
+
+// ============================================================================
+// CHAT MESSAGES
+// ============================================================================
+
+/**
+ * Gets all chat messages for a specific thread
+ */
+export const getChatMessagesByThreadId = async (threadId: string) => {
+  const db = DatabaseSingleton.instance.db
+  const chatMessages = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .orderBy(chatMessagesTable.id)
+  return chatMessages
+}
+
+// ============================================================================
+// TASKS
+// ============================================================================
+
+/**
+ * Gets all incomplete tasks, optionally filtered by search query
+ */
+export const getIncompleteTasks = async (searchQuery?: string): Promise<Task[]> => {
+  const db = DatabaseSingleton.instance.db
+  const query = db
+    .select()
+    .from(tasksTable)
+    .where(
+      searchQuery
+        ? and(eq(tasksTable.isComplete, 0), like(tasksTable.item, `%${searchQuery}%`))
+        : eq(tasksTable.isComplete, 0),
+    )
+    .orderBy(asc(tasksTable.order), desc(tasksTable.id))
+    .limit(50)
+
+  const result = await query
+  return result.filter((task) => task.item && task.item.trim() !== '')
+}
+
+/**
+ * Gets the count of incomplete tasks
+ */
+export const getIncompleteTasksCount = async (): Promise<number> => {
+  const db = DatabaseSingleton.instance.db
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(tasksTable)
+    .where(eq(tasksTable.isComplete, 0))
+  return count
+}
+
+// ============================================================================
+// ACCOUNTS
+// ============================================================================
+
+/**
+ * Gets all accounts from the database
+ */
+export const getAllAccounts = async () => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(accountsTable)
+}
+
+// ============================================================================
+// MCP SERVERS
+// ============================================================================
+
+/**
+ * Gets all MCP servers from the database
+ */
+export const getAllMcpServers = async () => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(mcpServersTable)
+}
+
+/**
+ * Gets all HTTP MCP servers with non-null URLs from the database
+ */
+export const getHttpMcpServers = async () => {
+  const db = DatabaseSingleton.instance.db
+  const allServers = await db.select().from(mcpServersTable)
+  return allServers
+    .filter((server) => server.type === 'http' && server.url !== null)
+    .map((server) => ({
+      id: server.id,
+      name: server.name,
+      url: server.url as string,
+      enabled: server.enabled,
+      createdAt: server.createdAt,
+      updatedAt: server.updatedAt,
+    }))
+}
+
+// ============================================================================
+// PROMPTS
+// ============================================================================
+
+/**
+ * Gets all prompts, optionally filtered by search query
+ */
+export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => {
+  const db = DatabaseSingleton.instance.db
+  if (searchQuery) {
+    return db
+      .select()
+      .from(promptsTable)
+      .where(like(promptsTable.prompt, `%${searchQuery}%`))
+      .orderBy(asc(promptsTable.id))
+      .limit(50)
+  }
+
+  return db.select().from(promptsTable).orderBy(asc(promptsTable.id)).limit(50)
+}
+
+/**
+ * Returns the automation prompt that triggered a chat thread, if any.
+ */
+export const getTriggerPromptForThread = async (threadId: string): Promise<Prompt | null> => {
+  const db = DatabaseSingleton.instance.db
+
+  // Fetch the associated prompt in a single query via join
+  const result = await db
+    .select({ prompt: promptsTable })
+    .from(chatThreadsTable)
+    .leftJoin(promptsTable, eq(chatThreadsTable.triggeredBy, promptsTable.id))
+    .where(eq(chatThreadsTable.id, threadId))
+    .get()
+
+  return result?.prompt ?? null
+}
+
+// ============================================================================
+// EMAIL THREADS
+// ============================================================================
 
 export const getEmailThreadByIdWithMessages = async (
   emailThreadId: string,
@@ -208,68 +479,48 @@ export const getEmailThreadByMessageIdWithMessages = async (
   return { ...thread, messages }
 }
 
-/**
- * Get a setting value from the settings table
- * @param key The setting key to retrieve
- * @returns The setting value or null if not found
- */
-export const getSetting = async <T = string>(key: string, defaultValue: T | null = null): Promise<T | null> => {
-  const db = DatabaseSingleton.instance.db
-  const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
-  return (setting?.value as T) || defaultValue
-}
+// ============================================================================
+// EMAIL MESSAGES
+// ============================================================================
 
 /**
- * Get a boolean setting value from the settings table
- * @param key The setting key to retrieve
- * @param defaultValue The default boolean value if setting doesn't exist
- * @returns The boolean setting value
+ * Gets an email message by ID with sender and recipients
  */
-export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
-  const setting = await getSetting(key, defaultValue.toString())
-  return setting === 'true'
-}
-
-/**
- * Update or create a setting in the settings table
- * @param key The setting key to update
- * @param value The new value for the setting
- */
-export const updateSetting = async (key: string, value: string | null): Promise<void> => {
+export const getEmailMessageById = async (messageId: string) => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
-    target: settingsTable.key,
-    set: { value },
+  const message = await db.query.emailMessagesTable.findFirst({
+    where: eq(emailMessagesTable.id, messageId),
+    with: {
+      sender: true,
+      recipients: {
+        with: {
+          address: true,
+        },
+      },
+    },
   })
+  if (!message) throw new Error('Message not found')
+  return message
 }
 
 /**
- * Gets all available (enabled) models from the database
- * @returns Array of enabled models
+ * Gets an email message by IMAP ID with sender and recipients
  */
-export const getAvailableModels = async (): Promise<Model[]> => {
+export const getEmailMessageByImapId = async (imapId: string) => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
-}
-
-/**
- * Returns the automation prompt that triggered a chat thread, if any.
- *
- * @param threadId - The ID of the chat thread
- * @returns The automation prompt's title and prompt text, or null if the thread was not triggered by an automation.
- */
-export const getTriggerPromptForThread = async (threadId: string): Promise<Prompt | null> => {
-  const db = DatabaseSingleton.instance.db
-
-  // Fetch the associated prompt in a single query via join
-  const result = await db
-    .select({ prompt: promptsTable })
-    .from(chatThreadsTable)
-    .leftJoin(promptsTable, eq(chatThreadsTable.triggeredBy, promptsTable.id))
-    .where(eq(chatThreadsTable.id, threadId))
-    .get()
-
-  return result?.prompt ?? null
+  const message = await db.query.emailMessagesTable.findFirst({
+    where: eq(emailMessagesTable.imapId, imapId),
+    with: {
+      sender: true,
+      recipients: {
+        with: {
+          address: true,
+        },
+      },
+    },
+  })
+  if (!message) throw new Error('Message not found')
+  return message
 }
 
 /**

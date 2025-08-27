@@ -24,6 +24,7 @@ import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
+import { getModelById } from '@/lib/dal'
 
 const formSchema = z
   .object({
@@ -70,9 +71,8 @@ export default function ModelDetailPage() {
 
   const { data: model, isLoading } = useQuery({
     queryKey: ['models', modelId],
-    queryFn: async () => {
-      return await db.select().from(modelsTable).where(eq(modelsTable.id, modelId!)).get()
-    },
+    queryFn: () => getModelById(modelId!),
+    enabled: !!modelId,
   })
 
   const updateModelMutation = useMutation({

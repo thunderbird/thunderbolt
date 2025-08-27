@@ -31,18 +31,7 @@ import { useEffect, useReducer, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
-
-interface Model {
-  id: string
-  provider: 'openai' | 'custom' | 'openrouter' | 'thunderbolt' | 'flower'
-  name: string
-  model: string
-  url: string | null
-  apiKey: string | null
-  isSystem: number | null
-  enabled: number
-  toolUsage: number | null
-}
+import { getAllModels } from '@/lib/dal'
 
 interface AvailableModel {
   id: string
@@ -250,9 +239,7 @@ export default function ModelsPage() {
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
-    queryFn: async (): Promise<Model[]> => {
-      return await db.select().from(modelsTable)
-    },
+    queryFn: getAllModels,
   })
 
   const toggleModelMutation = useMutation({

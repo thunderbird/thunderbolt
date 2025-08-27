@@ -23,6 +23,7 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { getHttpMcpServers } from '@/lib/dal'
 
 interface McpServer {
   id: string
@@ -55,19 +56,7 @@ export default function McpServersPage() {
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    queryFn: async (): Promise<McpServer[]> => {
-      const allServers = await db.select().from(mcpServersTable)
-      return allServers
-        .filter((server) => server.type === 'http' && server.url !== null)
-        .map((server) => ({
-          id: server.id,
-          name: server.name,
-          url: server.url as string,
-          enabled: server.enabled,
-          createdAt: server.createdAt,
-          updatedAt: server.updatedAt,
-        }))
-    },
+    queryFn: getHttpMcpServers,
   })
 
   // Fetch tools for connected servers

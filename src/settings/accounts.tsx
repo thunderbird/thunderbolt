@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { accountsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import ImapClient from '@/imap/imap'
+import { getAllAccounts } from '@/lib/dal'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
@@ -41,9 +42,7 @@ export default function AccountsSettingsPage() {
   // Fetch accounts from the database
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts'],
-    queryFn: async () => {
-      return await db.select().from(accountsTable)
-    },
+    queryFn: getAllAccounts,
   })
 
   // Select first account by default

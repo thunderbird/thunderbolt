@@ -21,9 +21,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getOrCreateChatThread } from '@/lib/dal'
+import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   ArrowLeft,
   Bot,
@@ -76,9 +76,7 @@ export default function ChatSidebar() {
 
   const { data } = useQuery({
     queryKey: ['chatThreads'],
-    queryFn: async () => {
-      return db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
-    },
+    queryFn: getAllChatThreads,
     placeholderData: (previousData) => previousData,
   })
 

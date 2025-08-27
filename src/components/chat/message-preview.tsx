@@ -1,11 +1,9 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DatabaseSingleton } from '@/db/singleton'
-import { emailMessagesTable } from '@/db/tables'
+import { getEmailMessageById, getEmailMessageByImapId } from '@/lib/dal'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
 import { EmailMessageWithAddresses } from '@/types'
 import { useQuery } from '@tanstack/react-query'
-import { eq, or } from 'drizzle-orm'
 import { Loader2, Mail } from 'lucide-react'
 
 interface ChatMessagePreviewProps {
@@ -16,30 +14,19 @@ interface ChatMessagePreviewProps {
 export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProps) {
   if (!messageId && !imapId) throw new Error('Either messageId or imapId must be provided')
 
-  const db = DatabaseSingleton.instance.db
   const { setSideview } = useSideview()
 
   const { data: message } = useQuery<EmailMessageWithAddresses>({
     queryKey: ['messages', messageId, imapId],
     queryFn: async () => {
-      const message = await db.query.emailMessagesTable.findFirst({
-        where: or(
-          messageId ? eq(emailMessagesTable.id, messageId) : undefined,
-          imapId ? eq(emailMessagesTable.imapId, imapId) : undefined,
-        ),
-        with: {
-          sender: true,
-          recipients: {
-            with: {
-              address: true,
-            },
-          },
-        },
-      })
-
-      if (!message) throw new Error('Message not found')
-      return message
+      if (messageId) {
+        return await getEmailMessageById(messageId)
+      } else if (imapId) {
+        return await getEmailMessageByImapId(imapId)
+      }
+      throw new Error('Either messageId or imapId must be provided')
     },
+    enabled: !!(messageId || imapId),
   })
 
   const handleClick = () => {

@@ -1,18 +1,14 @@
-import { DatabaseSingleton } from '@/db/singleton'
-import { mcpServersTable } from '@/db/tables'
+import { getAllMcpServers } from '@/lib/dal'
 import { useMCP } from '@/lib/mcp-provider'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 export function useMcpSync() {
-  const db = DatabaseSingleton.instance.db
   const { servers, addServer, removeServer, updateServerStatus } = useMCP()
 
   const { data: dbServers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    queryFn: async () => {
-      return await db.select().from(mcpServersTable)
-    },
+    queryFn: getAllMcpServers,
   })
 
   // Sync database servers with MCP provider

@@ -223,28 +223,12 @@ export const aiFetchStreamingResponse = async ({
 
     return result.toUIMessageStreamResponse<ThunderboltUIMessage>({
       sendReasoning: true,
-      // Attach the modelId as metadata so the client knows which model was used
       messageMetadata: ({ part }) => {
         return {
           modelId,
           usage: part.type === 'finish' ? part.totalUsage : undefined,
         }
       },
-      // onFinish: async (finish) => {
-      //   saveMessages({
-      //     id: chatId,
-      //     messages: [
-      //       {
-      //         ...finish.responseMessage,
-      //         id: finish.responseMessage.id ?? uuidv7(),
-      //         metadata: {
-      //           ...finish.responseMessage.metadata,
-      //           usage: usage ?? undefined,
-      //         },
-      //       },
-      //     ],
-      //   })
-      // },
     })
   } catch (error) {
     console.error('aiFetchStreamingResponse error', error)

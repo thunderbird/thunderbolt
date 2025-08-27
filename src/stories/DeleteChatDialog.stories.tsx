@@ -36,7 +36,7 @@ export const Open: Story = {
     }
 
     const handleCancel = () => {
-      onCancel()
+      onCancel?.()
       ref.current?.close()
     }
 

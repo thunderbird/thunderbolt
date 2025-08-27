@@ -10,6 +10,7 @@ import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
+import { trackEvent } from '@/lib/analytics'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -139,6 +140,11 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     // Prevent submitting while streaming or if input is empty
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
+
+    trackEvent('chat_send_prompt', {
+      model: selectedModelId,
+      token_count: textToSend.length,
+    })
 
     // Clear the input immediately for responsive UX
     setInput('')

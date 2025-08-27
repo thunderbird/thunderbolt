@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
+import { trackEvent } from '@/lib/analytics'
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -160,6 +161,12 @@ export default function AutomationFormModal({
           isEnabled: 1,
         })
       }
+
+      trackEvent('automation_create', {
+        token_count: values.prompt.length,
+        model: values.modelId,
+        has_trigger: values.triggerType === 'time',
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
@@ -214,6 +221,14 @@ export default function AutomationFormModal({
           await db.delete(triggersTable).where(eq(triggersTable.promptId, prompt.id))
         }
       }
+
+      trackEvent('automation_update', {
+        automation_id: prompt.id,
+        old_token_count: prompt.prompt.length,
+        new_token_count: values.prompt.length,
+        old_model: prompt.modelId,
+        new_model: values.modelId,
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prompts'] })

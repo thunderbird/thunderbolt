@@ -33,6 +33,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
+import { trackEvent } from '@/lib/analytics'
 
 interface LocationData {
   name: string
@@ -202,8 +203,14 @@ export default function PreferencesSettingsPage() {
           set: { value: values.preferredName },
         })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (variables.preferredName?.trim()) {
+        trackEvent('settings_name_update', { name_length: variables.preferredName.length })
+      } else {
+        trackEvent('settings_name_set', { name_length: 0 })
+      }
     },
   })
 
@@ -222,7 +229,17 @@ export default function PreferencesSettingsPage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
-      variables.dataCollection ? postHog.opt_in_capturing() : postHog.opt_out_capturing()
+      if (variables.dataCollection) {
+        postHog.opt_in_capturing()
+        setTimeout(() => {
+          trackEvent('settings_data_collection_enabled')
+        }, 500)
+      } else {
+        trackEvent('settings_data_collection_disabled')
+        setTimeout(() => {
+          postHog.opt_out_capturing()
+        }, 500)
+      }
     },
   })
 
@@ -294,6 +311,10 @@ export default function PreferencesSettingsPage() {
     }
 
     await saveLocationMutation.mutateAsync(values)
+    trackEvent('settings_location_update', {
+      location_name: location.name,
+      has_coordinates: true,
+    })
   }
 
   const handleSelectLocation = (location: LocationData) => {
@@ -301,6 +322,11 @@ export default function PreferencesSettingsPage() {
     locationForm.setValue('locationLat', String(location.coordinates.lat))
     locationForm.setValue('locationLng', String(location.coordinates.lng))
     setOpen(false)
+    trackEvent('settings_location_set', {
+      location_name: location.name,
+      has_coordinates: true,
+    })
+
     // Save immediately after selection, passing the location data directly
     handleLocationSave(location)
   }
@@ -309,6 +335,7 @@ export default function PreferencesSettingsPage() {
     setIsResetting(true)
     try {
       await resetAppDir()
+      trackEvent('settings_database_reset')
       // Refresh the page to reinitialize the app
       window.location.reload()
     } catch (error) {

@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 import { runAutomation } from './runner'
 import { SearchInput } from '@/components/ui/search-input'
+import { trackEvent } from '@/lib/analytics'
 
 export default function AutomationsPage() {
   const db = DatabaseSingleton.instance.db
@@ -70,14 +71,27 @@ export default function AutomationsPage() {
     },
   })
 
-  const handleRunPrompt = (promptId: string) => runAutomation(promptId, navigate).catch(console.error)
+  const handleRunPrompt = (promptId: string) => {
+    const prompt = prompts.find((p) => p.id === promptId)
+    if (prompt) {
+      trackEvent('automation_run', {
+        automation_id: promptId,
+        model: prompt.modelId,
+        token_count: prompt.prompt.length,
+      })
+    }
+
+    runAutomation(promptId, navigate).catch(console.error)
+  }
 
   const handleEditPrompt = (prompt: Prompt) => {
     setEditingPrompt(prompt)
+    trackEvent('automation_modal_edit_open', { automation_id: prompt.id })
   }
 
   const handleDeletePrompt = (promptId: string) => {
     setDeletingPromptId(promptId)
+    trackEvent('automation_delete_clicked', { automation_id: promptId })
   }
 
   return (
@@ -87,7 +101,13 @@ export default function AutomationsPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <h1 className="mt-8 text-4xl font-bold tracking-tight">Automations</h1>
-            <Button size="icon" onClick={() => setIsCreateModalOpen(true)}>
+            <Button
+              size="icon"
+              onClick={() => {
+                setIsCreateModalOpen(true)
+                trackEvent('automation_modal_create_open')
+              }}
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -185,7 +205,12 @@ export default function AutomationsPage() {
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={deletePromptMutation.isPending}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => deletingPromptId && deletePromptMutation.mutate(deletingPromptId)}
+                  onClick={() => {
+                    if (deletingPromptId) {
+                      trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
+                      deletePromptMutation.mutate(deletingPromptId)
+                    }
+                  }}
                   disabled={deletePromptMutation.isPending}
                   className="bg-destructive text-white hover:bg-destructive/90"
                 >

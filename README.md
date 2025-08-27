@@ -268,6 +268,8 @@ Events follow the pattern: `<feature>_<action>`
 - `settings_location_set` - User sets their location initially
 - `settings_location_update` - User updates their location
 - `settings_database_reset` - User resets the application database
+- `settings_data_collection_enabled` - User enables data collection
+- `settings_data_collection_disabled` - User disables data collection
 
 #### Task Management (`task_*`)
 

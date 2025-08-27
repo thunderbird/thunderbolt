@@ -31,6 +31,7 @@ import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { trackEvent } from '@/lib/analytics'
 
 // Task Item Component - Memoized for performance
 interface TaskItemProps {
@@ -384,6 +385,7 @@ export default function TasksPage() {
   const handleAddTask = useCallback(
     (item: string) => {
       addTaskMutation.mutate(item)
+      trackEvent('task_add', { task_length: item.length })
       setIsAddingNew(false)
     },
     [addTaskMutation],
@@ -392,6 +394,7 @@ export default function TasksPage() {
   const handleEditTask = useCallback(
     (id: string, item: string) => {
       updateTaskMutation.mutate({ id, item })
+      trackEvent('task_update_text', { task_id: id, new_length: item.length })
     },
     [updateTaskMutation],
   )
@@ -406,6 +409,7 @@ export default function TasksPage() {
   const handleCompleteTask = useCallback(
     (id: string) => {
       setCompletingTasks((prev) => new Set(prev).add(id))
+      trackEvent('task_mark_complete', { task_id: id })
 
       setTimeout(() => {
         completeTaskMutation.mutate(id)
@@ -464,6 +468,12 @@ export default function TasksPage() {
 
           if (updates.length > 0) {
             updateOrderMutation.mutate(updates)
+            trackEvent('task_reorder', {
+              moved_task_id: active.id as string,
+              new_position: newIndex,
+              old_position: oldIndex,
+              total_tasks: newOrder.length,
+            })
           }
         }
       }
@@ -502,7 +512,15 @@ export default function TasksPage() {
           </div>
 
           {/* Search - always visible to maintain focus and avoid flicker */}
-          <SearchInput placeholder="Search tasks..." debouncedOnChange={(value) => setDebouncedSearchQuery(value)} />
+          <SearchInput
+            placeholder="Search tasks..."
+            debouncedOnChange={(value) => {
+              setDebouncedSearchQuery(value)
+              if (value.trim()) {
+                trackEvent('task_search', { query_length: value.length })
+              }
+            }}
+          />
 
           {showEmptyState ? (
             <div className="flex items-center justify-center p-16">

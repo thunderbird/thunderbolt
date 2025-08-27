@@ -113,6 +113,8 @@ export type EventType =
   | 'settings_location_set'
   | 'settings_location_update'
   | 'settings_database_reset'
+  | 'settings_data_collection_enabled'
+  | 'settings_data_collection_disabled'
   // Tasks
   | 'task_add'
   | 'task_mark_complete'

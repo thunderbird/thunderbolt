@@ -43,6 +43,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
+import { trackEvent } from '@/lib/analytics'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -95,8 +96,9 @@ export default function ChatSidebar() {
     },
     onSuccess: () => {
       deleteChatDialogRef.current?.close()
-      threadIdRef.current = null
       queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+      trackEvent('chat_delete', { chat_id: threadIdRef.current })
+      threadIdRef.current = null
     },
   })
 
@@ -112,11 +114,13 @@ export default function ChatSidebar() {
       // Invalidate queries after the new thread is created
       await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate(`/chats/${chatThreadId}`)
+      trackEvent('chat_clear_all')
     },
   })
 
   const createNewChat = async (closeAfter: boolean = true) => {
     try {
+      trackEvent('chat_new_clicked')
       const chatThreadId = await getOrCreateChatThread()
       queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate(`/chats/${chatThreadId}`)
@@ -131,6 +135,10 @@ export default function ChatSidebar() {
 
   const handleChatClick = (threadId: string) => {
     navigate(`/chats/${threadId}`)
+
+    // Track select chat event
+    trackEvent('chat_select', { chat_id: threadId })
+
     if (isMobile) {
       setOpenMobile(false)
     }

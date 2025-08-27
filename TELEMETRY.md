@@ -22,7 +22,7 @@ Events follow the pattern: `<feature>_<action>`
 #### Chat & Messaging (`chat_*`)
 
 - `chat_send_prompt` - User sends a message to the AI
-- `chat_send_reply` - AI generates a response
+- `chat_receive_reply` - AI generates a response
 - `chat_select` - User selects a chat thread
 - `chat_new_clicked` - User creates a new chat
 - `chat_delete` - User deletes a chat
@@ -81,7 +81,7 @@ trackEvent('chat_send_prompt')
 // Track an event with properties
 trackEvent('chat_send_prompt', {
   model: 'gpt-4',
-  token_count: 150,
+  length: 150,
 })
 ```
 

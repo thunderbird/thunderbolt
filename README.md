@@ -265,6 +265,7 @@ Events follow the pattern: `<feature>_<action>`
 - `settings_theme_set` - User changes the application theme
 - `settings_name_set` - User sets their preferred name initially
 - `settings_name_update` - User updates their preferred name
+- `settings_name_clear` - User clears their preferred name
 - `settings_location_set` - User sets their location initially
 - `settings_location_update` - User updates their location
 - `settings_database_reset` - User resets the application database

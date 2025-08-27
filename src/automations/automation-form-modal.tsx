@@ -163,9 +163,8 @@ export default function AutomationFormModal({
       }
 
       trackEvent('automation_create', {
-        token_count: values.prompt.length,
         model: values.modelId,
-        has_trigger: values.triggerType === 'time',
+        triggerType: values.triggerType,
       })
     },
     onSuccess: () => {
@@ -224,8 +223,6 @@ export default function AutomationFormModal({
 
       trackEvent('automation_update', {
         automation_id: prompt.id,
-        old_token_count: prompt.prompt.length,
-        new_token_count: values.prompt.length,
         old_model: prompt.modelId,
         new_model: values.modelId,
       })

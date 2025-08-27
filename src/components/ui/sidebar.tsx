@@ -91,7 +91,7 @@ function SidebarProvider({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
-        trackEvent('ui_shortcut_use', { shortcut: `${event.metaKey ? 'Cmd' : 'Ctrl'}+${SIDEBAR_KEYBOARD_SHORTCUT}` })
+        trackEvent('ui_shortcut_use')
         toggleSidebar()
       }
     }

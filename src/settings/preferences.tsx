@@ -207,9 +207,13 @@ export default function PreferencesSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
       if (variables.preferredName?.trim()) {
-        trackEvent('settings_name_update', { name_length: variables.preferredName.length })
+        if (settings?.preferredName) {
+          trackEvent('settings_name_update')
+        } else {
+          trackEvent('settings_name_set')
+        }
       } else {
-        trackEvent('settings_name_set', { name_length: 0 })
+        trackEvent('settings_name_clear')
       }
     },
   })
@@ -231,14 +235,10 @@ export default function PreferencesSettingsPage() {
 
       if (variables.dataCollection) {
         postHog.opt_in_capturing()
-        setTimeout(() => {
-          trackEvent('settings_data_collection_enabled')
-        }, 500)
+        trackEvent('settings_data_collection_enabled')
       } else {
         trackEvent('settings_data_collection_disabled')
-        setTimeout(() => {
-          postHog.opt_out_capturing()
-        }, 500)
+        postHog.opt_out_capturing()
       }
     },
   })
@@ -313,7 +313,6 @@ export default function PreferencesSettingsPage() {
     await saveLocationMutation.mutateAsync(values)
     trackEvent('settings_location_update', {
       location_name: location.name,
-      has_coordinates: true,
     })
   }
 
@@ -324,7 +323,6 @@ export default function PreferencesSettingsPage() {
     setOpen(false)
     trackEvent('settings_location_set', {
       location_name: location.name,
-      has_coordinates: true,
     })
 
     // Save immediately after selection, passing the location data directly

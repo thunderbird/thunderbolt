@@ -110,6 +110,7 @@ export type EventType =
   | 'settings_theme_set'
   | 'settings_name_set'
   | 'settings_name_update'
+  | 'settings_name_clear'
   | 'settings_location_set'
   | 'settings_location_update'
   | 'settings_database_reset'

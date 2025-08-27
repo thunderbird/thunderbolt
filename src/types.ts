@@ -1,3 +1,4 @@
+import { LanguageModelV2Usage } from '@ai-sdk/provider'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { Window } from '@tauri-apps/api/window'
 import { UIMessage, type UIDataTypes, type UITools } from 'ai'
@@ -70,6 +71,7 @@ export type Trigger = InferSelectModel<typeof triggersTable>
 
 export type UIMessageMetadata = {
   modelId?: string
+  usage?: LanguageModelV2Usage
 }
 
 export type EmailMessageWithAddresses = EmailMessage & {

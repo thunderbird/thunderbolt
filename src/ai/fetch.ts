@@ -1,6 +1,6 @@
 import { createPrompt } from '@/ai/prompt'
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatMessagesTable, modelsTable } from '@/db/tables'
+import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
 import { getBooleanSetting, getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
@@ -24,7 +24,7 @@ import {
   wrapLanguageModel,
   type ToolSet,
 } from 'ai'
-import { and, desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { createConfiguredFlowerClient } from './flower'
 import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
 
@@ -210,45 +210,8 @@ export const aiFetchStreamingResponse = async ({
           text: finish.text,
           finishReason: finish.finishReason,
           toolCallCount: finish.toolCalls?.length || 0,
-          usage: finish.usage || finish.totalUsage, // Handle both possible property names
+          usage: finish.totalUsage,
         })
-
-        console.log('finish', finish)
-        console.log('finish.usage', finish.usage)
-        console.log('finish.totalUsage', finish.totalUsage)
-
-        // Save token usage if available - delay to ensure message is saved first
-        const usage = finish.usage || finish.totalUsage
-        if (usage?.inputTokens && chatId) {
-          setTimeout(async () => {
-            try {
-              // Get the latest assistant message for this chat
-              const assistantMessages = await db
-                .select()
-                .from(chatMessagesTable)
-                .where(and(eq(chatMessagesTable.chatThreadId, chatId), eq(chatMessagesTable.role, 'assistant')))
-                .orderBy(desc(chatMessagesTable.id))
-                .limit(1)
-
-              const latestAssistantMessage = assistantMessages[0]
-              if (latestAssistantMessage) {
-                await db
-                  .update(chatMessagesTable)
-                  .set({
-                    tokensActual: usage.inputTokens, // Input tokens (prompt)
-                    // Could also store outputTokens and totalTokens if we add more columns
-                  })
-                  .where(eq(chatMessagesTable.id, latestAssistantMessage.id))
-
-                console.log(
-                  `Saved token usage: ${usage.inputTokens} input + ${usage.outputTokens || 0} output = ${usage.totalTokens || usage.inputTokens} total tokens for message ${latestAssistantMessage.id}`,
-                )
-              }
-            } catch (error) {
-              console.error('Failed to save token usage:', error)
-            }
-          }, 1000) // 1 second delay to ensure message is saved
-        }
       },
       onError: (error) => {
         console.error('error', error)
@@ -261,7 +224,27 @@ export const aiFetchStreamingResponse = async ({
     return result.toUIMessageStreamResponse<ThunderboltUIMessage>({
       sendReasoning: true,
       // Attach the modelId as metadata so the client knows which model was used
-      messageMetadata: () => ({ modelId }),
+      messageMetadata: ({ part }) => {
+        return {
+          modelId,
+          usage: part.type === 'finish' ? part.totalUsage : undefined,
+        }
+      },
+      // onFinish: async (finish) => {
+      //   saveMessages({
+      //     id: chatId,
+      //     messages: [
+      //       {
+      //         ...finish.responseMessage,
+      //         id: finish.responseMessage.id ?? uuidv7(),
+      //         metadata: {
+      //           ...finish.responseMessage.metadata,
+      //           usage: usage ?? undefined,
+      //         },
+      //       },
+      //     ],
+      //   })
+      // },
     })
   } catch (error) {
     console.error('aiFetchStreamingResponse error', error)

@@ -39,7 +39,7 @@ export function convertUIMessageToDbChatMessage(message: UIMessage, chatThreadId
     content: message.parts.map((part) => (part.type === 'text' ? part.text : '')).join(''),
     chatThreadId,
     modelId: metadata?.modelId ?? null,
-    tokensActual: null,
+    tokensActual: metadata?.usage?.totalTokens ?? null,
     tokensEstimate: null,
   }
 }
@@ -203,7 +203,7 @@ export const formatNumber = (num: number): string => {
     notation: 'compact',
     maximumFractionDigits: 1,
   })
-  
+
   return formatter.format(num)
 }
 

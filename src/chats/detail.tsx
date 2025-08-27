@@ -32,6 +32,7 @@ export default function ChatDetailPage() {
       console.error('Error generating title:', error)
     }
   }
+
   const {
     data: messages,
     isLoading,

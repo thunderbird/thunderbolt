@@ -347,12 +347,8 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
         onClose={() => setShowOverflowModal(false)}
         maxTokens={maxTokens}
         onNewChat={async () => {
-          try {
-            const chatThreadId = await getOrCreateChatThread()
-            navigate(`/chats/${chatThreadId}`)
-          } catch (error) {
-            console.error('Error creating new chat:', error)
-          }
+          const chatThreadId = await getOrCreateChatThread()
+          await navigate(`/chats/${chatThreadId}`)
         }}
       />
     </div>

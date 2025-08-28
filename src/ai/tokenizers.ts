@@ -16,16 +16,6 @@ export const estimateTokensForText = (text: string): number => {
 }
 
 /**
- * Check if a model supports context tracking
- * @param model - The model object from the database
- * @returns Whether the model is supported for context tracking
- */
-export const isModelSupported = (model: { contextWindow?: number | null; tokenizer?: string | null }): boolean => {
-  // Model supports context tracking if it has a contextWindow defined
-  return Boolean(model.contextWindow)
-}
-
-/**
  * Estimate tokens for a list of messages
  * @param messages - Array of messages to count tokens for
  * @returns Estimated token count including message separators and role indicators

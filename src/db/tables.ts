@@ -31,12 +31,11 @@ export const chatThreadsTable = sqliteTable('chat_threads', {
   title: text('title'),
   isEncrypted: integer('is_encrypted').default(0).notNull(),
   triggeredBy: text('triggered_by').references(() => promptsTable.id),
-  contextSize: integer('context_size'), // total token count for the conversation
+  contextSize: integer('context_size'),
 })
 
 export const chatMessagesTable = sqliteTable('chat_messages', {
   id: text('id').primaryKey().notNull().unique(),
-  // createdat can be derived from uuid v7 id
   content: text('content').notNull(),
   role: text('role').notNull().$type<UIMessage['role']>(),
   parts: text('parts', { mode: 'json' }).$type<UIMessage['parts']>(),
@@ -111,8 +110,7 @@ export const modelsTable = sqliteTable('models', {
   toolUsage: integer('tool_usage').default(1).notNull(),
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
-  contextWindow: integer('context_window'), // max tokens for this model
-  tokenizer: text('tokenizer'), // tokenizer identifier (e.g., 'qwen3')
+  contextWindow: integer('context_window'),
 })
 
 export const embeddingsTable = sqliteTable('embeddings', {

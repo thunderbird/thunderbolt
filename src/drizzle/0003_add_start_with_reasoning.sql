@@ -1,1 +1,0 @@
-ALTER TABLE `models` ADD `start_with_reasoning` integer DEFAULT 0 NOT NULL; 

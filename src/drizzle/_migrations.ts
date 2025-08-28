@@ -25,8 +25,8 @@ export const migrations: Migration[] = [
     "sql": "ALTER TABLE `chat_messages` ADD `model_id` text REFERENCES models(id);"
   },
   {
-    "hash": "0003_add_start_with_reasoning",
-    "name": "0003_add_start_with_reasoning.sql",
-    "sql": "ALTER TABLE `models` ADD `start_with_reasoning` integer DEFAULT 0 NOT NULL;"
+    "hash": "0003_clammy_sunspot",
+    "name": "0003_clammy_sunspot.sql",
+    "sql": "ALTER TABLE `chat_threads` ADD `context_size` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `start_with_reasoning` integer DEFAULT 0 NOT NULL;--> statement-breakpoint\nALTER TABLE `models` ADD `context_window` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `tokenizer` text;"
   }
 ];

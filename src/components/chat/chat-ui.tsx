@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
+import { ContextUsageIndicator } from '../context-usage-indicator'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
@@ -80,11 +81,9 @@ export default function ChatUI({
   const navigate = useNavigate()
   const isMobile = useIsMobile()
 
-  // Find the selected model
-  const selectedModel = models.find((m) => m.id === selectedModelId)
+  const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
 
-  // Track context usage
-  const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
+  const { usedTokens, maxTokens, isOverflowing } = useContextTracking({
     model: selectedModel,
     chatThreadId,
     currentInput: input,
@@ -173,22 +172,11 @@ export default function ChatUI({
     // Clear the input immediately for responsive UX
     setInput('')
 
-    // Send the message
-    void (async () => {
-      try {
-        await chatHelpers.sendMessage({ text: textToSend })
-      } catch (error) {
-        console.error('Failed to send message:', error)
-      }
-    })()
+    await chatHelpers.sendMessage({ text: textToSend })
 
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()
     setTimeout(() => scrollToBottom(), 100)
-  }
-
-  const handleOverflowAction = () => {
-    setShowOverflowModal(true)
   }
 
   const handleSelectPrompt = (prompt: string) => {
@@ -199,6 +187,11 @@ export default function ChatUI({
         textareaElement.focus()
       }
     }, 0)
+  }
+
+  const handleNewChat = async () => {
+    const chatThreadId = await getOrCreateChatThread()
+    await navigate(`/chats/${chatThreadId}`)
   }
 
   return (
@@ -309,11 +302,11 @@ export default function ChatUI({
               autoFocus
               submitOnEnter={!isStreaming}
               className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
-              usedTokens={usedTokens}
-              maxTokens={maxTokens}
-              isContextKnown={isContextKnown}
-              isOverflowing={isOverflowing}
-              onOverflowAction={handleOverflowAction}
+              footerStartElements={
+                usedTokens !== null && maxTokens !== null ? (
+                  <ContextUsageIndicator usedTokens={usedTokens} maxTokens={maxTokens} />
+                ) : null
+              }
             />
           </motion.div>
 
@@ -336,11 +329,8 @@ export default function ChatUI({
       <ContextOverflowModal
         isOpen={showOverflowModal}
         onClose={() => setShowOverflowModal(false)}
-        maxTokens={maxTokens}
-        onNewChat={async () => {
-          const chatThreadId = await getOrCreateChatThread()
-          await navigate(`/chats/${chatThreadId}`)
-        }}
+        maxTokens={maxTokens ?? undefined}
+        onNewChat={handleNewChat}
       />
     </div>
   )

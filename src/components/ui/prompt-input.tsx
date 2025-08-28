@@ -1,10 +1,9 @@
-import { ContextUsageIndicator } from '@/components/context-usage-indicator'
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
-import { forwardRef } from 'react'
+import { forwardRef, type ReactNode } from 'react'
 
 interface PromptInputProps {
   value: string
@@ -22,11 +21,7 @@ interface PromptInputProps {
   noForm?: boolean
   isStreaming?: boolean
   onStop?: () => void
-  // Context tracking props
-  usedTokens?: number
-  maxTokens?: number
-  isOverflowing?: boolean
-  onOverflowAction?: () => void
+  footerStartElements?: ReactNode
 }
 
 /**
@@ -51,20 +46,15 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       noForm = false,
       isStreaming = false,
       onStop,
-      usedTokens,
-      maxTokens,
-      isOverflowing = null,
-      onOverflowAction,
+      footerStartElements,
     },
     ref,
   ) => {
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      // Prevent submission while streaming or if overflowing
-      if (!isStreaming && !isOverflowing) {
+      // Prevent submission while streaming
+      if (!isStreaming) {
         onSubmit?.()
-      } else if (isOverflowing) {
-        onOverflowAction?.()
       }
     }
 
@@ -76,10 +66,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         onSubmit?.()
       }
     }
-
-    const selectedModel = models.find((m) => m.id === selectedModelId)
-    const isContextWindowKnown = selectedModel?.contextWindow !== null
-    const isContextUsageKnown = usedTokens !== undefined && maxTokens !== undefined
 
     const content = (
       <>
@@ -95,11 +81,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         />
 
         <div className="flex gap-2 justify-between items-center w-full">
-          <div className="flex items-center gap-2">
-            {isContextWindowKnown && isContextUsageKnown && (
-              <ContextUsageIndicator usedTokens={usedTokens!} maxTokens={maxTokens} />
-            )}
-          </div>
+          <div className="flex items-center gap-2">{footerStartElements}</div>
 
           <div className="flex gap-2 items-center">
             <Select value={selectedModelId} onValueChange={onModelChange}>
@@ -133,7 +115,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                   type="submit"
                   variant="default"
                   className="h-6 w-6 rounded-full flex items-center justify-center"
-                  disabled={isLoading || !value.trim() || isOverflowing === true}
+                  disabled={isLoading || !value.trim()}
                 >
                   <ArrowUp className="size-4" />
                 </Button>

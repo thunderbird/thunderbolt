@@ -18,3 +18,28 @@
   - Consider whether code should be refactored or abstracted out into standalone functions for organization and clarity
   - Remove unused variables / imports
   - Ensure that there are no type warnings or errors
+
+# Extended Project Context
+
+For comprehensive project documentation beyond these immediate coding guidelines, see:
+
+**[📋 Complete Project Context](./THUNDERBOLT_CONTEXT.md)** - Master context file with comprehensive project information
+
+## Tool-Agnostic Agent Resources
+
+The `.agents/` directory contains tool-agnostic resources for AI development assistance:
+
+- **[🏗️ Architecture Overview](./.agents/context/architecture.md)** - Technology stack and system design
+- **[📝 Code Patterns](./.agents/context/patterns.md)** - API interfaces and coding conventions  
+- **[🧪 Testing Strategy](./.agents/context/testing.md)** - Testing patterns and practices
+- **[🔒 Security Guidelines](./.agents/context/security.md)** - Security and authorization practices
+- **[🚀 Deployment Guide](./.agents/context/deployment.md)** - Deployment processes and operations
+
+### Detailed Analysis Resources
+- **Analysis Results**: `.agents/analysis/` - Comprehensive project analysis reports
+- **Analysis Tasks**: `.agents/tasks/` - Reusable analysis task definitions
+- **Custom Commands**: `.agents/commands/` - Project-specific development commands
+- **Agent Definitions**: `.agents/agents/` - Specialized agent configurations
+
+### Personal Development Setup
+For user-specific Claude Code configurations and personal settings, use the `.claude/` directory (gitignored for privacy).

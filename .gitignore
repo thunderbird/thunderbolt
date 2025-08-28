@@ -38,7 +38,7 @@ tauri.key
 *storybook.log
 storybook-static
 
-# Dev Ex custom things
-mise*.toml
-mise.toml
+# Dev Ex and Agents custom things
 mise.lock
+mise.local.toml
+.claude/*

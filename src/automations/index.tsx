@@ -72,20 +72,19 @@ export default function AutomationsPage() {
     },
   })
 
-  const handleRunPrompt = (promptId: string) => {
-    const prompt = prompts.find((p) => p.id === promptId)
+  const handleRunPrompt = async (promptId: string) => {
+    try {
+      const prompt = prompts.find((p) => p.id === promptId)
 
-    runAutomation(promptId, navigate)
-      .then(() => {
-        if (prompt) {
-          trackEvent('automation_run', {
-            automation_id: promptId,
-            model: prompt.modelId,
-            length: prompt.prompt.length,
-          })
-        }
+      await runAutomation(promptId, navigate)
+      trackEvent('automation_run', {
+        automation_id: promptId,
+        model: prompt?.modelId,
+        length: prompt?.prompt.length,
       })
-      .catch(console.error)
+    } catch (error) {
+      console.error(error)
+    }
   }
 
   const handleEditPrompt = (prompt: Prompt) => {

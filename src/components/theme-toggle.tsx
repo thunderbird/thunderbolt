@@ -13,10 +13,8 @@ export function ThemeToggle() {
       variant="outline"
       value={theme}
       onValueChange={(value) => {
-        if (value) {
-          setTheme(value as 'light' | 'dark' | 'system')
-          trackEvent('settings_theme_set', { theme: value })
-        }
+        setTheme(value as 'light' | 'dark' | 'system')
+        trackEvent('settings_theme_set', { theme: value })
       }}
       className="justify-start"
     >

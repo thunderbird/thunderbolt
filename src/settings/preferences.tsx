@@ -203,10 +203,10 @@ export default function PreferencesSettingsPage() {
           set: { value: values.preferredName },
         })
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
-      if (variables.preferredName?.trim()) {
+      if (values.preferredName?.trim()) {
         if (settings?.preferredName) {
           trackEvent('settings_name_update')
         } else {
@@ -230,10 +230,10 @@ export default function PreferencesSettingsPage() {
           set: { value: values.dataCollection ? 'true' : 'false' },
         })
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
-      if (variables.dataCollection) {
+      if (values.dataCollection) {
         postHog.opt_in_capturing()
         trackEvent('settings_data_collection_enabled')
       } else {
@@ -276,16 +276,16 @@ export default function PreferencesSettingsPage() {
         throw error
       }
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
       if (settings?.locationName) {
         trackEvent('settings_location_update', {
-          location_name: variables.locationName,
+          location_name: values.locationName,
         })
       } else {
         trackEvent('settings_location_set', {
-          location_name: variables.locationName,
+          location_name: values.locationName,
         })
       }
     },

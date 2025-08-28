@@ -162,10 +162,10 @@ export default function AutomationFormModal({
         })
       }
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, values) => {
       trackEvent('automation_create', {
-        model: variables.modelId,
-        triggerType: variables.triggerType,
+        model: values.modelId,
+        triggerType: values.triggerType,
       })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
       onOpenChange(false)
@@ -220,11 +220,11 @@ export default function AutomationFormModal({
         }
       }
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, values) => {
       trackEvent('automation_update', {
         automation_id: prompt?.id,
         old_model: prompt?.modelId,
-        new_model: variables.modelId,
+        new_model: values.modelId,
       })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
       queryClient.invalidateQueries({ queryKey: ['triggers'] })

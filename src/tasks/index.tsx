@@ -349,8 +349,8 @@ export default function TasksPage() {
     mutationFn: async ({ id, item }: { id: string; item: string }) => {
       await db.update(tasksTable).set({ item }).where(eq(tasksTable.id, id))
     },
-    onSuccess: (_, variables) => {
-      trackEvent('task_update_text', { task_id: variables.id, new_length: variables.item.length })
+    onSuccess: (_, values) => {
+      trackEvent('task_update_text', { task_id: values.id, new_length: values.item.length })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
@@ -374,8 +374,6 @@ export default function TasksPage() {
     onSuccess: (_, updates) => {
       trackEvent('task_reorder', {
         moved_task_id: updates[0].id,
-        new_position: updates[0].order,
-        old_position: updates[0].order,
         total_tasks: updates.length,
       })
     },

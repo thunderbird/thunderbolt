@@ -139,7 +139,6 @@ export const trackEvent = (eventName: EventType, properties?: Record<string, any
   try {
     if (posthogClient) {
       posthogClient.capture(eventName, properties)
-      console.log('trackEvent', eventName, properties)
     }
   } catch (error) {
     console.error('Failed to track event:', error)

@@ -92,7 +92,6 @@ export default function NewModelPage() {
       isConfidential: 0,
       startWithReasoning: 0,
       contextWindow: null,
-      tokenizer: null,
     })
   }
 

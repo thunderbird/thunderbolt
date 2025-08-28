@@ -278,7 +278,6 @@ export default function ModelsPage() {
         enabled: 1,
         toolUsage: values.toolUsage ? 1 : 0,
         contextWindow: null,
-        tokenizer: null,
       })
     },
     onSuccess: () => {

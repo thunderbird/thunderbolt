@@ -58,33 +58,6 @@ export const seedModels = async () => {
         contextWindow: 256000,
         tokenizer: 'qwen3',
       },
-      {
-        id: uuidv7(),
-        name: 'Kimi K2',
-        provider: 'thunderbolt' as const,
-        model: 'kimi-k2-instruct',
-        isSystem: 0,
-        enabled: 1,
-        isConfidential: 0,
-      },
-      {
-        id: uuidv7(),
-        name: 'DeepSeek R1',
-        provider: 'thunderbolt' as const,
-        model: 'deepseek-r1-0528',
-        isSystem: 0,
-        enabled: 1,
-        isConfidential: 0,
-      },
-      {
-        id: uuidv7(),
-        name: 'Llama 3.1',
-        provider: 'thunderbolt' as const,
-        model: 'llama-v3p1-405b-instruct',
-        isSystem: 0,
-        enabled: 1,
-        isConfidential: 0,
-      },
     ]
     for (const model of seedData) {
       await db.insert(modelsTable).values(model)

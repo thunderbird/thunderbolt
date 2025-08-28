@@ -1,7 +1,6 @@
-import { isModelSupported } from '@/ai/tokenizers'
+import { ContextUsageIndicator } from '@/components/context-usage-indicator'
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
-import { ContextUsageIndicator } from '@/components/context-usage-indicator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
@@ -26,7 +25,6 @@ interface PromptInputProps {
   // Context tracking props
   usedTokens?: number
   maxTokens?: number
-  isContextKnown?: boolean
   isOverflowing?: boolean
   onOverflowAction?: () => void
 }
@@ -55,8 +53,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onStop,
       usedTokens,
       maxTokens,
-      isContextKnown,
-      isOverflowing = false,
+      isOverflowing = null,
       onOverflowAction,
     },
     ref,
@@ -80,6 +77,10 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       }
     }
 
+    const selectedModel = models.find((m) => m.id === selectedModelId)
+    const isContextWindowKnown = selectedModel?.contextWindow !== null
+    const isContextUsageKnown = usedTokens !== undefined && maxTokens !== undefined
+
     const content = (
       <>
         <AutosizeTextarea
@@ -95,13 +96,9 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
         <div className="flex gap-2 justify-between items-center w-full">
           <div className="flex items-center gap-2">
-            {(() => {
-              const selectedModel = models.find((m) => m.id === selectedModelId)
-              const modelSupportsContext = selectedModel ? isModelSupported(selectedModel) : false
-              return modelSupportsContext ? (
-                <ContextUsageIndicator usedTokens={usedTokens} maxTokens={maxTokens} isKnown={isContextKnown} />
-              ) : null
-            })()}
+            {isContextWindowKnown && isContextUsageKnown && (
+              <ContextUsageIndicator usedTokens={usedTokens!} maxTokens={maxTokens} />
+            )}
           </div>
 
           <div className="flex gap-2 items-center">
@@ -136,7 +133,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                   type="submit"
                   variant="default"
                   className="h-6 w-6 rounded-full flex items-center justify-center"
-                  disabled={isLoading || !value.trim() || isOverflowing}
+                  disabled={isLoading || !value.trim() || isOverflowing === true}
                 >
                   <ArrowUp className="size-4" />
                 </Button>

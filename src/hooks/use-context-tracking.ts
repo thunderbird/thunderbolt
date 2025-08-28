@@ -5,16 +5,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
 interface UseContextTrackingProps {
-  model?: Model | null
+  model: Model
   chatThreadId?: string
   currentInput: string
 }
 
 interface UseContextTrackingReturn {
-  usedTokens: number
-  maxTokens: number | undefined
-  isContextKnown: boolean
-  isOverflowing: boolean
+  usedTokens: number | null
+  maxTokens: number | null
+  isOverflowing: boolean | null
   isLoading: boolean
   estimateTokensForInput: (input: string) => number
 }
@@ -28,8 +27,7 @@ export const useContextTracking = ({
   currentInput,
 }: UseContextTrackingProps): UseContextTrackingReturn => {
   // Derive context window information from model
-  const maxTokens = model?.contextWindow ?? undefined
-  const isContextKnown = Boolean(maxTokens)
+  const maxTokens = model.contextWindow
 
   // Fetch context size from chat thread using React Query
   const { data: contextSizeData, isLoading } = useQuery({
@@ -38,15 +36,12 @@ export const useContextTracking = ({
     enabled: Boolean(chatThreadId),
   })
 
-  // Use 0 for calculations when context size is unknown (null)
-  const contextSize = contextSizeData ?? 0
-
   // Simple estimation for current input (only used for overflow preview)
   const inputTokenEstimate = !currentInput.trim() ? 0 : estimateTokensForText(currentInput)
 
   // Add input estimate for overflow checking when user is typing
-  const totalTokens = contextSize + (currentInput.trim() ? inputTokenEstimate : 0)
-  const isOverflowing = isContextKnown && maxTokens ? totalTokens > maxTokens : false
+  const totalTokens = contextSizeData ? contextSizeData + (currentInput.trim() ? inputTokenEstimate : 0) : null
+  const isOverflowing = totalTokens && maxTokens ? totalTokens > maxTokens : null
 
   // Function to estimate tokens for arbitrary input (for input preview)
   const estimateTokensForInput = useCallback((input: string): number => {
@@ -57,9 +52,8 @@ export const useContextTracking = ({
   }, [])
 
   return {
-    usedTokens: contextSize, // Show actual context size from thread
+    usedTokens: contextSizeData ?? null,
     maxTokens,
-    isContextKnown,
     isOverflowing,
     isLoading,
     estimateTokensForInput,

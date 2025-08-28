@@ -2,25 +2,15 @@ import { cn, formatNumber } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 interface ContextUsageIndicatorProps {
-  usedTokens?: number
-  maxTokens?: number
+  usedTokens: number
+  maxTokens: number
   className?: string
-  isKnown?: boolean
 }
 
 /**
  * Context usage indicator component showing token usage as a progress ring
  */
-export const ContextUsageIndicator = ({
-  usedTokens = 0,
-  maxTokens,
-  className,
-  isKnown = true,
-}: ContextUsageIndicatorProps) => {
-  if (!isKnown || !maxTokens) {
-    return null
-  }
-
+export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: ContextUsageIndicatorProps) => {
   const percentage = Math.min((usedTokens / maxTokens) * 100, 100)
   const roundedPercentage = Math.round(percentage)
 

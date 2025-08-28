@@ -37,6 +37,7 @@ export const seedModels = async () => {
         isSystem: 1,
         enabled: 1,
         isConfidential: 1,
+        contextWindow: 256000,
         toolUsage: 1,
         // No contextWindow or tokenizer - this model doesn't support context tracking
       },

@@ -41,4 +41,5 @@ storybook-static
 # Dev Ex and Agents custom things
 mise.lock
 mise.local.toml
-.claude/*
+settings.local.json
+mcp.json

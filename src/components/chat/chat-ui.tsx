@@ -84,10 +84,11 @@ export default function ChatUI({
 
   const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
 
-  const { usedTokens, maxTokens } = useContextTracking({
+  const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
     model: selectedModel,
     chatThreadId,
     currentInput: input,
+    onOverflow: () => setShowOverflowModal(true),
   })
 
   const {
@@ -163,6 +164,16 @@ export default function ChatUI({
     // Prevent submitting while streaming or if input is empty
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
+
+    if (isOverflowing) {
+      setShowOverflowModal(true)
+      trackEvent('chat_send_prompt_overflow', {
+        model: selectedModelId,
+        length: textToSend.length,
+        prompt_number: chatHelpers.messages.length + 1,
+      })
+      return
+    }
 
     trackEvent('chat_send_prompt', {
       model: selectedModelId,
@@ -304,9 +315,7 @@ export default function ChatUI({
               submitOnEnter={!isStreaming}
               className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
               footerStartElements={
-                usedTokens !== null && maxTokens !== null ? (
-                  <ContextUsageIndicator usedTokens={usedTokens} maxTokens={maxTokens} />
-                ) : null
+                isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
               }
             />
           </motion.div>

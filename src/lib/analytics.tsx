@@ -100,6 +100,7 @@ export const PostHogProvider = ({ children }: { children: ReactNode }) => {
 export type EventType =
   // Chat & Messaging
   | 'chat_send_prompt'
+  | 'chat_send_prompt_overflow'
   | 'chat_receive_reply'
   | 'chat_select'
   | 'chat_new_clicked'

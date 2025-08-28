@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ee87c688-298e-4ff6-aa0b-e80ba41f16a7",
+  "id": "2f756503-57fd-452a-95b5-b92630d4d392",
   "prevId": "b155035e-0969-4df3-8747-f813806dbc84",
   "tables": {
     "accounts": {
@@ -839,13 +839,6 @@
         "context_window": {
           "name": "context_window",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tokenizer": {
-          "name": "tokenizer",
-          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

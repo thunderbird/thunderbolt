@@ -1,4 +1,4 @@
-import { desc, eq, notExists } from 'drizzle-orm'
+import { desc, eq, notExists, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import {
@@ -10,7 +10,14 @@ import {
   promptsTable,
   settingsTable,
 } from '../db/tables'
-import { EmailThreadWithMessagesAndAddresses, type Model, type Prompt } from '../types'
+import {
+  EmailThreadWithMessagesAndAddresses,
+  type Model,
+  type Prompt,
+  type ThunderboltUIMessage,
+  type UIMessageMetadata,
+} from '../types'
+import { convertUIMessageToDbChatMessage } from './utils'
 
 /**
  * Gets the currently selected model or falls back to the system default model
@@ -263,4 +270,66 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Promp
     .get()
 
   return result?.prompt ?? null
+}
+
+/**
+ * Gets the context size for a chat thread
+ * @param threadId - The ID of the chat thread
+ * @returns The context size in tokens, or null if not found/not known
+ */
+export const getContextSizeForThread = async (threadId: string): Promise<number | null> => {
+  const db = DatabaseSingleton.instance.db
+  const thread = await db
+    .select({ contextSize: chatThreadsTable.contextSize })
+    .from(chatThreadsTable)
+    .where(eq(chatThreadsTable.id, threadId))
+    .get()
+
+  return thread?.contextSize ?? null
+}
+
+/**
+ * Saves messages to a chat thread and updates context size if available
+ * @param threadId - The ID of the chat thread
+ * @param messages - Array of UI messages to save
+ * @returns The saved database messages
+ * @throws Error if thread is not found
+ */
+export const saveMessagesWithContextUpdate = async (threadId: string, messages: ThunderboltUIMessage[]) => {
+  const db = DatabaseSingleton.instance.db
+
+  // Verify thread exists
+  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
+  if (!thread) {
+    throw new Error('Thread not found')
+  }
+
+  // Convert UI messages to DB messages
+  const dbChatMessages = messages.map((message) => convertUIMessageToDbChatMessage(message, threadId))
+
+  // Insert messages
+  await db
+    .insert(chatMessagesTable)
+    .values(dbChatMessages)
+    .onConflictDoUpdate({
+      target: chatMessagesTable.id,
+      set: {
+        content: sql`excluded.content`,
+        parts: sql`excluded.parts`,
+        role: sql`excluded.role`,
+      },
+    })
+
+  // Update context size if available in latest message
+  const latestMessage = messages[messages.length - 1]
+  const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
+
+  if (metadata?.usage?.totalTokens) {
+    await db
+      .update(chatThreadsTable)
+      .set({ contextSize: metadata.usage.totalTokens })
+      .where(eq(chatThreadsTable.id, threadId))
+  }
+
+  return dbChatMessages
 }

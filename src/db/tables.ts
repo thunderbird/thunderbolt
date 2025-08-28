@@ -31,6 +31,7 @@ export const chatThreadsTable = sqliteTable('chat_threads', {
   title: text('title'),
   isEncrypted: integer('is_encrypted').default(0).notNull(),
   triggeredBy: text('triggered_by').references(() => promptsTable.id),
+  contextSize: integer('context_size'), // total token count for the conversation
 })
 
 export const chatMessagesTable = sqliteTable('chat_messages', {
@@ -43,8 +44,6 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
     .notNull()
     .references(() => chatThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   modelId: text('model_id').references(() => modelsTable.id),
-  tokensActual: integer('tokens_actual'), // provider-reported input tokens for the entire request
-  tokensEstimate: integer('tokens_estimate'), // tokenizer-reported input tokens for the entire request
 })
 
 export const contactsTable = sqliteTable('contacts', {

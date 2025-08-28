@@ -21,6 +21,7 @@ interface ChatUIProps {
   selectedModelId?: string
   onModelChange: (model: string | null) => void
   triggerPrompt?: Prompt
+  chatThreadId?: string
 }
 
 interface SuggestionButtonProps {
@@ -62,7 +63,14 @@ const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string
   )
 }
 
-export default function ChatUI({ chatHelpers, models, selectedModelId, onModelChange, triggerPrompt }: ChatUIProps) {
+export default function ChatUI({
+  chatHelpers,
+  models,
+  selectedModelId,
+  onModelChange,
+  triggerPrompt,
+  chatThreadId,
+}: ChatUIProps) {
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [input, setInput] = useState('')
@@ -78,7 +86,7 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
   // Track context usage
   const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
     model: selectedModel,
-    messages: chatHelpers.messages,
+    chatThreadId,
     currentInput: input,
   })
 

@@ -19,22 +19,11 @@ export function uuidv7ToDate(uuid: string) {
 }
 
 export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage {
-  const metadata: UIMessageMetadata = {}
-
-  // Include actual token count from database if available
-  if (message.tokensActual) {
-    metadata.usage = {
-      totalTokens: message.tokensActual,
-      inputTokens: undefined, // Not tracked separately in our DB
-      outputTokens: undefined, // Not tracked separately in our DB
-    }
-  }
-
   return {
     id: message.id,
     parts: message.parts ?? [],
     role: message.role,
-    metadata,
+    metadata: {},
   }
 }
 
@@ -48,8 +37,6 @@ export function convertUIMessageToDbChatMessage(message: UIMessage, chatThreadId
     content: message.parts.map((part) => (part.type === 'text' ? part.text : '')).join(''),
     chatThreadId,
     modelId: metadata?.modelId ?? null,
-    tokensActual: metadata?.usage?.totalTokens ?? null,
-    tokensEstimate: null,
   }
 }
 

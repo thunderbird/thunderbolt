@@ -137,6 +137,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       selectedModelId={selectedModelId ?? undefined}
       onModelChange={handleModelChange}
       triggerPrompt={triggerPrompt ?? undefined}
+      chatThreadId={id}
     />
   )
 }

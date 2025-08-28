@@ -33,5 +33,10 @@ export const migrations: Migration[] = [
     "hash": "0004_next_boom_boom",
     "name": "0004_next_boom_boom.sql",
     "sql": "ALTER TABLE `chat_messages` ADD `tokens_actual` integer;--> statement-breakpoint\nALTER TABLE `chat_messages` ADD `tokens_estimate` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `context_window` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `tokenizer` text;"
+  },
+  {
+    "hash": "0004_worried_spyke",
+    "name": "0004_worried_spyke.sql",
+    "sql": "ALTER TABLE `chat_threads` ADD `context_size` integer;--> statement-breakpoint\nALTER TABLE `chat_messages` DROP COLUMN `tokens_actual`;--> statement-breakpoint\nALTER TABLE `chat_messages` DROP COLUMN `tokens_estimate`;"
   }
 ];

@@ -1,10 +1,12 @@
 import { estimateTokensForText } from '@/ai/tokenizers'
-import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
-import { useCallback, useMemo } from 'react'
+import { getContextSizeForThread } from '@/lib/dal'
+import type { Model } from '@/types'
+import { useQuery } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 interface UseContextTrackingProps {
   model?: Model | null
-  messages: ThunderboltUIMessage[]
+  chatThreadId?: string
   currentInput: string
 }
 
@@ -18,47 +20,32 @@ interface UseContextTrackingReturn {
 }
 
 /**
- * Hook to track context usage using actual token counts from the database
- * Uses the total token count from the most recent message's metadata
+ * Hook to track context usage using context size from chat thread
  */
 export const useContextTracking = ({
   model,
-  messages,
+  chatThreadId,
   currentInput,
 }: UseContextTrackingProps): UseContextTrackingReturn => {
   // Derive context window information from model
   const maxTokens = model?.contextWindow ?? undefined
   const isContextKnown = Boolean(maxTokens)
 
-  // Get actual token count from the most recent message's metadata
-  const actualTokensFromLastMessage = useMemo(() => {
-    if (!messages.length) {
-      return 0
-    }
+  // Fetch context size from chat thread using React Query
+  const { data: contextSizeData, isLoading } = useQuery({
+    queryKey: ['contextSize', chatThreadId],
+    queryFn: () => getContextSizeForThread(chatThreadId!),
+    enabled: Boolean(chatThreadId),
+  })
 
-    // Find the most recent message with token usage data
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i]
-      const metadata = message.metadata as UIMessageMetadata | undefined
-      if (metadata?.usage?.totalTokens) {
-        return metadata.usage.totalTokens
-      }
-    }
-
-    return 0
-  }, [messages])
+  // Use 0 for calculations when context size is unknown (null)
+  const contextSize = contextSizeData ?? 0
 
   // Simple estimation for current input (only used for overflow preview)
-  const inputTokenEstimate = useMemo(() => {
-    if (!currentInput.trim()) {
-      return 0
-    }
-    return estimateTokensForText(currentInput)
-  }, [currentInput])
+  const inputTokenEstimate = !currentInput.trim() ? 0 : estimateTokensForText(currentInput)
 
-  // The actual tokens already represent the full conversation history
-  // Only add input estimate for overflow checking when user is typing
-  const totalTokens = actualTokensFromLastMessage + (currentInput.trim() ? inputTokenEstimate : 0)
+  // Add input estimate for overflow checking when user is typing
+  const totalTokens = contextSize + (currentInput.trim() ? inputTokenEstimate : 0)
   const isOverflowing = isContextKnown && maxTokens ? totalTokens > maxTokens : false
 
   // Function to estimate tokens for arbitrary input (for input preview)
@@ -70,11 +57,11 @@ export const useContextTracking = ({
   }, [])
 
   return {
-    usedTokens: actualTokensFromLastMessage, // Show actual tokens used (not including current input)
+    usedTokens: contextSize, // Show actual context size from thread
     maxTokens,
     isContextKnown,
     isOverflowing,
-    isLoading: false,
+    isLoading,
     estimateTokensForInput,
   }
 }

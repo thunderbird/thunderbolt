@@ -8,7 +8,7 @@ import type { ThunderboltUIMessage } from '@/types'
  * @param text - Text to estimate tokens for
  * @returns Estimated token count
  */
-const estimateTokensFromText = (text: string): number => {
+export const estimateTokensForText = (text: string): number => {
   if (!text) return 0
   // Qwen models roughly follow ~3.5-4 characters per token for English
   // We'll use 3.5 to be slightly conservative
@@ -39,16 +39,16 @@ export const estimateTokensForMessages = (messages: ThunderboltUIMessage[]): num
 
   for (const message of messages) {
     // Add tokens for role indicator (e.g., "user:", "assistant:")
-    totalTokens += estimateTokensFromText(`${message.role}:`)
+    totalTokens += estimateTokensForText(`${message.role}:`)
 
     // Add tokens for message content from parts
     for (const part of message.parts) {
       if (part.type === 'text' && part.text) {
-        totalTokens += estimateTokensFromText(part.text)
+        totalTokens += estimateTokensForText(part.text)
       } else if (part.type.startsWith('tool-')) {
         // Handle tool-related parts (tool-call, tool-result, etc.)
         const toolText = JSON.stringify(part)
-        totalTokens += estimateTokensFromText(toolText)
+        totalTokens += estimateTokensForText(toolText)
       }
     }
 
@@ -63,15 +63,6 @@ export const estimateTokensForMessages = (messages: ThunderboltUIMessage[]): num
   totalTokens += Math.ceil(totalTokens * 0.1) // 10% slack
 
   return totalTokens
-}
-
-/**
- * Estimate tokens for a single text string
- * @param text - Text to estimate tokens for
- * @returns Estimated token count
- */
-export const estimateTokensForText = (text: string): number => {
-  return estimateTokensFromText(text)
 }
 
 /**

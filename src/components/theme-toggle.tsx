@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun } from 'lucide-react'
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTheme } from '@/lib/theme-provider'
+import { trackEvent } from '@/lib/analytics'
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
@@ -12,7 +13,8 @@ export function ThemeToggle() {
       variant="outline"
       value={theme}
       onValueChange={(value) => {
-        if (value) setTheme(value as 'light' | 'dark' | 'system')
+        setTheme(value as 'light' | 'dark' | 'system')
+        trackEvent('settings_theme_set', { theme: value })
       }}
       className="justify-start"
     >

@@ -22,10 +22,15 @@ export const seedAccounts = async () => {
 export const seedModels = async () => {
   const db = DatabaseSingleton.instance.db
   const models = await db.select().from(modelsTable)
+
   if (models.length === 0) {
+    /**
+     * Using hardwired IDs to ensure consistency across installs.
+     * New items should follow the pattern and have their ID hardwired.
+     */
     const seedData = [
       {
-        id: uuidv7(),
+        id: '0198ecc5-cc2b-735b-b478-785b85d3c731',
         name: 'Qwen 3',
         provider: 'flower' as const,
         model: 'qwen/qwen3-235b',
@@ -36,7 +41,7 @@ export const seedModels = async () => {
         // No contextWindow or tokenizer - this model doesn't support context tracking
       },
       {
-        id: uuidv7(),
+        id: '0198ecc5-cc2b-735b-b478-7c6770371b84',
         name: 'Qwen 3',
         provider: 'thunderbolt' as const,
         model: 'qwen3-235b-a22b-instruct-2507',
@@ -47,7 +52,7 @@ export const seedModels = async () => {
         tokenizer: 'qwen3',
       },
       {
-        id: uuidv7(),
+        id: '0198ecc5-cc2b-735b-b478-80dcfed4ea97',
         name: 'Qwen 3 (Thinking)',
         provider: 'thunderbolt' as const,
         model: 'qwen3-235b-a22b-thinking-2507',
@@ -67,6 +72,7 @@ export const seedModels = async () => {
 
 export const seedSettings = async () => {
   const db = DatabaseSingleton.instance.db
+
   await db
     .insert(settingsTable)
     .values({
@@ -116,21 +122,25 @@ export const seedTasks = async () => {
     return
   }
 
+  /**
+   * Using hardwired IDs to ensure consistency across installs.
+   * New items should follow the pattern and have their ID hardwired.
+   */
   const seedData = [
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-93f8db7202ce',
       item: 'Connect your email account to get started',
       order: 100,
       isComplete: 0,
     },
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-96071aa92f62',
       item: 'Set your name and location in preferences for better AI responses',
       order: 200,
       isComplete: 0,
     },
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-99e9874d61ba',
       item: 'Explore Thunderbolt Pro tools to extend capabilities',
       order: 300,
       isComplete: 0,
@@ -159,9 +169,13 @@ export const seedPrompts = async () => {
     return
   }
 
+  /**
+   * Using hardwired IDs to ensure consistency across installs.
+   * New items should follow the pattern and have their ID hardwired.
+   */
   const seedData = [
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-9ff7f5b047d3',
       title: 'Daily Brief',
       prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
@@ -201,7 +215,7 @@ Do not show skipped sections at all, even placeholders - just skip them entirely
       modelId: defaultModelId,
     },
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-a17c00778369',
       title: 'Deep Research',
       prompt: `You are **Deep Research**, an expert analyst who can iteratively SEARCH the web and FETCH full documents.
 
@@ -285,7 +299,7 @@ Begin now.`,
       modelId: defaultModelId,
     },
     {
-      id: uuidv7(),
+      id: '0198ecc5-cc2b-735b-b478-a61c73ab50d6',
       title: 'Important Emails',
       prompt: `Review my inbox and summarize the 5 most important emails that need my attention today. Include sender, subject, and why each is important.`,
       modelId: defaultModelId,

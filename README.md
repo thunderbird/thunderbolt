@@ -233,3 +233,4 @@ bun run tauri ios dev --force-ip-prompt --host # Be sure to select the IP of you
 ## Documentation
 
 - [Release Process](./RELEASE.md) - Instructions for creating and publishing new releases
+- [Telemetry](./TELEMETRY.md) - Information about data collection and privacy policy

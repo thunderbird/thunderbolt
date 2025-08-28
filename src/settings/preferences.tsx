@@ -31,6 +31,9 @@ import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { Switch } from '@/components/ui/switch'
+import { usePostHog } from 'posthog-js/react'
+import { trackEvent } from '@/lib/analytics'
 
 interface LocationData {
   name: string
@@ -43,6 +46,10 @@ interface LocationData {
 
 const nameFormSchema = z.object({
   preferredName: z.string().optional(),
+})
+
+const privacyFormSchema = z.object({
+  dataCollection: z.boolean(),
 })
 
 const locationFormSchema = z.object({
@@ -60,6 +67,8 @@ export default function PreferencesSettingsPage() {
   const [isSearching, setIsSearching] = React.useState(false)
   const [isResetting, setIsResetting] = React.useState(false)
 
+  const postHog = usePostHog()
+
   // Get any existing settings from the database
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -68,12 +77,14 @@ export default function PreferencesSettingsPage() {
       const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
       const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
       const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
+      const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
 
       return {
         locationName: nameData[0]?.value || '',
         locationLat: latData[0]?.value || '',
         locationLng: lngData[0]?.value || '',
         preferredName: preferredNameData[0]?.value || '',
+        dataCollection: dataCollection[0]?.value === 'false' ? false : true,
       }
     },
   })
@@ -82,6 +93,13 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(nameFormSchema),
     defaultValues: {
       preferredName: '',
+    },
+  })
+
+  const privacyForm = useForm<z.infer<typeof privacyFormSchema>>({
+    resolver: zodResolver(privacyFormSchema),
+    defaultValues: {
+      dataCollection: true,
     },
   })
 
@@ -101,6 +119,10 @@ export default function PreferencesSettingsPage() {
         preferredName: settings.preferredName as string,
       })
 
+      privacyForm.reset({
+        dataCollection: settings.dataCollection,
+      })
+
       locationForm.reset({
         locationName: settings.locationName as string,
         locationLat:
@@ -109,7 +131,7 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm])
+  }, [settings, nameForm, locationForm, privacyForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -181,8 +203,43 @@ export default function PreferencesSettingsPage() {
           set: { value: values.preferredName },
         })
     },
-    onSuccess: () => {
+    onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (values.preferredName?.trim()) {
+        if (settings?.preferredName) {
+          trackEvent('settings_name_update')
+        } else {
+          trackEvent('settings_name_set')
+        }
+      } else {
+        trackEvent('settings_name_clear')
+      }
+    },
+  })
+
+  // Save data collection mutation
+  const saveDataCollectionMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
+      // Upsert the setting
+      await db
+        .insert(settingsTable)
+        .values({ key: 'data_collection', value: values.dataCollection ? 'true' : 'false' })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.dataCollection ? 'true' : 'false' },
+        })
+    },
+    onSuccess: (_, values) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (values.dataCollection) {
+        postHog.opt_in_capturing()
+        trackEvent('settings_data_collection_enabled')
+      } else {
+        trackEvent('settings_data_collection_disabled')
+        postHog.opt_out_capturing()
+      }
     },
   })
 
@@ -219,14 +276,28 @@ export default function PreferencesSettingsPage() {
         throw error
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (settings?.locationName) {
+        trackEvent('settings_location_update', {
+          location_name: values.locationName,
+        })
+      } else {
+        trackEvent('settings_location_set', {
+          location_name: values.locationName,
+        })
+      }
     },
   })
 
   const handleNameBlur = async (value: string) => {
     // Save the value directly
     await saveNameMutation.mutateAsync({ preferredName: value })
+  }
+
+  const handleDataCollectionToggle = async (value: boolean) => {
+    await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -257,6 +328,7 @@ export default function PreferencesSettingsPage() {
     locationForm.setValue('locationLat', String(location.coordinates.lat))
     locationForm.setValue('locationLng', String(location.coordinates.lng))
     setOpen(false)
+
     // Save immediately after selection, passing the location data directly
     handleLocationSave(location)
   }
@@ -265,6 +337,7 @@ export default function PreferencesSettingsPage() {
     setIsResetting(true)
     try {
       await resetAppDir()
+      trackEvent('settings_database_reset')
       // Refresh the page to reinitialize the app
       window.location.reload()
     } catch (error) {
@@ -395,6 +468,39 @@ export default function PreferencesSettingsPage() {
                   <FormDescription>Select your location to enable location-based features.</FormDescription>
                   <FormMessage />
                 </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Privacy">
+        <Form {...privacyForm}>
+          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={privacyForm.control}
+              name="dataCollection"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Data Collection</label>
+                    <p className="text-sm text-muted-foreground">
+                      Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
+                      No personal data is collected or stored. Read more about our{' '}
+                      <a
+                        className="text-primary underline-offset-4 hover:underline"
+                        href="https://www.thunderbird.net/en-US/privacy/"
+                        target="_blank"
+                      >
+                        privacy policy
+                      </a>
+                      .
+                    </p>
+                  </div>
+                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
+                </div>
               )}
             />
           </form>

@@ -1,6 +1,7 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { trackEvent } from '@/lib/analytics'
 import { getOrCreateChatThread } from '@/lib/dal'
 import { cn } from '@/lib/utils'
 import { Model, type Prompt, type ThunderboltUIMessage } from '@/types'
@@ -83,7 +84,7 @@ export default function ChatUI({
 
   const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
 
-  const { usedTokens, maxTokens, isOverflowing } = useContextTracking({
+  const { usedTokens, maxTokens } = useContextTracking({
     model: selectedModel,
     chatThreadId,
     currentInput: input,
@@ -163,11 +164,11 @@ export default function ChatUI({
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
 
-    // Check for context overflow
-    if (isOverflowing) {
-      setShowOverflowModal(true)
-      return
-    }
+    trackEvent('chat_send_prompt', {
+      model: selectedModelId,
+      length: textToSend.length,
+      prompt_number: chatHelpers.messages.length + 1,
+    })
 
     // Clear the input immediately for responsive UX
     setInput('')

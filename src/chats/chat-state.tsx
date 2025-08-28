@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { trackEvent } from '@/lib/analytics'
 
 interface ChatStateProps {
   id: string
@@ -39,6 +40,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
   const handleModelChange = (modelId: string | null) => {
     setSelectedModelId(modelId)
     setDefaultModelId(modelId)
+    trackEvent('model_select', { model: modelId })
   }
 
   useEffect(() => {
@@ -88,6 +90,12 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       await saveMessages({
         id,
         messages: [message],
+      })
+
+      trackEvent('chat_receive_reply', {
+        model: selectedModelIdRef.current,
+        length: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
+        reply_number: chatMessages.length + 1,
       })
     },
     onError: (error) => {

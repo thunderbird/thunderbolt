@@ -29,7 +29,7 @@ export default function ThunderboltBridgeSettingsPage() {
 
   // Get bridge settings from database
   const { data: settings, isLoading } = useQuery({
-    queryKey: ['bridge-settings'],
+    queryKey: ['settings', 'bridge_enabled'],
     queryFn: getBridgeSettings,
   })
 
@@ -96,7 +96,7 @@ export default function ThunderboltBridgeSettingsPage() {
     },
     onSuccess: (enabled) => {
       setBridgeEnabled(enabled)
-      queryClient.invalidateQueries({ queryKey: ['bridge-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'bridge_enabled'] })
     },
   })
 

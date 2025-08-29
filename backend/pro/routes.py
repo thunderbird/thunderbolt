@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from .context import SimpleContext
 from .duckduckgo import DuckDuckGoSearcher
 from .exa import ExaSearcher
+from .exa_content_fetcher import ExaContentFetcher
 from .models import (
     FetchContentRequest,
     FetchContentResponse,
@@ -27,6 +28,13 @@ try:
 except ValueError:
     # Exa API key not configured
     exa_searcher = None
+
+try:
+    exa_content_fetcher = ExaContentFetcher()
+except ValueError:
+    # Exa API key not configured - fall back to direct fetching
+    exa_content_fetcher = None
+
 fetcher = WebContentFetcher()
 weather_client = OpenMeteoWeather()
 
@@ -70,10 +78,17 @@ def create_pro_tools_app() -> FastAPI:
     async def fetch_content_endpoint(
         request: FetchContentRequest,
     ) -> FetchContentResponse:
-        """Fetch and parse content from a webpage URL"""
+        """Fetch and parse content from a webpage URL using privacy-protected Exa proxy"""
+        if not exa_content_fetcher:
+            return FetchContentResponse(
+                content="",
+                success=False,
+                error="Content fetch service is not configured. Please set the EXA_API_KEY environment variable.",
+            )
+
         try:
             ctx = SimpleContext()
-            content = await fetcher.fetch_and_parse(request.url, ctx)
+            content = await exa_content_fetcher.fetch_and_parse(request.url, ctx)
 
             return FetchContentResponse(content=content, success=True)
         except Exception as e:

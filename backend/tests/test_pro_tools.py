@@ -1,6 +1,6 @@
 """Test pro tools functionality."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -80,12 +80,13 @@ class TestProToolsEndpoints:
             assert data["success"] is True
             assert "results" in data
 
-    @patch("pro.web_content_fetcher.WebContentFetcher.fetch_and_parse")
+    @patch("pro.routes.exa_content_fetcher")
     def test_fetch_content_endpoint_success(
-        self, mock_fetch: AsyncMock, client: TestClient
+        self, mock_exa_fetcher: Mock, client: TestClient
     ) -> None:
-        """Test successful fetch-content endpoint response."""
-        mock_fetch.return_value = "Fetched content"
+        """Test successful fetch-content endpoint response using Exa proxy."""
+        # Mock the Exa content fetcher instance and its method
+        mock_exa_fetcher.fetch_and_parse = AsyncMock(return_value="Fetched content")
 
         response = client.post(
             "/pro/fetch-content", json={"url": "https://example.com"}

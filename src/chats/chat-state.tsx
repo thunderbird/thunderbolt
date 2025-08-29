@@ -33,7 +33,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
   }, [selectedModelId])
 
   const { data: selectedModel } = useQuery<Model>({
-    queryKey: ['defaultModel', id],
+    queryKey: ['models', 'defaultModel', id],
     queryFn: () => getDefaultModelForThread(id, defaultModelId ?? undefined),
   })
 

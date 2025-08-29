@@ -303,7 +303,7 @@ export default function TasksPage() {
 
   // Count total tasks
   const { data: totalCount = 0 } = useQuery({
-    queryKey: ['tasks-count'],
+    queryKey: ['tasks', 'count'],
     queryFn: getIncompleteTasksCount,
   })
 
@@ -322,7 +322,6 @@ export default function TasksPage() {
     onSuccess: (_, item) => {
       trackEvent('task_add', { task_length: item.length })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 
@@ -342,7 +341,6 @@ export default function TasksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 
@@ -367,7 +365,6 @@ export default function TasksPage() {
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 

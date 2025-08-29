@@ -52,12 +52,12 @@ export default function AutomationFormModal({
   const queryClient = useQueryClient()
 
   const { data: models = [] } = useQuery<Model[]>({
-    queryKey: ['availableModels'],
+    queryKey: ['models', 'availableModels'],
     queryFn: getAvailableModels,
   })
 
   const { data: selectedModel } = useQuery<Model>({
-    queryKey: ['selectedModel'],
+    queryKey: ['models', 'selectedModel'],
     queryFn: getSelectedModel,
   })
 

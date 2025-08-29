@@ -72,7 +72,7 @@ export default function PreferencesSettingsPage() {
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
-    queryKey: ['preferences-settings'],
+    queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
 
@@ -191,7 +191,7 @@ export default function PreferencesSettingsPage() {
         })
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
 
       if (values.preferredName?.trim()) {
         if (settings?.preferredName) {
@@ -218,7 +218,7 @@ export default function PreferencesSettingsPage() {
         })
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
 
       if (values.dataCollection) {
         postHog.opt_in_capturing()
@@ -264,7 +264,7 @@ export default function PreferencesSettingsPage() {
       }
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
 
       if (settings?.locationName) {
         trackEvent('settings_location_update', {

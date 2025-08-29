@@ -36,7 +36,7 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(defaultTheme)
 
   const { data: savedTheme } = useQuery({
-    queryKey: ['theme-setting'],
+    queryKey: ['settings', 'theme'],
     queryFn: () => getThemeSetting(storageKey, defaultTheme),
   })
 
@@ -57,7 +57,7 @@ export function ThemeProvider({
         })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['theme-setting'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'theme'] })
     },
   })
 

@@ -1,4 +1,4 @@
-import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
+import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'

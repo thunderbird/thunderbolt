@@ -27,6 +27,14 @@ import { convertUIMessageToDbChatMessage } from './utils'
 // MODELS
 // ============================================================================
 
+const mapModel = (model: Model) => {
+  return {
+    ...model,
+    api_key: model.apiKey || undefined,
+    is_system: model.isSystem || undefined,
+  }
+}
+
 /**
  * Gets all models from the database
  */
@@ -34,11 +42,7 @@ export const getAllModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
   const results = await db.select().from(modelsTable)
 
-  return results.map((model) => ({
-    ...model,
-    api_key: model.apiKey || undefined,
-    is_system: model.isSystem || undefined,
-  }))
+  return results.map(mapModel)
 }
 
 /**
@@ -46,7 +50,8 @@ export const getAllModels = async (): Promise<Model[]> => {
  */
 export const getAvailableModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
+  const results = await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
+  return results.map(mapModel)
 }
 
 /**
@@ -55,7 +60,7 @@ export const getAvailableModels = async (): Promise<Model[]> => {
 export const getModelById = async (id: string): Promise<Model | null> => {
   const db = DatabaseSingleton.instance.db
   const model = await db.select().from(modelsTable).where(eq(modelsTable.id, id)).get()
-  return model || null
+  return model ? mapModel(model) : null
 }
 
 /**
@@ -75,7 +80,7 @@ export const getSelectedModel = async (): Promise<Model> => {
     .get()
 
   if (model?.id) {
-    return model
+    return mapModel(model)
   }
 
   const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
@@ -84,7 +89,7 @@ export const getSelectedModel = async (): Promise<Model> => {
     throw new Error('No system model found')
   }
 
-  return systemModel
+  return mapModel(systemModel)
 }
 
 /**
@@ -106,9 +111,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
     .get()
 
   if (lastMessage?.modelId) {
-    const model = await db.query.modelsTable.findFirst({
-      where: eq(modelsTable.id, lastMessage.modelId),
-    })
+    const model = await getModelById(lastMessage.modelId)
 
     if (model) {
       return model
@@ -116,9 +119,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
   }
 
   if (fallbackModelId) {
-    const model = await db.query.modelsTable.findFirst({
-      where: eq(modelsTable.id, fallbackModelId),
-    })
+    const model = await getModelById(fallbackModelId)
 
     if (model) {
       return model

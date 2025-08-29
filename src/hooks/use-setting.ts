@@ -36,14 +36,14 @@ export const useSetting = <T = string>(
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: ['setting', key],
+    queryKey: ['settings', key],
     queryFn: () => getSetting(key, defaultValue),
   })
 
   const mutation = useMutation({
     mutationFn: (newValue: T | null) => updateSetting(key, newValue ? newValue.toString() : null),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['setting', key] })
+      queryClient.invalidateQueries({ queryKey: ['settings', key] })
     },
   })
 
@@ -92,14 +92,14 @@ export const useBooleanSetting = (
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: ['setting', key],
+    queryKey: ['settings', key],
     queryFn: () => getBooleanSetting(key, defaultValue),
   })
 
   const mutation = useMutation({
     mutationFn: (newValue: boolean) => updateSetting(key, newValue.toString()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['setting', key] })
+      queryClient.invalidateQueries({ queryKey: ['settings', key] })
     },
   })
 

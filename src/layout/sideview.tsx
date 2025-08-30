@@ -7,7 +7,7 @@ import { useSideview } from '@/sideview/provider'
 import { EmailThreadView } from '@/sideview/thread'
 import { useQuery } from '@tanstack/react-query'
 
-export function Sideview({}: {}) {
+export function Sideview() {
   const { sideviewId, sideviewType } = useSideview()
 
   console.log('sideviewType', sideviewType, sideviewId)

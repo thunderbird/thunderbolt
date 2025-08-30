@@ -92,7 +92,7 @@ export const tasksRelations = relations(tasksTable, ({ many }) => ({
   emailThreads: many(emailThreadsTable),
 }))
 
-export const settingsRelations = relations(settingsTable, ({}) => ({}))
+export const settingsRelations = relations(settingsTable, () => ({}))
 
 export const modelsRelations = relations(modelsTable, ({ many }) => ({
   chatMessages: many(chatMessagesTable),

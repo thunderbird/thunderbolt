@@ -236,9 +236,7 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
   )
 }
 
-type SimulatorContentProps = Record<string, never>
-
-function SimulatorContent({}: SimulatorContentProps) {
+function SimulatorContent() {
   const [selectedSse, setSelectedSse] = useLocalStorage('simulation-sse', '')
   const [sseContent, setSseContent] = useState(() => {
     const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)

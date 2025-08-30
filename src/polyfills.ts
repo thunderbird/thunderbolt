@@ -6,7 +6,7 @@
  *     Firefox Focus or legacy Safari versions.)
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+ 
 // @ts-ignore – we’re intentionally augmenting the global `crypto` object
 ;(() => {
   // Only polyfill when necessary and when secure random is available.

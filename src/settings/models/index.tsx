@@ -464,7 +464,7 @@ export default function ModelsPage() {
           endpoint = 'https://openrouter.ai/api/v1/models'
           headers = { Authorization: `Bearer ${apiKey}` }
           break
-        case 'thunderbolt':
+        case 'thunderbolt': {
           const thunderboltModels = [
             { id: 'kimi-k2-instruct', name: 'Kimi K2', supports_tools: true },
             { id: 'deepseek-r1-0528', name: 'DeepSeek R1', supports_tools: true },
@@ -474,6 +474,7 @@ export default function ModelsPage() {
           ]
           dispatch({ type: 'FETCH_MODELS_SUCCESS', models: thunderboltModels })
           return
+        }
       }
 
       if (endpoint) {

@@ -99,7 +99,7 @@ export function useAutoScroll({
           behavior: (smoothScroll ?? (!isStreaming && smooth)) ? 'smooth' : 'auto',
           block: 'end',
         })
-      } catch (error) {
+      } catch (_) {
         // Fallback for older browsers
         scrollContainerRef.current?.scrollTo(0, scrollContainerRef.current.scrollHeight)
       }

@@ -310,7 +310,7 @@ export default function IntegrationsPage() {
 
       await loadIntegrations()
     } catch (error) {
-      console.error('Failed to disconnect integration')
+      console.error('Failed to disconnect integration', error)
     }
   }
 
@@ -328,7 +328,7 @@ export default function IntegrationsPage() {
 
       console.log(`${integration.name} integration ${enabled ? 'enabled' : 'disabled'}`)
     } catch (error) {
-      console.error('Failed to update integration')
+      console.error('Failed to update integration', error)
     }
   }
 

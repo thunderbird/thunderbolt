@@ -80,39 +80,49 @@ export const startOAuthFlowWebview = async (
 }
 
 async function waitForCallback(window: WebviewWindow): Promise<{ code: string; state: string } | null> {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    let unlistenCallback: (() => void) | null = null
+    let unlistenNavigate: (() => void) | null = null
+
     const cleanup = async () => {
-      unlistenCallback()
-      unlistenNavigate()
+      if (unlistenCallback) unlistenCallback()
+      if (unlistenNavigate) unlistenNavigate()
       await window.destroy()
     }
 
     const handleCallback = (code: string | null, state: string | null, error: string | null) => {
       if (error) {
-        cleanup()
-        reject(new Error(error))
+        cleanup().then(() => reject(new Error(error)))
       } else if (code && state) {
-        cleanup()
-        resolve({ code, state })
+        cleanup().then(() => resolve({ code, state }))
       }
     }
 
-    const unlistenCallback = await listen('oauth-callback', (event: any) => {
+    // Set up event listeners
+    listen('oauth-callback', (event: any) => {
       const { code, state, error } = event.payload || {}
       handleCallback(code, state, error)
     })
+      .then((unlisten) => {
+        unlistenCallback = unlisten
+      })
+      .catch(reject)
 
-    const unlistenNavigate = await window.listen('tauri://navigate', (event: any) => {
-      const url = new URL(event.payload)
-      if (!url.pathname.includes('oauth-callback.html')) return
+    window
+      .listen('tauri://navigate', (event: any) => {
+        const url = new URL(event.payload)
+        if (!url.pathname.includes('oauth-callback.html')) return
 
-      const params = url.searchParams
-      handleCallback(params.get('code'), params.get('state'), params.get('error') || params.get('error_description'))
-    })
+        const params = url.searchParams
+        handleCallback(params.get('code'), params.get('state'), params.get('error') || params.get('error_description'))
+      })
+      .then((unlisten) => {
+        unlistenNavigate = unlisten
+      })
+      .catch(reject)
 
     window.once('tauri://close-requested', () => {
-      cleanup()
-      resolve(null)
+      cleanup().then(() => resolve(null))
     })
   })
 }

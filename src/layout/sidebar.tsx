@@ -21,8 +21,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useBooleanSetting } from '@/hooks/use-setting'
 import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
+import { ExperimentalFeatureWrapper } from '@/components/experimental-feature-wrapper'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
@@ -65,7 +65,6 @@ export default function ChatSidebar() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const [experimentalFeaturesEnabled] = useBooleanSetting('experimental_features', false)
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -282,7 +281,7 @@ export default function ChatSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {experimentalFeaturesEnabled && (
+              <ExperimentalFeatureWrapper>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/automations">
@@ -291,7 +290,7 @@ export default function ChatSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
+              </ExperimentalFeatureWrapper>
               <SidebarMenuItem>
                 {isMobile ? (
                   <SidebarMenuButton onClick={showSettingsMenu} className="cursor-pointer">

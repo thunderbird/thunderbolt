@@ -85,6 +85,28 @@ cd backend && uv sync --frozen && cd ..
 cd flower/framework && pip install -e . && cd ../..
 ```
 
+## Code Formatting
+
+Thunderbolt uses automated code formatting to maintain consistent code style across the entire project.
+
+### Automatic Pre-commit Formatting
+
+Staged git files are automatically formatted before commits via lint-staged:
+
+- **Frontend files** (`.ts`, `.tsx`, `.js`, `.jsx`, `.json`, `.css`, `.md`) are formatted with Prettier
+- **Python files** (`.py`) are formatted with Ruff
+- **Rust files** (`.rs`) are formatted with cargo fmt
+
+### Manual Formatting Commands
+
+```sh
+# Format all code (frontend, Python, Rust)
+make format
+
+# Check formatting without modifying files
+make format-check
+```
+
 ## Run
 
 ```sh

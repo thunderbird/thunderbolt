@@ -53,6 +53,10 @@ const privacyFormSchema = z.object({
   dataCollection: z.boolean(),
 })
 
+const experimentalFeaturesFormSchema = z.object({
+  experimentalFeatures: z.boolean(),
+})
+
 const locationFormSchema = z.object({
   locationName: z.string().min(1, { message: 'Location is required.' }),
   locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
@@ -90,6 +94,13 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  const experimentalFeaturesForm = useForm<z.infer<typeof experimentalFeaturesFormSchema>>({
+    resolver: zodResolver(experimentalFeaturesFormSchema),
+    defaultValues: {
+      experimentalFeatures: false,
+    },
+  })
+
   const locationForm = useForm<z.infer<typeof locationFormSchema>>({
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
@@ -110,6 +121,10 @@ export default function PreferencesSettingsPage() {
         dataCollection: settings.dataCollection,
       })
 
+      experimentalFeaturesForm.reset({
+        experimentalFeatures: settings.experimentalFeatures,
+      })
+
       locationForm.reset({
         locationName: settings.locationName as string,
         locationLat:
@@ -118,10 +133,17 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm, privacyForm])
+  }, [settings, nameForm, locationForm, privacyForm, experimentalFeaturesForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
+
+  // Sync experimental features when telemetry is disabled
+  React.useEffect(() => {
+    if (!settings?.dataCollection && settings?.experimentalFeatures) {
+      experimentalFeaturesForm.setValue('experimentalFeatures', false)
+    }
+  }, [settings?.dataCollection, settings?.experimentalFeatures, experimentalFeaturesForm])
 
   // Search for locations when debounced query changes
   React.useEffect(() => {
@@ -230,6 +252,29 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  // Save experimental features mutation
+  const saveExperimentalFeaturesMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof experimentalFeaturesFormSchema>) => {
+      // Upsert the setting
+      await db
+        .insert(settingsTable)
+        .values({ key: 'experimental_features', value: values.experimentalFeatures ? 'true' : 'false' })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.experimentalFeatures ? 'true' : 'false' },
+        })
+    },
+    onSuccess: (_, values) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      if (values.experimentalFeatures) {
+        trackEvent('settings_experimental_features_enabled')
+      } else {
+        trackEvent('settings_experimental_features_disabled')
+      }
+    },
+  })
+
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
@@ -285,6 +330,15 @@ export default function PreferencesSettingsPage() {
 
   const handleDataCollectionToggle = async (value: boolean) => {
     await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
+
+    // If telemetry is disabled, also disable experimental features
+    if (!value && experimentalFeaturesForm.getValues().experimentalFeatures) {
+      await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: false })
+    }
+  }
+
+  const handleExperimentalFeaturesToggle = async (value: boolean) => {
+    await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: value })
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -487,6 +541,44 @@ export default function PreferencesSettingsPage() {
                     </p>
                   </div>
                   <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Preview Features">
+        <Form {...experimentalFeaturesForm}>
+          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={experimentalFeaturesForm.control}
+              name="experimentalFeatures"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Enable Experimental Features</label>
+                    <p className="text-sm text-muted-foreground">
+                      Try out experimental features before they're officially released. These features may be unstable
+                      or change without notice. To enable them, you'll need to turn on telemetry so we can learn and
+                      improve from real usage.
+                    </p>
+                    {!settings?.dataCollection && (
+                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                        <p className="text-sm text-amber-800">
+                          <strong>Telemetry Required:</strong> You must enable data collection above to access
+                          experimental features.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={handleExperimentalFeaturesToggle}
+                    disabled={!settings?.dataCollection}
+                  />
                 </div>
               )}
             />

@@ -151,6 +151,10 @@ export const getPreferencesSettings = async () => {
   const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
   const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
   const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
+  const experimentalFeatures = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, 'experimental_features'))
 
   return {
     locationName: nameData[0]?.value || '',
@@ -158,6 +162,7 @@ export const getPreferencesSettings = async () => {
     locationLng: lngData[0]?.value || '',
     preferredName: preferredNameData[0]?.value || '',
     dataCollection: dataCollection[0]?.value === 'false' ? false : true,
+    experimentalFeatures: experimentalFeatures[0]?.value === 'true',
   }
 }
 

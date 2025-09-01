@@ -117,6 +117,8 @@ export type EventType =
   | 'settings_database_reset'
   | 'settings_data_collection_enabled'
   | 'settings_data_collection_disabled'
+  | 'settings_experimental_features_enabled'
+  | 'settings_experimental_features_disabled'
   // Tasks
   | 'task_add'
   | 'task_mark_complete'

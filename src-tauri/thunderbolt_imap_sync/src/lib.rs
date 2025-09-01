@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use thunderbolt_imap_client::ImapClient;
 use chrono::{DateTime, TimeZone, Utc};
 use libsql::Connection;
 use mail_parser::Message;
 use regex::Regex;
+use thunderbolt_imap_client::ImapClient;
 use uuid::Uuid;
 
 /// ImapSync provides functionality to synchronize IMAP messages with a local SQLite database
@@ -284,9 +284,7 @@ impl ImapSync {
                 .sync_messages(mailbox, start_index, page_size, since)
                 .await
                 .with_context(|| {
-                    format!(
-                        "Failed to sync messages from {mailbox} (index {start_index})"
-                    )
+                    format!("Failed to sync messages from {mailbox} (index {start_index})")
                 })?;
 
             total_saved += saved;
@@ -374,19 +372,17 @@ impl ImapSync {
     }
 
     fn parse_message_date(message: &Message<'_>) -> Option<DateTime<Utc>> {
-        message
-            .date()
-            .and_then(|d| {
-                // Convert mail-parser::DateTime to chrono::DateTime
-                let year = d.year as i32;
-                let month = d.month as u32;
-                let day = d.day as u32;
-                let hour = d.hour as u32;
-                let minute = d.minute as u32;
-                let second = d.second as u32;
+        message.date().and_then(|d| {
+            // Convert mail-parser::DateTime to chrono::DateTime
+            let year = d.year as i32;
+            let month = d.month as u32;
+            let day = d.day as u32;
+            let hour = d.hour as u32;
+            let minute = d.minute as u32;
+            let second = d.second as u32;
 
-                Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-                    .single()
-            })
+            Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+                .single()
+        })
     }
 }

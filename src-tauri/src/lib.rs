@@ -5,12 +5,17 @@ pub mod commands;
 #[allow(dead_code)]
 pub mod state;
 
-#[cfg(any(feature = "bridge", feature = "libsql", feature = "email", feature = "embeddings"))]
+#[cfg(feature = "bridge")]
+use crate::state::AppState;
+#[cfg(any(
+    feature = "bridge",
+    feature = "libsql",
+    feature = "email",
+    feature = "embeddings"
+))]
 use tauri::Manager;
 #[cfg(feature = "bridge")]
 use tokio::sync::Mutex;
-#[cfg(feature = "bridge")]
-use crate::state::AppState;
 
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
@@ -32,16 +37,22 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .setup(|_app| {
             #[cfg(feature = "bridge")]
             _app.manage(Mutex::new(AppState::default()));
-            
+
             #[cfg(feature = "libsql")]
-            _app.manage(tokio::sync::Mutex::new(thunderbolt_libsql::LibsqlState::new()));
-            
+            _app.manage(tokio::sync::Mutex::new(
+                thunderbolt_libsql::LibsqlState::new(),
+            ));
+
             #[cfg(feature = "email")]
-            _app.manage(tokio::sync::Mutex::new(thunderbolt_email::EmailState::default()));
-            
+            _app.manage(tokio::sync::Mutex::new(
+                thunderbolt_email::EmailState::default(),
+            ));
+
             #[cfg(feature = "embeddings")]
-            _app.manage(tokio::sync::Mutex::new(thunderbolt_embeddings::EmbeddingsState::default()));
-            
+            _app.manage(tokio::sync::Mutex::new(
+                thunderbolt_embeddings::EmbeddingsState::default(),
+            ));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -94,7 +105,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 #[no_mangle]
 pub extern "C" fn start_app() {
     std::env::set_var("RUST_BACKTRACE", "1");
-    
+
     tauri::async_runtime::block_on(async {
         create_app()
             .run(tauri::generate_context!())

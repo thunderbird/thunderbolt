@@ -1,6 +1,6 @@
-use thunderbolt_imap_client::{messages_to_json_values, ImapClient, ImapCredentials, ImapOptions};
 use dotenv::dotenv;
 use std::env;
+use thunderbolt_imap_client::{messages_to_json_values, ImapClient, ImapCredentials, ImapOptions};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -1,5 +1,5 @@
-use thunderbolt_embeddings::embedding::{generate_embedding, Embedder};
 use std::time::Instant;
+use thunderbolt_embeddings::embedding::{generate_embedding, Embedder};
 
 fn main() -> anyhow::Result<()> {
     println!("Initializing quantized embedder...");

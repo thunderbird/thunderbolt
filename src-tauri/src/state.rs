@@ -1,7 +1,7 @@
 #[cfg(feature = "bridge")]
-use thunderbolt_bridge::BridgeServer;
-#[cfg(feature = "bridge")]
 use std::sync::Arc;
+#[cfg(feature = "bridge")]
+use thunderbolt_bridge::BridgeServer;
 #[cfg(feature = "bridge")]
 use tokio::sync::Mutex;
 

@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
-use thunderbolt_embeddings::embedding::Embedder;
-use thunderbolt_embeddings::{generate_all_with_embedder, generate_batch_with_embedder};
 use libsql::{Builder, Connection};
 use std::env;
 use std::path::Path;
+use thunderbolt_embeddings::embedding::Embedder;
+use thunderbolt_embeddings::{generate_all_with_embedder, generate_batch_with_embedder};
 
 // Test embedding functionality
 async fn test_embedding_generation() -> Result<()> {

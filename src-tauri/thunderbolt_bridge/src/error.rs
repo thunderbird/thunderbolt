@@ -4,25 +4,25 @@ use thiserror::Error;
 pub enum BridgeError {
     #[error("WebSocket error: {0}")]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    
+
     #[error("Bridge not connected")]
     NotConnected,
-    
+
     #[error("Invalid message format")]
     InvalidMessage,
-    
+
     #[error("MCP error: {0}")]
     Mcp(String),
-    
+
     #[error("Configuration error: {0}")]
     Config(String),
-    
+
     #[error("Other error: {0}")]
     Other(String),
 }

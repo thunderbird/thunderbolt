@@ -1,8 +1,6 @@
 use anyhow::Result;
-use thunderbolt_embeddings::embedding::{
-    generate_embedding, generate_embeddings, Embedder,
-};
 use std::time::Instant;
+use thunderbolt_embeddings::embedding::{generate_embedding, generate_embeddings, Embedder};
 
 fn main() -> Result<()> {
     println!("Initializing embedder...");

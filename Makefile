@@ -18,6 +18,8 @@ help:
 	@echo "  make build-android  - Build Tauri Android app"
 	@echo "  make build-ios      - Build Tauri iOS app"
 	@echo "  make clean          - Clean build artifacts"
+	@echo "  make format         - Format frontend (JS/TS) and Python code"
+	@echo "  make format-check   - Check formatting for frontend and Python code"
 
 # Setup project - initialize submodules and install all dependencies
 setup:
@@ -85,10 +87,18 @@ lint-fix:
 
 # Formatting
 format:
+	@echo "$(BLUE)→ Formatting frontend code...$(NC)"
 	bun run format
+	@echo "$(BLUE)→ Formatting Python code...$(NC)"
+	cd backend && uv run ruff format .
+	@echo "$(GREEN)✓ Formatting complete!$(NC)"
 
 format-check:
+	@echo "$(BLUE)→ Checking frontend formatting...$(NC)"
 	bun run format-check
+	@echo "$(BLUE)→ Checking Python formatting...$(NC)"
+	cd backend && uv run ruff format --check .
+	@echo "$(GREEN)✓ Format check complete!$(NC)"
 
 # Type checking
 type-check:

@@ -7,6 +7,9 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json,css,md}": [
       "bun run format"
+    ],
+    "*.py": [
+      "bun run format:python"
     ]
   },
   "scripts": {
@@ -20,6 +23,7 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:python": "cd backend && uv run ruff format .",
     "format-check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "type-check": "tsc --noEmit",
     "check": "bun run type-check && bun run lint && bun run format-check",

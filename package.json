@@ -9,7 +9,8 @@
       "bun run format"
     ],
     "*.py": [
-      "bun run format:python"
+      "bun run format:python",
+      "bun run lint:python"
     ]
   },
   "scripts": {
@@ -24,6 +25,9 @@
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:python": "cd backend && uv run ruff format .",
+    "format:python-check": "cd backend && uv run ruff format --check .",
+    "lint:python": "cd backend && uv run ruff check --fix .",
+    "lint:python-check": "cd backend && uv run ruff check .",
     "format-check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "type-check": "tsc --noEmit",
     "check": "bun run type-check && bun run lint && bun run format-check",

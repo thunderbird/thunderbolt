@@ -107,8 +107,8 @@ jobs:
       - name: Type check
         run: bun run tsc --noEmit
 
-      # - name: Lint  
-      #   run: bun run lint
+      - name: Lint
+        run: bun run lint
 
       - name: Run tests
         run: |
@@ -177,7 +177,6 @@ jobs:
           cargo build --all-targets
           cargo clippy --all-targets -- -D warnings
           cargo test
-
 
   backend:
     runs-on: ubuntu-latest

@@ -54,6 +54,7 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
+import { ExperimentalFeatureRouteWrapper } from './components/experimental-feature-route-wrapper'
 
 const queryClient = new QueryClient()
 
@@ -80,7 +81,14 @@ function AppRoutes({ initData }: { initData: InitData }) {
           <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
           <Route path="tasks" element={<TasksPage />} />
-          <Route path="automations" element={<AutomationsPage />} />
+          <Route
+            path="automations"
+            element={
+              <ExperimentalFeatureRouteWrapper>
+                <AutomationsPage />
+              </ExperimentalFeatureRouteWrapper>
+            }
+          />
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 

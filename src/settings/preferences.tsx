@@ -71,6 +71,7 @@ export default function PreferencesSettingsPage() {
   const [locations, setLocations] = React.useState<LocationData[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [isResetting, setIsResetting] = React.useState(false)
+  const [showTelemetryModal, setShowTelemetryModal] = React.useState(false)
 
   const postHog = usePostHog()
 
@@ -338,6 +339,10 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleExperimentalFeaturesToggle = async (value: boolean) => {
+    if (value && !settings?.dataCollection) {
+      setShowTelemetryModal(true)
+      return
+    }
     await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: value })
   }
 
@@ -548,46 +553,6 @@ export default function PreferencesSettingsPage() {
         </Form>
       </SectionCard>
 
-      <div className="h-6" />
-
-      <SectionCard title="Preview Features">
-        <Form {...experimentalFeaturesForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={experimentalFeaturesForm.control}
-              name="experimentalFeatures"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Enable Experimental Features</label>
-                    <p className="text-sm text-muted-foreground">
-                      Try out experimental features before they're officially released. These features may be unstable
-                      or change without notice. To enable them, you'll need to turn on telemetry so we can learn and
-                      improve from real usage.
-                    </p>
-                    {!settings?.dataCollection && (
-                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                        <p className="text-sm text-amber-800">
-                          <strong>Telemetry Required:</strong> You must enable data collection above to access
-                          experimental features.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={handleExperimentalFeaturesToggle}
-                    disabled={!settings?.dataCollection}
-                  />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
-      </SectionCard>
-
-      <div className="h-6" />
-
       <SectionCard title="Local Database">
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
@@ -618,6 +583,61 @@ export default function PreferencesSettingsPage() {
           </AlertDialog>
         </div>
       </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Preview Features">
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+          <p className="text-sm text-amber-800">
+            <strong>Warning:</strong> Features may change, use at your own risk.
+          </p>
+        </div>
+        <Form {...experimentalFeaturesForm}>
+          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={experimentalFeaturesForm.control}
+              name="experimentalFeatures"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Enable Experimental Features</label>
+                    <p className="text-sm text-muted-foreground">
+                      Try out experimental features before they're officially released. These features may be unstable
+                      or change without notice. To enable them, you'll need to turn on telemetry so we can learn and
+                      improve from real usage.
+                    </p>
+                  </div>
+                  <Switch checked={field.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      {/* Telemetry Required Modal */}
+      <AlertDialog open={showTelemetryModal} onOpenChange={setShowTelemetryModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Telemetry Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              In order to use preview features, we ask that you help us improve the product by sharing telemetry data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
+                await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: true })
+                setShowTelemetryModal(false)
+              }}
+            >
+              Enable Telemetry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

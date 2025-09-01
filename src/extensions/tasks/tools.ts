@@ -21,7 +21,7 @@ export const addTasks = {
           item: task,
           order: 0,
           isComplete: 0,
-        }))
+        })),
       )
       .returning()
     return tasks

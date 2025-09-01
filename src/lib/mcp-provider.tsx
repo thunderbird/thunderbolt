@@ -15,7 +15,6 @@ interface MCPServerConnection {
   enabled: boolean
 }
 
- 
 interface MCPContextType {
   servers: MCPServerConnection[]
   getEnabledClients: () => MCPClient[]
@@ -52,7 +51,9 @@ export function MCPProvider({ children }: { children: ReactNode }) {
     }
 
     // Use Tauri transport for external URLs to bypass CORS
-    const transport = isExternal ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions) : new StreamableHTTPClientTransport(urlObj, transportOptions)
+    const transport = isExternal
+      ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
+      : new StreamableHTTPClientTransport(urlObj, transportOptions)
 
     const mcpClient = await experimental_createMCPClient({
       transport,
@@ -62,7 +63,11 @@ export function MCPProvider({ children }: { children: ReactNode }) {
 
   const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
     if (!server.enabled) {
-      setServers((prev) => prev.map((s) => (s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s)))
+      setServers((prev) =>
+        prev.map((s) =>
+          s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+        ),
+      )
       return
     }
 
@@ -72,12 +77,20 @@ export function MCPProvider({ children }: { children: ReactNode }) {
 
       clientRefs.current.set(server.id, client)
 
-      setServers((prev) => prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)))
+      setServers((prev) =>
+        prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
+      )
 
       // MCP server connected successfully
     } catch (err) {
       console.error('Failed to connect to MCP server:', server.name, err)
-      setServers((prev) => prev.map((s) => (s.id === server.id ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled } : s)))
+      setServers((prev) =>
+        prev.map((s) =>
+          s.id === server.id
+            ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
+            : s,
+        ),
+      )
     }
   }
 
@@ -124,7 +137,11 @@ export function MCPProvider({ children }: { children: ReactNode }) {
       connectServer({ ...server, enabled })
     } else {
       disconnectServer(serverId)
-      setServers((prev) => prev.map((s) => (s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s)))
+      setServers((prev) =>
+        prev.map((s) =>
+          s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+        ),
+      )
     }
   }
 
@@ -139,7 +156,9 @@ export function MCPProvider({ children }: { children: ReactNode }) {
 
   const getEnabledClients = (): MCPClient[] => {
     // Use ref to always get current servers, avoiding stale closures
-    return serversRef.current.filter((server) => server.enabled && server.isConnected && server.client).map((server) => server.client!)
+    return serversRef.current
+      .filter((server) => server.enabled && server.isConnected && server.client)
+      .map((server) => server.client!)
   }
 
   // Cleanup on unmount

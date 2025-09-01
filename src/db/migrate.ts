@@ -64,7 +64,9 @@ export async function migrate(db: AnyDrizzleDatabase) {
         }
 
         // Record the migration as complete
-        await db.run(sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`)
+        await db.run(
+          sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`,
+        )
         console.info(`Applied migration: ${migration.name}`)
       } catch (error) {
         console.error(`Failed to apply migration ${migration.name}:`, error)

@@ -38,7 +38,11 @@ export function ChatNavButton({ chatTitle, threadId, className, asChild = false,
           <div className="w-1 h-[100%] bg-gray-200 group-hover/chat:opacity-100 opacity-0 rounded-r-sm" />
         </div>
         <div className="flex items-center w-full">
-          <Button variant="ghost" className="flex items-center justify-between gap-2 h-10 px-3 w-full" onClick={handleButtonClick}>
+          <Button
+            variant="ghost"
+            className="flex items-center justify-between gap-2 h-10 px-3 w-full"
+            onClick={handleButtonClick}
+          >
             <div className="flex items-center gap-2">
               <div className="hidden md:block text-left">
                 <p className="text-sm font-base">{chatTitle}</p>
@@ -56,7 +60,10 @@ export function ChatNavButton({ chatTitle, threadId, className, asChild = false,
                   <div className="mt-1 md:mt-0">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive">
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start text-destructive hover:text-destructive"
+                        >
                           <Trash2 className="size-4 mr-2" />
                           Delete
                         </Button>
@@ -64,11 +71,15 @@ export function ChatNavButton({ chatTitle, threadId, className, asChild = false,
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete the thread?</AlertDialogTitle>
-                          <AlertDialogDescription>This action cannot be undone. This will permanently delete this chat and all its messages.</AlertDialogDescription>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete this chat and all its messages.
+                          </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction className={cn(buttonVariants({ variant: 'destructive' }))}>Delete</AlertDialogAction>
+                          <AlertDialogAction className={cn(buttonVariants({ variant: 'destructive' }))}>
+                            Delete
+                          </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

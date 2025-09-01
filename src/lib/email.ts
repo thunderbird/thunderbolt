@@ -12,7 +12,9 @@ import { v7 as uuidv7 } from 'uuid'
 function extractReferences(email: EmailMessage): string[] {
   const [part] = email.parts?.parts ?? []
   const headers = part.headers
-  const references = headers?.find((header) => header.name === 'references' && header.value && header.value.TextList)?.value?.TextList ?? []
+  const references =
+    headers?.find((header) => header.name === 'references' && header.value && header.value.TextList)?.value?.TextList ??
+    []
   return references
 }
 
@@ -111,7 +113,12 @@ export class EmailThreader {
         return
       }
 
-      const thread = await this.db.select().from(emailThreadsTable).where(eq(emailThreadsTable.rootImapId, rootImapId)).limit(1).get()
+      const thread = await this.db
+        .select()
+        .from(emailThreadsTable)
+        .where(eq(emailThreadsTable.rootImapId, rootImapId))
+        .limit(1)
+        .get()
 
       if (!thread) {
         await this.createThread(email, rootImapId)
@@ -155,7 +162,10 @@ export class EmailThreader {
    */
   private async addEmailToThread(email: EmailMessage, thread: EmailThread): Promise<void> {
     // Update the email to be part of the thread
-    await this.db.update(emailMessagesTable).set({ emailThreadId: thread.id }).where(eq(emailMessagesTable.id, email.id))
+    await this.db
+      .update(emailMessagesTable)
+      .set({ emailThreadId: thread.id })
+      .where(eq(emailMessagesTable.id, email.id))
 
     // If this email is older, update the thread subject and firstMessageAt
     if (email.sentAt < thread.firstMessageAt) {

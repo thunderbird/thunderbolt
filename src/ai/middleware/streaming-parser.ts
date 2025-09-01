@@ -27,7 +27,7 @@ const parseToolNameAndId = (raw: string): { toolName: string; toolCallId: string
   return { toolName, toolCallId: toolCallId ?? generateId() }
 }
 
-type StackNode = { 
+type StackNode = {
   name: string
   content: string
   toolCallId?: string
@@ -96,7 +96,10 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
     }
 
     /** Handle sentinel tags like <|tool_call_begin|> */
-    const handleSentinelToken = (token: string, controller: TransformStreamDefaultController<LanguageModelV2StreamPart>) => {
+    const handleSentinelToken = (
+      token: string,
+      controller: TransformStreamDefaultController<LanguageModelV2StreamPart>,
+    ) => {
       // If we're currently inside a tool_call, copy everything literally until
       // we see its corresponding _end tag.
       if (stack.length > 0 && stack[stack.length - 1].name === 'tool_call' && token !== 'tool_call_end') {
@@ -167,7 +170,7 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
           // -----------------------------------------------------------------
           // Handle HTML tags like <think>
           // -----------------------------------------------------------------
-          if (htmlTagBuffer.length > 0 || (char === '<' && (i + 1 < text.length && text[i + 1] !== '|'))) {
+          if (htmlTagBuffer.length > 0 || (char === '<' && i + 1 < text.length && text[i + 1] !== '|')) {
             if (htmlTagBuffer.length === 0 && char === '<') {
               // Potential start of HTML tag (but not sentinel tag)
               htmlTagBuffer = '<'

@@ -1,26 +1,26 @@
-import * as React from "react"
-import { motion, useMotionValue, useAnimation, PanInfo } from "framer-motion"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./sheet"
-import { X } from "lucide-react"
-import { Button } from "./button"
-import { cn } from "@/lib/utils"
+import * as React from 'react'
+import { motion, useMotionValue, useAnimation, PanInfo } from 'framer-motion'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './sheet'
+import { X } from 'lucide-react'
+import { Button } from './button'
+import { cn } from '@/lib/utils'
 
 interface MobileSidebarProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: React.ReactNode
-  side?: "left" | "right"
+  side?: 'left' | 'right'
   className?: string
   style?: React.CSSProperties
 }
 
-export const MobileSidebar = ({ 
-  open, 
-  onOpenChange, 
-  children, 
-  side = "left",
+export const MobileSidebar = ({
+  open,
+  onOpenChange,
+  children,
+  side = 'left',
   className,
-  style
+  style,
 }: MobileSidebarProps) => {
   const [isOpen, setIsOpen] = React.useState(open)
   const controls = useAnimation()
@@ -35,20 +35,19 @@ export const MobileSidebar = ({
   }, [open, controls])
 
   const handleDragEnd = async (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const shouldClose = side === "left" 
-      ? info.offset.x < -50 || info.velocity.x < -500
-      : info.offset.x > 50 || info.velocity.x > 500
+    const shouldClose =
+      side === 'left' ? info.offset.x < -50 || info.velocity.x < -500 : info.offset.x > 50 || info.velocity.x > 500
 
     if (shouldClose) {
-      await controls.start({ 
-        x: side === "left" ? -sidebarWidth : sidebarWidth,
-        transition: { type: "spring", damping: 30, stiffness: 300 }
+      await controls.start({
+        x: side === 'left' ? -sidebarWidth : sidebarWidth,
+        transition: { type: 'spring', damping: 30, stiffness: 300 },
       })
       onOpenChange(false)
     } else {
-      controls.start({ 
+      controls.start({
         x: 0,
-        transition: { type: "spring", damping: 30, stiffness: 300 }
+        transition: { type: 'spring', damping: 30, stiffness: 300 },
       })
     }
   }
@@ -59,7 +58,7 @@ export const MobileSidebar = ({
         data-sidebar="sidebar"
         data-slot="sidebar"
         data-mobile="true"
-        className={cn("bg-sidebar text-sidebar-foreground w-full p-0 [&>button]:hidden", className)}
+        className={cn('bg-sidebar text-sidebar-foreground w-full p-0 [&>button]:hidden', className)}
         style={style}
         side={side}
       >
@@ -67,12 +66,12 @@ export const MobileSidebar = ({
           <SheetTitle>Sidebar</SheetTitle>
           <SheetDescription>Displays the mobile sidebar.</SheetDescription>
         </SheetHeader>
-        
+
         <motion.div
           drag="x"
           dragConstraints={{
-            left: side === "left" ? -sidebarWidth : 0,
-            right: side === "left" ? 0 : sidebarWidth
+            left: side === 'left' ? -sidebarWidth : 0,
+            right: side === 'left' ? 0 : sidebarWidth,
           }}
           dragElastic={0.2}
           onDragEnd={handleDragEnd}
@@ -91,10 +90,8 @@ export const MobileSidebar = ({
               <X className="h-4 w-4" />
               <span className="sr-only">Close sidebar</span>
             </Button>
-            
-            <div className="flex h-full w-full flex-col">
-              {children}
-            </div>
+
+            <div className="flex h-full w-full flex-col">{children}</div>
           </div>
         </motion.div>
       </SheetContent>

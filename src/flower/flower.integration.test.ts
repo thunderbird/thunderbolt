@@ -103,7 +103,14 @@ describe('Flower provider integration tests', () => {
     })
 
     const init = makeInit(
-      [{ id: uuidv7(), role: 'user', content: 'Sensitive data test without encryption', parts: [] } as ThunderboltUIMessage],
+      [
+        {
+          id: uuidv7(),
+          role: 'user',
+          content: 'Sensitive data test without encryption',
+          parts: [],
+        } as ThunderboltUIMessage,
+      ],
       uuidv7(),
     )
 

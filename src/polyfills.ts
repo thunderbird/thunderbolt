@@ -6,7 +6,6 @@
  *     Firefox Focus or legacy Safari versions.)
  */
 
- 
 // @ts-ignore – we’re intentionally augmenting the global `crypto` object
 ;(() => {
   // Only polyfill when necessary and when secure random is available.

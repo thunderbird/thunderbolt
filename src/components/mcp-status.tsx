@@ -4,9 +4,9 @@ import { AlertCircle, CheckCircle, XCircle } from 'lucide-react'
 export function MCPStatus() {
   const { servers } = useMCP()
 
-  const connectedServers = servers.filter(s => s.isConnected && s.enabled)
-  const errorServers = servers.filter(s => s.error && s.enabled)
-  const connectingServers = servers.filter(s => !s.isConnected && !s.error && s.enabled)
+  const connectedServers = servers.filter((s) => s.isConnected && s.enabled)
+  const errorServers = servers.filter((s) => s.error && s.enabled)
+  const connectingServers = servers.filter((s) => !s.isConnected && !s.error && s.enabled)
 
   if (connectedServers.length > 0 && errorServers.length === 0) {
     return (

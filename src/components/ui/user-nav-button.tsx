@@ -12,7 +12,12 @@ interface UserNavButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   userEmail?: string
 }
 
-export function UserNavButton({ username = 'John Doe', userEmail = 'john.doe@example.com', className, ...props }: UserNavButtonProps) {
+export function UserNavButton({
+  username = 'John Doe',
+  userEmail = 'john.doe@example.com',
+  className,
+  ...props
+}: UserNavButtonProps) {
   return (
     <SidebarMenuButton className={cn('relative', className)} {...props}>
       <Button variant="ghost" className="flex items-center gap-2 h-10 px-3 group">

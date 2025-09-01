@@ -46,7 +46,10 @@ export default function ImapMailboxesSection() {
             {Object.entries(mailboxes)
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([name, count]) => (
-                <div key={name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <div
+                  key={name}
+                  className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
                   <div className="flex items-center gap-2">
                     <Inbox className="size-4 text-blue-500" />
                     <span className="font-medium">{name}</span>
@@ -58,7 +61,9 @@ export default function ImapMailboxesSection() {
               ))}
           </div>
         ) : (
-          <div className="text-center p-8 text-gray-500">{isLoading ? <p>Loading mailboxes...</p> : <p>Click the button above to check your mailboxes</p>}</div>
+          <div className="text-center p-8 text-gray-500">
+            {isLoading ? <p>Loading mailboxes...</p> : <p>Click the button above to check your mailboxes</p>}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -9,11 +9,14 @@ export type FlowerTool = {
     description: string
     parameters: {
       type: string
-      properties: Record<string, {
-        type: string
-        description: string
-        enum?: string[]
-      }>
+      properties: Record<
+        string,
+        {
+          type: string
+          description: string
+          enum?: string[]
+        }
+      >
       required: string[]
     }
   }

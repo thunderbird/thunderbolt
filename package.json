@@ -4,18 +4,6 @@
   "version": "0.1.0",
   "description": "Thunderbolt",
   "type": "module",
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx,json,css,md}": [
-      "bun run format"
-    ],
-    "*.py": [
-      "bun run format:python",
-      "bun run lint:python"
-    ],
-    "*.rs": [
-      "bun run format:rust"
-    ]
-  },
   "scripts": {
     "start": "vite",
     "dev": "vite",
@@ -27,10 +15,6 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "format:python": "cd backend && uv run ruff format . && cd ..",
-    "format:python-check": "cd backend && uv run ruff format --check . && cd ..",
-    "lint:python": "cd backend && uv run ruff check --fix . && cd ..",
-    "lint:python-check": "cd backend && uv run ruff check . && cd ..",
     "format:rust": "cd src-tauri && cargo fmt && cd ..",
     "format:rust-check": "cd src-tauri && cargo fmt --check && cd ..",
     "format-check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",

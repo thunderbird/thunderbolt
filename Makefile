@@ -90,9 +90,7 @@ format:
 	@echo "$(BLUE)→ Formatting frontend code...$(NC)"
 	bun run format
 	@echo "$(BLUE)→ Formatting Python code...$(NC)"
-	bun run format:python
-	@echo "$(BLUE)→ Sorting Python imports...$(NC)"
-	bun run lint:python
+	cd backend && make format && cd ..
 	@echo "$(BLUE)→ Formatting Rust code...$(NC)"
 	bun run format:rust
 	@echo "$(GREEN)✓ Formatting complete!$(NC)"
@@ -101,9 +99,9 @@ format-check:
 	@echo "$(BLUE)→ Checking frontend formatting...$(NC)"
 	bun run format-check
 	@echo "$(BLUE)→ Checking Python formatting...$(NC)"
-	bun run format:python-check
+	cd backend && uv run ruff format --check . && cd ..
 	@echo "$(BLUE)→ Checking Python import sorting...$(NC)"
-	bun run lint:python-check
+	cd backend && uv run ruff check . && cd ..
 	@echo "$(BLUE)→ Checking Rust formatting...$(NC)"
 	bun run format:rust-check
 	@echo "$(GREEN)✓ Format check complete!$(NC)"

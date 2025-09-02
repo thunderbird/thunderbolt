@@ -73,6 +73,7 @@ export default [
       // General rules
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'error',
+      'no-async-promise-executor': 'off',
     },
   },
   ...storybook.configs['flat/recommended'],

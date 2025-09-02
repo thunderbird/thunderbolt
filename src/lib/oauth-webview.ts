@@ -80,49 +80,39 @@ export const startOAuthFlowWebview = async (
 }
 
 async function waitForCallback(window: WebviewWindow): Promise<{ code: string; state: string } | null> {
-  return new Promise((resolve, reject) => {
-    let unlistenCallback: (() => void) | null = null
-    let unlistenNavigate: (() => void) | null = null
-
+  return new Promise(async (resolve, reject) => {
     const cleanup = async () => {
-      if (unlistenCallback) unlistenCallback()
-      if (unlistenNavigate) unlistenNavigate()
+      unlistenCallback()
+      unlistenNavigate()
       await window.destroy()
     }
 
     const handleCallback = (code: string | null, state: string | null, error: string | null) => {
       if (error) {
-        cleanup().then(() => reject(new Error(error)))
+        cleanup()
+        reject(new Error(error))
       } else if (code && state) {
-        cleanup().then(() => resolve({ code, state }))
+        cleanup()
+        resolve({ code, state })
       }
     }
 
-    // Set up event listeners
-    listen('oauth-callback', (event: any) => {
+    const unlistenCallback = await listen('oauth-callback', (event: any) => {
       const { code, state, error } = event.payload || {}
       handleCallback(code, state, error)
     })
-      .then((unlisten) => {
-        unlistenCallback = unlisten
-      })
-      .catch(reject)
 
-    window
-      .listen('tauri://navigate', (event: any) => {
-        const url = new URL(event.payload)
-        if (!url.pathname.includes('oauth-callback.html')) return
+    const unlistenNavigate = await window.listen('tauri://navigate', (event: any) => {
+      const url = new URL(event.payload)
+      if (!url.pathname.includes('oauth-callback.html')) return
 
-        const params = url.searchParams
-        handleCallback(params.get('code'), params.get('state'), params.get('error') || params.get('error_description'))
-      })
-      .then((unlisten) => {
-        unlistenNavigate = unlisten
-      })
-      .catch(reject)
+      const params = url.searchParams
+      handleCallback(params.get('code'), params.get('state'), params.get('error') || params.get('error_description'))
+    })
 
     window.once('tauri://close-requested', () => {
-      cleanup().then(() => resolve(null))
+      cleanup()
+      resolve(null)
     })
   })
 }

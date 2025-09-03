@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 
 import { ThemeToggle } from '@/components/theme-toggle'
+import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
+import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,11 +55,6 @@ type PreferencesState = {
   locations: LocationData[]
   isSearching: boolean
   isResetting: boolean
-  telemetryModal: {
-    open: boolean
-    featureName: string | null
-  }
-  showTelemetryWarningModal: boolean
 }
 
 type PreferencesAction =
@@ -66,8 +63,6 @@ type PreferencesAction =
   | { type: 'SET_LOCATIONS'; payload: LocationData[] }
   | { type: 'SET_IS_SEARCHING'; payload: boolean }
   | { type: 'SET_IS_RESETTING'; payload: boolean }
-  | { type: 'SET_TELEMETRY_MODAL'; payload: { open: boolean; featureName: string | null } }
-  | { type: 'SET_SHOW_TELEMETRY_WARNING_MODAL'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
   | { type: 'RESET_STATE' }
 
@@ -77,11 +72,6 @@ const initialState: PreferencesState = {
   locations: [],
   isSearching: false,
   isResetting: false,
-  telemetryModal: {
-    open: false,
-    featureName: null,
-  },
-  showTelemetryWarningModal: false,
 }
 
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
@@ -96,16 +86,6 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, isSearching: action.payload }
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
-    case 'SET_TELEMETRY_MODAL':
-      return {
-        ...state,
-        telemetryModal: {
-          open: action.payload.open,
-          featureName: action.payload.featureName,
-        },
-      }
-    case 'SET_SHOW_TELEMETRY_WARNING_MODAL':
-      return { ...state, showTelemetryWarningModal: action.payload }
     case 'CLEAR_LOCATION_SEARCH':
       return { ...state, searchQuery: '', locations: [] }
     case 'RESET_STATE':
@@ -134,7 +114,22 @@ export default function PreferencesSettingsPage() {
   const queryClient = useQueryClient()
 
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { open, searchQuery, locations, isSearching, isResetting, telemetryModal, showTelemetryWarningModal } = state
+  const { open, searchQuery, locations, isSearching, isResetting } = state
+
+  const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
+  const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
+
+  const handleEnableTelemetry = async (featureName?: string | null) => {
+    await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
+    if (featureName) {
+      await previewFeatures.handleBulkSave(featureName, true)
+    }
+  }
+
+  const handleDisableTelemetry = async () => {
+    await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
+    await previewFeatures.disableAllFeatures()
+  }
 
   const postHog = usePostHog()
 
@@ -359,7 +354,7 @@ export default function PreferencesSettingsPage() {
       const currentValues = previewFeatures.form.getValues()
       const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
       if (hasEnabledFeatures) {
-        dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: true })
+        telemetryWarningModalRef.current?.open()
         return
       }
     }
@@ -376,10 +371,7 @@ export default function PreferencesSettingsPage() {
     const result = await previewFeatures.handleFeatureToggle(featureName, value)
 
     if (result.requiresTelemetry) {
-      dispatch({
-        type: 'SET_TELEMETRY_MODAL',
-        payload: { open: true, featureName: featureName },
-      })
+      telemetryRequiredModalRef.current?.open(featureName)
       return { requiresTelemetry: true, featureName: featureName }
     }
 
@@ -629,63 +621,9 @@ export default function PreferencesSettingsPage() {
         </div>
       </SectionCard>
 
-      {/* Telemetry Required Modal */}
-      <AlertDialog
-        open={telemetryModal.open}
-        onOpenChange={(open) =>
-          dispatch({ type: 'SET_TELEMETRY_MODAL', payload: { open, featureName: telemetryModal.featureName } })
-        }
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Telemetry Required</AlertDialogTitle>
-            <AlertDialogDescription>
-              In order to use preview features, we ask that you help us improve the product by sharing telemetry data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-                if (telemetryModal.featureName) {
-                  await previewFeatures.handleBulkSave(telemetryModal.featureName, true)
-                }
-                dispatch({ type: 'SET_TELEMETRY_MODAL', payload: { open: false, featureName: null } })
-              }}
-            >
-              Enable Telemetry
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 
-      {/* Telemetry Warning Modal */}
-      <AlertDialog
-        open={showTelemetryWarningModal}
-        onOpenChange={(open) => dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: open })}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Preview Features Will Be Disabled</AlertDialogTitle>
-            <AlertDialogDescription>
-              Turning off telemetry will disable all preview features. Are you sure you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-                await previewFeatures.disableAllFeatures()
-                dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: false })
-              }}
-            >
-              Disable Telemetry
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
     </div>
   )
 }

@@ -346,21 +346,8 @@ export default function PreferencesSettingsPage() {
           set: { value: values.experimentalFeatureTasks ? 'true' : 'false' },
         })
     },
-    onSuccess: (_, values) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      // Track events for each feature
-      if (values.experimentalFeatureAutomations) {
-        trackEvent('settings_experimental_feature_automations_enabled')
-      } else {
-        trackEvent('settings_experimental_feature_automations_disabled')
-      }
-
-      if (values.experimentalFeatureTasks) {
-        trackEvent('settings_experimental_feature_tasks_enabled')
-      } else {
-        trackEvent('settings_experimental_feature_tasks_disabled')
-      }
     },
   })
 
@@ -370,6 +357,10 @@ export default function PreferencesSettingsPage() {
       experimentalFeatureAutomations: false,
       experimentalFeatureTasks: false,
     })
+
+    // Track that all features were disabled
+    trackEvent('settings_experimental_feature_automations_disabled')
+    trackEvent('settings_experimental_feature_tasks_disabled')
   }
 
   // Save location mutation
@@ -457,6 +448,21 @@ export default function PreferencesSettingsPage() {
       ...currentValues,
       [featureName]: value,
     })
+
+    // Track the specific feature that changed
+    if (featureName === 'experimentalFeatureAutomations') {
+      if (value) {
+        trackEvent('settings_experimental_feature_automations_enabled')
+      } else {
+        trackEvent('settings_experimental_feature_automations_disabled')
+      }
+    } else if (featureName === 'experimentalFeatureTasks') {
+      if (value) {
+        trackEvent('settings_experimental_feature_tasks_enabled')
+      } else {
+        trackEvent('settings_experimental_feature_tasks_disabled')
+      }
+    }
 
     return { requiresTelemetry: false }
   }

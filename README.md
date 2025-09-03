@@ -49,8 +49,8 @@ brew install cmake # Mac only
 ### Quick Setup
 
 ```sh
-# Clone the repository with submodules
-git clone
+# Clone the repository
+git clone https://github.com/thunderbird/thunderbolt
 cd thunderbolt
 
 # Run the setup command to initialize everything

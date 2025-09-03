@@ -1,16 +1,3 @@
-# [target.aarch64-linux-android]
-# linker = "/Users/croth/Library/Android/sdk/ndk/29.0.13846066/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang"
-
-# [env]
-# # Ensure CMake uses Android toolchain and Ninja, and builds arm64
-# CMAKE_GENERATOR = { value = "Ninja", force = true }
-# CMAKE_TOOLCHAIN_FILE = { value = "/Users/croth/Library/Android/sdk/ndk/29.0.13846066/build/cmake/android.toolchain.cmake", force = true }
-# ANDROID_NDK = { value = "/Users/croth/Library/Android/sdk/ndk/29.0.13846066", force = true }
-# ANDROID_NDK_HOME = { value = "/Users/croth/Library/Android/sdk/ndk/29.0.13846066", force = true }
-# ANDROID_NDK_ROOT = { value = "/Users/croth/Library/Android/sdk/ndk/29.0.13846066", force = true }
-# ANDROID_PLATFORM = { value = "android-24", force = true }
-# CARGO_NDK_ANDROID_TARGET = { value = "arm64-v8a", force = true }
-
 [build]
 rustc-wrapper = "sccache"
 

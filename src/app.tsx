@@ -54,8 +54,7 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
-import { ExperimentalFeatureRouteWrapper } from './components/experimental-feature-route-wrapper'
-import { PreviewFeatureDatabaseKey } from './settings/preview-features-config'
+import { useBooleanSetting } from './hooks/use-setting'
 
 const queryClient = new QueryClient()
 
@@ -74,6 +73,9 @@ function AppContent({ initData }: { initData: InitData }) {
 function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
+  const isTasksEnabled = useBooleanSetting('experimental_feature_automations')
+  const isAutomationsEnabled = useBooleanSetting('experimental_feature_automations')
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -81,22 +83,8 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          <Route
-            path="tasks"
-            element={
-              <ExperimentalFeatureRouteWrapper settingKey={PreviewFeatureDatabaseKey.TASKS}>
-                <TasksPage />
-              </ExperimentalFeatureRouteWrapper>
-            }
-          />
-          <Route
-            path="automations"
-            element={
-              <ExperimentalFeatureRouteWrapper settingKey={PreviewFeatureDatabaseKey.AUTOMATIONS}>
-                <AutomationsPage />
-              </ExperimentalFeatureRouteWrapper>
-            }
-          />
+          {isTasksEnabled && <Route path="tasks" element={<TasksPage />} />}
+          {isAutomationsEnabled && <Route path="automations" element={<AutomationsPage />} />}
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 

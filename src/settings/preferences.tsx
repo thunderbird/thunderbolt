@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import React from 'react'
+import { useEffect, useReducer } from 'react'
 
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
@@ -47,6 +47,74 @@ interface LocationData {
   }
 }
 
+type PreferencesState = {
+  open: boolean
+  searchQuery: string
+  locations: LocationData[]
+  isSearching: boolean
+  isResetting: boolean
+  telemetryModal: {
+    open: boolean
+    featureName: string | null
+  }
+  showTelemetryWarningModal: boolean
+}
+
+type PreferencesAction =
+  | { type: 'SET_OPEN'; payload: boolean }
+  | { type: 'SET_SEARCH_QUERY'; payload: string }
+  | { type: 'SET_LOCATIONS'; payload: LocationData[] }
+  | { type: 'SET_IS_SEARCHING'; payload: boolean }
+  | { type: 'SET_IS_RESETTING'; payload: boolean }
+  | { type: 'SET_TELEMETRY_MODAL'; payload: { open: boolean; featureName: string | null } }
+  | { type: 'SET_SHOW_TELEMETRY_WARNING_MODAL'; payload: boolean }
+  | { type: 'CLEAR_LOCATION_SEARCH' }
+  | { type: 'RESET_STATE' }
+
+const initialState: PreferencesState = {
+  open: false,
+  searchQuery: '',
+  locations: [],
+  isSearching: false,
+  isResetting: false,
+  telemetryModal: {
+    open: false,
+    featureName: null,
+  },
+  showTelemetryWarningModal: false,
+}
+
+const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
+  switch (action.type) {
+    case 'SET_OPEN':
+      return { ...state, open: action.payload }
+    case 'SET_SEARCH_QUERY':
+      return { ...state, searchQuery: action.payload }
+    case 'SET_LOCATIONS':
+      return { ...state, locations: action.payload }
+    case 'SET_IS_SEARCHING':
+      return { ...state, isSearching: action.payload }
+    case 'SET_IS_RESETTING':
+      return { ...state, isResetting: action.payload }
+    case 'SET_TELEMETRY_MODAL':
+      return {
+        ...state,
+        telemetryModal: {
+          open: action.payload.open,
+          featureName: action.payload.featureName,
+        },
+      }
+    case 'SET_SHOW_TELEMETRY_WARNING_MODAL':
+      return { ...state, showTelemetryWarningModal: action.payload }
+    case 'CLEAR_LOCATION_SEARCH':
+      return { ...state, searchQuery: '', locations: [] }
+    case 'RESET_STATE':
+      return initialState
+    default:
+      return state
+  }
+}
+
 const nameFormSchema = z.object({
   preferredName: z.string().optional(),
 })
@@ -64,14 +132,9 @@ const locationFormSchema = z.object({
 export default function PreferencesSettingsPage() {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
-  const [open, setOpen] = React.useState(false)
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [locations, setLocations] = React.useState<LocationData[]>([])
-  const [isSearching, setIsSearching] = React.useState(false)
-  const [isResetting, setIsResetting] = React.useState(false)
-  const [showTelemetryModal, setShowTelemetryModal] = React.useState(false)
-  const [showTelemetryWarningModal, setShowTelemetryWarningModal] = React.useState(false)
-  const pendingFeatureToggle = React.useRef<string | null>(null)
+
+  const [state, dispatch] = useReducer(preferencesReducer, initialState)
+  const { open, searchQuery, locations, isSearching, isResetting, telemetryModal, showTelemetryWarningModal } = state
 
   const postHog = usePostHog()
 
@@ -107,7 +170,7 @@ export default function PreferencesSettingsPage() {
   })
 
   // Update forms when data is loaded
-  React.useEffect(() => {
+  useEffect(() => {
     if (settings) {
       nameForm.reset({
         preferredName: settings.preferredName as string,
@@ -131,15 +194,15 @@ export default function PreferencesSettingsPage() {
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   // Search for locations when debounced query changes
-  React.useEffect(() => {
+  useEffect(() => {
     const searchLocations = async () => {
       // Early return if search query is too short
       if (debouncedSearchQuery.trim().length <= 1) {
-        setLocations([])
+        dispatch({ type: 'SET_LOCATIONS', payload: [] })
         return
       }
 
-      setIsSearching(true)
+      dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
         // Get cloud_url from database settings
         const cloudUrlData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
@@ -147,7 +210,7 @@ export default function PreferencesSettingsPage() {
 
         if (!cloudUrl) {
           console.error('Cloud URL not configured')
-          setLocations([])
+          dispatch({ type: 'SET_LOCATIONS', payload: [] })
           return
         }
 
@@ -173,12 +236,12 @@ export default function PreferencesSettingsPage() {
             lng: location.lon,
           },
         }))
-        setLocations(transformedLocations)
+        dispatch({ type: 'SET_LOCATIONS', payload: transformedLocations })
       } catch (error) {
         console.error('Error searching locations:', error)
-        setLocations([])
+        dispatch({ type: 'SET_LOCATIONS', payload: [] })
       } finally {
-        setIsSearching(false)
+        dispatch({ type: 'SET_IS_SEARCHING', payload: false })
       }
     }
 
@@ -296,7 +359,7 @@ export default function PreferencesSettingsPage() {
       const currentValues = previewFeatures.form.getValues()
       const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
       if (hasEnabledFeatures) {
-        setShowTelemetryWarningModal(true)
+        dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: true })
         return
       }
     }
@@ -313,9 +376,11 @@ export default function PreferencesSettingsPage() {
     const result = await previewFeatures.handleFeatureToggle(featureName, value)
 
     if (result.requiresTelemetry) {
-      pendingFeatureToggle.current = featureName as string
-      setShowTelemetryModal(true)
-      return { requiresTelemetry: true, featureName: featureName as string }
+      dispatch({
+        type: 'SET_TELEMETRY_MODAL',
+        payload: { open: true, featureName: featureName },
+      })
+      return { requiresTelemetry: true, featureName: featureName }
     }
 
     return { requiresTelemetry: false }
@@ -348,14 +413,14 @@ export default function PreferencesSettingsPage() {
     locationForm.setValue('locationName', location.name)
     locationForm.setValue('locationLat', String(location.coordinates.lat))
     locationForm.setValue('locationLng', String(location.coordinates.lng))
-    setOpen(false)
+    dispatch({ type: 'SET_OPEN', payload: false })
 
     // Save immediately after selection, passing the location data directly
     handleLocationSave(location)
   }
 
   const handleResetDatabase = async () => {
-    setIsResetting(true)
+    dispatch({ type: 'SET_IS_RESETTING', payload: true })
     try {
       await resetAppDir()
       trackEvent('settings_database_reset')
@@ -363,7 +428,7 @@ export default function PreferencesSettingsPage() {
       window.location.reload()
     } catch (error) {
       console.error('Failed to reset database:', error)
-      setIsResetting(false)
+      dispatch({ type: 'SET_IS_RESETTING', payload: false })
     }
   }
 
@@ -423,11 +488,10 @@ export default function PreferencesSettingsPage() {
                   <Popover
                     open={open}
                     onOpenChange={(newOpen) => {
-                      setOpen(newOpen)
+                      dispatch({ type: 'SET_OPEN', payload: newOpen })
                       if (!newOpen) {
                         // Clear search when closing
-                        setSearchQuery('')
-                        setLocations([])
+                        dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
                       }
                     }}
                   >
@@ -454,7 +518,7 @@ export default function PreferencesSettingsPage() {
                         <CommandInput
                           placeholder="Search for locations..."
                           value={searchQuery}
-                          onValueChange={setSearchQuery}
+                          onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
                         />
                         <CommandList>
                           {searchQuery.trim().length > 0 && isSearching && (
@@ -566,7 +630,12 @@ export default function PreferencesSettingsPage() {
       </SectionCard>
 
       {/* Telemetry Required Modal */}
-      <AlertDialog open={showTelemetryModal} onOpenChange={setShowTelemetryModal}>
+      <AlertDialog
+        open={telemetryModal.open}
+        onOpenChange={(open) =>
+          dispatch({ type: 'SET_TELEMETRY_MODAL', payload: { open, featureName: telemetryModal.featureName } })
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Telemetry Required</AlertDialogTitle>
@@ -579,14 +648,10 @@ export default function PreferencesSettingsPage() {
             <AlertDialogAction
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-                if (pendingFeatureToggle.current) {
-                  await previewFeatures.handleBulkSave(
-                    pendingFeatureToggle.current as keyof PreviewFeaturesFormData,
-                    true,
-                  )
+                if (telemetryModal.featureName) {
+                  await previewFeatures.handleBulkSave(telemetryModal.featureName, true)
                 }
-                setShowTelemetryModal(false)
-                pendingFeatureToggle.current = null
+                dispatch({ type: 'SET_TELEMETRY_MODAL', payload: { open: false, featureName: null } })
               }}
             >
               Enable Telemetry
@@ -596,7 +661,10 @@ export default function PreferencesSettingsPage() {
       </AlertDialog>
 
       {/* Telemetry Warning Modal */}
-      <AlertDialog open={showTelemetryWarningModal} onOpenChange={setShowTelemetryWarningModal}>
+      <AlertDialog
+        open={showTelemetryWarningModal}
+        onOpenChange={(open) => dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: open })}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Preview Features Will Be Disabled</AlertDialogTitle>
@@ -610,7 +678,7 @@ export default function PreferencesSettingsPage() {
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
                 await previewFeatures.disableAllFeatures()
-                setShowTelemetryWarningModal(false)
+                dispatch({ type: 'SET_SHOW_TELEMETRY_WARNING_MODAL', payload: false })
               }}
             >
               Disable Telemetry

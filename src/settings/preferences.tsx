@@ -73,6 +73,7 @@ export default function PreferencesSettingsPage() {
   const [isSearching, setIsSearching] = React.useState(false)
   const [isResetting, setIsResetting] = React.useState(false)
   const [showTelemetryModal, setShowTelemetryModal] = React.useState(false)
+  const pendingFeatureToggle = React.useRef<'experimentalFeatureAutomations' | 'experimentalFeatureTasks' | null>(null)
 
   const postHog = usePostHog()
 
@@ -144,10 +145,20 @@ export default function PreferencesSettingsPage() {
 
   // Sync experimental features when telemetry is disabled
   React.useEffect(() => {
-    if (!settings?.dataCollection && settings?.experimentalFeatureAutomations) {
-      experimentalFeaturesForm.setValue('experimentalFeatureAutomations', false)
+    if (!settings?.dataCollection) {
+      if (settings?.experimentalFeatureAutomations) {
+        experimentalFeaturesForm.setValue('experimentalFeatureAutomations', false)
+      }
+      if (settings?.experimentalFeatureTasks) {
+        experimentalFeaturesForm.setValue('experimentalFeatureTasks', false)
+      }
     }
-  }, [settings?.dataCollection, settings?.experimentalFeatureAutomations, experimentalFeaturesForm])
+  }, [
+    settings?.dataCollection,
+    settings?.experimentalFeatureAutomations,
+    settings?.experimentalFeatureTasks,
+    experimentalFeaturesForm,
+  ])
 
   // Search for locations when debounced query changes
   React.useEffect(() => {
@@ -351,11 +362,14 @@ export default function PreferencesSettingsPage() {
     await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
 
     // If telemetry is disabled, also disable experimental features
-    if (!value && experimentalFeaturesForm.getValues().experimentalFeatureAutomations) {
-      await saveExperimentalFeaturesMutation.mutateAsync({
-        experimentalFeatureAutomations: false,
-        experimentalFeatureTasks: experimentalFeaturesForm.getValues().experimentalFeatureTasks,
-      })
+    if (!value) {
+      const currentValues = experimentalFeaturesForm.getValues()
+      if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
+        await saveExperimentalFeaturesMutation.mutateAsync({
+          experimentalFeatureAutomations: false,
+          experimentalFeatureTasks: false,
+        })
+      }
     }
   }
 
@@ -364,6 +378,7 @@ export default function PreferencesSettingsPage() {
     value: boolean,
   ) => {
     if (value && !settings?.dataCollection) {
+      pendingFeatureToggle.current = featureName
       setShowTelemetryModal(true)
       return
     }
@@ -679,11 +694,15 @@ export default function PreferencesSettingsPage() {
             <AlertDialogAction
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-                await saveExperimentalFeaturesMutation.mutateAsync({
-                  experimentalFeatureAutomations: true,
-                  experimentalFeatureTasks: experimentalFeaturesForm.getValues().experimentalFeatureTasks,
-                })
+                if (pendingFeatureToggle.current) {
+                  const currentValues = experimentalFeaturesForm.getValues()
+                  await saveExperimentalFeaturesMutation.mutateAsync({
+                    ...currentValues,
+                    [pendingFeatureToggle.current]: true,
+                  })
+                }
                 setShowTelemetryModal(false)
+                pendingFeatureToggle.current = null
               }}
             >
               Enable Telemetry

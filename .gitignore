@@ -43,3 +43,6 @@ mise.lock
 mise.local.toml
 settings.local.json
 mcp.json
+
+# User-specific Claude Code settings and personal configurations
+.claude/

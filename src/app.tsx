@@ -84,7 +84,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
           <Route
             path="automations"
             element={
-              <ExperimentalFeatureRouteWrapper>
+              <ExperimentalFeatureRouteWrapper settingKey="experimental_feature_automations">
                 <AutomationsPage />
               </ExperimentalFeatureRouteWrapper>
             }

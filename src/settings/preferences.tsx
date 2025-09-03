@@ -54,7 +54,8 @@ const privacyFormSchema = z.object({
 })
 
 const experimentalFeaturesFormSchema = z.object({
-  experimentalFeatures: z.boolean(),
+  experimentalFeatureAutomations: z.boolean(),
+  experimentalFeatureTasks: z.boolean(),
 })
 
 const locationFormSchema = z.object({
@@ -98,7 +99,8 @@ export default function PreferencesSettingsPage() {
   const experimentalFeaturesForm = useForm<z.infer<typeof experimentalFeaturesFormSchema>>({
     resolver: zodResolver(experimentalFeaturesFormSchema),
     defaultValues: {
-      experimentalFeatures: false,
+      experimentalFeatureAutomations: false,
+      experimentalFeatureTasks: false,
     },
   })
 
@@ -123,7 +125,8 @@ export default function PreferencesSettingsPage() {
       })
 
       experimentalFeaturesForm.reset({
-        experimentalFeatures: settings.experimentalFeatures,
+        experimentalFeatureAutomations: settings.experimentalFeatureAutomations,
+        experimentalFeatureTasks: settings.experimentalFeatureTasks,
       })
 
       locationForm.reset({
@@ -141,10 +144,10 @@ export default function PreferencesSettingsPage() {
 
   // Sync experimental features when telemetry is disabled
   React.useEffect(() => {
-    if (!settings?.dataCollection && settings?.experimentalFeatures) {
-      experimentalFeaturesForm.setValue('experimentalFeatures', false)
+    if (!settings?.dataCollection && settings?.experimentalFeatureAutomations) {
+      experimentalFeaturesForm.setValue('experimentalFeatureAutomations', false)
     }
-  }, [settings?.dataCollection, settings?.experimentalFeatures, experimentalFeaturesForm])
+  }, [settings?.dataCollection, settings?.experimentalFeatureAutomations, experimentalFeaturesForm])
 
   // Search for locations when debounced query changes
   React.useEffect(() => {
@@ -259,19 +262,34 @@ export default function PreferencesSettingsPage() {
       // Upsert the setting
       await db
         .insert(settingsTable)
-        .values({ key: 'experimental_features', value: values.experimentalFeatures ? 'true' : 'false' })
+        .values({
+          key: 'experimental_feature_automations',
+          value: values.experimentalFeatureAutomations ? 'true' : 'false',
+        })
         .onConflictDoUpdate({
           target: settingsTable.key,
-          set: { value: values.experimentalFeatures ? 'true' : 'false' },
+          set: { value: values.experimentalFeatureAutomations ? 'true' : 'false' },
+        })
+      await db
+        .insert(settingsTable)
+        .values({ key: 'experimental_feature_tasks', value: values.experimentalFeatureTasks ? 'true' : 'false' })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.experimentalFeatureTasks ? 'true' : 'false' },
         })
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
 
-      if (values.experimentalFeatures) {
-        trackEvent('settings_experimental_features_enabled')
+      if (values.experimentalFeatureAutomations) {
+        trackEvent('settings_experimental_feature_automations_enabled')
       } else {
-        trackEvent('settings_experimental_features_disabled')
+        trackEvent('settings_experimental_feature_automations_disabled')
+      }
+      if (values.experimentalFeatureTasks) {
+        trackEvent('settings_experimental_feature_tasks_enabled')
+      } else {
+        trackEvent('settings_experimental_feature_tasks_disabled')
       }
     },
   })
@@ -333,17 +351,28 @@ export default function PreferencesSettingsPage() {
     await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
 
     // If telemetry is disabled, also disable experimental features
-    if (!value && experimentalFeaturesForm.getValues().experimentalFeatures) {
-      await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: false })
+    if (!value && experimentalFeaturesForm.getValues().experimentalFeatureAutomations) {
+      await saveExperimentalFeaturesMutation.mutateAsync({
+        experimentalFeatureAutomations: false,
+        experimentalFeatureTasks: experimentalFeaturesForm.getValues().experimentalFeatureTasks,
+      })
     }
   }
 
-  const handleExperimentalFeaturesToggle = async (value: boolean) => {
+  const handleExperimentalFeaturesToggle = async (
+    featureName: 'experimentalFeatureAutomations' | 'experimentalFeatureTasks',
+    value: boolean,
+  ) => {
     if (value && !settings?.dataCollection) {
       setShowTelemetryModal(true)
       return
     }
-    await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: value })
+
+    const currentValues = experimentalFeaturesForm.getValues()
+    await saveExperimentalFeaturesMutation.mutateAsync({
+      ...currentValues,
+      [featureName]: value,
+    })
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -522,6 +551,56 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
+      <SectionCard title="Preview Features">
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+          <p className="text-sm text-amber-800">
+            <strong>Warning:</strong> Features may change, use at your own risk.
+          </p>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Try out experimental features before they're officially released. These features may be unstable or change
+          without notice. To enable them, you'll need to turn on telemetry so we can learn and improve from real usage.
+        </p>
+        <Form {...experimentalFeaturesForm}>
+          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={experimentalFeaturesForm.control}
+              name="experimentalFeatureAutomations"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Automations</label>
+                  </div>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={(value) =>
+                      handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
+                    }
+                  />
+                </div>
+              )}
+            />
+            <FormField
+              control={experimentalFeaturesForm.control}
+              name="experimentalFeatureTasks"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Tasks</label>
+                  </div>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={(value) => handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)}
+                  />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
       <SectionCard title="Privacy">
         <Form {...privacyForm}>
           <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
@@ -552,6 +631,8 @@ export default function PreferencesSettingsPage() {
           </form>
         </Form>
       </SectionCard>
+
+      <div className="h-6" />
 
       <SectionCard title="Local Database">
         <div className="flex flex-col gap-2">
@@ -584,37 +665,6 @@ export default function PreferencesSettingsPage() {
         </div>
       </SectionCard>
 
-      <div className="h-6" />
-
-      <SectionCard title="Preview Features">
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-          <p className="text-sm text-amber-800">
-            <strong>Warning:</strong> Features may change, use at your own risk.
-          </p>
-        </div>
-        <Form {...experimentalFeaturesForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={experimentalFeaturesForm.control}
-              name="experimentalFeatures"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Enable Experimental Features</label>
-                    <p className="text-sm text-muted-foreground">
-                      Try out experimental features before they're officially released. These features may be unstable
-                      or change without notice. To enable them, you'll need to turn on telemetry so we can learn and
-                      improve from real usage.
-                    </p>
-                  </div>
-                  <Switch checked={field.value} onCheckedChange={handleExperimentalFeaturesToggle} />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
-      </SectionCard>
-
       {/* Telemetry Required Modal */}
       <AlertDialog open={showTelemetryModal} onOpenChange={setShowTelemetryModal}>
         <AlertDialogContent>
@@ -629,7 +679,10 @@ export default function PreferencesSettingsPage() {
             <AlertDialogAction
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-                await saveExperimentalFeaturesMutation.mutateAsync({ experimentalFeatures: true })
+                await saveExperimentalFeaturesMutation.mutateAsync({
+                  experimentalFeatureAutomations: true,
+                  experimentalFeatureTasks: experimentalFeaturesForm.getValues().experimentalFeatureTasks,
+                })
                 setShowTelemetryModal(false)
               }}
             >

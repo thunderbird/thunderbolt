@@ -281,7 +281,7 @@ export default function ChatSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <ExperimentalFeatureWrapper>
+              <ExperimentalFeatureWrapper settingKey="experimental_feature_automations">
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/automations">

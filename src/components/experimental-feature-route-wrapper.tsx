@@ -2,17 +2,16 @@ import { useBooleanSetting } from '@/hooks/use-setting'
 import { ReactNode } from 'react'
 import { Navigate } from 'react-router'
 
-export function ExperimentalFeatureRouteWrapper({
-  children,
-  fallback = null,
-}: {
+type ExperimentalFeatureRouteWrapperProps = {
   children: ReactNode
-  fallback?: ReactNode
-}) {
-  const [experimentalFeaturesEnabled] = useBooleanSetting('experimental_features', false)
+  settingKey: string
+}
+
+export function ExperimentalFeatureRouteWrapper({ children, settingKey }: ExperimentalFeatureRouteWrapperProps) {
+  const [experimentalFeaturesEnabled] = useBooleanSetting(settingKey, false)
 
   if (!experimentalFeaturesEnabled) {
-    return fallback || <Navigate to="/" replace />
+    return <Navigate to="/" replace />
   }
 
   return <>{children}</>

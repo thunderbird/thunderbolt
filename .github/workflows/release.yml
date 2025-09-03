@@ -13,7 +13,6 @@ concurrency:
 jobs:
   draft:
     runs-on: ubuntu-22.04
-    environment: CrabNebula Cloud
     outputs:
       version: ${{ steps.get-version.outputs.version }}
 
@@ -25,13 +24,6 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: create draft release
-        uses: crabnebula-dev/cloud-release@v0
-        continue-on-error: true
-        with:
-          command: release draft ${{ vars.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -51,7 +43,6 @@ jobs:
 
   build_desktop:
     needs: draft
-    environment: CrabNebula Cloud
 
     strategy:
       fail-fast: false
@@ -223,16 +214,8 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
 
-      - name: upload assets to CrabNebula
-        uses: crabnebula-dev/cloud-release@v0
-        continue-on-error: true
-        with:
-          command: release upload ${{ vars.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}
-
   build_android:
     needs: draft
-    environment: CrabNebula Cloud
 
     runs-on: ubuntu-latest
 
@@ -299,15 +282,8 @@ jobs:
       #     bun install
       #     bun tauri android build
 
-      # - name: upload assets
-      #   uses: crabnebula-dev/cloud-release@v0
-      #   with:
-      #     command: release upload ${{ vars.CN_APPLICATION }} --framework tauri
-      #     api-key: ${{ secrets.CN_API_KEY }}
-
   build_ios:
     needs: draft
-    environment: CrabNebula Cloud
 
     runs-on: macos-latest
 
@@ -364,15 +340,8 @@ jobs:
       #     bun install
       #     bun tauri ios build --export-method app-store-connect
 
-      # - name: upload assets
-      #   uses: crabnebula-dev/cloud-release@v0
-      #   with:
-      #     command: release upload ${{ vars.CN_APPLICATION }} --framework tauri
-      #     api-key: ${{ secrets.CN_API_KEY }}
-
   publish:
     needs: [build_desktop]
-    environment: CrabNebula Cloud
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -420,9 +389,3 @@ jobs:
             git tag ${{ steps.get-version.outputs.final_version }}
             git push origin ${{ steps.get-version.outputs.final_version }}
             ```
-
-      - name: publish release to CrabNebula
-        uses: crabnebula-dev/cloud-release@v0
-        with:
-          command: release publish ${{ vars.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}

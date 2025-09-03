@@ -73,6 +73,7 @@ export default function PreferencesSettingsPage() {
   const [isSearching, setIsSearching] = React.useState(false)
   const [isResetting, setIsResetting] = React.useState(false)
   const [showTelemetryModal, setShowTelemetryModal] = React.useState(false)
+  const [showTelemetryWarningModal, setShowTelemetryWarningModal] = React.useState(false)
   const pendingFeatureToggle = React.useRef<'experimentalFeatureAutomations' | 'experimentalFeatureTasks' | null>(null)
 
   const postHog = usePostHog()
@@ -359,6 +360,15 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleDataCollectionToggle = async (value: boolean) => {
+    // If turning off telemetry and preview features are enabled, show warning first
+    if (!value) {
+      const currentValues = experimentalFeaturesForm.getValues()
+      if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
+        setShowTelemetryWarningModal(true)
+        return
+      }
+    }
+
     await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
 
     // If telemetry is disabled, also disable experimental features
@@ -567,11 +577,6 @@ export default function PreferencesSettingsPage() {
       <div className="h-6" />
 
       <SectionCard title="Preview Features">
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-          <p className="text-sm text-amber-800">
-            <strong>Warning:</strong> Features may change, use at your own risk.
-          </p>
-        </div>
         <p className="mb-4 text-sm text-muted-foreground">
           Try out experimental features before they're officially released. These features may be unstable or change
           without notice. To enable them, you'll need to turn on telemetry so we can learn and improve from real usage.
@@ -706,6 +711,36 @@ export default function PreferencesSettingsPage() {
               }}
             >
               Enable Telemetry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Telemetry Warning Modal */}
+      <AlertDialog open={showTelemetryWarningModal} onOpenChange={setShowTelemetryWarningModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Preview Features Will Be Disabled</AlertDialogTitle>
+            <AlertDialogDescription>
+              Turning off telemetry will disable all preview features. Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
+                const currentValues = experimentalFeaturesForm.getValues()
+                if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
+                  await saveExperimentalFeaturesMutation.mutateAsync({
+                    experimentalFeatureAutomations: false,
+                    experimentalFeatureTasks: false,
+                  })
+                }
+                setShowTelemetryWarningModal(false)
+              }}
+            >
+              Disable Telemetry
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -55,6 +55,7 @@ import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
 import { ExperimentalFeatureRouteWrapper } from './components/experimental-feature-route-wrapper'
+import { PreviewFeatureDatabaseKey } from './settings/preview-features-config'
 
 const queryClient = new QueryClient()
 
@@ -83,7 +84,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
           <Route
             path="tasks"
             element={
-              <ExperimentalFeatureRouteWrapper settingKey="experimental_feature_tasks">
+              <ExperimentalFeatureRouteWrapper settingKey={PreviewFeatureDatabaseKey.TASKS}>
                 <TasksPage />
               </ExperimentalFeatureRouteWrapper>
             }
@@ -91,7 +92,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
           <Route
             path="automations"
             element={
-              <ExperimentalFeatureRouteWrapper settingKey="experimental_feature_automations">
+              <ExperimentalFeatureRouteWrapper settingKey={PreviewFeatureDatabaseKey.AUTOMATIONS}>
                 <AutomationsPage />
               </ExperimentalFeatureRouteWrapper>
             }

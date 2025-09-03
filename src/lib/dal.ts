@@ -151,14 +151,16 @@ export const getPreferencesSettings = async () => {
   const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
   const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
   const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
-  const experimentalFeatureAutomations = await db
-    .select()
-    .from(settingsTable)
-    .where(eq(settingsTable.key, 'experimental_feature_automations'))
-  const experimentalFeatureTasks = await db
-    .select()
-    .from(settingsTable)
-    .where(eq(settingsTable.key, 'experimental_feature_tasks'))
+
+  const { PREVIEW_FEATURES } = await import('@/settings/preview-features-config')
+
+  const previewFeaturesData: Record<string, boolean> = {}
+
+  for (const feature of PREVIEW_FEATURES) {
+    const featureData = await db.select().from(settingsTable).where(eq(settingsTable.key, feature.databaseKey))
+
+    previewFeaturesData[feature.databaseKey] = featureData[0]?.value === 'true'
+  }
 
   return {
     locationName: nameData[0]?.value || '',
@@ -166,8 +168,7 @@ export const getPreferencesSettings = async () => {
     locationLng: lngData[0]?.value || '',
     preferredName: preferredNameData[0]?.value || '',
     dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-    experimentalFeatureAutomations: experimentalFeatureAutomations[0]?.value === 'true',
-    experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'true',
+    ...previewFeaturesData,
   }
 }
 

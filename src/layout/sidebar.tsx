@@ -45,6 +45,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { trackEvent } from '@/lib/analytics'
+import { PreviewFeatureDatabaseKey } from '@/settings/preview-features-config'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -273,7 +274,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <ExperimentalFeatureWrapper settingKey="experimental_feature_tasks">
+              <ExperimentalFeatureWrapper settingKey={PreviewFeatureDatabaseKey.TASKS}>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">
@@ -283,7 +284,7 @@ export default function ChatSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </ExperimentalFeatureWrapper>
-              <ExperimentalFeatureWrapper settingKey="experimental_feature_automations">
+              <ExperimentalFeatureWrapper settingKey={PreviewFeatureDatabaseKey.AUTOMATIONS}>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/automations">

@@ -35,6 +35,8 @@ import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent } from '@/lib/analytics'
 import { getPreferencesSettings } from '@/lib/dal'
+import { PreviewFeaturesSection } from './preview-features-section'
+import { usePreviewFeatures, PreviewFeaturesFormData } from './use-preview-features'
 
 interface LocationData {
   name: string
@@ -53,11 +55,6 @@ const privacyFormSchema = z.object({
   dataCollection: z.boolean(),
 })
 
-const experimentalFeaturesFormSchema = z.object({
-  experimentalFeatureAutomations: z.boolean(),
-  experimentalFeatureTasks: z.boolean(),
-})
-
 const locationFormSchema = z.object({
   locationName: z.string().min(1, { message: 'Location is required.' }),
   locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
@@ -74,7 +71,7 @@ export default function PreferencesSettingsPage() {
   const [isResetting, setIsResetting] = React.useState(false)
   const [showTelemetryModal, setShowTelemetryModal] = React.useState(false)
   const [showTelemetryWarningModal, setShowTelemetryWarningModal] = React.useState(false)
-  const pendingFeatureToggle = React.useRef<'experimentalFeatureAutomations' | 'experimentalFeatureTasks' | null>(null)
+  const pendingFeatureToggle = React.useRef<string | null>(null)
 
   const postHog = usePostHog()
 
@@ -83,6 +80,8 @@ export default function PreferencesSettingsPage() {
     queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
+
+  const previewFeatures = usePreviewFeatures(settings)
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -95,14 +94,6 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(privacyFormSchema),
     defaultValues: {
       dataCollection: true,
-    },
-  })
-
-  const experimentalFeaturesForm = useForm<z.infer<typeof experimentalFeaturesFormSchema>>({
-    resolver: zodResolver(experimentalFeaturesFormSchema),
-    defaultValues: {
-      experimentalFeatureAutomations: false,
-      experimentalFeatureTasks: false,
     },
   })
 
@@ -126,11 +117,6 @@ export default function PreferencesSettingsPage() {
         dataCollection: settings.dataCollection,
       })
 
-      experimentalFeaturesForm.reset({
-        experimentalFeatureAutomations: settings.experimentalFeatureAutomations,
-        experimentalFeatureTasks: settings.experimentalFeatureTasks,
-      })
-
       locationForm.reset({
         locationName: settings.locationName as string,
         locationLat:
@@ -139,27 +125,10 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm, privacyForm, experimentalFeaturesForm])
+  }, [settings, nameForm, locationForm, privacyForm, previewFeatures.form])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
-
-  // Sync experimental features when telemetry is disabled
-  React.useEffect(() => {
-    if (!settings?.dataCollection) {
-      if (settings?.experimentalFeatureAutomations) {
-        experimentalFeaturesForm.setValue('experimentalFeatureAutomations', false)
-      }
-      if (settings?.experimentalFeatureTasks) {
-        experimentalFeaturesForm.setValue('experimentalFeatureTasks', false)
-      }
-    }
-  }, [
-    settings?.dataCollection,
-    settings?.experimentalFeatureAutomations,
-    settings?.experimentalFeatureTasks,
-    experimentalFeaturesForm,
-  ])
 
   // Search for locations when debounced query changes
   React.useEffect(() => {
@@ -268,44 +237,6 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  // Save experimental features mutation
-  const saveExperimentalFeaturesMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof experimentalFeaturesFormSchema>) => {
-      // Upsert the setting
-      await db
-        .insert(settingsTable)
-        .values({
-          key: 'experimental_feature_automations',
-          value: values.experimentalFeatureAutomations ? 'true' : 'false',
-        })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.experimentalFeatureAutomations ? 'true' : 'false' },
-        })
-      await db
-        .insert(settingsTable)
-        .values({ key: 'experimental_feature_tasks', value: values.experimentalFeatureTasks ? 'true' : 'false' })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.experimentalFeatureTasks ? 'true' : 'false' },
-        })
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.experimentalFeatureAutomations) {
-        trackEvent('settings_experimental_feature_automations_enabled')
-      } else {
-        trackEvent('settings_experimental_feature_automations_disabled')
-      }
-      if (values.experimentalFeatureTasks) {
-        trackEvent('settings_experimental_feature_tasks_enabled')
-      } else {
-        trackEvent('settings_experimental_feature_tasks_disabled')
-      }
-    },
-  })
-
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
@@ -362,8 +293,9 @@ export default function PreferencesSettingsPage() {
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
     if (!value) {
-      const currentValues = experimentalFeaturesForm.getValues()
-      if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
+      const currentValues = previewFeatures.form.getValues()
+      const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
+      if (hasEnabledFeatures) {
         setShowTelemetryWarningModal(true)
         return
       }
@@ -373,31 +305,20 @@ export default function PreferencesSettingsPage() {
 
     // If telemetry is disabled, also disable experimental features
     if (!value) {
-      const currentValues = experimentalFeaturesForm.getValues()
-      if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
-        await saveExperimentalFeaturesMutation.mutateAsync({
-          experimentalFeatureAutomations: false,
-          experimentalFeatureTasks: false,
-        })
-      }
+      await previewFeatures.disableAllFeatures()
     }
   }
 
-  const handleExperimentalFeaturesToggle = async (
-    featureName: 'experimentalFeatureAutomations' | 'experimentalFeatureTasks',
-    value: boolean,
-  ) => {
-    if (value && !settings?.dataCollection) {
-      pendingFeatureToggle.current = featureName
+  const handleExperimentalFeaturesToggle = async (featureName: keyof PreviewFeaturesFormData, value: boolean) => {
+    const result = await previewFeatures.handleFeatureToggle(featureName, value)
+
+    if (result.requiresTelemetry) {
+      pendingFeatureToggle.current = featureName as string
       setShowTelemetryModal(true)
-      return
+      return { requiresTelemetry: true, featureName: featureName as string }
     }
 
-    const currentValues = experimentalFeaturesForm.getValues()
-    await saveExperimentalFeaturesMutation.mutateAsync({
-      ...currentValues,
-      [featureName]: value,
-    })
+    return { requiresTelemetry: false }
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -576,48 +497,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Preview Features">
-        <p className="mb-4 text-sm text-muted-foreground">
-          Try out experimental features before they're officially released. These features may be unstable or change
-          without notice. To enable them, you'll need to turn on telemetry so we can learn and improve from real usage.
-        </p>
-        <Form {...experimentalFeaturesForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={experimentalFeaturesForm.control}
-              name="experimentalFeatureAutomations"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Automations</label>
-                  </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={(value) =>
-                      handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
-                    }
-                  />
-                </div>
-              )}
-            />
-            <FormField
-              control={experimentalFeaturesForm.control}
-              name="experimentalFeatureTasks"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Tasks</label>
-                  </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={(value) => handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)}
-                  />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
-      </SectionCard>
+      <PreviewFeaturesSection settings={settings} onFeatureToggle={handleExperimentalFeaturesToggle} />
 
       <div className="h-6" />
 
@@ -700,11 +580,10 @@ export default function PreferencesSettingsPage() {
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
                 if (pendingFeatureToggle.current) {
-                  const currentValues = experimentalFeaturesForm.getValues()
-                  await saveExperimentalFeaturesMutation.mutateAsync({
-                    ...currentValues,
-                    [pendingFeatureToggle.current]: true,
-                  })
+                  await previewFeatures.handleBulkSave(
+                    pendingFeatureToggle.current as keyof PreviewFeaturesFormData,
+                    true,
+                  )
                 }
                 setShowTelemetryModal(false)
                 pendingFeatureToggle.current = null
@@ -730,13 +609,7 @@ export default function PreferencesSettingsPage() {
             <AlertDialogAction
               onClick={async () => {
                 await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-                const currentValues = experimentalFeaturesForm.getValues()
-                if (currentValues.experimentalFeatureAutomations || currentValues.experimentalFeatureTasks) {
-                  await saveExperimentalFeaturesMutation.mutateAsync({
-                    experimentalFeatureAutomations: false,
-                    experimentalFeatureTasks: false,
-                  })
-                }
+                await previewFeatures.disableAllFeatures()
                 setShowTelemetryWarningModal(false)
               }}
             >

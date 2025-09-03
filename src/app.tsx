@@ -80,7 +80,14 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          <Route path="tasks" element={<TasksPage />} />
+          <Route
+            path="tasks"
+            element={
+              <ExperimentalFeatureRouteWrapper settingKey="experimental_feature_tasks">
+                <TasksPage />
+              </ExperimentalFeatureRouteWrapper>
+            }
+          />
           <Route
             path="automations"
             element={

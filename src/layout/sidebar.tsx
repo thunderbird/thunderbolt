@@ -273,14 +273,16 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/tasks">
-                    <CheckSquare className="size-4" />
-                    <span>Tasks</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <ExperimentalFeatureWrapper settingKey="experimental_feature_tasks">
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink to="/tasks">
+                      <CheckSquare className="size-4" />
+                      <span>Tasks</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </ExperimentalFeatureWrapper>
               <ExperimentalFeatureWrapper settingKey="experimental_feature_automations">
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>

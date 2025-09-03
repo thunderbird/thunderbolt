@@ -37,8 +37,6 @@ import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent } from '@/lib/analytics'
 import { getPreferencesSettings } from '@/lib/dal'
-import { PreviewFeaturesSection } from './preview-features-section'
-import { usePreviewFeatures, PreviewFeaturesFormData } from './use-preview-features'
 
 interface LocationData {
   name: string
@@ -103,6 +101,11 @@ const privacyFormSchema = z.object({
   dataCollection: z.boolean(),
 })
 
+const previewFeaturesFormSchema = z.object({
+  experimentalFeatureAutomations: z.boolean(),
+  experimentalFeatureTasks: z.boolean(),
+})
+
 const locationFormSchema = z.object({
   locationName: z.string().min(1, { message: 'Location is required.' }),
   locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
@@ -122,13 +125,16 @@ export default function PreferencesSettingsPage() {
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
     if (featureName) {
-      await previewFeatures.handleBulkSave(featureName, true)
+      await savePreviewFeaturesMutation.mutateAsync({
+        ...previewFeaturesForm.getValues(),
+        [featureName]: true,
+      })
     }
   }
 
   const handleDisableTelemetry = async () => {
     await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-    await previewFeatures.disableAllFeatures()
+    await disableAllPreviewFeatures()
   }
 
   const postHog = usePostHog()
@@ -138,8 +144,6 @@ export default function PreferencesSettingsPage() {
     queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
-
-  const previewFeatures = usePreviewFeatures(settings)
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -152,6 +156,14 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(privacyFormSchema),
     defaultValues: {
       dataCollection: true,
+    },
+  })
+
+  const previewFeaturesForm = useForm<z.infer<typeof previewFeaturesFormSchema>>({
+    resolver: zodResolver(previewFeaturesFormSchema),
+    defaultValues: {
+      experimentalFeatureAutomations: false,
+      experimentalFeatureTasks: false,
     },
   })
 
@@ -175,6 +187,11 @@ export default function PreferencesSettingsPage() {
         dataCollection: settings.dataCollection,
       })
 
+      previewFeaturesForm.reset({
+        experimentalFeatureAutomations: settings.experimentalFeatureAutomations,
+        experimentalFeatureTasks: settings.experimentalFeatureTasks,
+      })
+
       locationForm.reset({
         locationName: settings.locationName as string,
         locationLat:
@@ -183,7 +200,15 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm, privacyForm, previewFeatures.form])
+  }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
+
+  // Sync preview features when telemetry is disabled
+  useEffect(() => {
+    if (!settings?.dataCollection) {
+      previewFeaturesForm.setValue('experimentalFeatureAutomations', false)
+      previewFeaturesForm.setValue('experimentalFeatureTasks', false)
+    }
+  }, [settings?.dataCollection, previewFeaturesForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -295,6 +320,58 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  // Save preview features mutation
+  const savePreviewFeaturesMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
+      // Save each feature setting
+      await db
+        .insert(settingsTable)
+        .values({
+          key: 'experimental_feature_automations',
+          value: values.experimentalFeatureAutomations ? 'true' : 'false',
+        })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.experimentalFeatureAutomations ? 'true' : 'false' },
+        })
+
+      await db
+        .insert(settingsTable)
+        .values({
+          key: 'experimental_feature_tasks',
+          value: values.experimentalFeatureTasks ? 'true' : 'false',
+        })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: values.experimentalFeatureTasks ? 'true' : 'false' },
+        })
+    },
+    onSuccess: (_, values) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+
+      // Track events for each feature
+      if (values.experimentalFeatureAutomations) {
+        trackEvent('settings_experimental_feature_automations_enabled')
+      } else {
+        trackEvent('settings_experimental_feature_automations_disabled')
+      }
+
+      if (values.experimentalFeatureTasks) {
+        trackEvent('settings_experimental_feature_tasks_enabled')
+      } else {
+        trackEvent('settings_experimental_feature_tasks_disabled')
+      }
+    },
+  })
+
+  // Disable all preview features (when telemetry is turned off)
+  const disableAllPreviewFeatures = async () => {
+    await savePreviewFeaturesMutation.mutateAsync({
+      experimentalFeatureAutomations: false,
+      experimentalFeatureTasks: false,
+    })
+  }
+
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
@@ -351,7 +428,7 @@ export default function PreferencesSettingsPage() {
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
     if (!value) {
-      const currentValues = previewFeatures.form.getValues()
+      const currentValues = previewFeaturesForm.getValues()
       const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
       if (hasEnabledFeatures) {
         telemetryWarningModalRef.current?.open()
@@ -363,17 +440,23 @@ export default function PreferencesSettingsPage() {
 
     // If telemetry is disabled, also disable experimental features
     if (!value) {
-      await previewFeatures.disableAllFeatures()
+      await disableAllPreviewFeatures()
     }
   }
 
-  const handleExperimentalFeaturesToggle = async (featureName: keyof PreviewFeaturesFormData, value: boolean) => {
-    const result = await previewFeatures.handleFeatureToggle(featureName, value)
-
-    if (result.requiresTelemetry) {
-      telemetryRequiredModalRef.current?.open(featureName)
+  const handleExperimentalFeaturesToggle = async (
+    featureName: keyof z.infer<typeof previewFeaturesFormSchema>,
+    value: boolean,
+  ) => {
+    if (value && !settings?.dataCollection) {
       return { requiresTelemetry: true, featureName: featureName }
     }
+
+    const currentValues = previewFeaturesForm.getValues()
+    await savePreviewFeaturesMutation.mutateAsync({
+      ...currentValues,
+      [featureName]: value,
+    })
 
     return { requiresTelemetry: false }
   }
@@ -553,7 +636,55 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <PreviewFeaturesSection settings={settings} onFeatureToggle={handleExperimentalFeaturesToggle} />
+      <SectionCard title="Preview Features">
+        <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
+
+        <Form {...previewFeaturesForm}>
+          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={previewFeaturesForm.control}
+              name="experimentalFeatureAutomations"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Automations</label>
+                  </div>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={async (value) => {
+                      const result = await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
+                      if (result.requiresTelemetry) {
+                        telemetryRequiredModalRef.current?.open(result.featureName)
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            />
+
+            <FormField
+              control={previewFeaturesForm.control}
+              name="experimentalFeatureTasks"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Tasks</label>
+                  </div>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={async (value) => {
+                      const result = await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
+                      if (result.requiresTelemetry) {
+                        telemetryRequiredModalRef.current?.open(result.featureName)
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
 
       <div className="h-6" />
 

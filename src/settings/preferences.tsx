@@ -368,7 +368,7 @@ export default function PreferencesSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Preferences</h1>
 
       <SectionCard title="Appearance">

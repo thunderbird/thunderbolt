@@ -84,9 +84,9 @@ export const usePreviewFeatures = (settings: any) => {
       PREVIEW_FEATURES.forEach((feature) => {
         const value = values[feature.formFieldName as keyof PreviewFeaturesFormData]
         if (value) {
-          trackEvent(`settings_experimental_feature_${feature.id}_enabled`)
+          trackEvent(`settings_${feature.databaseKey}_enabled`)
         } else {
-          trackEvent(`settings_experimental_feature_${feature.id}_disabled`)
+          trackEvent(`settings_${feature.databaseKey}_disabled`)
         }
       })
     },

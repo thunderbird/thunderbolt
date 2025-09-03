@@ -39,3 +39,7 @@ storybook-static
 # Dev Ex custom things
 mise*.toml
 mise.toml
+
+# iOS fastlane local bundle
+src-tauri/gen/apple/vendor/
+src-tauri/gen/apple/.bundle/

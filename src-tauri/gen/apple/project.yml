@@ -2,7 +2,7 @@ name: thunderbolt
 options:
   bundleIdPrefix: net.thunderbird.thunderbolt
   deploymentTarget:
-    iOS: 13.0
+    iOS: 14.0
 fileGroups: [../../src]
 configs:
   debug: debug
@@ -52,7 +52,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.1.0
-        CFBundleVersion: 0.1.0
+        CFBundleVersion: "0.1.0"
     entitlements:
       path: thunderbolt_iOS/thunderbolt_iOS.entitlements
     scheme:

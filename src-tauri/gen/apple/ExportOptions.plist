@@ -9,7 +9,7 @@
     <key>provisioningProfiles</key>
     <dict>
         <key>net.thunderbird.thunderbolt</key>
-        <string>hunderbolt Experiment</string>
+        <string>Thunderbolt</string>
     </dict>
     <key>signingStyle</key>
     <string>manual</string>

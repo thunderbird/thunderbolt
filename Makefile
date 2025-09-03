@@ -29,15 +29,6 @@ setup:
 	bun install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
 	cd backend && uv sync --frozen
-	@echo "$(BLUE)→ Setting up Flower framework (optional)...$(NC)"
-	@if [ -d flower/framework ]; then \
-		echo "$(YELLOW)  Found Flower framework. Setting up environment...$(NC)"; \
-		cd flower && ./dev/setup-envs.sh || true; \
-		echo "$(YELLOW)  Note: Flower framework setup is optional. Install it manually if needed:$(NC)"; \
-		echo "$(YELLOW)  cd flower/framework && pip install -e .$(NC)"; \
-	else \
-		echo "$(YELLOW)  Flower framework not found. Skipping...$(NC)"; \
-	fi
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies
@@ -75,7 +66,7 @@ build-ios:
 
 # Clean build artifacts
 clean:
-	- rm -rf dist src-tauri/target node_modules flower/intelligence/ts/node_modules flower/intelligence/ts/dist public/flower
+	- rm -rf dist src-tauri/target node_modules
 	- (cd src-tauri && cargo clean)
 
 # Linting

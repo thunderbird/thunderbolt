@@ -101,14 +101,12 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     builder
 }
 
-// For iOS - this is the function that the iOS bindings expect
-#[no_mangle]
-pub extern "C" fn start_app() {
+// Android/iOS entry point for Tauri 2 mobile builds
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
     std::env::set_var("RUST_BACKTRACE", "1");
 
-    tauri::async_runtime::block_on(async {
-        create_app()
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
-    });
+    create_app()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

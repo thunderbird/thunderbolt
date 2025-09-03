@@ -21,10 +21,7 @@ export const PreviewFeaturesSection: React.FC<PreviewFeaturesSectionProps> = ({ 
 
   return (
     <SectionCard title="Preview Features">
-      <p className="mb-4 text-sm text-muted-foreground">
-        Try out experimental features before they're officially released. These features may be unstable or change
-        without notice. To enable them, you'll need to turn on telemetry so we can learn and improve from real usage.
-      </p>
+      <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
 
       <Form {...form}>
         <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>

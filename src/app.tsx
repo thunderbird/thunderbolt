@@ -73,8 +73,8 @@ function AppContent({ initData }: { initData: InitData }) {
 function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
-  const isTasksEnabled = useBooleanSetting('experimental_feature_tasks')
-  const isAutomationsEnabled = useBooleanSetting('experimental_feature_automations')
+  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   return (
     <Routes>

@@ -22,7 +22,6 @@ import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
-import { ExperimentalFeatureWrapper } from '@/components/experimental-feature-wrapper'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
@@ -45,7 +44,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { trackEvent } from '@/lib/analytics'
-import { PreviewFeatureDatabaseKey } from '@/settings/preview-features-config'
+import { useBooleanSetting } from '@/hooks/use-setting'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -66,6 +65,9 @@ export default function ChatSidebar() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -274,7 +276,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <ExperimentalFeatureWrapper settingKey={PreviewFeatureDatabaseKey.TASKS}>
+              {isTasksEnabled && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">
@@ -283,8 +285,8 @@ export default function ChatSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </ExperimentalFeatureWrapper>
-              <ExperimentalFeatureWrapper settingKey={PreviewFeatureDatabaseKey.AUTOMATIONS}>
+              )}
+              {isAutomationsEnabled && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/automations">
@@ -293,7 +295,7 @@ export default function ChatSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </ExperimentalFeatureWrapper>
+              )}
               <SidebarMenuItem>
                 {isMobile ? (
                   <SidebarMenuButton onClick={showSettingsMenu} className="cursor-pointer">

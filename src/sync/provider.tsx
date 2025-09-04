@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode, type FC } from 'react'
-import ImapSyncClient from './sync'
+import type ImapSyncClient from './sync'
 
 type ImapSyncContextType = {
   client: ImapSyncClient

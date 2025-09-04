@@ -1,10 +1,10 @@
-import { LanguageModelV2Usage } from '@ai-sdk/provider'
-import { TrayIcon } from '@tauri-apps/api/tray'
-import { Window } from '@tauri-apps/api/window'
-import { UIMessage, type UIDataTypes, type UITools } from 'ai'
-import { InferSelectModel } from 'drizzle-orm'
+import type { LanguageModelV2Usage } from '@ai-sdk/provider'
+import type { TrayIcon } from '@tauri-apps/api/tray'
+import type { Window } from '@tauri-apps/api/window'
+import type { UIMessage, UIDataTypes, UITools } from 'ai'
+import type { InferSelectModel } from 'drizzle-orm'
 import type { z } from 'zod'
-import {
+import type {
   chatMessagesTable,
   chatThreadsTable,
   contactsTable,
@@ -20,8 +20,8 @@ import {
   tasksTable,
   triggersTable,
 } from './db/tables'
-import ImapClient from './imap/imap'
-import { ImapSyncClient } from './sync'
+import type ImapClient from './imap/imap'
+import type { ImapSyncClient } from './sync'
 
 export type InitData = {
   imap: ImapClient

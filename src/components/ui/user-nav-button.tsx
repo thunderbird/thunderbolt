@@ -1,5 +1,5 @@
 import { EllipsisVertical, LogOut, Settings } from 'lucide-react'
-import { ButtonHTMLAttributes } from 'react'
+import { type ButtonHTMLAttributes } from 'react'
 import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'

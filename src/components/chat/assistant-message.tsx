@@ -1,5 +1,5 @@
 import { splitPartType } from '@/lib/utils'
-import { UIMessage, type ReasoningUIPart, type TextUIPart, type ToolUIPart } from 'ai'
+import type { UIMessage, ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'

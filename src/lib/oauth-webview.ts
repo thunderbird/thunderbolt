@@ -2,9 +2,9 @@ import { listen } from '@tauri-apps/api/event'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { v4 as uuidv4 } from 'uuid'
 import {
-  GoogleUserInfo,
-  OAuthProvider,
-  OAuthTokens,
+  type GoogleUserInfo,
+  type OAuthProvider,
+  type OAuthTokens,
   buildAuthUrl,
   exchangeCodeForTokens,
   getUserInfo,

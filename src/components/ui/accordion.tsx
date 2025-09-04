@@ -1,4 +1,4 @@
-import { ComponentProps } from 'react'
+import { type ComponentProps } from 'react'
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronDownIcon } from 'lucide-react'
 

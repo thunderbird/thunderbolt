@@ -1,6 +1,6 @@
 import Database from '@/lib/libsql'
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
-import { DatabaseInterface } from './database-interface'
+import type { DatabaseInterface } from './database-interface'
 import * as schema from './schema'
 
 export class LibSQLTauriDatabase implements DatabaseInterface {

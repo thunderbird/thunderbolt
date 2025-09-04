@@ -1,5 +1,5 @@
-import { useState, useEffect, ReactNode, CSSProperties } from 'react'
-import { motion, useMotionValue, useAnimation, PanInfo } from 'framer-motion'
+import { useState, useEffect, type ReactNode, type CSSProperties } from 'react'
+import { motion, useMotionValue, useAnimation, type PanInfo } from 'framer-motion'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './sheet'
 import { X } from 'lucide-react'
 import { Button } from './button'

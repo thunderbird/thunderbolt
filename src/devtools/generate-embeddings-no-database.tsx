@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DatabaseSingleton } from '@/db/singleton'
 import { emailMessagesTable } from '@/db/tables'
 // import { getEmbedding } from '@/lib/embeddings'
-import { EmailMessage } from '@/types'
+import type { EmailMessage } from '@/types'
 import { useEffect, useRef, useState } from 'react'
 
 export default function GenerateEmbeddingsFrontendNoDatabaseSection() {

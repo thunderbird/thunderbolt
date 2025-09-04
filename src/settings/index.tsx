@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 // import { Sidebar } from '../components/app-sidebar'
 
 export default function Settings({ children }: { children?: ReactNode }) {

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronRight } from 'lucide-react'
-import { ReactNode, useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 export type ExpandableProps = {
   /** The title displayed in the accordion trigger */

@@ -2,7 +2,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { getEmailMessageById, getEmailMessageByImapId } from '@/lib/dal'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
-import { EmailMessageWithAddresses } from '@/types'
+import type { EmailMessageWithAddresses } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Mail } from 'lucide-react'
 

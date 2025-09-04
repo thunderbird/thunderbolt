@@ -1,5 +1,5 @@
 import { Ellipsis, Mails, Trash2 } from 'lucide-react'
-import { HTMLAttributes } from 'react'
+import { type HTMLAttributes } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'

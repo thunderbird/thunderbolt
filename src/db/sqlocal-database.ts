@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
 import { SQLocal } from 'sqlocal'
 import { SQLocalDrizzle } from 'sqlocal/drizzle'
-import { DatabaseInterface } from './database-interface'
+import type { DatabaseInterface } from './database-interface'
 import * as schema from './schema'
 
 export class SQLocalDatabase implements DatabaseInterface {

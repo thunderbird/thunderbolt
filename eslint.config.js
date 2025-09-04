@@ -83,6 +83,14 @@ export default [
           message: 'Do not import default React. Use named imports instead.',
         },
       ],
+      // Enforce type imports to always use the `type` keyword
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          disallowTypeAnnotations: false,
+        },
+      ],
     },
   },
   ...storybook.configs['flat/recommended'],

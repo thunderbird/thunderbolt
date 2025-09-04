@@ -5,10 +5,10 @@ import { getCloudUrl } from '@/lib/config'
 import { getBooleanSetting, getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
-import { Model, SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { LanguageModelV2 } from '@ai-sdk/provider'
+import type { LanguageModelV2 } from '@ai-sdk/provider'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -18,7 +18,7 @@ import { LanguageModelV2 } from '@ai-sdk/provider'
 import { createFlowerProvider } from '@/flower'
 import {
   convertToModelMessages,
-  experimental_createMCPClient,
+  type experimental_createMCPClient,
   stepCountIs,
   streamText,
   wrapLanguageModel,

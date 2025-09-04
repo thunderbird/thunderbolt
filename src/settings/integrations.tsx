@@ -7,7 +7,13 @@ import { configs as googleToolConfigs } from '@/integrations/google/tools'
 import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
-import { exchangeCodeForTokens, getUserInfo, GoogleUserInfo, OAuthTokens, redirectOAuthFlow } from '@/lib/auth'
+import {
+  exchangeCodeForTokens,
+  getUserInfo,
+  type GoogleUserInfo,
+  type OAuthTokens,
+  redirectOAuthFlow,
+} from '@/lib/auth'
 import { getSetting, updateSetting } from '@/lib/dal'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 import { isTauri } from '@/lib/platform'

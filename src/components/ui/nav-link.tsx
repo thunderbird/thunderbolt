@@ -1,6 +1,6 @@
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { ComponentProps, forwardRef } from 'react'
+import { forwardRef, type ComponentProps } from 'react'
 import { Link } from 'react-router'
 
 /**

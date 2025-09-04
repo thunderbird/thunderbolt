@@ -5,14 +5,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { tasksTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { cn } from '@/lib/utils'
-import { Task } from '@/types'
+import type { Task } from '@/types'
 import type { DropAnimation } from '@dnd-kit/core'
 import {
   closestCenter,
   DndContext,
-  DragEndEvent,
+  type DragEndEvent,
   DragOverlay,
-  DragStartEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,

@@ -1,13 +1,13 @@
-import { ChatMessage, ParsedEmail, ParsedEmailHeader, UIMessageMetadata } from '@/types'
-import { UIMessage } from 'ai'
+import type { ChatMessage, ParsedEmail, ParsedEmailHeader, UIMessageMetadata } from '@/types'
+import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
 import { twMerge } from 'tailwind-merge'
 import {
-  CamelCasedProperties,
-  CamelCasedPropertiesDeep,
-  SnakeCasedProperties,
-  SnakeCasedPropertiesDeep,
+  type CamelCasedProperties,
+  type CamelCasedPropertiesDeep,
+  type SnakeCasedProperties,
+  type SnakeCasedPropertiesDeep,
 } from 'type-fest'
 
 export function cn(...inputs: ClassValue[]) {

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
-import { Model } from '@/types'
+import type { Model } from '@/types'
 
 const formSchema = z
   .object({

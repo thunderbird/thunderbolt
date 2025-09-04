@@ -1,6 +1,6 @@
 'use client'
 
-import { SideviewType } from '@/types'
+import type { SideviewType } from '@/types'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 interface SideviewContextType {

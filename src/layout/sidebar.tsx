@@ -16,7 +16,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { DeleteAllChatsDialog, DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
@@ -42,7 +42,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
+import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { trackEvent } from '@/lib/analytics'
 import { useBooleanSetting } from '@/hooks/use-setting'
 

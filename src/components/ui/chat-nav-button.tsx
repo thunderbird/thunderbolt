@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { Slot } from '@radix-ui/react-slot'
 import { Ellipsis, Trash2 } from 'lucide-react'
-import { HTMLAttributes } from 'react'
+import { type HTMLAttributes } from 'react'
 import { useNavigate } from 'react-router'
 
 interface ChatNavButtonProps extends HTMLAttributes<HTMLDivElement> {

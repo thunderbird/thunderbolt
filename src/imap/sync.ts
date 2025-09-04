@@ -1,9 +1,9 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailAddressesTable, emailMessagesTable, emailMessagesToAddressesTable, emailThreadsTable } from '@/db/tables'
-import { ImapEmailMessage, ParsedEmail } from '@/types'
+import type { ImapEmailMessage, ParsedEmail } from '@/types'
 import { count, eq, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import ImapClient, { ImapEmailAddress } from './imap'
+import ImapClient, { type ImapEmailAddress } from './imap'
 
 /**
  * **ImapSyncer**

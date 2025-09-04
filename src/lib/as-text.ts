@@ -1,4 +1,4 @@
-import { EmailMessage, EmailThread } from '@/types'
+import type { EmailMessage, EmailThread } from '@/types'
 
 export const indentUserText = (text: string): string => {
   return text

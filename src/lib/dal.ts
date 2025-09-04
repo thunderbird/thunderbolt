@@ -13,13 +13,13 @@ import {
   settingsTable,
   tasksTable,
 } from '../db/tables'
-import {
+import type {
   EmailThreadWithMessagesAndAddresses,
-  type Model,
-  type Prompt,
-  type ThunderboltUIMessage,
-  type UIMessageMetadata,
-  type Task,
+  Model,
+  Prompt,
+  ThunderboltUIMessage,
+  UIMessageMetadata,
+  Task,
 } from '../types'
 import { convertUIMessageToDbChatMessage } from './utils'
 

@@ -1,5 +1,5 @@
-import { createContext, ReactNode, useContext } from 'react'
-import ImapClient from './imap'
+import { createContext, useContext, type ReactNode } from 'react'
+import type ImapClient from './imap'
 
 /**
  * Interface for IMAP context

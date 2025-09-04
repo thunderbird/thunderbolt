@@ -1,6 +1,6 @@
 'use client'
 
-import { ComponentProps } from 'react'
+import { type ComponentProps } from 'react'
 import * as LabelPrimitive from '@radix-ui/react-label'
 
 import { cn } from '@/lib/utils'

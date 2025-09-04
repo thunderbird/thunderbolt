@@ -1,7 +1,7 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Model } from '@/types'
+import type { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
 import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
 

@@ -1,4 +1,4 @@
-import { DatabaseInterface, type AnyDrizzleDatabase } from './database-interface'
+import type { DatabaseInterface, AnyDrizzleDatabase } from './database-interface'
 import { LibSQLTauriDatabase } from './libsql-tauri-database'
 import { SQLocalDatabase } from './sqlocal-database'
 

@@ -1,5 +1,5 @@
-import { ParsedEmail } from '@/types'
-import { UIMessage } from 'ai'
+import type { ParsedEmail } from '@/types'
+import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 import { customType, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 

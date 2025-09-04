@@ -1,8 +1,8 @@
 import { useDebouncedCallback } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import { Search, X } from 'lucide-react'
-import { ChangeEvent, forwardRef, useState } from 'react'
-import { Input, InputProps } from './input'
+import { forwardRef, useState, type ChangeEvent } from 'react'
+import { Input, type InputProps } from './input'
 
 type SearchInputProps = InputProps & {
   containerClassName?: string

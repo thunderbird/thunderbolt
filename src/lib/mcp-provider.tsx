@@ -1,6 +1,6 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { experimental_createMCPClient } from 'ai'
-import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
 
 type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>

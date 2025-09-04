@@ -11,7 +11,7 @@ import {
 import { useSideview } from '@/sideview/provider'
 import { Sidebar } from 'lucide-react'
 import { useRef } from 'react'
-import { ImperativePanelHandle } from 'react-resizable-panels'
+import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
 import { Sideview } from './sideview'
 

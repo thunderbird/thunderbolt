@@ -4,7 +4,7 @@ import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import { ReactNode, useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 

@@ -1,5 +1,5 @@
 import { getAvailableModels, getAllSettings } from '@/lib/dal'
-import { SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import ChatState from './chat-state'
 

@@ -1,6 +1,6 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, emailThreadsTable } from '@/db/tables'
-import { EmailMessage, EmailThread } from '@/types'
+import type { EmailMessage, EmailThread } from '@/types'
 import { eq, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 

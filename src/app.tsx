@@ -52,7 +52,7 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
-import { InitData, SideviewType } from './types'
+import type { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
 import { useBooleanSetting } from './hooks/use-setting'
 

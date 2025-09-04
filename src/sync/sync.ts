@@ -1,4 +1,4 @@
-import { ImapCredentials } from '@/imap/imap'
+import type { ImapCredentials } from '@/imap/imap'
 import { invoke } from '@tauri-apps/api/core'
 
 /**

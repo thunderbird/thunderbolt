@@ -1,5 +1,5 @@
 import { createModel } from '@/ai/fetch'
-import { AnyDrizzleDatabase } from '@/db/database-interface'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { emailMessagesTable, modelsTable, tasksTable } from '@/db/schema'
 import { ImapSyncer } from '@/imap/sync'
 import { generateObject } from 'ai'

@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { FC } from 'react'
+import { type FC } from 'react'
 
 interface LoadingProps {
   className?: string

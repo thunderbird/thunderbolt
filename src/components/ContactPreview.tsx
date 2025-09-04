@@ -1,6 +1,6 @@
 'use client'
 
-import { EmailAddress } from '@/types'
+import type { EmailAddress } from '@/types'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 export function EmailAddressPreview({ emailAddress }: { emailAddress: EmailAddress }) {

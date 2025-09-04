@@ -1,4 +1,4 @@
-import { DeleteAllChatsDialog, DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Button } from '@/components/ui/button'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useRef, useEffect } from 'react'

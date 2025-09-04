@@ -39,6 +39,10 @@ storybook-static
 # Dev Ex custom things
 mise*.toml
 mise.toml
+.claude/**
+.zed/**
+.zedscratches/**
+
 
 # iOS fastlane local bundle
 src-tauri/gen/apple/vendor/

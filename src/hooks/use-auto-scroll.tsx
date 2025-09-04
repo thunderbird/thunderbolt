@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject, type WheelEvent } from 'react'
 
 // Constants for scroll behavior thresholds
 const SCROLL_THRESHOLD = {
@@ -21,9 +21,9 @@ interface UseAutoScrollOptions {
 
 interface UseAutoScrollReturn {
   /** Ref to attach to the scrollable container */
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>
+  scrollContainerRef: RefObject<HTMLDivElement | null>
   /** Ref to attach to the element at the bottom */
-  scrollTargetRef: React.RefObject<HTMLDivElement | null>
+  scrollTargetRef: RefObject<HTMLDivElement | null>
   /** Whether the user has manually scrolled away from bottom */
   userHasScrolled: boolean
   /** Whether the scroll position is at the bottom */
@@ -35,7 +35,7 @@ interface UseAutoScrollReturn {
   /** Event handlers to attach to the scrollable container */
   scrollHandlers: {
     onScroll: () => void
-    onWheel: (e: React.WheelEvent) => void
+    onWheel: (e: WheelEvent) => void
   }
 }
 
@@ -130,7 +130,7 @@ export function useAutoScroll({
     prevScrollTopRef.current = scrollTop
   }, [userHasScrolled, getDistanceFromBottom])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     if (e.deltaY < 0) setUserHasScrolled(true)
   }, [])
 

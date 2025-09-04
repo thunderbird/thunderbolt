@@ -11,7 +11,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, stepCountIs, streamText, wrapLanguageModel } from 'ai'
 import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { createDefaultMiddleware } from '@/ai/middleware/default'
@@ -45,7 +45,7 @@ const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => {
 type SimulatorChatProps = {
   sseContent: string
   onStop: () => void
-  stopRef: React.MutableRefObject<(() => void) | null>
+  stopRef: MutableRefObject<(() => void) | null>
 }
 
 function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {

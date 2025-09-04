@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import * as smd from 'streaming-markdown'
 
 interface StreamingMarkdownProps {
@@ -95,7 +95,7 @@ export function StreamingMarkdown({ content, isStreaming = false, className = ''
           '--tw-prose-pre-bg': 'inherit',
           '--tw-prose-th-borders': 'inherit',
           '--tw-prose-td-borders': 'inherit',
-        } as React.CSSProperties
+        } as CSSProperties
       }
     />
   )

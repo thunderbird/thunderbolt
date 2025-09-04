@@ -27,7 +27,7 @@ import { generateText } from 'ai'
 import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { Check, ChevronsUpDown, Loader2, Plus, Trash2, X } from 'lucide-react'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -418,7 +418,7 @@ export default function ModelsPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     // Only handle Enter key on input elements
     if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
       e.preventDefault()

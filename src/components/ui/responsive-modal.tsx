@@ -7,7 +7,13 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
-import * as React from 'react'
+import {
+  forwardRef,
+  type ElementRef,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+  type HTMLAttributes,
+} from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -19,9 +25,9 @@ const ResponsiveModalClose = DialogPrimitive.Close
 
 const ResponsiveModalPortal = DialogPrimitive.Portal
 
-const ResponsiveModalOverlay = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+const ResponsiveModalOverlay = forwardRef<
+  ElementRef<typeof DialogPrimitive.Overlay>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     className={cn(
@@ -57,17 +63,14 @@ const ResponsiveModalVariants = cva(
 )
 
 interface ResponsiveModalContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
+  extends ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
     VariantProps<typeof ResponsiveModalVariants> {}
 
-const ResponsiveModalContent = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Content>,
-  ResponsiveModalContentProps
->(
+const ResponsiveModalContent = forwardRef<ElementRef<typeof DialogPrimitive.Content>, ResponsiveModalContentProps>(
   // Added `style` to the destructured props so we can merge custom styles
   ({ side = 'bottom', className, children, style, ...props }, ref) => {
     // Compute additional inline styles when the sheet is anchored to the bottom
-    const bottomSheetStyle: React.CSSProperties | undefined =
+    const bottomSheetStyle: CSSProperties | undefined =
       side === 'bottom'
         ? {
             // Lift the sheet above the software keyboard.
@@ -101,27 +104,27 @@ const ResponsiveModalContent = React.forwardRef<
 )
 ResponsiveModalContent.displayName = DialogPrimitive.Content.displayName
 
-const ResponsiveModalHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+const ResponsiveModalHeader = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex flex-col space-y-2 text-center sm:text-left', className)} {...props} />
 )
 ResponsiveModalHeader.displayName = 'ResponsiveModalHeader'
 
-const ResponsiveModalFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+const ResponsiveModalFooter = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', className)} {...props} />
 )
 ResponsiveModalFooter.displayName = 'ResponsiveModalFooter'
 
-const ResponsiveModalTitle = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+const ResponsiveModalTitle = forwardRef<
+  ElementRef<typeof DialogPrimitive.Title>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title ref={ref} className={cn('text-lg font-semibold text-foreground', className)} {...props} />
 ))
 ResponsiveModalTitle.displayName = DialogPrimitive.Title.displayName
 
-const ResponsiveModalDescription = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+const ResponsiveModalDescription = forwardRef<
+  ElementRef<typeof DialogPrimitive.Description>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
 ))

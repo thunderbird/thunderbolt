@@ -1,7 +1,7 @@
 import { DeleteAllChatsDialog, DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Button } from '@/components/ui/button'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import React, { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 
 import { fn } from 'storybook/test'
 
@@ -36,7 +36,7 @@ export const Open: Story = {
     }
 
     // Auto-open the dialog when component mounts
-    React.useEffect(() => {
+    useEffect(() => {
       ref.current?.open()
     }, [])
 

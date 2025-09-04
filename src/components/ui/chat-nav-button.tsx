@@ -14,10 +14,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { Slot } from '@radix-ui/react-slot'
 import { Ellipsis, Trash2 } from 'lucide-react'
-import * as React from 'react'
+import { HTMLAttributes } from 'react'
 import { useNavigate } from 'react-router'
 
-interface ChatNavButtonProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ChatNavButtonProps extends HTMLAttributes<HTMLDivElement> {
   chatTitle: string
   threadId: string
   asChild?: boolean

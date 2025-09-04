@@ -2,13 +2,13 @@ import { settingsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { getThemeSetting } from '@/lib/dal'
 
 type Theme = 'dark' | 'light' | 'system'
 
 type ThemeProviderProps = {
-  children: React.ReactNode
+  children: ReactNode
   defaultTheme?: Theme
   storageKey?: string
 }

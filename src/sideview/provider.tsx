@@ -1,7 +1,7 @@
 'use client'
 
 import { SideviewType } from '@/types'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 interface SideviewContextType {
   sideviewType: SideviewType | null
@@ -12,7 +12,7 @@ interface SideviewContextType {
 const SideviewContext = createContext<SideviewContextType | undefined>(undefined)
 
 interface SideviewProviderProps {
-  children: React.ReactNode
+  children: ReactNode
   sideviewType?: SideviewType | null
   sideviewId?: string | null
 }

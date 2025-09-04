@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import React from 'react'
+import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
 import { getAllModels } from '@/lib/dal'
 
@@ -22,7 +22,7 @@ export default function ModelsLayout() {
   const isNewRoute = window.location.pathname.endsWith('/models/new')
 
   // Navigate to first model if no model is selected and we're not on the new route
-  React.useEffect(() => {
+  useEffect(() => {
     if (!modelId && models.length > 0 && !isNewRoute) {
       navigate(`/settings/models/${models[0].id}`)
     }

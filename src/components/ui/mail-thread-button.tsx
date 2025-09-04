@@ -1,11 +1,11 @@
 import { Ellipsis, Mails, Trash2 } from 'lucide-react'
-import * as React from 'react'
+import { HTMLAttributes } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-interface MailThreadButtonProps extends React.HTMLAttributes<HTMLDivElement> {
+interface MailThreadButtonProps extends HTMLAttributes<HTMLDivElement> {
   mailTitle: string
 }
 

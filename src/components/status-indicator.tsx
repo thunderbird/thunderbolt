@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import React from 'react'
+import type { FC } from 'react'
 
 /**
  * Simple status indicator dot used across the application to visualise
@@ -41,7 +41,7 @@ const stateClasses: Record<StatusState, string> = {
   neutral: 'bg-muted-foreground/30',
 }
 
-export const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, size = 'md', className }) => {
+export const StatusIndicator: FC<StatusIndicatorProps> = ({ status, size = 'md', className }) => {
   return (
     <span
       className={cn('inline-block rounded-full flex-shrink-0', sizeClasses[size], stateClasses[status], className)}

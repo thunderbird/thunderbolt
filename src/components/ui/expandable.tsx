@@ -1,13 +1,13 @@
 import { cn } from '@/lib/utils'
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronRight } from 'lucide-react'
-import * as React from 'react'
+import { ReactNode, useState } from 'react'
 
 export type ExpandableProps = {
   /** The title displayed in the accordion trigger */
-  title: React.ReactNode
+  title: ReactNode
   /** The content to display when expanded */
-  children: React.ReactNode
+  children: ReactNode
   /** Background color class for the accordion */
   bgColor?: string
   /** Whether the accordion should be open by default */
@@ -17,7 +17,7 @@ export type ExpandableProps = {
   /** Optional click handler for the trigger */
   onToggle?: (isOpen: boolean) => void
   /** Optional custom icon to render instead of the default spinner/completion icon */
-  icon?: React.ReactNode
+  icon?: ReactNode
 }
 
 /**
@@ -33,7 +33,7 @@ export const Expandable = ({
   onToggle,
   icon,
 }: ExpandableProps) => {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen)
+  const [isOpen, setIsOpen] = useState(defaultOpen)
 
   const handleValueChange = (value: string) => {
     const newIsOpen = value === 'item'

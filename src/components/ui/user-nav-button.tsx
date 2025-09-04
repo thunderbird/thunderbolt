@@ -1,5 +1,5 @@
 import { EllipsisVertical, LogOut, Settings } from 'lucide-react'
-import * as React from 'react'
+import { ButtonHTMLAttributes } from 'react'
 import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { SidebarMenuButton } from './sidebar'
 
-interface UserNavButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface UserNavButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   username?: string
   userEmail?: string
 }

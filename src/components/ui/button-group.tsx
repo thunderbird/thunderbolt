@@ -1,10 +1,10 @@
 import { type VariantProps } from 'class-variance-authority'
-import * as React from 'react'
+import { createContext, useContext } from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const ButtonGroupContext = React.createContext<VariantProps<typeof buttonVariants>>({
+const ButtonGroupContext = createContext<VariantProps<typeof buttonVariants>>({
   size: 'default',
   variant: 'default',
 })
@@ -61,7 +61,7 @@ function ButtonGroupItem({
   size,
   ...props
 }: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants>) {
-  const context = React.useContext(ButtonGroupContext)
+  const context = useContext(ButtonGroupContext)
 
   return (
     <button

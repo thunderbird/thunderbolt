@@ -1,5 +1,5 @@
 import { Check, Square } from 'lucide-react'
-import React from 'react'
+import type { FC } from 'react'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { cn } from '@/lib/utils'
@@ -39,7 +39,7 @@ export interface AvailableToolsProps {
  * Reusable UI fragment that lists available tools and offers consistent visual
  * presentation across different settings pages.
  */
-export const AvailableTools: React.FC<AvailableToolsProps> = ({ tools, className }) => {
+export const AvailableTools: FC<AvailableToolsProps> = ({ tools, className }) => {
   return (
     <div className={cn(className)}>
       <Accordion type="single" collapsible className="w-full">

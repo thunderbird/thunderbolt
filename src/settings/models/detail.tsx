@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import React from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
 import { z } from 'zod'
@@ -64,10 +64,10 @@ const formSchema = z
 
 export default function ModelDetailPage() {
   const { modelId } = useParams()
-  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
-  const [showSaved, setShowSaved] = React.useState(false)
+  const [showSaved, setShowSaved] = useState(false)
 
   const { data: model, isLoading } = useQuery({
     queryKey: ['models', modelId],
@@ -109,7 +109,7 @@ export default function ModelDetailPage() {
   })
 
   // Update form values when model changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (model) {
       form.reset({
         provider: model.provider || 'thunderbolt',

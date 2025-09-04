@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
-import { forwardRef, type ReactNode } from 'react'
+import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
 
 interface PromptInputProps {
   value: string
@@ -58,9 +58,9 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       }
     }
 
-    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
+    const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         onSubmit?.()

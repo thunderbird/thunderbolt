@@ -29,7 +29,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { trackEvent } from '@/lib/analytics'
 import { getIncompleteTasks, getIncompleteTasksCount } from '@/lib/dal'
@@ -80,7 +80,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
   }, [task.item])
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
         handleSaveEdit()

@@ -12,7 +12,7 @@ import { getSetting, updateSetting } from '@/lib/dal'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 import { isTauri } from '@/lib/platform'
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 type Integration = {
@@ -20,7 +20,7 @@ type Integration = {
   name: string
   provider: string
   connectLabel: string
-  icon: React.ReactNode
+  icon: ReactNode
   isEnabled: boolean
   isConnected: boolean
   userEmail?: string

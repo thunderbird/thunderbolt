@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import { eq } from 'drizzle-orm'
 import { Loader2, Wifi, WifiOff } from 'lucide-react'
-import React from 'react'
+import { useState, useEffect } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -17,10 +17,10 @@ import { getBridgeSettings } from '@/lib/dal'
 export default function ThunderboltBridgeSettingsPage() {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
-  const [isInitializing, setIsInitializing] = React.useState(false)
-  const [bridgeEnabled, setBridgeEnabled] = React.useState(false)
-  const [isConnected, setIsConnected] = React.useState(false)
-  const [connectionStatus, setConnectionStatus] = React.useState<{
+  const [isInitializing, setIsInitializing] = useState(false)
+  const [bridgeEnabled, setBridgeEnabled] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<{
     websocket_server_initialized: boolean
     mcp_receiver_initialized: boolean
     thunderbird_connected: boolean
@@ -34,7 +34,7 @@ export default function ThunderboltBridgeSettingsPage() {
   })
 
   // Check bridge status periodically
-  React.useEffect(() => {
+  useEffect(() => {
     const checkStatus = async () => {
       try {
         const status = await invoke<boolean>('get_bridge_status')
@@ -58,7 +58,7 @@ export default function ThunderboltBridgeSettingsPage() {
   }, [])
 
   // Initialize bridge when settings load
-  React.useEffect(() => {
+  useEffect(() => {
     const initBridge = async () => {
       if (settings && !isInitializing) {
         setIsInitializing(true)

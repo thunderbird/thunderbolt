@@ -4,7 +4,7 @@ import { Progress } from '@/components/ui/progress'
 import { DatabaseSingleton } from '@/db/singleton'
 import { ImapSyncer } from '@/imap/sync'
 import { Pause, Play, SkipForward } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 
 export default function ImapSyncSection() {
   const db = DatabaseSingleton.instance.db
@@ -67,7 +67,7 @@ export default function ImapSyncSection() {
     }
   }
 
-  const handleSyncSinceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSyncSinceChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSyncSinceInput(e.target.value)
     if (e.target.value) {
       setSyncSince(new Date(e.target.value))

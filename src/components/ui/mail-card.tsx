@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react'
+import { useState, Children, isValidElement, cloneElement, type ReactNode, type ReactElement } from 'react'
 
 interface MailCardProps {
   id: string // Unique identifier for each card
@@ -85,15 +85,15 @@ export function MailCard(props: MailCardProps) {
 
 // Create a container component to manage the accordion behavior
 interface MailCardListProps {
-  children: React.ReactElement<MailCardProps>[] | React.ReactElement<MailCardProps>
+  children: ReactElement<MailCardProps>[] | ReactElement<MailCardProps>
 }
 
 export function MailCardList({ children }: MailCardListProps) {
-  const [activeCardId, setActiveCardId] = React.useState<string | null>(null)
+  const [activeCardId, setActiveCardId] = useState<string | null>(null)
 
-  const enhancedChildren = React.Children.map(children, (child) => {
-    if (React.isValidElement<MailCardProps>(child)) {
-      return React.cloneElement(child, {
+  const enhancedChildren = Children.map(children, (child) => {
+    if (isValidElement<MailCardProps>(child)) {
+      return cloneElement(child, {
         isContentVisible: child.props.id === activeCardId,
         onToggle: (id: string) => {
           setActiveCardId((currentId) => (currentId === id ? null : id))

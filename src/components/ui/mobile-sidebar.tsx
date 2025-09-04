@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useState, useEffect, ReactNode, CSSProperties } from 'react'
 import { motion, useMotionValue, useAnimation, PanInfo } from 'framer-motion'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './sheet'
 import { X } from 'lucide-react'
@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils'
 interface MobileSidebarProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  children: React.ReactNode
+  children: ReactNode
   side?: 'left' | 'right'
   className?: string
-  style?: React.CSSProperties
+  style?: CSSProperties
 }
 
 export const MobileSidebar = ({
@@ -22,12 +22,12 @@ export const MobileSidebar = ({
   className,
   style,
 }: MobileSidebarProps) => {
-  const [isOpen, setIsOpen] = React.useState(open)
+  const [isOpen, setIsOpen] = useState(open)
   const controls = useAnimation()
   const x = useMotionValue(0)
   const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth : 375 // Full screen width
 
-  React.useEffect(() => {
+  useEffect(() => {
     setIsOpen(open)
     if (open) {
       controls.start({ x: 0 })

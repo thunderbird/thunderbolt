@@ -1,9 +1,9 @@
-import React from 'react'
+import type { ReactNode } from 'react'
 import { Card, CardContent } from './card'
 
 interface SectionCardProps {
   title: string
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }
 

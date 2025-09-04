@@ -21,7 +21,7 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { getHttpMcpServers } from '@/lib/dal'
 
@@ -220,7 +220,7 @@ export default function McpServersPage() {
     addServerMutation.mutate({ name, url: newServerUrl })
   }
 
-  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
+  const handleUrlKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       if (connectionStatus === 'idle' && newServerUrl) {

@@ -18,7 +18,6 @@ from .models import (
     WeatherResponse,
 )
 from .openmeteo import OpenMeteoWeather
-from .web_content_fetcher import WebContentFetcher
 
 # Initialize the tool clients
 ddg_searcher = DuckDuckGoSearcher()
@@ -28,7 +27,6 @@ except ValueError:
     # Exa API key not configured
     exa_client = None
 
-fetcher = WebContentFetcher()
 weather_client = OpenMeteoWeather()
 
 
@@ -71,33 +69,29 @@ def create_pro_tools_app() -> FastAPI:
     async def fetch_content_endpoint(
         request: FetchContentRequest,
     ) -> FetchContentResponse:
-        """Fetch and parse content from a webpage URL.
+        """Fetch and parse content from a webpage URL using Exa's privacy-protected proxy.
 
-        Uses privacy-protected Exa proxy when available, with automatic fallback
-        to direct fetching if Exa is unavailable or fails. This ensures the
-        endpoint always works while prioritizing user privacy when possible.
+        Returns whatever Exa returns to the user. If Exa is not configured,
+        returns an error indicating the service is unavailable.
         """
         ctx = SimpleContext()
 
-        # Try Exa first for privacy protection
-        if exa_client:
-            try:
-                content = await exa_client.fetch_content(request.url, ctx)
-                return FetchContentResponse(content=content, success=True)
-            except Exception as e:
-                await ctx.info(
-                    f"Exa fetch failed, falling back to direct fetch: {str(e)}"
-                )
-                # Fall through to WebContentFetcher
-        else:
-            await ctx.info("Exa not configured, using direct fetch")
+        # Require Exa to be configured
+        if not exa_client:
+            return FetchContentResponse(
+                content="",
+                success=False,
+                error="Content fetching service is not configured. Please set the EXA_API_KEY environment variable.",
+            )
 
-        # Fallback to direct fetching
-        try:
-            content = await fetcher.fetch_and_parse(request.url, ctx)
-            return FetchContentResponse(content=content, success=True)
-        except Exception as e:
-            return FetchContentResponse(content="", success=False, error=str(e))
+        # Use Exa for privacy-protected fetching
+        content = await exa_client.fetch_content(request.url, ctx)
+
+        # Check if Exa returned an error message
+        if content.startswith("Error:"):
+            return FetchContentResponse(content="", success=False, error=content)
+
+        return FetchContentResponse(content=content, success=True)
 
     @app.post("/weather/current", response_model=WeatherResponse)
     async def current_weather_endpoint(request: WeatherRequest) -> WeatherResponse:

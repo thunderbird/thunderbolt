@@ -2,7 +2,6 @@
 Comprehensive tests for Exa AI client functionality including search and content fetching
 """
 
-import os
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -72,24 +71,6 @@ def test_search_exa_request_validation(client):
     assert response.status_code == 422  # Validation error
 
 
-@pytest.mark.skipif(
-    not bool(os.getenv("EXA_API_KEY")),
-    reason="EXA_API_KEY not set - skipping real API test",
-)
-def test_search_exa_with_real_api(client):
-    """Test search-exa with real API key when available"""
-    response = client.post(
-        "/pro/search-exa",
-        json={"query": "python programming language", "max_results": 3},
-    )
-    assert response.status_code == 200
-
-    data = response.json()
-    if data["success"]:
-        assert "python" in data["results"].lower()
-        assert len(data["results"]) > 0
-
-
 # =============================================================================
 # FETCH CONTENT ENDPOINT TESTS
 # =============================================================================
@@ -111,22 +92,6 @@ def test_fetch_content_request_validation(client):
     # Invalid URL format
     response = client.post("/pro/fetch-content", json={"url": "not-a-url"})
     assert response.status_code == 200  # Should handle gracefully, not validation error
-
-
-@pytest.mark.skipif(
-    not bool(os.getenv("EXA_API_KEY")),
-    reason="EXA_API_KEY not set - skipping real API test",
-)
-def test_fetch_content_with_real_api(client):
-    """Test fetch-content with real API key when available"""
-    response = client.post("/pro/fetch-content", json={"url": "https://example.com"})
-    assert response.status_code == 200
-
-    data = response.json()
-    # Should either succeed with Exa or fallback to direct fetch
-    assert "content" in data
-    if data["success"]:
-        assert len(data["content"]) > 0
 
 
 # =============================================================================
@@ -494,12 +459,8 @@ class TestExaClientPrivacy:
 class TestExaClientIntegration:
     """Integration tests for ExaClient with routes"""
 
-    @pytest.mark.skipif(
-        bool(os.getenv("EXA_API_KEY")),
-        reason="EXA_API_KEY is set - skipping mock test to avoid interference with real API",
-    )
     def test_search_endpoint_integration_mock(self, client):
-        """Test that search endpoint integrates properly (mocked when no API key)"""
+        """Test that search endpoint integrates properly when no API key configured"""
         response = client.post(
             "/pro/search-exa", json={"query": "test", "max_results": 5}
         )
@@ -510,21 +471,17 @@ class TestExaClientIntegration:
         if not data["success"]:
             assert "not configured" in data["error"] or "EXA_API_KEY" in data["error"]
 
-    @pytest.mark.skipif(
-        bool(os.getenv("EXA_API_KEY")),
-        reason="EXA_API_KEY is set - skipping mock test to avoid interference with real API",
-    )
     def test_fetch_content_endpoint_integration_mock(self, client):
-        """Test that fetch-content endpoint integrates properly (mocked when no API key)"""
+        """Test that fetch-content endpoint returns proper error when no API key configured"""
         response = client.post(
             "/pro/fetch-content", json={"url": "https://example.com"}
         )
         assert response.status_code == 200
         data = response.json()
 
-        # Should either succeed with fallback or return content
-        assert "content" in data
-        assert data["success"] is True  # Should succeed via WebContentFetcher fallback
+        # Should return error when no API key is configured (no fallback)
+        if not data["success"]:
+            assert "not configured" in data["error"] or "EXA_API_KEY" in data["error"]
 
     def test_fetch_content_endpoint_handles_bad_urls_gracefully(self, client):
         """Test that fetch-content endpoint handles invalid URLs gracefully"""

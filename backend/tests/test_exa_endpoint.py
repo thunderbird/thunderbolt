@@ -9,9 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import HTTPStatusError, Request, Response
 
-from backend.pro.context import SimpleContext
-from backend.pro.exa import ExaClient
 from main import app
+from pro.context import SimpleContext
+from pro.exa import ExaClient
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def client():
 @pytest.fixture
 def exa_client():
     """Create an ExaClient instance with mock API key"""
-    with patch("backend.pro.exa.Settings") as mock_settings:
+    with patch("pro.exa.Settings") as mock_settings:
         mock_settings.return_value.exa_api_key = "test_api_key"
         return ExaClient()
 
@@ -137,7 +137,7 @@ def test_fetch_content_with_real_api(client):
 class TestExaClientSearch:
     """Tests for ExaClient search functionality"""
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_successful_search(self, mock_client_class, exa_client, mock_context):
         """Test successful search execution"""
         mock_client = AsyncMock()
@@ -167,7 +167,7 @@ class TestExaClientSearch:
         assert results[0]["position"] == 1
         assert "test content" in results[0]["snippet"]
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_search_authentication_error(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -225,7 +225,7 @@ class TestExaClientSearch:
 class TestExaClientContentFetching:
     """Tests for ExaClient content fetching functionality"""
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_successful_content_fetch(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -256,7 +256,7 @@ class TestExaClientContentFetching:
         )
         mock_context.info.assert_any_call("Fetching content from: https://example.com")
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_content_fetch_not_found_error(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -285,7 +285,7 @@ class TestExaClientContentFetching:
             "Content fetch failed for https://nonexistent.com: CRAWL_NOT_FOUND (HTTP 404)"
         )
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_content_fetch_timeout_error(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -313,7 +313,7 @@ class TestExaClientContentFetching:
             result == "Error: The request timed out while trying to fetch the webpage."
         )
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_content_fetch_empty_content(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -346,7 +346,7 @@ class TestExaClientContentFetching:
 class TestExaClientPrivacy:
     """Tests specifically focused on privacy protection"""
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_no_user_identifying_headers_sent_content(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -389,7 +389,7 @@ class TestExaClientPrivacy:
         for header in forbidden_headers:
             assert header.lower() not in {k.lower() for k in headers}
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_no_user_identifying_headers_sent_search(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -420,7 +420,7 @@ class TestExaClientPrivacy:
             "Content-Type": "application/json",
         }
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_only_url_sent_to_exa_api_content(
         self, mock_client_class, exa_client, mock_context
     ):
@@ -451,7 +451,7 @@ class TestExaClientPrivacy:
         }
         assert payload == expected_payload
 
-    @patch("backend.pro.exa.httpx.AsyncClient")
+    @patch("pro.exa.httpx.AsyncClient")
     async def test_only_exa_api_called_content(
         self, mock_client_class, exa_client, mock_context
     ):

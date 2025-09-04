@@ -80,13 +80,13 @@ class TestProToolsEndpoints:
             assert data["success"] is True
             assert "results" in data
 
-    @patch("pro.routes.exa_content_fetcher")
+    @patch("pro.routes.exa_client")
     def test_fetch_content_endpoint_success(
-        self, mock_exa_fetcher: Mock, client: TestClient
+        self, mock_exa_client: Mock, client: TestClient
     ) -> None:
         """Test successful fetch-content endpoint response using Exa proxy."""
-        # Mock the Exa content fetcher instance and its method
-        mock_exa_fetcher.fetch_and_parse = AsyncMock(return_value="Fetched content")
+        # Mock the Exa client instance and its method
+        mock_exa_client.fetch_content = AsyncMock(return_value="Fetched content")
 
         response = client.post(
             "/pro/fetch-content", json={"url": "https://example.com"}

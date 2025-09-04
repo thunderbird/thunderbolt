@@ -74,6 +74,15 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'error',
       'no-async-promise-executor': 'off',
+      // Prevent importing React as default
+      'no-restricted-imports': [
+        'error',
+        {
+          name: 'react',
+          importNames: ['default'],
+          message: 'Do not import default React. Use named imports instead.',
+        },
+      ],
     },
   },
   ...storybook.configs['flat/recommended'],

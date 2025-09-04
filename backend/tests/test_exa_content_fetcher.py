@@ -315,12 +315,20 @@ class TestPrivacyComplianceIntegration:
         # Verify Exa content fetcher was called
         mock_exa_fetcher.fetch_and_parse.assert_called_once()
 
-    async def test_fetch_content_endpoint_graceful_fallback_without_api_key(self):
-        """Test that endpoint returns proper error when Exa API key is not configured"""
+    @patch("backend.pro.routes.fetcher")
+    async def test_fetch_content_endpoint_fallback_when_exa_unavailable(
+        self, mock_web_fetcher
+    ):
+        """Test that endpoint falls back to WebContentFetcher when Exa API key is not configured"""
         with patch("backend.pro.routes.exa_content_fetcher", None):
             from fastapi.testclient import TestClient
 
             from backend.pro.routes import create_pro_tools_app
+
+            # Mock the WebContentFetcher fallback
+            mock_web_fetcher.fetch_and_parse = AsyncMock(
+                return_value="Fallback content"
+            )
 
             app = create_pro_tools_app()
             client = TestClient(app)
@@ -329,7 +337,40 @@ class TestPrivacyComplianceIntegration:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is False
-            assert "not configured" in data["error"]
-            assert "EXA_API_KEY" in data["error"]
+            assert data["success"] is True
+            assert data["content"] == "Fallback content"
 
+            # Verify fallback fetcher was called
+            mock_web_fetcher.fetch_and_parse.assert_called_once()
+
+    @patch("backend.pro.routes.fetcher")
+    @patch("backend.pro.routes.exa_content_fetcher")
+    async def test_fetch_content_endpoint_fallback_when_exa_fails(
+        self, mock_exa_fetcher, mock_web_fetcher
+    ):
+        """Test that endpoint falls back to WebContentFetcher when Exa fails"""
+        from fastapi.testclient import TestClient
+
+        from backend.pro.routes import create_pro_tools_app
+
+        # Mock Exa to fail, WebContentFetcher to succeed
+        mock_exa_fetcher.fetch_and_parse = AsyncMock(
+            side_effect=Exception("Exa service error")
+        )
+        mock_web_fetcher.fetch_and_parse = AsyncMock(
+            return_value="Fallback after error"
+        )
+
+        app = create_pro_tools_app()
+        client = TestClient(app)
+
+        response = client.post("/fetch-content", json={"url": "https://example.com"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["content"] == "Fallback after error"
+
+        # Verify both were called in order
+        mock_exa_fetcher.fetch_and_parse.assert_called_once()
+        mock_web_fetcher.fetch_and_parse.assert_called_once()

@@ -78,18 +78,30 @@ def create_pro_tools_app() -> FastAPI:
     async def fetch_content_endpoint(
         request: FetchContentRequest,
     ) -> FetchContentResponse:
-        """Fetch and parse content from a webpage URL using privacy-protected Exa proxy"""
-        if not exa_content_fetcher:
-            return FetchContentResponse(
-                content="",
-                success=False,
-                error="Content fetch service is not configured. Please set the EXA_API_KEY environment variable.",
-            )
+        """Fetch and parse content from a webpage URL.
 
+        Uses privacy-protected Exa proxy when available, with automatic fallback
+        to direct fetching if Exa is unavailable or fails. This ensures the
+        endpoint always works while prioritizing user privacy when possible.
+        """
+        ctx = SimpleContext()
+
+        # Try Exa first for privacy protection
+        if exa_content_fetcher:
+            try:
+                content = await exa_content_fetcher.fetch_and_parse(request.url, ctx)
+                return FetchContentResponse(content=content, success=True)
+            except Exception as e:
+                await ctx.info(
+                    f"Exa fetch failed, falling back to direct fetch: {str(e)}"
+                )
+                # Fall through to WebContentFetcher
+        else:
+            await ctx.info("Exa not configured, using direct fetch")
+
+        # Fallback to direct fetching
         try:
-            ctx = SimpleContext()
-            content = await exa_content_fetcher.fetch_and_parse(request.url, ctx)
-
+            content = await fetcher.fetch_and_parse(request.url, ctx)
             return FetchContentResponse(content=content, success=True)
         except Exception as e:
             return FetchContentResponse(content="", success=False, error=str(e))

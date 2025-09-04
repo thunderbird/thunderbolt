@@ -44,6 +44,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { trackEvent } from '@/lib/analytics'
+import { useBooleanSetting } from '@/hooks/use-setting'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -64,6 +65,9 @@ export default function ChatSidebar() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -272,22 +276,26 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/tasks">
-                    <CheckSquare className="size-4" />
-                    <span>Tasks</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/automations">
-                    <Zap className="size-4" />
-                    <span>Automations</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isTasksEnabled && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink to="/tasks">
+                      <CheckSquare className="size-4" />
+                      <span>Tasks</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {isAutomationsEnabled && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink to="/automations">
+                      <Zap className="size-4" />
+                      <span>Automations</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 {isMobile ? (
                   <SidebarMenuButton onClick={showSettingsMenu} className="cursor-pointer">

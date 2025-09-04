@@ -54,6 +54,7 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
+import { useBooleanSetting } from './hooks/use-setting'
 
 const queryClient = new QueryClient()
 
@@ -72,6 +73,9 @@ function AppContent({ initData }: { initData: InitData }) {
 function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
+  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -79,8 +83,8 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          <Route path="tasks" element={<TasksPage />} />
-          <Route path="automations" element={<AutomationsPage />} />
+          {isTasksEnabled && <Route path="tasks" element={<TasksPage />} />}
+          {isAutomationsEnabled && <Route path="automations" element={<AutomationsPage />} />}
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 

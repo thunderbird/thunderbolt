@@ -6,8 +6,7 @@ from fastapi import FastAPI
 
 from .context import SimpleContext
 from .duckduckgo import DuckDuckGoSearcher
-from .exa import ExaSearcher
-from .exa_content_fetcher import ExaContentFetcher
+from .exa import ExaClient
 from .models import (
     FetchContentRequest,
     FetchContentResponse,
@@ -24,16 +23,10 @@ from .web_content_fetcher import WebContentFetcher
 # Initialize the tool clients
 ddg_searcher = DuckDuckGoSearcher()
 try:
-    exa_searcher = ExaSearcher()
+    exa_client = ExaClient()
 except ValueError:
     # Exa API key not configured
-    exa_searcher = None
-
-try:
-    exa_content_fetcher = ExaContentFetcher()
-except ValueError:
-    # Exa API key not configured - fall back to direct fetching
-    exa_content_fetcher = None
+    exa_client = None
 
 fetcher = WebContentFetcher()
 weather_client = OpenMeteoWeather()
@@ -58,7 +51,7 @@ def create_pro_tools_app() -> FastAPI:
     @app.post("/search-exa", response_model=SearchResponse)
     async def search_exa_endpoint(request: SearchRequest) -> SearchResponse:
         """Search using Exa AI and return formatted results with better relevance and content extraction."""
-        if not exa_searcher:
+        if not exa_client:
             return SearchResponse(
                 results="",
                 success=False,
@@ -67,8 +60,8 @@ def create_pro_tools_app() -> FastAPI:
 
         try:
             ctx = SimpleContext()
-            results = await exa_searcher.search(request.query, ctx, request.max_results)
-            formatted = exa_searcher.format_results_for_llm(results)
+            results = await exa_client.search(request.query, ctx, request.max_results)
+            formatted = exa_client.format_search_results_for_llm(results)
 
             return SearchResponse(results=formatted, success=True)
         except Exception as e:
@@ -87,9 +80,9 @@ def create_pro_tools_app() -> FastAPI:
         ctx = SimpleContext()
 
         # Try Exa first for privacy protection
-        if exa_content_fetcher:
+        if exa_client:
             try:
-                content = await exa_content_fetcher.fetch_and_parse(request.url, ctx)
+                content = await exa_client.fetch_content(request.url, ctx)
                 return FetchContentResponse(content=content, success=True)
             except Exception as e:
                 await ctx.info(

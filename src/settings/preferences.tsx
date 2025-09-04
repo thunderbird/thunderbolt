@@ -622,47 +622,51 @@ export default function PreferencesSettingsPage() {
 
         <Form {...previewFeaturesForm}>
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={previewFeaturesForm.control}
-              name="experimentalFeatureAutomations"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Automations</label>
+            {postHog.isFeatureEnabled('automations') && (
+              <FormField
+                control={previewFeaturesForm.control}
+                name="experimentalFeatureAutomations"
+                render={({ field }) => (
+                  <div className="flex-row flex items-center gap-4">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium">Automations</label>
+                    </div>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={async (value) => {
+                        const result = await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
+                        if (result.requiresTelemetry) {
+                          telemetryRequiredModalRef.current?.open(result.featureName)
+                        }
+                      }}
+                    />
                   </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={async (value) => {
-                      const result = await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
-                      if (result.requiresTelemetry) {
-                        telemetryRequiredModalRef.current?.open(result.featureName)
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            />
+                )}
+              />
+            )}
 
-            <FormField
-              control={previewFeaturesForm.control}
-              name="experimentalFeatureTasks"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Tasks</label>
+            {postHog.isFeatureEnabled('tasks') && (
+              <FormField
+                control={previewFeaturesForm.control}
+                name="experimentalFeatureTasks"
+                render={({ field }) => (
+                  <div className="flex-row flex items-center gap-4">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium">Tasks</label>
+                    </div>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={async (value) => {
+                        const result = await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
+                        if (result.requiresTelemetry) {
+                          telemetryRequiredModalRef.current?.open(result.featureName)
+                        }
+                      }}
+                    />
                   </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={async (value) => {
-                      const result = await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                      if (result.requiresTelemetry) {
-                        telemetryRequiredModalRef.current?.open(result.featureName)
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            />
+                )}
+              />
+            )}
           </form>
         </Form>
       </SectionCard>

@@ -44,7 +44,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { trackEvent } from '@/lib/analytics'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { usePreviewFeature } from '@/hooks/use-preview-feature'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -66,8 +66,7 @@ export default function ChatSidebar() {
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
-  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
+  const { isTasksEnabled, isAutomationsEnabled } = usePreviewFeature()
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {

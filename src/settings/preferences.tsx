@@ -299,13 +299,7 @@ export default function PreferencesSettingsPage() {
   const saveDataCollectionMutation = useMutation({
     mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
       // Upsert the setting
-      await db
-        .insert(settingsTable)
-        .values({ key: 'data_collection', value: values.dataCollection ? 'true' : 'false' })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.dataCollection ? 'true' : 'false' },
-        })
+      updateBooleanSetting('data_collection', values.dataCollection)
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })

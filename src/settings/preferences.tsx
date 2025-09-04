@@ -36,7 +36,7 @@ import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent } from '@/lib/analytics'
-import { getPreferencesSettings } from '@/lib/dal'
+import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
 
 interface LocationData {
   name: string
@@ -324,27 +324,8 @@ export default function PreferencesSettingsPage() {
   const savePreviewFeaturesMutation = useMutation({
     mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
       // Save each feature setting
-      await db
-        .insert(settingsTable)
-        .values({
-          key: 'experimental_feature_automations',
-          value: values.experimentalFeatureAutomations ? 'true' : 'false',
-        })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.experimentalFeatureAutomations ? 'true' : 'false' },
-        })
-
-      await db
-        .insert(settingsTable)
-        .values({
-          key: 'experimental_feature_tasks',
-          value: values.experimentalFeatureTasks ? 'true' : 'false',
-        })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.experimentalFeatureTasks ? 'true' : 'false' },
-        })
+      updateBooleanSetting('experimental_feature_automations', values.experimentalFeatureAutomations)
+      updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })

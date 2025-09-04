@@ -166,8 +166,8 @@ export const getPreferencesSettings = async () => {
     locationLng: lngData[0]?.value || '',
     preferredName: preferredNameData[0]?.value || '',
     dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-    experimentalFeatureAutomations: experimentalFeatureAutomations[0]?.value === 'false' ? false : true,
-    experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'false' ? false : true,
+    experimentalFeatureAutomations: experimentalFeatureAutomations[0]?.value === 'true' ? true : false,
+    experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'true' ? true : false,
   }
 }
 
@@ -217,6 +217,17 @@ export const updateSetting = async (key: string, value: string | null): Promise<
     target: settingsTable.key,
     set: { value },
   })
+}
+
+export const updateBooleanSetting = async (key: string, value: boolean): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db
+    .insert(settingsTable)
+    .values({ key, value: value ? 'true' : 'false' })
+    .onConflictDoUpdate({
+      target: settingsTable.key,
+      set: { value: value ? 'true' : 'false' },
+    })
 }
 
 // ============================================================================

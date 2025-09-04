@@ -299,7 +299,7 @@ export default function PreferencesSettingsPage() {
   const saveDataCollectionMutation = useMutation({
     mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
       // Upsert the setting
-      updateBooleanSetting('data_collection', values.dataCollection)
+      await updateBooleanSetting('data_collection', values.dataCollection)
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
@@ -318,8 +318,8 @@ export default function PreferencesSettingsPage() {
   const savePreviewFeaturesMutation = useMutation({
     mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
       // Save each feature setting
-      updateBooleanSetting('experimental_feature_automations', values.experimentalFeatureAutomations)
-      updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
+      await updateBooleanSetting('experimental_feature_automations', values.experimentalFeatureAutomations)
+      await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })

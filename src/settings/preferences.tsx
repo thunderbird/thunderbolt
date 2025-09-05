@@ -488,6 +488,20 @@ export default function PreferencesSettingsPage() {
     }
   }
 
+  const handleAutomationsToggle = async (value: boolean) => {
+    const result = await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
+    if (result.requiresTelemetry) {
+      telemetryRequiredModalRef.current?.open(result.featureName)
+    }
+  }
+
+  const handleTasksToggle = async (value: boolean) => {
+    const result = await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
+    if (result.requiresTelemetry) {
+      telemetryRequiredModalRef.current?.open(result.featureName)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Preferences</h1>
@@ -631,15 +645,7 @@ export default function PreferencesSettingsPage() {
                     <div className="flex-1">
                       <label className="text-sm font-medium">Automations</label>
                     </div>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={async (value) => {
-                        const result = await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
-                        if (result.requiresTelemetry) {
-                          telemetryRequiredModalRef.current?.open(result.featureName)
-                        }
-                      }}
-                    />
+                    <Switch checked={field.value} onCheckedChange={handleAutomationsToggle} />
                   </div>
                 )}
               />
@@ -654,15 +660,7 @@ export default function PreferencesSettingsPage() {
                     <div className="flex-1">
                       <label className="text-sm font-medium">Tasks</label>
                     </div>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={async (value) => {
-                        const result = await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                        if (result.requiresTelemetry) {
-                          telemetryRequiredModalRef.current?.open(result.featureName)
-                        }
-                      }}
-                    />
+                    <Switch checked={field.value} onCheckedChange={handleTasksToggle} />
                   </div>
                 )}
               />

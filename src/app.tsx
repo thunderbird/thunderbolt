@@ -22,7 +22,6 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { getOrCreateChatThread } from '@/lib/dal'
-import { seedAccounts, seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
 import { ThemeProvider } from '@/lib/theme-provider'
 import AccountsSettingsPage from '@/settings/accounts'
 import DevSettingsPage from '@/settings/dev-settings'
@@ -121,12 +120,6 @@ const init = async (): Promise<InitData> => {
   })
 
   await migrate(db)
-
-  await seedModels()
-  await seedSettings()
-  await seedAccounts()
-  await seedTasks()
-  await seedPrompts()
 
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()

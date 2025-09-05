@@ -25,6 +25,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 import { getModelById } from '@/lib/dal'
+import { checkSystemModelProtection } from '@/lib/system-model-protection'
 
 const formSchema = z
   .object({
@@ -77,6 +78,7 @@ export default function ModelDetailPage() {
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {
+      await checkSystemModelProtection(model.id, 'edit')
       await db.update(modelsTable).set(model).where(eq(modelsTable.id, model.id))
     },
     onSuccess: () => {
@@ -88,6 +90,7 @@ export default function ModelDetailPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
+      await checkSystemModelProtection(id, 'delete')
       await db.delete(modelsTable).where(eq(modelsTable.id, id))
       return true
     },
@@ -196,31 +199,35 @@ export default function ModelDetailPage() {
                 />
               )}
 
-              <FormField
-                control={form.control}
-                name="apiKey"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>API Key</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {model.isSystem !== 1 && (
+                <FormField
+                  control={form.control}
+                  name="apiKey"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>API Key</FormLabel>
+                      <FormControl>
+                        <Input type="password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
-              <Button
-                type="submit"
-                disabled={updateModelMutation.isPending || !form.formState.isDirty}
-                onClick={() => {
-                  if (form.formState.isDirty) {
-                    setShowSaved(false)
-                  }
-                }}
-              >
-                {updateModelMutation.isPending ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
-              </Button>
+              {model.isSystem !== 1 && (
+                <Button
+                  type="submit"
+                  disabled={updateModelMutation.isPending || !form.formState.isDirty}
+                  onClick={() => {
+                    if (form.formState.isDirty) {
+                      setShowSaved(false)
+                    }
+                  }}
+                >
+                  {updateModelMutation.isPending ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
+                </Button>
+              )}
 
               {model.isSystem === 0 && (
                 <Button

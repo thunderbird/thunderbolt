@@ -32,6 +32,7 @@ import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { getAllModels } from '@/lib/dal'
+import { checkSystemModelProtection } from '@/lib/system-model-protection'
 
 interface AvailableModel {
   id: string
@@ -244,6 +245,9 @@ export default function ModelsPage() {
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      if (!enabled) {
+        await checkSystemModelProtection(id, 'disable')
+      }
       await db
         .update(modelsTable)
         .set({ enabled: enabled ? 1 : 0 })
@@ -276,6 +280,7 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
+      await checkSystemModelProtection(id, 'delete')
       await db.delete(modelsTable).where(eq(modelsTable.id, id))
     },
     onSuccess: () => {
@@ -1046,11 +1051,18 @@ export default function ModelsPage() {
                                 toggleModelMutation.mutate({ id: model.id, enabled: checked })
                               }
                               className="cursor-pointer"
+                              disabled={isSystemModel}
                             />
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p>{isEnabled ? 'Disable model' : 'Enable model'}</p>
+                          <p>
+                            {isSystemModel
+                              ? 'System models are always enabled'
+                              : isEnabled
+                                ? 'Disable model'
+                                : 'Enable model'}
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

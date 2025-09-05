@@ -111,6 +111,7 @@ CREATE TABLE `models` (
 	`model` text NOT NULL,
 	`url` text,
 	`api_key` text,
+	`tokenizer` text,
 	`is_system` integer DEFAULT 0,
 	`enabled` integer DEFAULT 1 NOT NULL,
 	`tool_usage` integer DEFAULT 1 NOT NULL,

@@ -1,0 +1,2 @@
+-- Seed accounts (currently empty - no default accounts to seed)
+-- This migration is kept for future use if we need to seed default accounts

@@ -29,6 +29,41 @@
       "when": 1756421204580,
       "tag": "0003_warm_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1757081446743,
+      "tag": "0004_seed-models",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1757081452526,
+      "tag": "0005_seed-settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1757081457907,
+      "tag": "0006_seed-accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1757081464301,
+      "tag": "0007_seed-tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1757081472188,
+      "tag": "0008_seed-prompts",
+      "breakpoints": true
     }
   ]
 }

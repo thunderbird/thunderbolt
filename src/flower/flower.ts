@@ -1,12 +1,48 @@
 import {
   type LanguageModelV2,
   type LanguageModelV2CallOptions,
+  type LanguageModelV2CallWarning,
   type LanguageModelV2Content,
+  type LanguageModelV2FinishReason,
   type LanguageModelV2Prompt,
   type LanguageModelV2StreamPart,
+  type LanguageModelV2Usage,
 } from '@ai-sdk/provider'
 
+type FlowerTool = {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: any
+  }
+}
+
 type FlowerMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+
+/**
+ * Usage interface from Flower AI SDK
+ * @see https://flower.ai/docs/intelligence/ts-api-ref/interfaces/Usage.html
+ */
+type FlowerUsage = {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
+/**
+ * StreamEvent interface from Flower AI SDK
+ * Based on actual SDK: only has chunk and toolCall, NO usage data
+ */
+type FlowerStreamEvent = {
+  chunk?: string
+  toolCall?: {
+    index: string
+    name: string
+    arguments: string | Record<string, string>
+    complete: boolean
+  }
+}
 
 type FlowerChatArgs = {
   messages: FlowerMessage[]
@@ -15,14 +51,16 @@ type FlowerChatArgs = {
   tools?: unknown
   forceRemote?: boolean
   encrypt?: boolean
-  onStreamEvent?: (event: { chunk?: string }) => void
+  onStreamEvent?: (event: FlowerStreamEvent) => void
 }
 
 type FlowerClient = {
   apiKey?: string
   baseUrl?: string
   remoteHandoff?: boolean
-  chat: (args: FlowerChatArgs) => Promise<{ content?: string } | void>
+  chat: (
+    args: FlowerChatArgs,
+  ) => Promise<{ ok: true; message: { content: string }; usage?: FlowerUsage } | { ok: false; failure: any } | void>
 }
 
 type FlowerProviderOptions = {
@@ -72,33 +110,37 @@ class FlowerLanguageModel implements LanguageModelV2 {
     return messages
   }
 
-  private convertToolsToFlowerFormat(tools: Record<string, any> | undefined): unknown {
+  /**
+   * Converts AI SDK tools format to OpenAI-compatible format that Flower expects
+   */
+  private convertToolsToFlowerFormat(
+    tools: Record<string, { description?: string; parameters?: any }> | undefined,
+  ): FlowerTool[] | undefined {
     if (!tools || Object.keys(tools).length === 0) {
       return undefined
     }
 
-    // Convert AI SDK tools format to OpenAI-compatible format that Flower expects
-    const flowerTools = Object.entries(tools).map(([name, tool]) => ({
-      type: 'function',
+    return Object.entries(tools).map(([name, tool]) => ({
+      type: 'function' as const,
       function: {
         name,
         description: tool.description || '',
         parameters: tool.parameters || { type: 'object', properties: {}, required: [] },
       },
     }))
-
-    return flowerTools
   }
 
   private async streamWithFlower(options: LanguageModelV2CallOptions) {
-    const warnings: any[] = []
+    const warnings: LanguageModelV2CallWarning[] = []
     const client = this.options.client
     const messages = this.convertPromptToFlowerMessages(options.prompt)
     const modelId = this.modelId
     const encrypt = this.options.encrypt
 
     // Convert tools to Flower-compatible format
-    const flowerTools = this.convertToolsToFlowerFormat(options.tools as Record<string, any> | undefined)
+    const flowerTools = this.convertToolsToFlowerFormat(
+      options.tools as Record<string, { description?: string; parameters?: any }> | undefined,
+    )
 
     // Generate a unique ID for this stream
     const streamId = `flower-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -106,15 +148,16 @@ class FlowerLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         let finished = false
+        let accumulatedUsage: FlowerUsage | undefined
 
         // Start the chat asynchronously
-        const chatArgs: any = {
+        const chatArgs: FlowerChatArgs = {
           messages,
           model: modelId,
           stream: true,
           forceRemote: true,
           encrypt,
-          onStreamEvent: (event: any) => {
+          onStreamEvent: (event: FlowerStreamEvent) => {
             // According to Flower docs, StreamEvent has a 'chunk' property for text
             // and optionally a 'toolCall' property for tool calls
             if (event?.chunk !== undefined && !finished) {
@@ -129,8 +172,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
                   id: streamId,
                   delta: textChunk,
                 } as LanguageModelV2StreamPart)
-              } catch (e) {
-                console.error('error sending text chunk', e)
+              } catch {
                 // Stream might be closed
                 finished = true
               }
@@ -140,6 +182,9 @@ class FlowerLanguageModel implements LanguageModelV2 {
             if (event?.toolCall && !finished) {
               // TODO: Handle tool calls when needed
             }
+
+            // Note: StreamEvent does NOT contain usage data according to Flower SDK
+            // Usage data is only available in the final chat result
           },
         }
 
@@ -152,26 +197,33 @@ class FlowerLanguageModel implements LanguageModelV2 {
 
         // Handle completion and errors
         chatPromise
-          .then((_result) => {
+          .then((result) => {
             if (!finished) {
               finished = true
               try {
+                // Extract usage data from the successful chat result
+                if (result && typeof result === 'object' && 'ok' in result && result.ok === true) {
+                  const successResult = result as { ok: true; message: { content: string }; usage?: FlowerUsage }
+                  if (successResult.usage) {
+                    accumulatedUsage = successResult.usage
+                  }
+                }
+
                 // Don't emit text-end - let middleware handle text boundaries
                 // This prevents ID mismatches with hermesToolMiddleware
 
-                // Send finish event
+                // Send finish event with usage data from Flower
                 controller.enqueue({
                   type: 'finish',
                   finishReason: 'stop',
                   usage: {
-                    inputTokens: undefined,
-                    outputTokens: undefined,
-                    totalTokens: undefined,
+                    inputTokens: accumulatedUsage?.promptTokens,
+                    outputTokens: accumulatedUsage?.completionTokens,
+                    totalTokens: accumulatedUsage?.totalTokens,
                   },
                 } as LanguageModelV2StreamPart)
                 controller.close()
-              } catch (e) {
-                console.error('error sending text chunk', e)
+              } catch {
                 // Stream might already be closed
               }
             }
@@ -181,8 +233,7 @@ class FlowerLanguageModel implements LanguageModelV2 {
               finished = true
               try {
                 controller.error(err)
-              } catch (e) {
-                console.error('error sending text chunk', e)
+              } catch {
                 // Stream might already be closed
               }
             }
@@ -197,29 +248,36 @@ class FlowerLanguageModel implements LanguageModelV2 {
     return this.streamWithFlower(options)
   }
 
-  async doGenerate(options: LanguageModelV2CallOptions): Promise<any> {
+  async doGenerate(options: LanguageModelV2CallOptions) {
     const { stream, warnings } = await this.streamWithFlower(options)
     const reader = stream.getReader()
     const content: LanguageModelV2Content[] = []
     let textOut = ''
+    let finalUsage: FlowerUsage | undefined
 
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
-      const part: any = value
-      if (part?.type === 'text-delta') textOut += part.delta
+
+      const part = value as LanguageModelV2StreamPart
+      if (part?.type === 'text-delta') {
+        textOut += part.delta
+      }
+      if (part?.type === 'finish' && part.usage) {
+        finalUsage = part.usage
+      }
     }
 
     if (textOut) content.push({ type: 'text', text: textOut })
 
     return {
       content,
-      finishReason: 'stop',
+      finishReason: 'stop' as LanguageModelV2FinishReason,
       usage: {
-        inputTokens: undefined,
-        outputTokens: undefined,
-        totalTokens: undefined,
-      },
+        inputTokens: finalUsage?.promptTokens ?? 0,
+        outputTokens: finalUsage?.completionTokens ?? 0,
+        totalTokens: finalUsage?.totalTokens ?? 0,
+      } as LanguageModelV2Usage,
       warnings,
       request: {},
       response: {},
@@ -237,4 +295,4 @@ export const createFlowerProvider = (providerOptions: FlowerProviderOptions) => 
     })
 }
 
-export type { FlowerChatArgs, FlowerClient, FlowerMessage, FlowerProviderOptions }
+export type { FlowerChatArgs, FlowerClient, FlowerMessage, FlowerProviderOptions, FlowerStreamEvent, FlowerUsage }

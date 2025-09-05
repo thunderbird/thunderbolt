@@ -1,5 +1,12 @@
 export { createFlowerProvider } from './flower'
-export type { FlowerChatArgs, FlowerClient, FlowerMessage, FlowerProviderOptions } from './flower'
+export type {
+  FlowerChatArgs,
+  FlowerClient,
+  FlowerMessage,
+  FlowerProviderOptions,
+  FlowerUsage,
+  FlowerStreamEvent,
+} from './flower'
 
 // Define FlowerTool type based on the actual structure from @flwr/flwr
 export type FlowerTool = {

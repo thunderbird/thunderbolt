@@ -16,15 +16,21 @@ const makeMockFlowerClient = (chunks: string[]): MockFlowerClient => {
     async chat(args: FlowerChatArgs) {
       capturedArgs = args
       if (!args.stream) {
-        return { content: chunks.join('') }
+        return {
+          ok: true as const,
+          message: { content: chunks.join('') },
+        }
       }
       // Simulate streaming
       for (const chunk of chunks) {
         await new Promise<void>((r) => setTimeout(r, 0))
         args.onStreamEvent?.({ chunk })
       }
-      // Return undefined for streaming mode
-      return undefined
+      // Return the final result (this is how real Flower API works)
+      return {
+        ok: true as const,
+        message: { content: chunks.join('') },
+      }
     },
   }
 }

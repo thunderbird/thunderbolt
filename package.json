@@ -36,7 +36,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@flwr/flwr": "^0.2.1",
+    "@flwr/flwr": "^0.2.3",
     "@hookform/resolvers": "^5.2.1",
     "@modelcontextprotocol/sdk": "^1.17.3",
     "@openrouter/ai-sdk-provider": "^1.1.2",

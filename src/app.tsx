@@ -54,7 +54,7 @@ import { SideviewProvider } from './sideview/provider'
 import { ImapSyncClient, ImapSyncProvider } from './sync'
 import type { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
-import { usePreviewFeature } from './hooks/use-preview-feature'
+import { useBooleanSetting } from './hooks/use-setting'
 
 const queryClient = new QueryClient()
 
@@ -73,7 +73,8 @@ function AppContent({ initData }: { initData: InitData }) {
 function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
-  const { isTasksEnabled, isAutomationsEnabled } = usePreviewFeature()
+  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   return (
     <Routes>

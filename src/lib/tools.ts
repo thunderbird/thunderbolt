@@ -3,15 +3,14 @@ import { configs as googleConfigs } from '@/integrations/google/tools'
 import { configs as microsoftConfigs } from '@/integrations/microsoft/tools'
 import { configs as proConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getSetting } from '@/lib/dal'
+import { getBooleanSetting, getSetting } from '@/lib/dal'
 import type { ToolConfig } from '@/types'
 import { zodSchema } from '@ai-sdk/provider-utils'
 import type { FlowerTool } from '@/flower'
 import { tool, type Tool } from 'ai'
-import { getPreviewFeatures } from '@/hooks/use-preview-feature'
 
 export const getAvailableTools = async (): Promise<ToolConfig[]> => {
-  const { isTasksEnabled } = await getPreviewFeatures()
+  const isTasksEnabled = await getBooleanSetting('experimental_feature_tasks')
 
   const baseTools: ToolConfig[] = isTasksEnabled ? [...Object.values(tasksTools)] : []
 

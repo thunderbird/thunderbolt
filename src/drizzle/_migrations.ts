@@ -29,4 +29,14 @@ export const migrations: Migration[] = [
     name: '0003_warm_brood.sql',
     sql: 'ALTER TABLE `chat_threads` ADD `context_size` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `start_with_reasoning` integer DEFAULT 0 NOT NULL;--> statement-breakpoint\nALTER TABLE `models` ADD `context_window` integer;',
   },
+  {
+    hash: '0004_pale_winter_soldier',
+    name: '0004_pale_winter_soldier.sql',
+    sql: 'ALTER TABLE `chat_threads` ADD `was_triggered_by_automation` integer DEFAULT 0 NOT NULL;',
+  },
+  {
+    hash: '0005_abandoned_toad_men',
+    name: '0005_abandoned_toad_men.sql',
+    sql: 'PRAGMA foreign_keys=OFF;--> statement-breakpoint\nCREATE TABLE `__new_chat_threads` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`title` text,\n\t`is_encrypted` integer DEFAULT 0 NOT NULL,\n\t`triggered_by` text,\n\t`was_triggered_by_automation` integer DEFAULT 0 NOT NULL,\n\t`context_size` integer,\n\tFOREIGN KEY (`triggered_by`) REFERENCES `prompts`(`id`) ON UPDATE no action ON DELETE set null\n);\n--> statement-breakpoint\nINSERT INTO `__new_chat_threads`("id", "title", "is_encrypted", "triggered_by", "was_triggered_by_automation", "context_size") SELECT "id", "title", "is_encrypted", "triggered_by", "was_triggered_by_automation", "context_size" FROM `chat_threads`;--> statement-breakpoint\nDROP TABLE `chat_threads`;--> statement-breakpoint\nALTER TABLE `__new_chat_threads` RENAME TO `chat_threads`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE UNIQUE INDEX `chat_threads_id_unique` ON `chat_threads` (`id`);',
+  },
 ]

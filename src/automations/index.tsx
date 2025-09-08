@@ -11,11 +11,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
 import { useBooleanSetting } from '@/hooks/use-setting'
+import { trackEvent } from '@/lib/analytics'
+import { getAllPrompts } from '@/lib/dal'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,9 +28,6 @@ import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 import { runAutomation } from './runner'
-import { SearchInput } from '@/components/ui/search-input'
-import { getAllPrompts } from '@/lib/dal'
-import { trackEvent } from '@/lib/analytics'
 
 export default function AutomationsPage() {
   const db = DatabaseSingleton.instance.db
@@ -191,8 +191,7 @@ export default function AutomationsPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Automation</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete this automation? This action cannot be undone and will also remove any
-                  associated triggers.
+                  Are you sure you want to delete this automation? This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

@@ -1,15 +1,15 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
 import { useSetting } from '@/hooks/use-setting'
+import { trackEvent } from '@/lib/analytics'
 import { getDefaultModelForThread, getTriggerPromptForThread } from '@/lib/dal'
 import { useMCP } from '@/lib/mcp-provider'
-import type { Model, Prompt, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { trackEvent } from '@/lib/analytics'
 
 interface ChatStateProps {
   id: string
@@ -107,7 +107,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
   const { messages: chatMessages, status } = chatHelpers
 
   // Load the automation prompt that triggered this chat, if any
-  const { data: triggerPrompt } = useQuery<Prompt | null>({
+  const { data: triggerData } = useQuery({
     queryKey: ['triggerPrompt', id],
     queryFn: () => getTriggerPromptForThread(id),
   })
@@ -144,7 +144,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       models={models}
       selectedModelId={selectedModelId ?? undefined}
       onModelChange={handleModelChange}
-      triggerPrompt={triggerPrompt ?? undefined}
+      triggerAutomation={triggerData ?? undefined}
       chatThreadId={id}
     />
   )

@@ -30,7 +30,8 @@ export const chatThreadsTable = sqliteTable('chat_threads', {
   id: text('id').primaryKey().notNull().unique(),
   title: text('title'),
   isEncrypted: integer('is_encrypted').default(0).notNull(),
-  triggeredBy: text('triggered_by').references(() => promptsTable.id),
+  triggeredBy: text('triggered_by').references(() => promptsTable.id, { onDelete: 'set null' }),
+  wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0).notNull(),
   contextSize: integer('context_size'),
 })
 

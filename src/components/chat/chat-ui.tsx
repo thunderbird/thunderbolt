@@ -22,7 +22,11 @@ interface ChatUIProps {
   models: Model[]
   selectedModelId?: string
   onModelChange: (model: string | null) => void
-  triggerPrompt?: Prompt
+  triggerAutomation?: {
+    prompt: Prompt | null
+    wasTriggeredByAutomation: boolean
+    isAutomationDeleted: boolean
+  } | null
   chatThreadId?: string
 }
 
@@ -70,7 +74,7 @@ export default function ChatUI({
   models,
   selectedModelId,
   onModelChange,
-  triggerPrompt,
+  triggerAutomation,
   chatThreadId,
 }: ChatUIProps) {
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
@@ -90,6 +94,12 @@ export default function ChatUI({
     currentInput: input,
     onOverflow: () => setShowOverflowModal(true),
   })
+
+  // Extract prompt from the first message (automation prompt) for trigger display
+  const triggerPromptContent =
+    triggerAutomation?.wasTriggeredByAutomation && chatHelpers.messages[0]?.parts?.[0]?.type === 'text'
+      ? chatHelpers.messages[0].parts[0].text
+      : undefined
 
   const {
     scrollContainerRef,
@@ -224,13 +234,17 @@ export default function ChatUI({
             className="flex-1 p-4 overflow-y-auto space-y-4"
           >
             {/* Automation trigger banner */}
-            {triggerPrompt && (
-              <TriggerMessage title={triggerPrompt.title || 'Automation'} prompt={triggerPrompt.prompt} />
+            {triggerAutomation?.wasTriggeredByAutomation && (
+              <TriggerMessage
+                title={triggerAutomation.prompt?.title ?? undefined}
+                prompt={triggerPromptContent}
+                isDeleted={triggerAutomation.isAutomationDeleted}
+              />
             )}
 
             {chatHelpers.messages.map((message, i) => {
               // Skip the very first user message if it was the automation prompt (already shown above)
-              if (triggerPrompt && i === 0) {
+              if (triggerAutomation?.wasTriggeredByAutomation && i === 0) {
                 return null
               }
 

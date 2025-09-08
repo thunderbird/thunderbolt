@@ -26,6 +26,7 @@ export const runAutomation = async (promptId: string, navigate?: Navigate) => {
     id: threadId,
     title: prompt.title ?? 'Automation',
     triggeredBy: prompt.id,
+    wasTriggeredByAutomation: 1,
   })
 
   const userMessage: UIMessage = {

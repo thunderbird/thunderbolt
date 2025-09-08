@@ -147,3 +147,6 @@ cython_debug/
 
 # macOS
 .DS_Store
+
+# Dev items
+docker-compose.*dev.yml

@@ -42,7 +42,7 @@ mise.toml
 .claude/**
 .zed/**
 .zedscratches/**
-
+.mcp.json
 
 # iOS fastlane local bundle
 src-tauri/gen/apple/vendor/

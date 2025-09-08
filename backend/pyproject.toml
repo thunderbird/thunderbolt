@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "brotli>=1.1.0",
+    "exa-py>=1.0.0",
     "fastapi[standard]>=0.115.6",
     "httpx>=0.28.1",
     "pydantic-settings>=2.7.0",

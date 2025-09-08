@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from .context import SimpleContext
 from .duckduckgo import DuckDuckGoSearcher
-from .exa import ExaClient
+from .exa import create_exa_client, fetch_content_exa, search_exa
 from .models import (
     FetchContentRequest,
     FetchContentResponse,
@@ -21,12 +21,7 @@ from .openmeteo import OpenMeteoWeather
 
 # Initialize the tool clients
 ddg_searcher = DuckDuckGoSearcher()
-try:
-    exa_client = ExaClient()
-except ValueError:
-    # Exa API key not configured
-    exa_client = None
-
+exa_client = create_exa_client()
 weather_client = OpenMeteoWeather()
 
 
@@ -58,8 +53,19 @@ def create_pro_tools_app() -> FastAPI:
 
         try:
             ctx = SimpleContext()
-            results = await exa_client.search(request.query, ctx, request.max_results)
-            formatted = exa_client.format_search_results_for_llm(results)
+            results = await search_exa(request.query, ctx, request.max_results)
+            
+            # Format results for LLM - Exa SDK already provides LLM-optimized format
+            if not results:
+                formatted = "No results found."
+            else:
+                formatted_results = []
+                for r in results:
+                    formatted_results.append(f"{r['position']}. {r['title']}")
+                    formatted_results.append(f"   URL: {r['url']}")
+                    if r.get('snippet'):
+                        formatted_results.append(f"   {r['snippet']}")
+                formatted = "\n".join(formatted_results)
 
             return SearchResponse(results=formatted, success=True)
         except Exception as e:
@@ -85,7 +91,7 @@ def create_pro_tools_app() -> FastAPI:
             )
 
         # Use Exa for privacy-protected fetching
-        content = await exa_client.fetch_content(request.url, ctx)
+        content = await fetch_content_exa(request.url, ctx)
 
         # Check if Exa returned an error message
         if content.startswith("Error:"):

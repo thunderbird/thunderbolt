@@ -32,6 +32,7 @@ import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { getAllModels } from '@/lib/dal'
+import type { Model } from '@/types'
 
 interface AvailableModel {
   id: string
@@ -657,8 +658,8 @@ export default function ModelsPage() {
     }
   }
 
-  const getProviderInitial = (provider: string) => {
-    return provider[0].toUpperCase()
+  const getModelInitial = (model: Model) => {
+    return model.name[0].toUpperCase()
   }
 
   const handleDeleteModel = (modelId: string) => {
@@ -1026,7 +1027,7 @@ export default function ModelsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
-                      {getProviderInitial(model.provider)}
+                      {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg font-medium">{model.name}</CardTitle>

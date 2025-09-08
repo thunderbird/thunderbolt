@@ -30,34 +30,32 @@ def mock_context():
 # =============================================================================
 
 
-def test_search_exa_endpoint_exists(client):
-    """Test that the search-exa endpoint exists"""
-    response = client.post("/pro/search-exa", json={"query": "test", "max_results": 5})
+def test_search_endpoint_exists(client):
+    """Test that the search endpoint exists"""
+    response = client.post("/pro/search", json={"query": "test", "max_results": 5})
     # Should get a response (either success or configured error), not 404
     assert response.status_code == 200
 
 
-def test_search_exa_without_api_key(client):
+def test_search_without_api_key(client):
     """Test search endpoint behavior when API key is not configured"""
     with patch("pro.routes.exa_client", None):
-        response = client.post(
-            "/pro/search-exa", json={"query": "test", "max_results": 5}
-        )
+        response = client.post("/pro/search", json={"query": "test", "max_results": 5})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
         assert "not configured" in data["error"]
 
 
-def test_search_exa_request_validation(client):
+def test_search_request_validation(client):
     """Test that search requests are properly validated"""
     # Missing query
-    response = client.post("/pro/search-exa", json={})
+    response = client.post("/pro/search", json={})
     assert response.status_code == 422
 
     # Invalid max_results type
     response = client.post(
-        "/pro/search-exa", json={"query": "test", "max_results": "not_a_number"}
+        "/pro/search", json={"query": "test", "max_results": "not_a_number"}
     )
     assert response.status_code == 422
 
@@ -359,7 +357,7 @@ class TestExaSDKIntegration:
                 ]
 
                 response = client.post(
-                    "/pro/search-exa", json={"query": "test", "max_results": 5}
+                    "/pro/search", json={"query": "test", "max_results": 5}
                 )
 
                 assert response.status_code == 200

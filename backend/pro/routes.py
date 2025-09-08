@@ -5,7 +5,6 @@ FastAPI routes for Thunderbolt Pro Tools
 from fastapi import FastAPI
 
 from .context import SimpleContext
-from .duckduckgo import DuckDuckGoSearcher
 from .exa import create_exa_client, fetch_content_exa, search_exa
 from .models import (
     FetchContentRequest,
@@ -20,7 +19,6 @@ from .models import (
 from .openmeteo import OpenMeteoWeather
 
 # Initialize the tool clients
-ddg_searcher = DuckDuckGoSearcher()
 exa_client = create_exa_client()
 weather_client = OpenMeteoWeather()
 
@@ -29,26 +27,14 @@ def create_pro_tools_app() -> FastAPI:
     """Create FastAPI app with pro tools endpoints"""
     app = FastAPI(title="Thunderbolt Pro Tools", version="1.0.0")
 
-    @app.post("/search-duckduckgo", response_model=SearchResponse)
-    async def search_endpoint(request: SearchRequest) -> SearchResponse:
-        """Search DuckDuckGo and return formatted results. This only returns links, not content. You should use the fetch-content endpoint to get the content of the links."""
-        try:
-            ctx = SimpleContext()
-            results = await ddg_searcher.search(request.query, ctx, request.max_results)
-            formatted = ddg_searcher.format_results_for_llm(results)
-
-            return SearchResponse(results=formatted, success=True)
-        except Exception as e:
-            return SearchResponse(results="", success=False, error=str(e))
-
-    @app.post("/search-exa", response_model=SearchResponse)
+    @app.post("/search", response_model=SearchResponse)
     async def search_exa_endpoint(request: SearchRequest) -> SearchResponse:
-        """Search using Exa AI and return formatted results with better relevance and content extraction."""
+        """Search and return formatted results with neural search capabilities."""
         if not exa_client:
             return SearchResponse(
                 results="",
                 success=False,
-                error="Exa search is not configured. Please set the EXA_API_KEY environment variable.",
+                error="Search service is not configured. Please set the EXA_API_KEY environment variable.",
             )
 
         try:

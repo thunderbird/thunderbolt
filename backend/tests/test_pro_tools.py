@@ -19,15 +19,37 @@ class TestProToolsEndpoints:
 
     def test_search_endpoint_exists(self, client: TestClient) -> None:
         """Test that the search endpoint exists and returns proper error for invalid request."""
-        response = client.post("/pro/search-duckduckgo", json={})
+        response = client.post("/pro/search", json={})
         # Should get validation error for missing query field
         assert response.status_code == 422
 
-    def test_search_exa_endpoint_exists(self, client: TestClient) -> None:
-        """Test that the search-exa endpoint exists and returns proper error for invalid request."""
-        response = client.post("/pro/search-exa", json={})
-        # Should get validation error for missing query field
-        assert response.status_code == 422
+    @patch("pro.routes.search_exa")
+    @patch("pro.routes.exa_client")
+    def test_search_endpoint_success(
+        self, mock_exa_client: Mock, mock_search: AsyncMock, client: TestClient
+    ) -> None:
+        """Test successful search endpoint response."""
+        # Mock the Exa client to exist
+        mock_exa_client.return_value = Mock()
+        # Mock the search_exa function
+        mock_search.return_value = [
+            {
+                "title": "Test Result",
+                "url": "https://example.com",
+                "snippet": "Test snippet",
+                "position": 1,
+            }
+        ]
+
+        response = client.post(
+            "/pro/search", json={"query": "test query", "max_results": 5}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "results" in data
+        assert "Test Result" in data["results"]
 
     def test_fetch_content_endpoint_exists(self, client: TestClient) -> None:
         """Test that the fetch-content endpoint exists and returns proper error for invalid request."""
@@ -52,33 +74,6 @@ class TestProToolsEndpoints:
         response = client.post("/pro/locations/search", json={})
         # Should get validation error for missing query field
         assert response.status_code == 422
-
-    @patch("pro.duckduckgo.DuckDuckGoSearcher.search")
-    def test_search_endpoint_success(
-        self, mock_search: AsyncMock, client: TestClient
-    ) -> None:
-        """Test successful search endpoint response."""
-        mock_search.return_value = [
-            {
-                "title": "Test Result",
-                "url": "https://example.com",
-                "description": "Test",
-            }
-        ]
-
-        with patch(
-            "pro.duckduckgo.DuckDuckGoSearcher.format_results_for_llm"
-        ) as mock_format:
-            mock_format.return_value = "Formatted results"
-
-            response = client.post(
-                "/pro/search-duckduckgo", json={"query": "test query", "max_results": 5}
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "results" in data
 
     @patch("pro.routes.fetch_content_exa")
     @patch("pro.routes.exa_client")

@@ -54,7 +54,7 @@ def create_pro_tools_app() -> FastAPI:
         try:
             ctx = SimpleContext()
             results = await search_exa(request.query, ctx, request.max_results)
-            
+
             # Format results for LLM - Exa SDK already provides LLM-optimized format
             if not results:
                 formatted = "No results found."

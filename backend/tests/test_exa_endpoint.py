@@ -343,8 +343,8 @@ class TestExaSDKIntegration:
             mock_client.search.return_value = mock_response
             mock_create.return_value = mock_client
 
-            with patch("pro.routes.exa_client", mock_client):
-                with patch("pro.routes.search_exa") as mock_search:
+            with patch("pro.routes.exa_client", mock_client), \
+                 patch("pro.routes.search_exa") as mock_search:
                     mock_search.return_value = [
                         {
                             "position": 1,

@@ -40,39 +40,13 @@ export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
 /**
- * Search DuckDuckGo and return formatted results
+ * Search the web and return formatted results
  */
-export const searchDuckDuckGo = async (params: SearchParams): Promise<string> => {
+export const search = async (params: SearchParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
-      .post(`${cloudUrl}/pro/search-duckduckgo`, {
-        json: {
-          query: params.query,
-          max_results: params.max_results || 10,
-        },
-      })
-      .json<{ results: string; success: boolean; error?: string }>()
-
-    if (!response.success) {
-      throw new Error(response.error || 'Search failed')
-    }
-
-    return response.results
-  } catch (error) {
-    console.error('Search error:', error)
-    throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-  }
-}
-
-/**
- * Search using Exa AI and return formatted results
- */
-export const searchExa = async (params: SearchParams): Promise<string> => {
-  try {
-    const cloudUrl = await getCloudUrl()
-    const response = await ky
-      .post(`${cloudUrl}/pro/search-exa`, {
+      .post(`${cloudUrl}/pro/search`, {
         json: {
           query: params.query,
           max_results: params.max_results || 10,
@@ -196,18 +170,11 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
  */
 export const configs: ToolConfig[] = [
   {
-    name: 'search_exa',
-    description: 'Search the web using Exa AI.',
+    name: 'search',
+    description: 'Search the web and return relevant results.',
     verb: 'searching for {query}',
     parameters: searchSchema,
-    execute: searchExa,
-  },
-  {
-    name: 'search_ddg',
-    description: 'Search the web using DuckDuckGo.',
-    verb: 'searching DuckDuckGo for {query}',
-    parameters: searchSchema,
-    execute: searchDuckDuckGo,
+    execute: search,
   },
   {
     name: 'fetch_content',

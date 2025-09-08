@@ -719,7 +719,6 @@ export default function ModelsPage() {
                             <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
                             <SelectItem value="openai">OpenAI</SelectItem>
                             <SelectItem value="openrouter">OpenRouter</SelectItem>
-                            <SelectItem value="flower">Flower</SelectItem>
                             <SelectItem value="custom">Custom</SelectItem>
                           </SelectContent>
                         </Select>

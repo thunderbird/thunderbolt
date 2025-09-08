@@ -26,7 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { generateText } from 'ai'
 import { eq } from 'drizzle-orm'
 import ky from 'ky'
-import { Check, ChevronsUpDown, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -1030,7 +1030,10 @@ export default function ModelsPage() {
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg font-medium">{model.name}</CardTitle>
+                      <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
+                        {!!model.isConfidential && <Lock className="size-3.5" />}
+                        {model.name}
+                      </CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {getProviderDisplay(model.provider)} - {model.model}
                       </p>

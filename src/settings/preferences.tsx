@@ -619,8 +619,8 @@ export default function PreferencesSettingsPage() {
                     </div>
                     <Switch
                       checked={field.value}
-                      onCheckedChange={(value) =>
-                        handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
+                      onCheckedChange={async (value) =>
+                        await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
                       }
                     />
                   </div>
@@ -639,7 +639,9 @@ export default function PreferencesSettingsPage() {
                     </div>
                     <Switch
                       checked={field.value}
-                      onCheckedChange={(value) => handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)}
+                      onCheckedChange={async (value) =>
+                        await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
+                      }
                     />
                   </div>
                 )}

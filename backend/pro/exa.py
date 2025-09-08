@@ -169,12 +169,11 @@ class ExaClient:
         try:
             headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
 
-            # Exa contents request payload - only the URL is sent to Exa
             payload = {
                 "urls": [url],
                 "text": {
-                    "maxCharacters": 8000,  # Match current implementation's truncation
-                    "includeHtmlTags": False,  # Get clean markdown format
+                    "maxCharacters": 8000,
+                    "includeHtmlTags": False,
                 },
             }
 

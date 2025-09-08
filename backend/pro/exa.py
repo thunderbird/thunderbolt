@@ -52,23 +52,23 @@ async def search_exa(
 
         # Use Exa's search with autoprompt for better results
         response = client.search(
-            query,
-            num_results=max_results,
-            use_autoprompt=True,
-            type="neural"
+            query, num_results=max_results, use_autoprompt=True, type="neural"
         )
 
         # Convert results to dictionary format for compatibility
         results = []
         for idx, result in enumerate(response.results, 1):
-            results.append({
-                "position": idx,
-                "title": result.title,
-                "url": result.url,
-                "snippet": getattr(result, "extract", "") or getattr(result, "text", ""),
-                "author": getattr(result, "author", None),
-                "published_date": getattr(result, "published_date", None),
-            })
+            results.append(
+                {
+                    "position": idx,
+                    "title": result.title,
+                    "url": result.url,
+                    "snippet": getattr(result, "extract", "")
+                    or getattr(result, "text", ""),
+                    "author": getattr(result, "author", None),
+                    "published_date": getattr(result, "published_date", None),
+                }
+            )
 
         await ctx.info(f"Found {len(results)} results")
         return results
@@ -102,7 +102,7 @@ async def fetch_content_exa(url: str, ctx: SimpleContext) -> str:
             text={
                 "max_characters": 8000,
                 "include_html_tags": False,
-            }
+            },
         )
 
         if response.contents and len(response.contents) > 0:

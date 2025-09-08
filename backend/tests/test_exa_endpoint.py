@@ -343,28 +343,30 @@ class TestExaSDKIntegration:
             mock_client.search.return_value = mock_response
             mock_create.return_value = mock_client
 
-            with patch("pro.routes.exa_client", mock_client), \
-                 patch("pro.routes.search_exa") as mock_search:
-                    mock_search.return_value = [
-                        {
-                            "position": 1,
-                            "title": "Test Result",
-                            "url": "https://test.com",
-                            "snippet": "Test content",
-                            "author": None,
-                            "published_date": None,
-                        }
-                    ]
+            with (
+                patch("pro.routes.exa_client", mock_client),
+                patch("pro.routes.search_exa") as mock_search,
+            ):
+                mock_search.return_value = [
+                    {
+                        "position": 1,
+                        "title": "Test Result",
+                        "url": "https://test.com",
+                        "snippet": "Test content",
+                        "author": None,
+                        "published_date": None,
+                    }
+                ]
 
-                    response = client.post(
-                        "/pro/search-exa", json={"query": "test", "max_results": 5}
-                    )
+                response = client.post(
+                    "/pro/search-exa", json={"query": "test", "max_results": 5}
+                )
 
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["success"] is True
-                    assert "Test Result" in data["results"]
-                    assert "https://test.com" in data["results"]
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert "Test Result" in data["results"]
+                assert "https://test.com" in data["results"]
 
     def test_fetch_content_endpoint_integration_mock(self, client):
         """Test fetch content endpoint with mocked Exa SDK"""

@@ -63,7 +63,7 @@ def create_pro_tools_app() -> FastAPI:
                 for r in results:
                     formatted_results.append(f"{r['position']}. {r['title']}")
                     formatted_results.append(f"   URL: {r['url']}")
-                    if r.get('snippet'):
+                    if r.get("snippet"):
                         formatted_results.append(f"   {r['snippet']}")
                 formatted = "\n".join(formatted_results)
 

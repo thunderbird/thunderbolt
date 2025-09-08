@@ -33,6 +33,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { getAllModels } from '@/lib/dal'
 import type { Model } from '@/types'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface AvailableModel {
   id: string
@@ -925,19 +926,36 @@ export default function ModelsPage() {
 
                 {/* Display Name - Only show when model is selected */}
                 {(form.watch('model') || selectedModelId === 'custom') && (
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Display Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., GPT-4 Turbo" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="toolUsage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <div className="flex items-center gap-3">
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} id="toolUsage" />
+                              <FormLabel htmlFor="toolUsage">Supports tools</FormLabel>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Display Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="e.g., GPT-4 Turbo" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
                 )}
 
                 {/* Warning when model lacks tool support */}

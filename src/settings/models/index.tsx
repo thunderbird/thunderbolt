@@ -644,6 +644,7 @@ export default function ModelsPage() {
   const getProviderDisplay = (provider: string) => {
     switch (provider) {
       case 'thunderbolt':
+      case 'flower':
         return 'Thunderbolt'
       case 'openai':
         return 'OpenAI'
@@ -651,8 +652,6 @@ export default function ModelsPage() {
         return 'Custom'
       case 'openrouter':
         return 'OpenRouter'
-      case 'flower':
-        return 'Flower'
       default:
         return provider
     }
@@ -1129,7 +1128,7 @@ export default function ModelsPage() {
                         <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
                       </div>
                     )}
-                    {model.provider === 'thunderbolt' && (
+                    {['thunderbolt', 'flower'].includes(model.provider) && (
                       <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
                     )}
                   </div>

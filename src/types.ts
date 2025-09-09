@@ -1,7 +1,7 @@
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
-import type { UIMessage, UIDataTypes, UITools } from 'ai'
+import type { UIDataTypes, UIMessage, UITools } from 'ai'
 import type { InferSelectModel } from 'drizzle-orm'
 import type { z } from 'zod'
 import type {
@@ -68,6 +68,12 @@ export type Contact = InferSelectModel<typeof contactsTable>
 export type McpServer = InferSelectModel<typeof mcpServersTable>
 export type Prompt = InferSelectModel<typeof promptsTable>
 export type Trigger = InferSelectModel<typeof triggersTable>
+
+export type AutomationRun = {
+  prompt: Prompt | null
+  wasTriggeredByAutomation: boolean
+  isAutomationDeleted: boolean
+}
 
 export type UIMessageMetadata = {
   modelId?: string

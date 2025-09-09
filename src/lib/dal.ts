@@ -14,6 +14,7 @@ import {
   tasksTable,
 } from '../db/tables'
 import type {
+  AutomationRun,
   EmailThreadWithMessagesAndAddresses,
   Model,
   Prompt,
@@ -404,13 +405,7 @@ export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => 
 /**
  * Returns information about the automation that triggered a chat thread, if any.
  */
-export const getTriggerPromptForThread = async (
-  threadId: string,
-): Promise<{
-  prompt: Prompt | null
-  wasTriggeredByAutomation: boolean
-  isAutomationDeleted: boolean
-} | null> => {
+export const getTriggerPromptForThread = async (threadId: string): Promise<AutomationRun | null> => {
   const db = DatabaseSingleton.instance.db
 
   // Fetch the associated prompt and thread info in a single query via join

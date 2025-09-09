@@ -4,7 +4,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/analytics'
 import { getOrCreateChatThread } from '@/lib/dal'
 import { cn } from '@/lib/utils'
-import type { Model, Prompt, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
@@ -22,11 +22,7 @@ interface ChatUIProps {
   models: Model[]
   selectedModelId?: string
   onModelChange: (model: string | null) => void
-  triggerAutomation?: {
-    prompt: Prompt | null
-    wasTriggeredByAutomation: boolean
-    isAutomationDeleted: boolean
-  } | null
+  triggerAutomation?: AutomationRun | null
   chatThreadId?: string
 }
 

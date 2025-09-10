@@ -28,7 +28,7 @@ import { getModelById } from '@/lib/dal'
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter', 'flower']),
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'flower']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     url: z.string().optional(),

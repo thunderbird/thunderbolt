@@ -999,14 +999,12 @@ export default function ModelsPage() {
                   <>
                     <FormField
                       control={form.control}
-                      name="toolUsage"
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
+                          <FormLabel>Display Name</FormLabel>
                           <FormControl>
-                            <div className="flex items-center gap-3">
-                              <Checkbox checked={field.value} onCheckedChange={field.onChange} id="toolUsage" />
-                              <FormLabel htmlFor="toolUsage">Supports tools</FormLabel>
-                            </div>
+                            <Input {...field} placeholder="e.g., GPT-4 Turbo" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1014,12 +1012,14 @@ export default function ModelsPage() {
                     />
                     <FormField
                       control={form.control}
-                      name="name"
+                      name="toolUsage"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Display Name</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" />
+                            <div className="flex items-center gap-3">
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} id="toolUsage" />
+                              <FormLabel htmlFor="toolUsage">Enable tool use</FormLabel>
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1117,7 +1117,18 @@ export default function ModelsPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
-                        {!!model.isConfidential && <Lock className="size-3.5" />}
+                        {!!model.isConfidential && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Lock className="size-3.5" />
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">
+                                <p>Encrypted</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         {model.name}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">

@@ -9,6 +9,7 @@ import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2 } from '@ai-sdk/provider'
+import { createAnthropic } from '@ai-sdk/anthropic'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -71,6 +72,16 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
         fetch,
       })
       return openaiCompatible(modelConfig.model)
+    }
+    case 'anthropic': {
+      const anthropic = createAnthropic({
+        apiKey: modelConfig.apiKey || '',
+        fetch,
+        headers: {
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      })
+      return anthropic(modelConfig.model)
     }
     case 'openai': {
       if (!modelConfig.apiKey) throw new Error('No API key provided')

@@ -37,6 +37,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useBooleanSetting } from '@/hooks/use-setting'
 
 interface LocationData {
   name: string
@@ -137,6 +138,8 @@ export default function PreferencesSettingsPage() {
   }
 
   const postHog = usePostHog()
+
+  const isFeatureFlagTasksEnabled = useBooleanSetting('feature_flag_tasks', false)
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
@@ -601,7 +604,7 @@ export default function PreferencesSettingsPage() {
 
         <Form {...previewFeaturesForm}>
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            {postHog.isFeatureEnabled('tasks') && (
+            {isFeatureFlagTasksEnabled && (
               <FormField
                 control={previewFeaturesForm.control}
                 name="experimentalFeatureTasks"

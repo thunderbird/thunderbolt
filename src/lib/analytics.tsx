@@ -56,6 +56,7 @@ export const initPosthog = async (): Promise<PostHog | null> => {
       api_host: apiHost,
       debug: enableDebug,
       autocapture: false,
+      capture_exceptions: true,
       capture_pageview: false,
       capture_pageleave: false,
       persistence: 'localStorage',

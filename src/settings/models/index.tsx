@@ -1092,7 +1092,7 @@ export default function ModelsPage() {
                   <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addModelMutation.isPending || connectionStatus !== 'success'}>
+                  <Button type="submit" disabled={addModelMutation.isPending}>
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
                 </div>

@@ -49,6 +49,8 @@ jobs:
       - name: Echo PostHog environment variables
         run: |
           echo "🔍 PostHog Environment Variables:"
+          echo "POSTHOG_CLI_ENV_ID: ${{ secret.POSTHOG_CLI_ENV_ID }}"
+          echo "POSTHOG_CLI_TOKEN: ${{ secret.POSTHOG_CLI_TOKEN }}"
           echo "POSTHOG_CLI_ENV_ID: ${{ env.POSTHOG_CLI_ENV_ID }}"
           echo "POSTHOG_CLI_TOKEN: ${{ env.POSTHOG_CLI_TOKEN }}"
 

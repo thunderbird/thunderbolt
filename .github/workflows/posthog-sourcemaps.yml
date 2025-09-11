@@ -47,7 +47,7 @@ jobs:
         run: bun install
 
       - name: Build application with source maps
-        run: bun run build
+        run: NODE_OPTIONS="--max-old-space-size=8192" bun run build
         env:
           NODE_ENV: production
 

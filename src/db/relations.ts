@@ -8,6 +8,7 @@ import {
   emailMessagesToAddressesTable,
   emailThreadsTable,
   embeddingsTable,
+  featureFlagsTable,
   modelsTable,
   settingsTable,
   tasksTable,
@@ -97,3 +98,5 @@ export const settingsRelations = relations(settingsTable, () => ({}))
 export const modelsRelations = relations(modelsTable, ({ many }) => ({
   chatMessages: many(chatMessagesTable),
 }))
+
+export const featureFlagsRelations = relations(featureFlagsTable, () => ({}))

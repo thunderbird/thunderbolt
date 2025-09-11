@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { createBooleanSetting, getBooleanSetting } from '@/lib/dal'
+import { createFeatureFlag, getBooleanSetting } from '@/lib/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
@@ -89,7 +89,14 @@ const setupFeatureFlags = async (client: PostHog) => {
 
       for (const feature of features) {
         console.log('Feature:', feature)
-        await createBooleanSetting(`feature_flag_${feature.flagKey}`, true)
+        if (feature.flagKey) {
+          await createFeatureFlag(feature.flagKey, false, {
+            name: feature.name || undefined,
+            description: feature.description || undefined,
+            documentationUrl: feature.documentationUrl || undefined,
+            stage: feature.stage || undefined,
+          })
+        }
       }
     },
     true,

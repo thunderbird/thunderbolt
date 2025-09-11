@@ -181,3 +181,14 @@ export const triggersTable = sqliteTable('triggers', {
     .references(() => promptsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   isEnabled: integer('is_enabled').default(1).notNull(),
 })
+
+export const featureFlagsTable = sqliteTable('feature_flags', {
+  key: text('key').primaryKey().notNull(),
+  name: text('name'),
+  description: text('description'),
+  documentationUrl: text('documentation_url'),
+  stage: text('stage'),
+  syncedAt: integer('synced_at').default(sql`(unixepoch())`),
+  isEnabled: integer('is_enabled').default(0).notNull(),
+  updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+})

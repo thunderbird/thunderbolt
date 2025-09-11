@@ -43,6 +43,13 @@
       "when": 1757373490142,
       "tag": "0005_abandoned_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1757560987522,
+      "tag": "0006_dusty_gladiator",
+      "breakpoints": true
     }
   ]
 }

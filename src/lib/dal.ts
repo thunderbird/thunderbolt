@@ -7,6 +7,7 @@ import {
   chatThreadsTable,
   emailMessagesTable,
   emailThreadsTable,
+  featureFlagsTable,
   mcpServersTable,
   modelsTable,
   promptsTable,
@@ -240,6 +241,101 @@ export const createSetting = async (key: string, value: string): Promise<void> =
  */
 export const createBooleanSetting = async (key: string, value: boolean): Promise<void> => {
   await createSetting(key, value ? 'true' : 'false')
+}
+
+// ============================================================================
+// FEATURE FLAGS
+// ============================================================================
+
+/**
+ * Gets all feature flags from the database
+ */
+export const getAllFeatureFlags = async () => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(featureFlagsTable)
+}
+
+/**
+ * Get a feature flag value from the feature flags table
+ */
+export const getFeatureFlag = async (key: string, defaultValue?: boolean): Promise<boolean | undefined> => {
+  const db = DatabaseSingleton.instance.db
+  const featureFlag = await db.select().from(featureFlagsTable).where(eq(featureFlagsTable.key, key)).get()
+
+  if (!featureFlag && defaultValue === undefined) {
+    return undefined
+  }
+
+  return featureFlag ? featureFlag.isEnabled === 1 : defaultValue
+}
+
+/**
+ * Update or create a feature flag in the feature flags table
+ */
+export const updateFeatureFlag = async (
+  key: string,
+  isEnabled: boolean,
+  metadata?: {
+    name?: string
+    description?: string
+    documentationUrl?: string
+    stage?: string
+  },
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db
+    .insert(featureFlagsTable)
+    .values({
+      key,
+      isEnabled: isEnabled ? 1 : 0,
+      name: metadata?.name,
+      description: metadata?.description,
+      documentationUrl: metadata?.documentationUrl,
+      stage: metadata?.stage,
+      syncedAt: sql`(unixepoch())`,
+      updatedAt: sql`(unixepoch())`,
+    })
+    .onConflictDoUpdate({
+      target: featureFlagsTable.key,
+      set: {
+        isEnabled: isEnabled ? 1 : 0,
+        ...(metadata?.name && { name: metadata.name }),
+        ...(metadata?.description && { description: metadata.description }),
+        ...(metadata?.documentationUrl && { documentationUrl: metadata.documentationUrl }),
+        ...(metadata?.stage && { stage: metadata.stage }),
+        syncedAt: sql`(unixepoch())`,
+        updatedAt: sql`(unixepoch())`,
+      },
+    })
+}
+
+/**
+ * Create a feature flag in the feature flags table only if it doesn't already exist
+ */
+export const createFeatureFlag = async (
+  key: string,
+  isEnabled: boolean,
+  metadata?: {
+    name?: string
+    description?: string
+    documentationUrl?: string
+    stage?: string
+  },
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db
+    .insert(featureFlagsTable)
+    .values({
+      key,
+      isEnabled: isEnabled ? 1 : 0,
+      name: metadata?.name,
+      description: metadata?.description,
+      documentationUrl: metadata?.documentationUrl,
+      stage: metadata?.stage,
+      syncedAt: sql`(unixepoch())`,
+      updatedAt: sql`(unixepoch())`,
+    })
+    .onConflictDoNothing()
 }
 
 // ============================================================================

@@ -4,6 +4,7 @@ import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolPart } from './tool-part'
+import { memo } from 'react'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -15,7 +16,7 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
 
 const supportedPartTypes = ['reasoning', 'tool', 'text']
 
-export const AssistantMessage = ({ message }: AssistantMessageProps) => {
+export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => {
     const [partType] = splitPartType(part.type)
     if (!supportedPartTypes.includes(partType)) {
@@ -62,4 +63,4 @@ export const AssistantMessage = ({ message }: AssistantMessageProps) => {
       ))}
     </div>
   )
-}
+})

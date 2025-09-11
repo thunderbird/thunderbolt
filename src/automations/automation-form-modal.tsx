@@ -14,6 +14,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
 import { useBooleanSetting } from '@/hooks/use-setting'
 import { getAvailableModels, getSelectedModel } from '@/lib/dal'
+import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,7 +24,6 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
-import { trackEvent } from '@/lib/analytics'
 
 const formSchema = z.object({
   title: z.string().optional(),

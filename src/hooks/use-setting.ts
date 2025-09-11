@@ -60,14 +60,14 @@ export const useSetting = <T = string>(
  * Custom hook for managing boolean settings with React Query
  * @param key The setting key
  * @param defaultValue The default boolean value if setting doesn't exist
- * @returns [value, setter, query, mutation] tuple with boolean value, boolean setter, and query/mutation objects
+ * @returns [value, setter, query, mutation] tuple with boolean value (or undefined), boolean setter, and query/mutation objects
  *
  * @example
  * ```tsx
- * const [triggersEnabled, setTriggersEnabled, query, mutation] = useBooleanSetting('is_triggers_enabled', false)
+ * const [triggersEnabled, setTriggersEnabled, query, mutation] = useBooleanSetting('is_triggers_enabled')
  *
- * // Use the value
- * if (triggersEnabled) {
+ * // Use the value (handle undefined case)
+ * if (triggersEnabled === true) {
  *   // Do something when enabled
  * }
  *
@@ -82,11 +82,11 @@ export const useSetting = <T = string>(
  */
 export const useBooleanSetting = (
   key: string,
-  defaultValue: boolean = false,
+  defaultValue?: boolean,
 ): [
-  boolean,
+  boolean | undefined,
   (newValue: boolean) => void,
-  UseQueryResult<boolean, Error>,
+  UseQueryResult<boolean | undefined, Error>,
   UseMutationResult<void, Error, boolean, unknown>,
 ] => {
   const queryClient = useQueryClient()

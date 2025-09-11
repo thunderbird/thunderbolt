@@ -1,3 +1,5 @@
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { NavLink } from '@/components/ui/nav-link'
@@ -16,12 +18,13 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useBooleanSetting } from '@/hooks/use-setting'
 import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
+import { trackEvent } from '@/lib/posthog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
@@ -42,9 +45,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
-import { trackEvent } from '@/lib/analytics'
-import { useBooleanSetting } from '@/hooks/use-setting'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, sanitizeUrl } from './analytics'
+import { initPosthog, sanitizeUrl } from './posthog'
 
 const mockKyGet = mock()
 const mockKyJson = mock()

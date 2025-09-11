@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { getBooleanSetting, updateBooleanSetting } from '@/lib/dal'
+import { createBooleanSetting, getBooleanSetting } from '@/lib/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
@@ -49,10 +49,10 @@ export const initPosthog = async (): Promise<PostHog | null> => {
   const apiHost = `${cloudUrl}/posthog`
 
   if (!posthogClient) {
-    const isDataCollectionEnabled = await getBooleanSetting('data_collection', true)
+    const isTelemetry = await getBooleanSetting('telemetry', true)
     const enableDebug = await getBooleanSetting('debug_posthog', false)
     posthogClient = posthog.init(apiKey, {
-      opt_out_capturing_by_default: !isDataCollectionEnabled,
+      opt_out_capturing_by_default: !isTelemetry,
       api_host: apiHost,
       debug: enableDebug,
       autocapture: false,
@@ -83,15 +83,31 @@ export const initPosthog = async (): Promise<PostHog | null> => {
 }
 
 const setupFeatureFlags = async (client: PostHog) => {
-  const isTasksEnabled = await client.isFeatureEnabled('tasks')
+  client.getEarlyAccessFeatures(
+    async (features) => {
+      console.log('Early access features:', features)
 
-  if (isTasksEnabled) {
-    const existingFeatureFlagTasks = await getBooleanSetting('feature_flag_tasks', false)
+      for (const feature of features) {
+        console.log('Feature:', feature)
+        await createBooleanSetting(`feature_flag_${feature.flagKey}`, true)
+      }
+    },
+    true,
+    ['concept', 'alpha', 'beta', 'general-availability'],
+  )
+}
 
-    if (!existingFeatureFlagTasks) {
-      await updateBooleanSetting('feature_flag_tasks', true)
-    }
+const initAndSetupPosthog = async (callback: (client: PostHog) => void) => {
+  const posthogClient = await initPosthog()
+
+  if (!posthogClient) {
+    console.error('Failed to initialize PostHog client')
+    return
   }
+
+  await setupFeatureFlags(posthogClient)
+
+  callback(posthogClient)
 }
 
 /**
@@ -101,14 +117,8 @@ export const PostHogProvider = ({ children }: { children: ReactNode }) => {
   const [client, setClient] = useState<PostHog | null>(null)
 
   useEffect(() => {
-    initPosthog().then(setClient)
+    initAndSetupPosthog(setClient)
   }, [])
-
-  useEffect(() => {
-    if (client) {
-      setupFeatureFlags(client)
-    }
-  }, [client])
 
   if (!client) return <>{children}</>
 
@@ -133,10 +143,11 @@ export type EventType =
   | 'settings_location_set'
   | 'settings_location_update'
   | 'settings_database_reset'
-  | 'settings_data_collection_enabled'
-  | 'settings_data_collection_disabled'
-  | `settings_experimental_feature_tasks_enabled`
-  | `settings_experimental_feature_tasks_disabled`
+  | 'settings_telemetry_enabled'
+  | 'settings_telemetry_disabled'
+  | `settings_preview_features_tasks_enabled`
+  | `settings_preview_features_tasks_disabled`
+  | `settings_all_preview_features_disabled`
   // Tasks
   | 'task_add'
   | 'task_mark_complete'

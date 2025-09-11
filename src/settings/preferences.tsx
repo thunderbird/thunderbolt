@@ -1,6 +1,6 @@
 import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
-import { cn, snakeCased } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import ky from 'ky'
@@ -30,14 +30,14 @@ import { SectionCard } from '@/components/ui/section-card'
 
 import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
-import { trackEvent, type EventType } from '@/lib/analytics'
-import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
+import { useBooleanSetting } from '@/hooks/use-setting'
+import { getPreferencesSettings } from '@/lib/dal'
 import { resetAppDir } from '@/lib/fs'
+import { trackEvent } from '@/lib/posthog'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { useBooleanSetting } from '@/hooks/use-setting'
 
 interface LocationData {
   name: string
@@ -99,11 +99,7 @@ const nameFormSchema = z.object({
 })
 
 const privacyFormSchema = z.object({
-  dataCollection: z.boolean(),
-})
-
-const previewFeaturesFormSchema = z.object({
-  experimentalFeatureTasks: z.boolean(),
+  telemetry: z.boolean(),
 })
 
 const locationFormSchema = z.object({
@@ -122,30 +118,46 @@ export default function PreferencesSettingsPage() {
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
-  const handleEnableTelemetry = async (featureName?: string | null) => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-    if (featureName) {
-      await savePreviewFeaturesMutation.mutateAsync({
-        ...previewFeaturesForm.getValues(),
-        [featureName]: true,
-      })
-    }
-  }
-
-  const handleDisableTelemetry = async () => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-    await disableAllPreviewFeatures()
-  }
-
   const postHog = usePostHog()
 
-  const isFeatureFlagTasksEnabled = useBooleanSetting('feature_flag_tasks', false)
+  const [isTelemetryEnabled, setIsTelemetryEnabled] = useBooleanSetting('telemetry', true)
+  const [isFeatureFlagTasksEnabled, setIsFeatureFlagTasksEnabled] = useBooleanSetting('feature_flag_tasks')
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
+
+  // Disable all preview features (when telemetry is turned off)
+  const disableAllPreviewFeatures = async () => {
+    setIsFeatureFlagTasksEnabled(false)
+    trackEvent('settings_all_preview_features_disabled')
+  }
+
+  const handleEnableTelemetry = async (featureFlag?: string | null) => {
+    setIsTelemetryEnabled(true)
+    postHog.opt_in_capturing()
+
+    trackEvent('settings_telemetry_enabled')
+
+    if (featureFlag) {
+      // @todo make dynamic so we don't need a new if statement for each feature
+      if (featureFlag === 'tasks') {
+        setIsFeatureFlagTasksEnabled(true)
+        trackEvent('settings_preview_features_tasks_enabled')
+      }
+    }
+  }
+
+  const handleDisableTelemetry = async () => {
+    setIsTelemetryEnabled(false)
+    trackEvent('settings_telemetry_disabled')
+
+    await disableAllPreviewFeatures()
+    trackEvent('settings_all_preview_features_disabled')
+    postHog.opt_out_capturing()
+  }
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -157,14 +169,7 @@ export default function PreferencesSettingsPage() {
   const privacyForm = useForm<z.infer<typeof privacyFormSchema>>({
     resolver: zodResolver(privacyFormSchema),
     defaultValues: {
-      dataCollection: true,
-    },
-  })
-
-  const previewFeaturesForm = useForm<z.infer<typeof previewFeaturesFormSchema>>({
-    resolver: zodResolver(previewFeaturesFormSchema),
-    defaultValues: {
-      experimentalFeatureTasks: false,
+      telemetry: true,
     },
   })
 
@@ -185,11 +190,7 @@ export default function PreferencesSettingsPage() {
       })
 
       privacyForm.reset({
-        dataCollection: settings.dataCollection,
-      })
-
-      previewFeaturesForm.reset({
-        experimentalFeatureTasks: settings.experimentalFeatureTasks,
+        telemetry: settings.telemetry,
       })
 
       locationForm.reset({
@@ -200,14 +201,7 @@ export default function PreferencesSettingsPage() {
           typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
       })
     }
-  }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
-
-  // Sync preview features when telemetry is disabled
-  useEffect(() => {
-    if (!settings?.dataCollection) {
-      previewFeaturesForm.setValue('experimentalFeatureTasks', false)
-    }
-  }, [settings?.dataCollection, previewFeaturesForm])
+  }, [settings, nameForm, locationForm, privacyForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -294,45 +288,6 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  // Save data collection mutation
-  const saveDataCollectionMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
-      // Upsert the setting
-      await updateBooleanSetting('data_collection', values.dataCollection)
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.dataCollection) {
-        postHog.opt_in_capturing()
-        trackEvent('settings_data_collection_enabled')
-      } else {
-        trackEvent('settings_data_collection_disabled')
-        postHog.opt_out_capturing()
-      }
-    },
-  })
-
-  // Save preview features mutation
-  const savePreviewFeaturesMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
-      // Save each feature setting
-      await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-    },
-  })
-
-  // Disable all preview features (when telemetry is turned off)
-  const disableAllPreviewFeatures = async () => {
-    await savePreviewFeaturesMutation.mutateAsync({
-      experimentalFeatureTasks: false,
-    })
-
-    trackEvent('settings_experimental_feature_tasks_disabled')
-  }
-
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
@@ -386,42 +341,31 @@ export default function PreferencesSettingsPage() {
     await saveNameMutation.mutateAsync({ preferredName: value })
   }
 
-  const handleDataCollectionToggle = async (value: boolean) => {
-    // If turning off telemetry and preview features are enabled, show warning first
-    if (!value) {
-      const currentValues = previewFeaturesForm.getValues()
-      const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
-      if (hasEnabledFeatures) {
+  const handleTelemetryToggle = async (value: boolean) => {
+    if (value) {
+      await handleEnableTelemetry()
+    } else {
+      // @todo make dynamic so we don't hardwire this to tasks
+      if (isFeatureFlagTasksEnabled) {
         telemetryWarningModalRef.current?.open()
-        return
+      } else {
+        await handleDisableTelemetry()
       }
-    }
-
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
-
-    // If telemetry is disabled, also disable experimental features
-    if (!value) {
-      await disableAllPreviewFeatures()
     }
   }
 
-  const handleExperimentalFeaturesToggle = async (
-    featureName: keyof z.infer<typeof previewFeaturesFormSchema>,
-    value: boolean,
-  ) => {
-    if (value && !settings?.dataCollection) {
-      telemetryRequiredModalRef.current?.open(featureName)
-      return
+  const handlePreviewFeaturesToggle = async (featureFlag: string, value: boolean) => {
+    if (value) {
+      if (isTelemetryEnabled) {
+        setIsFeatureFlagTasksEnabled(true)
+        trackEvent('settings_preview_features_tasks_enabled')
+      } else {
+        telemetryRequiredModalRef.current?.open(featureFlag)
+      }
+    } else {
+      setIsFeatureFlagTasksEnabled(false)
+      trackEvent('settings_preview_features_tasks_disabled')
     }
-
-    const currentValues = previewFeaturesForm.getValues()
-    await savePreviewFeaturesMutation.mutateAsync({
-      ...currentValues,
-      [featureName]: value,
-    })
-
-    const eventName = `settings_${snakeCased(featureName)}_${value ? 'enabled' : 'disabled'}`
-    trackEvent(eventName as EventType)
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -602,62 +546,40 @@ export default function PreferencesSettingsPage() {
       <SectionCard title="Preview Features">
         <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
 
-        <Form {...previewFeaturesForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            {isFeatureFlagTasksEnabled && (
-              <FormField
-                control={previewFeaturesForm.control}
-                name="experimentalFeatureTasks"
-                render={({ field }) => (
-                  <div className="flex-row flex items-center gap-4">
-                    <div className="flex-1">
-                      <label className="text-sm font-medium">Tasks</label>
-                    </div>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={async (value) =>
-                        await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                      }
-                    />
-                  </div>
-                )}
-              />
-            )}
-          </form>
-        </Form>
+        {isFeatureFlagTasksEnabled !== undefined && (
+          <div className="flex-row flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-sm font-medium">Tasks</label>
+            </div>
+            <Switch
+              checked={isFeatureFlagTasksEnabled}
+              onCheckedChange={async (value) => await handlePreviewFeaturesToggle('tasks', value)}
+            />
+          </div>
+        )}
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Privacy">
-        <Form {...privacyForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={privacyForm.control}
-              name="dataCollection"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Data Collection</label>
-                    <p className="text-sm text-muted-foreground">
-                      Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
-                      No personal data is collected or stored. Read more about our{' '}
-                      <a
-                        className="text-primary underline-offset-4 hover:underline"
-                        href="https://www.thunderbird.net/en-US/privacy/"
-                        target="_blank"
-                      >
-                        privacy policy
-                      </a>
-                      .
-                    </p>
-                  </div>
-                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex-row flex items-center gap-4">
+          <div>
+            <label className="text-sm font-medium">Telemetry</label>
+            <p className="text-sm text-muted-foreground">
+              Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
+              personal data is collected or stored. Read more about our{' '}
+              <a
+                className="text-primary underline-offset-4 hover:underline"
+                href="https://www.thunderbird.net/en-US/privacy/"
+                target="_blank"
+              >
+                privacy policy
+              </a>
+              .
+            </p>
+          </div>
+          <Switch checked={isTelemetryEnabled} onCheckedChange={handleTelemetryToggle} />
+        </div>
       </SectionCard>
 
       <div className="h-6" />

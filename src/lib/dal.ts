@@ -151,19 +151,19 @@ export const getPreferencesSettings = async () => {
   const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
   const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
   const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
-  const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
-  const experimentalFeatureTasks = await db
+  const telemetry = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
+  const previewFeatureTasks = await db
     .select()
     .from(settingsTable)
-    .where(eq(settingsTable.key, 'experimental_feature_tasks'))
+    .where(eq(settingsTable.key, 'preview_feature_tasks'))
 
   return {
     locationName: nameData[0]?.value || '',
     locationLat: latData[0]?.value || '',
     locationLng: lngData[0]?.value || '',
     preferredName: preferredNameData[0]?.value || '',
-    dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-    experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'true' ? true : false,
+    telemetry: telemetry[0]?.value === 'false' ? false : true,
+    previewFeatureTasks: previewFeatureTasks[0]?.value === 'true' ? true : false,
   }
 }
 
@@ -199,8 +199,11 @@ export const getSetting = async <T = string>(key: string, defaultValue: T | null
 /**
  * Get a boolean setting value from the settings table
  */
-export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
-  const setting = await getSetting(key, defaultValue.toString())
+export const getBooleanSetting = async (key: string, defaultValue?: boolean): Promise<boolean | undefined> => {
+  const setting = await getSetting(key, defaultValue?.toString() ?? null)
+  if (setting === null && defaultValue === undefined) {
+    return undefined
+  }
   return setting === 'true'
 }
 
@@ -215,15 +218,28 @@ export const updateSetting = async (key: string, value: string | null): Promise<
   })
 }
 
+/**
+ * Update or create a boolean setting in the settings table
+ * @param key The setting key
+ * @param value The boolean value to store
+ */
 export const updateBooleanSetting = async (key: string, value: boolean): Promise<void> => {
+  await updateSetting(key, value ? 'true' : 'false')
+}
+
+/**
+ * Create a setting in the settings table only if it doesn't already exist
+ */
+export const createSetting = async (key: string, value: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db
-    .insert(settingsTable)
-    .values({ key, value: value ? 'true' : 'false' })
-    .onConflictDoUpdate({
-      target: settingsTable.key,
-      set: { value: value ? 'true' : 'false' },
-    })
+  await db.insert(settingsTable).values({ key, value }).onConflictDoNothing()
+}
+
+/**
+ * Create a boolean setting in the settings table only if it doesn't already exist
+ */
+export const createBooleanSetting = async (key: string, value: boolean): Promise<void> => {
+  await createSetting(key, value ? 'true' : 'false')
 }
 
 // ============================================================================

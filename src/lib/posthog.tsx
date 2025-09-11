@@ -152,8 +152,8 @@ export type EventType =
   | 'settings_database_reset'
   | 'settings_telemetry_enabled'
   | 'settings_telemetry_disabled'
-  | `settings_preview_features_tasks_enabled`
-  | `settings_preview_features_tasks_disabled`
+  | 'settings_preview_feature_enabled'
+  | 'settings_preview_feature_disabled'
   | `settings_all_preview_features_disabled`
   // Tasks
   | 'task_add'

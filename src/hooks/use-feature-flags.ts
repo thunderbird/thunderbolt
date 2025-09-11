@@ -1,4 +1,4 @@
-import { getFeatureFlag, updateFeatureFlag } from '@/lib/dal'
+import { disableAllFeatureFlags, getAllFeatureFlags, getFeatureFlag, updateFeatureFlag } from '@/lib/dal'
 import {
   useMutation,
   useQuery,
@@ -64,6 +64,41 @@ export const useFeatureFlag = (
 }
 
 /**
- * Alias for useFeatureFlag for consistency with existing useBooleanSetting naming
+ * Unified API for feature flags: list, disableAll, update.
  */
-export const useBooleanFeatureFlag = useFeatureFlag
+export const useFeatureFlags = () => {
+  const queryClient = useQueryClient()
+
+  const listQuery = useQuery({
+    queryKey: ['feature_flags'],
+    queryFn: () => getAllFeatureFlags(),
+  })
+
+  const disableAllMutation = useMutation({
+    mutationFn: () => disableAllFeatureFlags(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feature_flags'] })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: boolean }) => updateFeatureFlag(key, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feature_flags'] })
+    },
+  })
+
+  const disableAll = () => disableAllMutation.mutate()
+  const setFlag = (key: string, value: boolean) => updateMutation.mutate({ key, value })
+
+  return {
+    featureFlags: listQuery.data || [],
+    isLoading: listQuery.isLoading,
+    isError: listQuery.isError,
+    disableAllFeatureFlags: disableAll,
+    updateFeatureFlag: setFlag,
+    listQuery,
+    disableAllMutation,
+    updateMutation,
+  }
+}

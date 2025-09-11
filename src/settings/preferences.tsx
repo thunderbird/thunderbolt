@@ -30,6 +30,7 @@ import { SectionCard } from '@/components/ui/section-card'
 
 import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
+import { useFeatureFlags } from '@/hooks/use-feature-flags'
 import { useBooleanSetting } from '@/hooks/use-setting'
 import { getPreferencesSettings } from '@/lib/dal'
 import { resetAppDir } from '@/lib/fs'
@@ -121,7 +122,7 @@ export default function PreferencesSettingsPage() {
   const postHog = usePostHog()
 
   const [isTelemetryEnabled, setIsTelemetryEnabled] = useBooleanSetting('telemetry', true)
-  const [isFeatureFlagTasksEnabled, setIsFeatureFlagTasksEnabled] = useBooleanSetting('feature_flag_tasks')
+  const { featureFlags, disableAllFeatureFlags, updateFeatureFlag } = useFeatureFlags()
 
   // Get any existing settings from the database
   const { data: settings } = useQuery({
@@ -131,7 +132,7 @@ export default function PreferencesSettingsPage() {
 
   // Disable all preview features (when telemetry is turned off)
   const disableAllPreviewFeatures = async () => {
-    setIsFeatureFlagTasksEnabled(false)
+    disableAllFeatureFlags()
     trackEvent('settings_all_preview_features_disabled')
   }
 
@@ -142,11 +143,8 @@ export default function PreferencesSettingsPage() {
     trackEvent('settings_telemetry_enabled')
 
     if (featureFlag) {
-      // @todo make dynamic so we don't need a new if statement for each feature
-      if (featureFlag === 'tasks') {
-        setIsFeatureFlagTasksEnabled(true)
-        trackEvent('settings_preview_features_tasks_enabled')
-      }
+      updateFeatureFlag(featureFlag, true)
+      trackEvent('settings_preview_feature_enabled', { key: featureFlag })
     }
   }
 
@@ -345,8 +343,8 @@ export default function PreferencesSettingsPage() {
     if (value) {
       await handleEnableTelemetry()
     } else {
-      // @todo make dynamic so we don't hardwire this to tasks
-      if (isFeatureFlagTasksEnabled) {
+      const anyEnabled = featureFlags.some((f) => f.isEnabled === 1)
+      if (anyEnabled) {
         telemetryWarningModalRef.current?.open()
       } else {
         await handleDisableTelemetry()
@@ -357,14 +355,14 @@ export default function PreferencesSettingsPage() {
   const handlePreviewFeaturesToggle = async (featureFlag: string, value: boolean) => {
     if (value) {
       if (isTelemetryEnabled) {
-        setIsFeatureFlagTasksEnabled(true)
-        trackEvent('settings_preview_features_tasks_enabled')
+        updateFeatureFlag(featureFlag, true)
+        trackEvent('settings_preview_feature_enabled', { key: featureFlag })
       } else {
         telemetryRequiredModalRef.current?.open(featureFlag)
       }
     } else {
-      setIsFeatureFlagTasksEnabled(false)
-      trackEvent('settings_preview_features_tasks_disabled')
+      updateFeatureFlag(featureFlag, false)
+      trackEvent('settings_preview_feature_disabled', { key: featureFlag })
     }
   }
 
@@ -546,17 +544,18 @@ export default function PreferencesSettingsPage() {
       <SectionCard title="Preview Features">
         <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
 
-        {isFeatureFlagTasksEnabled !== undefined && (
-          <div className="flex-row flex items-center gap-4">
+        {featureFlags.map((flag) => (
+          <div key={flag.key} className="flex-row flex items-center gap-4">
             <div className="flex-1">
-              <label className="text-sm font-medium">Tasks</label>
+              <label className="text-sm font-medium">{flag.name || flag.key}</label>
+              {flag.description && <p className="text-sm text-muted-foreground">{flag.description}</p>}
             </div>
             <Switch
-              checked={isFeatureFlagTasksEnabled}
-              onCheckedChange={async (value) => await handlePreviewFeaturesToggle('tasks', value)}
+              checked={flag.isEnabled === 1}
+              onCheckedChange={async (value) => await handlePreviewFeaturesToggle(flag.key, value)}
             />
           </div>
-        )}
+        ))}
       </SectionCard>
 
       <div className="h-6" />

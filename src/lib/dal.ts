@@ -338,6 +338,14 @@ export const createFeatureFlag = async (
     .onConflictDoNothing()
 }
 
+/**
+ * Disable all feature flags at once.
+ */
+export const disableAllFeatureFlags = async (): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.update(featureFlagsTable).set({ isEnabled: 0, syncedAt: sql`(unixepoch())`, updatedAt: sql`(unixepoch())` })
+}
+
 // ============================================================================
 // CHAT THREADS
 // ============================================================================

@@ -1,0 +1,71 @@
+name: Upload Source Maps to PostHog
+
+on:
+  push:
+    branches:
+      - raivieiraadriano92/thu-76-enable-posthog-error-tracking
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upload-sourcemaps:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/raivieiraadriano92/thu-76-enable-posthog-error-tracking'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build application with source maps
+        run: bun run build
+        env:
+          NODE_ENV: production
+
+      - name: Install PostHog CLI
+        run: npm install -g @posthog/cli
+
+      - name: Upload source maps to PostHog
+        run: |
+          # Inject source map references into the built assets
+          posthog-cli sourcemap inject --directory ./dist
+
+          # Upload source maps to PostHog
+          posthog-cli sourcemap upload --directory ./dist
+        env:
+          POSTHOG_CLI_ENV_ID: ${{ secrets.POSTHOG_CLI_ENV_ID }}
+          POSTHOG_CLI_TOKEN: ${{ secrets.POSTHOG_CLI_TOKEN }}
+
+      - name: Verify source maps were uploaded
+        run: |
+          echo "✅ Source maps have been uploaded to PostHog for commit ${{ github.sha }}"
+          echo "📁 Build artifacts are available in ./dist directory"

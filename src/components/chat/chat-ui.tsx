@@ -247,13 +247,13 @@ export default function ChatUI({
               if (message.role === 'assistant') {
                 return (
                   <AssistantMessage
-                    key={i}
+                    key={message.id}
                     message={message}
                     isStreaming={isStreaming && i === chatHelpers.messages.length - 1}
                   />
                 )
               } else if (message.role === 'user') {
-                return <UserMessage key={i} message={message} />
+                return <UserMessage key={message.id} message={message} />
               }
 
               return null

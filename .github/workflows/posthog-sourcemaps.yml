@@ -4,11 +4,11 @@ on:
   push:
     branches:
       - raivieiraadriano92/thu-76-enable-posthog-error-tracking
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'vite.config.ts'
-      - 'tsconfig.json'
+    # paths:
+    #   - 'src/**'
+    #   - 'package.json'
+    #   - 'vite.config.ts'
+    #   - 'tsconfig.json'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

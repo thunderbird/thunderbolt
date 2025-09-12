@@ -18,17 +18,16 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 
 import { createFlowerProvider } from '@/flower'
 import {
-  type ToolSet,
   convertToModelMessages,
   type experimental_createMCPClient,
   stepCountIs,
   streamText,
   wrapLanguageModel,
+  type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createConfiguredFlowerClient } from './flower'
 import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
-import { filterIncompleteAssistantMessage } from './utils'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -190,8 +189,7 @@ export const aiFetchStreamingResponse = async ({
       temperature: 0.25,
       model: wrappedModel,
       system: systemPrompt,
-      // Remove the last assistant message if it contains tool calls that have not completed yet.
-      messages: convertToModelMessages(filterIncompleteAssistantMessage(messages)),
+      messages: convertToModelMessages(messages),
       tools: supportsTools ? toolset : undefined,
       stopWhen: stepCountIs(20),
       abortSignal,

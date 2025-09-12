@@ -6,10 +6,10 @@ import { getBooleanSetting, getSetting } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2 } from '@ai-sdk/provider'
-import { createAnthropic } from '@ai-sdk/anthropic'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -186,6 +186,8 @@ export const aiFetchStreamingResponse = async ({
       middleware,
     })
 
+    const MAX_STEPS = 20
+
     const result = streamText({
       temperature: 0.25,
       model: wrappedModel,
@@ -193,7 +195,28 @@ export const aiFetchStreamingResponse = async ({
       // Remove the last assistant message if it contains tool calls that have not completed yet.
       messages: convertToModelMessages(filterIncompleteAssistantMessage(messages)),
       tools: supportsTools ? toolset : undefined,
-      stopWhen: stepCountIs(20),
+      stopWhen: stepCountIs(MAX_STEPS),
+
+      // Guarantee the last allowed step cannot call tools
+      // Note: This currently does NOT work for Flower - likely because of the Hermes middleware. (@todo)
+      prepareStep: ({ steps, stepNumber, messages }) => {
+        if (steps.length >= MAX_STEPS - 1) {
+          console.log(`Final step ${stepNumber} - telling model to wrap it up...`)
+          return {
+            activeTools: [],
+            messages: [
+              ...messages,
+              {
+                // You might think that "system" would make more sense, but it many providers ignore system messages in the middle of the conversation.
+                role: 'user',
+                content:
+                  'This is the LAST STEP. You MUST reply with a final message NOW. If you have enough information to provide me with a high quality response using prior tool results, respond with your final answer. If you do not have enough information, ask if I would like you to continue.',
+              },
+            ],
+          }
+        }
+      },
+
       abortSignal,
       // providerOptions: {
       //   custom: {

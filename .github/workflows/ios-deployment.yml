@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build_and_deploy_ios:
     runs-on: macos-latest
-    environment: iOS Production
+    environment: thunderbolt_release
 
     steps:
       - name: Checkout repository
@@ -32,7 +32,7 @@ jobs:
           node-version: 'lts/*'
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6fb9b0667a7a675313a4a # v2.0.1
+        uses: oven-sh/setup-bun@v2
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
@@ -42,7 +42,7 @@ jobs:
           rustflags: ''
 
       - name: Cache Cargo registry and build
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -62,7 +62,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@52753b7da854d5c07df37391a986c76ab4615999 # v1.191.0
+        uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.0'
           bundler-cache: true
@@ -78,30 +78,76 @@ jobs:
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+          PROVISIONING_PROFILE: ${{ secrets.APP_STORE_PROVISIONING_PROFILE }}
         run: |
+          # Validate required secrets
+          if [ -z "$APPLE_CERTIFICATE_P12" ]; then
+            echo "❌ APPLE_CERTIFICATE_P12 secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "❌ APPLE_CERTIFICATE_PASSWORD secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$PROVISIONING_PROFILE" ]; then
+            echo "❌ PROVISIONING_PROFILE secret is not set"
+            exit 1
+          fi
+
           # Create certificates directory
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
 
           # Decode and install certificate
+          echo "📋 Decoding certificate..."
           echo "$APPLE_CERTIFICATE_P12" | base64 --decode > certificate.p12
 
+          # Validate certificate file
+          if [ ! -s certificate.p12 ]; then
+            echo "❌ Failed to decode certificate or certificate is empty"
+            exit 1
+          fi
+
+          echo "✅ Certificate decoded successfully ($(wc -c < certificate.p12) bytes)"
+
           # Create temporary keychain
+          echo "🔐 Creating temporary keychain..."
           security create-keychain -p "temp-keychain-password" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "temp-keychain-password" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
 
-          # Import certificate to keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Import certificate to keychain with better error handling
+          echo "📥 Importing certificate to keychain..."
+          if ! security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+            echo "❌ Failed to import certificate. Common issues:"
+            echo "   - Incorrect certificate password"
+            echo "   - Certificate file is corrupted"
+            echo "   - Certificate format is not supported"
+            echo "   - Certificate has expired"
+            exit 1
+          fi
+
+          echo "✅ Certificate imported successfully"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp-keychain-password" build.keychain
 
           # Install provisioning profile
+          echo "📱 Installing provisioning profile..."
           echo "$PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+
+          # Validate provisioning profile
+          if [ ! -s profile.mobileprovision ]; then
+            echo "❌ Failed to decode provisioning profile or profile is empty"
+            exit 1
+          fi
+
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "✅ Provisioning profile installed successfully"
 
           # Clean up sensitive files
           rm certificate.p12 profile.mobileprovision
+          echo "🧹 Cleaned up sensitive files"
 
       - name: Setup App Store Connect API Key
         working-directory: src-tauri/gen/apple
@@ -135,7 +181,7 @@ jobs:
 
       - name: Upload build artifacts (if build fails)
         if: failure()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        uses: actions/upload-artifact@v4
         with:
           name: ios-build-logs-${{ github.run_id }}
           path: |

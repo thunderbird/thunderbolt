@@ -1,11 +1,12 @@
 import type { UIMessage } from 'ai'
 import { StreamingMarkdown } from './streaming-markdown'
+import { memo } from 'react'
 
 interface UserMessageProps {
   message: UIMessage
 }
 
-export const UserMessage = ({ message }: UserMessageProps) => {
+export const UserMessage = memo(({ message }: UserMessageProps) => {
   return (
     <>
       {message.parts
@@ -19,4 +20,4 @@ export const UserMessage = ({ message }: UserMessageProps) => {
         ))}
     </>
   )
-}
+})

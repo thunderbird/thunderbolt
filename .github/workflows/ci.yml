@@ -126,6 +126,7 @@ jobs:
         run: bun run build
         env:
           NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Inject & upload source maps to PostHog
         uses: PostHog/upload-source-maps@v0.4.6

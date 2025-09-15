@@ -121,6 +121,19 @@ jobs:
           # TODO: Investigate Bun module mocking behavior in CI environment
           bun test --test-name-pattern="^(?!.*Google Utils).*$"
 
+      # Upload source maps to PostHog only for main branch
+      - name: Build application with source maps
+        run: bun run build
+        env:
+          NODE_ENV: production
+
+      - name: Inject & upload source maps to PostHog
+        uses: PostHog/upload-source-maps@v0.4.6
+        with:
+          directory: dist
+          env-id: ${{ secrets.POSTHOG_CLI_ENV_ID }}
+          cli-token: ${{ secrets.POSTHOG_CLI_TOKEN }}
+
   rust:
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'

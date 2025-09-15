@@ -21,6 +21,9 @@ const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.a
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  build: {
+    sourcemap: true, // This enables source map generation
+  },
   plugins: [
     {
       name: 'bundle-migrations',

@@ -104,7 +104,9 @@ class OpenMeteoWeather:
             result.append(f"Wind: {current.get('wind_speed_10m')} km/h")
 
             weather_code = current.get("weather_code", 0)
-            result.append(f"Conditions: {self._get_weather_description(weather_code)}")
+            result.append(
+                f"Conditions: {self._get_weather_description(weather_code)} (Code {weather_code})"
+            )
 
             return "\n".join(result)
 

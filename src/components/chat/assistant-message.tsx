@@ -5,6 +5,7 @@ import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolPart } from './tool-part'
 import { memo } from 'react'
+import { DisplayToolHandler } from './display-tool-handler'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -18,7 +19,7 @@ const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
   const filteredParts = message.parts.filter((part) => {
-    const [partType] = splitPartType(part.type)
+    const { partType } = splitPartType(part.type)
     if (!supportedPartTypes.includes(partType)) {
       return false
     }
@@ -37,14 +38,18 @@ export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
   }
 
   filteredParts.forEach((part) => {
-    const [type] = splitPartType(part.type)
+    const { partType, toolType } = splitPartType(part.type)
 
-    switch (type) {
+    switch (partType) {
       case 'reasoning':
         partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
       case 'tool':
-        partElements.push(<ToolPart part={part as ToolUIPart} />)
+        if (toolType === 'display') {
+          partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
+        } else {
+          partElements.push(<ToolPart part={part as ToolUIPart} />)
+        }
         break
       case 'text':
         partElements.push(<TextPart part={part as TextUIPart} />)

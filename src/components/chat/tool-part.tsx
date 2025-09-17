@@ -34,7 +34,7 @@ const getOutput = (part: ToolUIPart) => {
 
 export const ToolPart = ({ part }: ToolPartProps) => {
   const { type, input, state } = part
-  const [, toolName] = splitPartType(type)
+  const { toolName } = splitPartType(type)
 
   // Use react-query to fetch metadata with proper caching
   const { data: metadata } = useQuery({

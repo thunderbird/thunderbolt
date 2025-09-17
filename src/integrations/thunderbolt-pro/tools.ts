@@ -1,4 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
+import { WeatherForecastDataSchema } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
@@ -192,9 +193,35 @@ export const configs: ToolConfig[] = [
   },
   {
     name: 'get_weather_forecast',
-    description: 'Get the weather forecast for a given location.',
+    description: `
+You are a weather assistant.
+
+Steps:
+1. Get the weather forecast for the given location.
+2. IMPORTANT: Before stream any response or text to the user you SHOULD call the tool display_weather_forecast with its full schema. 
+   - Fill every property with the correct data from the forecast response:
+     • location → full description of the location (city + state + country if available).
+     • days → array of forecasts (one object per day).
+       - Each object must contain:
+         - date
+         - weather_code
+         - temperature_max
+         - temperature_min
+3. ONLY after calling the tool, stream the forecast text **with the day-to-day breakdown removed**. Keep only the general summary, helper texts, and suggestions. THIS IS IMPORTANT, you SHOULD remove the day-to-day breakdown from the text.
+
+Important rules:
+- Always call the tool before streaming any text.
+- The tool payload must be complete and accurate.
+- IMPORTANT: the streamed text must exclude the day-to-day breakdown.`,
     verb: 'getting forecast for {location}',
     parameters: weatherSchema,
     execute: getWeatherForecast,
+  },
+  {
+    name: 'display-weather_forecast',
+    description: 'Use the parameters to display the weather forecast component.',
+    verb: 'Display the weather forecast component',
+    parameters: WeatherForecastDataSchema,
+    execute: (params) => params,
   },
 ]

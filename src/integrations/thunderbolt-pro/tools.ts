@@ -204,10 +204,14 @@ Steps:
      • days → array of forecasts (one object per day).
        - Each object must contain:
          - date
-         - weather_code
+         - weather_code (you gonna find this information close to the text Conditions)
+           - The available codes are: , Code 0 = Clear sky, Code 1 = Mainly clear, Code 2 = Partly cloudy, Code 3 = Overcast, Code 45 = Foggy, Code 48 = Depositing rime fog, Code 51 = Light drizzle, Code 53 = Moderate drizzle, Code 55 = Dense drizzle, Code 56 = Light freezing drizzle, Code 57 = Dense freezing drizzle, Code 61 = Slight rain, Code 63 = Moderate rain, Code 65 = Heavy rain, Code 66 = Light freezing rain, Code 67 = Heavy freezing rain, Code 71 = Slight snow fall, Code 73 = Moderate snow fall, Code 75 = Heavy snow fall, Code 77 = Snow grains, Code 80 = Slight rain showers, Code 81 = Moderate rain showers, Code 82 = Violent rain showers, Code 85 = Slight snow showers, Code 86 = Heavy snow showers, Code 95 = Thunderstorm, Code 96 = Thunderstorm with slight hail, Code 99 = Thunderstorm with heavy hail
          - temperature_max
          - temperature_min
-3. ONLY after calling the tool, stream the forecast text **with the day-to-day breakdown removed**. Keep only the general summary, helper texts, and suggestions. THIS IS IMPORTANT, you SHOULD remove the day-to-day breakdown from the text.
+3. ONLY after calling the tool, stream the forecast text **with the day-to-day breakdown removed**. Keep only the general summary, helper texts, and suggestions.
+THIS IS IMPORTANT, you SHOULD remove the day-to-day breakdown from the text.
+The summary, helper texts and suggestions must be consistent with the weather codes returned.
+
 
 Important rules:
 - Always call the tool before streaming any text.

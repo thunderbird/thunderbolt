@@ -4,6 +4,7 @@ import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group'
 import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
 import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from '@/lib/weather-forecast'
+import { Skeleton } from '../ui/skeleton'
 
 type WeatherForecastProps = WeatherForecastData
 
@@ -21,7 +22,7 @@ export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) =
   )
 
   if (!selectedDayMetadata) {
-    return null
+    return <WeatherForecastSkeleton />
   }
 
   return (
@@ -69,6 +70,41 @@ export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) =
             </a>
           )
         })}
+      </CardContent>
+    </Card>
+  )
+}
+
+const WeatherForecastSkeleton = () => {
+  return (
+    <Card className="w-full pb-0 overflow-hidden">
+      <CardHeader className="flex-col md:flex-row flex justify-between items-start gap-6">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <div className="flex gap-1">
+          <Skeleton className="h-9 w-12" />
+          <Skeleton className="h-9 w-12" />
+        </div>
+      </CardHeader>
+      <CardContent className="grid grid-flow-row md:grid-flow-col border-t border-t-border px-0">
+        {Array.from({ length: 7 }).map((_, dayIndex) => (
+          <div
+            key={dayIndex}
+            className={cn(
+              'items-center flex flex-row md:flex-col justify-between px-6 md:px-0 md:justify-center gap-1 py-6',
+              dayIndex > 0 ? 'border-t border-t-border border-l-0 md:border-t-0 md:border-l md:border-l-border' : '',
+            )}
+          >
+            <Skeleton className="h-4 w-8" />
+            <Skeleton className="size-10 rounded-full" />
+            <div className="flex flex-row gap-1 items-center justify-center">
+              <Skeleton className="h-5 w-8" />
+              <Skeleton className="h-4 w-6" />
+            </div>
+          </div>
+        ))}
       </CardContent>
     </Card>
   )

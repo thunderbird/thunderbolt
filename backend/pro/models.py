@@ -2,7 +2,6 @@
 Pydantic models for Pro Tools API requests and responses
 """
 
-
 from pydantic import BaseModel
 
 

@@ -1,5 +1,6 @@
 import { getCloudUrl } from '@/lib/config'
 import { WeatherForecastDataSchema } from '@/lib/weather-forecast'
+import { type WeatherForecastData } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
@@ -118,7 +119,7 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 /**
  * Get weather forecast for specified coordinates
  */
-export const getWeatherForecast = async (params: WeatherParams): Promise<string> => {
+export const getWeatherForecast = async (params: WeatherParams): Promise<WeatherForecastData> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
@@ -128,13 +129,15 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<string>
           days: params.days || 3,
         },
       })
-      .json<{ weather_data: string; success: boolean; error?: string }>()
+      .json<{ weather_data: string | null; data: unknown; success: boolean; error?: string }>()
 
-    if (!response.success) {
+    if (!response.success || !response.data) {
       throw new Error(response.error || 'Weather forecast request failed')
     }
 
-    return response.weather_data
+    // Validate and parse the response data using the schema
+    const validatedData = WeatherForecastDataSchema.parse(response.data)
+    return validatedData
   } catch (error) {
     console.error('Weather forecast error:', error)
     throw new Error(`Weather forecast request failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -193,39 +196,33 @@ export const configs: ToolConfig[] = [
   },
   {
     name: 'get_weather_forecast',
-    description: `
-You are a weather assistant.
+    description: `You are a helpful weather narrator. The UI already shows a 1–7 day forecast card from JSON.
+Your job: write a short overview and a few friendly suggestions based ONLY on the JSON below.
 
-Steps:
-1. Get the weather forecast for the given location.
-2. IMPORTANT: Before stream any response or text to the user you SHOULD call the tool display_weather_forecast with its full schema. 
-   - Fill every property with the correct data from the forecast response:
-     • location → full description of the location (city + state + country if available).
-     • days → array of forecasts (one object per day).
-       - Each object must contain:
-         - date
-         - weather_code (you gonna find this information close to the text Conditions)
-           - The available codes are: , Code 0 = Clear sky, Code 1 = Mainly clear, Code 2 = Partly cloudy, Code 3 = Overcast, Code 45 = Foggy, Code 48 = Depositing rime fog, Code 51 = Light drizzle, Code 53 = Moderate drizzle, Code 55 = Dense drizzle, Code 56 = Light freezing drizzle, Code 57 = Dense freezing drizzle, Code 61 = Slight rain, Code 63 = Moderate rain, Code 65 = Heavy rain, Code 66 = Light freezing rain, Code 67 = Heavy freezing rain, Code 71 = Slight snow fall, Code 73 = Moderate snow fall, Code 75 = Heavy snow fall, Code 77 = Snow grains, Code 80 = Slight rain showers, Code 81 = Moderate rain showers, Code 82 = Violent rain showers, Code 85 = Slight snow showers, Code 86 = Heavy snow showers, Code 95 = Thunderstorm, Code 96 = Thunderstorm with slight hail, Code 99 = Thunderstorm with heavy hail
-         - temperature_max
-         - temperature_min
-3. ONLY after calling the tool, stream the forecast text **with the day-to-day breakdown removed**. Keep only the general summary, helper texts, and suggestions.
-THIS IS IMPORTANT, you SHOULD remove the day-to-day breakdown from the text.
-The summary, helper texts and suggestions must be consistent with the weather codes returned.
+Hard rules:
+- DO NOT print a day-by-day breakdown (no per-day bullets/tables/dates/weekday names).
+- Keep it brief: 2–4 sentences total. Then 2–4 short suggestions as bullets.
+- Be consistent with the units and weather codes in the JSON (don't invent data).
+- If uncertainty is high, speak cautiously (e.g., "chance of showers").
+- No emojis in the text unless the caller sets allowEmojis=true.
 
+Suggestions guidance (pick what fits):
+- clothing (layers, rain jacket, umbrella, sunscreen)
+- commute/travel (leave earlier if windy/wet)
+- outdoor plans (best time windows, backups)
+- home/pets (close windows, hydrate, protect plants)
+- health (heat/cold/UV sensitivity)
 
-Important rules:
-- Always call the tool before streaming any text.
-- The tool payload must be complete and accurate.
-- IMPORTANT: the streamed text must exclude the day-to-day breakdown.`,
+Output format (no headings):
+<2–4 sentence overview>
+- <suggestion>
+- <suggestion>
+- <suggestion>`,
     verb: 'getting forecast for {location}',
     parameters: weatherSchema,
-    execute: getWeatherForecast,
-  },
-  {
-    name: 'display-weather_forecast',
-    description: 'Use the parameters to display the weather forecast component.',
-    verb: 'Display the weather forecast component',
-    parameters: WeatherForecastDataSchema,
-    execute: (params) => params,
+    execute: async (params: WeatherParams) => {
+      const forecastData = await getWeatherForecast(params)
+      return forecastData
+    },
   },
 ]

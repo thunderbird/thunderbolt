@@ -38,18 +38,14 @@ export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
   }
 
   filteredParts.forEach((part) => {
-    const { partType, toolType } = splitPartType(part.type)
+    const { partType } = splitPartType(part.type)
 
     switch (partType) {
       case 'reasoning':
         partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
       case 'tool':
-        if (toolType === 'display') {
-          partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
-        } else {
-          partElements.push(<ToolPart part={part as ToolUIPart} />)
-        }
+        partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
         break
       case 'text':
         partElements.push(<TextPart part={part as TextUIPart} />)

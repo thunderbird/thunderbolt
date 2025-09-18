@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from .context import SimpleContext
+from .models import WeatherDay, WeatherForecastData
 
 
 class OpenMeteoWeather:
@@ -120,7 +121,7 @@ class OpenMeteoWeather:
 
     async def get_weather_forecast(
         self, location: str, days: int, ctx: SimpleContext
-    ) -> str:
+    ) -> WeatherForecastData:
         """Get weather forecast for specified location."""
         await ctx.info(f"Fetching {days}-day forecast for location: {location}")
 
@@ -160,13 +161,9 @@ class OpenMeteoWeather:
                 data = response.json()
 
             daily = data.get("daily", {})
-
-            # Format the forecast
-            result = []
-            result.append(f"{days}-day weather forecast for {full_location_name}:")
-            result.append("")
-
             dates = daily.get("time", [])
+
+            weather_days = []
             for i in range(min(len(dates), days)):
                 date = dates[i]
                 weather_code = (
@@ -175,28 +172,22 @@ class OpenMeteoWeather:
                     else 0
                 )
 
-                result.append(f"{self._format_date(date)}:")
-                result.append(
-                    f"  Conditions: {self._get_weather_description(weather_code)}"
+                weather_day = WeatherDay(
+                    date=date,
+                    weather_code=weather_code,
+                    temperature_max=daily["temperature_2m_max"][i],
+                    temperature_min=daily["temperature_2m_min"][i],
+                    apparent_temperature_max=daily["apparent_temperature_max"][i],
+                    apparent_temperature_min=daily["apparent_temperature_min"][i],
+                    precipitation_sum=daily["precipitation_sum"][i],
+                    precipitation_probability_max=daily[
+                        "precipitation_probability_max"
+                    ][i],
+                    wind_speed_10m_max=daily["wind_speed_10m_max"][i],
                 )
-                result.append(
-                    f"  High: {daily['temperature_2m_max'][i]}°C (feels like {daily['apparent_temperature_max'][i]}°C)"
-                )
-                result.append(
-                    f"  Low: {daily['temperature_2m_min'][i]}°C (feels like {daily['apparent_temperature_min'][i]}°C)"
-                )
+                weather_days.append(weather_day)
 
-                precip = daily["precipitation_sum"][i]
-                precip_prob = daily["precipitation_probability_max"][i]
-                if precip > 0 or precip_prob > 0:
-                    result.append(
-                        f"  Precipitation: {precip} mm (probability: {precip_prob}%)"
-                    )
-
-                result.append(f"  Max wind: {daily['wind_speed_10m_max'][i]} km/h")
-                result.append("")
-
-            return "\n".join(result)
+            return WeatherForecastData(location=full_location_name, days=weather_days)
 
         except httpx.HTTPError as e:
             await ctx.error(f"HTTP error getting forecast: {str(e)}")

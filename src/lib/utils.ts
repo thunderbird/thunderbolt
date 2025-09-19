@@ -203,19 +203,13 @@ export const formatNumber = (num: number): string => {
   return formatter.format(num)
 }
 
-export const splitPartType = (type: string): { partType: string; toolType: string | null; toolName: string } => {
-  // expected format: partType-toolType-toolName or partType-toolName
-  const strs = type.split('-')
-
-  const partType = strs[0]
-
-  let toolType: string | null = null
-  let toolName = strs[1]
-
-  if (strs.length > 2) {
-    toolType = strs[1]
-    toolName = strs[2]
+/**
+ * Split UI part types like "tool-read_file" into [type, name]
+ */
+export const splitPartType = (type: string): [string, string] => {
+  const dashIndex = type.indexOf('-')
+  if (dashIndex === -1) {
+    return [type, 'unknown']
   }
-
-  return { partType, toolType, toolName }
+  return [type.slice(0, dashIndex), type.slice(dashIndex + 1)]
 }

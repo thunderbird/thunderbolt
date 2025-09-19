@@ -10,7 +10,7 @@ type DisplayToolHandlerProps = {
 }
 
 export const DisplayToolHandler = memo(({ part }: DisplayToolHandlerProps) => {
-  const { toolName } = splitPartType(part.type)
+  const [, toolName] = splitPartType(part.type)
 
   switch (toolName) {
     case 'get_weather_forecast':

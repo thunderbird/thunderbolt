@@ -135,7 +135,6 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
       throw new Error(response.error || 'Weather forecast request failed')
     }
 
-    // Validate and parse the response data using the schema
     const validatedData = WeatherForecastDataSchema.parse(response.data)
     return validatedData
   } catch (error) {

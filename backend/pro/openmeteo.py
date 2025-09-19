@@ -128,7 +128,9 @@ class OpenMeteoWeather:
         # First, get coordinates for the location
         locations = await self.search_locations(location, ctx, count=1)
         if not locations:
-            return f"Error: Could not find coordinates for location '{location}'"
+            error_msg = f"Could not find coordinates for location '{location}'"
+            await ctx.error(error_msg)
+            raise ValueError(error_msg)
 
         # Use the first (best) match
         best_location = locations[0]
@@ -190,12 +192,16 @@ class OpenMeteoWeather:
             return WeatherForecastData(location=full_location_name, days=weather_days)
 
         except httpx.HTTPError as e:
-            await ctx.error(f"HTTP error getting forecast: {str(e)}")
-            return f"Error: Could not fetch forecast data ({str(e)})"
+            error_msg = f"HTTP error getting forecast: {str(e)}"
+            await ctx.error(error_msg)
+            raise RuntimeError(f"Could not fetch forecast data: {str(e)}") from e
         except Exception as e:
-            await ctx.error(f"Error getting forecast: {str(e)}")
+            error_msg = f"Error getting forecast: {str(e)}"
+            await ctx.error(error_msg)
             traceback.print_exc(file=sys.stderr)
-            return f"Error: An unexpected error occurred while fetching forecast data ({str(e)})"
+            raise RuntimeError(
+                f"An unexpected error occurred while fetching forecast data: {str(e)}"
+            ) from e
 
     def _get_weather_description(self, code: int) -> str:
         """Convert WMO weather code to description."""

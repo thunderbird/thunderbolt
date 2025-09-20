@@ -188,40 +188,50 @@ export const configs: ToolConfig[] = [
   },
   {
     name: 'get_current_weather',
-    description: 'Get the current weather for a given location.',
-    verb: 'getting weather for {location}',
+    description: `Return the current weather (today only) as text.
+- Use this tool when the user asks about the weather "now" or "today".
+- Provide a concise one-day summary (temperature, condition, highs/lows).
+- Do not render a component.`,
+    verb: 'Write current weather for {location}',
     parameters: weatherSchema,
     execute: getCurrentWeather,
   },
   {
     name: 'get_weather_forecast',
-    description: `You are a helpful weather narrator. The UI already shows a 1–7 day forecast card from JSON.
-Your job: write a short overview and a few friendly suggestions based ONLY on the JSON below.
+    description: `Return a 7-day forecast as plain text only (no component).
 
-Hard rules:
-- DO NOT print a day-by-day breakdown (no per-day bullets/tables/dates/weekday names).
-- Keep it brief: 2–4 sentences total. Then 2–4 short suggestions as bullets.
-- Be consistent with the units and weather codes in the JSON (don't invent data).
-- If uncertainty is high, speak cautiously (e.g., "chance of showers").
-- No emojis in the text unless the caller sets allowEmojis=true.
+This tool is a **fallback** when, for some reason, rendering a component is not possible
+(e.g. the user explicitly asks for a text forecast).
 
-Suggestions guidance (pick what fits):
-- clothing (layers, rain jacket, umbrella, sunscreen)
-- commute/travel (leave earlier if windy/wet)
-- outdoor plans (best time windows, backups)
-- home/pets (close windows, hydrate, protect plants)
-- health (heat/cold/UV sensitivity)
-
-Output format (no headings):
-<2–4 sentence overview>
-- <suggestion>
-- <suggestion>
-- <suggestion>`,
-    verb: 'getting forecast for {location}',
+- Output a clear day-by-day breakdown (one line per day with condition + high/low).
+- Optionally add a brief overall summary and friendly suggestions after the breakdown.
+- If the user did not explicitly request a text-only format, prefer 'display-weather_forecast' instead.`,
+    verb: 'Write 7-day text forecast for {location}',
     parameters: weatherSchema,
     execute: async (params: WeatherParams) => {
       const forecastData = await getWeatherForecast(params)
       return forecastData
+    },
+  },
+  {
+    name: 'display-weather_forecast',
+    description: `Render the custom 7-day weather forecast component in the UI.
+
+Use this tool whenever the user asks for a forecast that spans more than one day.
+- This is the **preferred tool** for multi-day forecasts (2–7 days).
+- Provide the structured parameters (location, days, forecast details).
+- Do NOT include a day-by-day breakdown in text when this tool is used.
+- You may still write a short overview (2–4 sentences) and friendly suggestions (bulleted).`,
+    verb: 'Display 7-day forecast for {location}',
+    parameters: weatherSchema,
+    execute: async (params: WeatherParams) => {
+      const forecastData = await getWeatherForecast(params)
+      return forecastData
+
+      // return {
+      //   location: 'testing location',
+      //   days: [],
+      // }
     },
   },
 ]

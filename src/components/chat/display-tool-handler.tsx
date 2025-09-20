@@ -13,7 +13,7 @@ export const DisplayToolHandler = memo(({ part }: DisplayToolHandlerProps) => {
   const [, toolName] = splitPartType(part.type)
 
   switch (toolName) {
-    case 'get_weather_forecast':
+    case 'display-weather_forecast':
       return <WeatherForecast {...(part.output as WeatherForecastData)} />
     default:
       return <ToolPart part={part as ToolUIPart} />

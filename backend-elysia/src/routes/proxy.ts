@@ -7,7 +7,16 @@ import { Elysia } from 'elysia'
  */
 const createProxyContext = (ctx: any): ProxyContext => {
   // Get raw body as Uint8Array
-  const body = ctx.body instanceof Uint8Array ? ctx.body : new TextEncoder().encode(JSON.stringify(ctx.body || ''))
+  let body: Uint8Array
+  if (ctx.body instanceof Uint8Array) {
+    body = ctx.body
+  } else if (ctx.body !== null && ctx.body !== undefined && ctx.body !== '') {
+    // Only encode non-empty bodies
+    body = new TextEncoder().encode(JSON.stringify(ctx.body))
+  } else {
+    // For GET requests and empty bodies, use empty Uint8Array
+    body = new Uint8Array(0)
+  }
 
   return {
     ...ctx,

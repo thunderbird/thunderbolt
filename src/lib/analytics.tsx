@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { getBooleanSetting, updateBooleanSetting } from '@/lib/dal'
+import { getBooleanSetting } from '@/lib/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
@@ -82,18 +82,6 @@ export const initPosthog = async (): Promise<PostHog | null> => {
   return posthogClient
 }
 
-const setupFeatureFlags = async (client: PostHog) => {
-  const isTasksEnabled = await client.isFeatureEnabled('tasks')
-
-  if (isTasksEnabled) {
-    const existingFeatureFlagTasks = await getBooleanSetting('feature_flag_tasks', false)
-
-    if (!existingFeatureFlagTasks) {
-      await updateBooleanSetting('feature_flag_tasks', true)
-    }
-  }
-}
-
 /**
  * PostHog Provider component for React
  */
@@ -103,12 +91,6 @@ export const PostHogProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     initPosthog().then(setClient)
   }, [])
-
-  useEffect(() => {
-    if (client) {
-      setupFeatureFlags(client)
-    }
-  }, [client])
 
   if (!client) return <>{children}</>
 

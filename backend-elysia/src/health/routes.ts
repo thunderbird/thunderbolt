@@ -166,6 +166,38 @@ const validateMonitoringToken = ({ query, set }: { query: Record<string, string 
 export const createHealthCheckRoutes = () => {
   return new Elysia({ prefix: '/healthcheck' })
     .get(
+      '/status',
+      async ({ query, set }): Promise<HealthCheckStatus | { error: string }> => {
+        // Validate monitoring token
+        const tokenValidation = validateMonitoringToken({ query, set })
+        if (tokenValidation) {
+          return tokenValidation
+        }
+
+        const settings = getSettings()
+
+        // Check service availability
+        const services = {
+          flower: {
+            available: Boolean(settings.flowerMgmtKey && settings.flowerProjId),
+            models: settings.flowerMgmtKey && settings.flowerProjId ? Object.keys(HEALTH_CHECK_CONFIGS) : [],
+          },
+        }
+
+        return {
+          timestamp: utcNow(),
+          services,
+          total_endpoints: Object.values(services).reduce((sum, service) => sum + service.models.length, 0),
+        }
+      },
+      {
+        query: t.Object({
+          token: t.String(),
+        }),
+      },
+    )
+    
+    .get(
       '/flower/:model',
       async ({ params, query, set, headers }): Promise<HealthCheckResponse> => {
         // Validate monitoring token

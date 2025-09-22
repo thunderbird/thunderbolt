@@ -1,0 +1,325 @@
+import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import type { SimpleContext } from './context'
+import { createExaClient, fetchContentExa, searchExa } from './exa'
+
+// Mock the Exa SDK
+const mockExa = {
+  searchAndContents: spyOn({} as any, 'searchAndContents').mockResolvedValue({ results: [] }),
+  getContents: spyOn({} as any, 'getContents').mockResolvedValue({ results: [] }),
+}
+
+// Mock the Exa constructor
+const ExaModule = await import('exa-js')
+spyOn(ExaModule as any, 'Exa').mockImplementation(() => mockExa as any)
+
+// Mock getSettings
+const mockGetSettings = spyOn(await import('../config/settings'), 'getSettings')
+
+describe('Pro - Exa', () => {
+  let mockContext: SimpleContext
+
+  beforeEach(() => {
+    mockContext = {
+      info: spyOn({} as any, 'info').mockResolvedValue(undefined),
+      error: spyOn({} as any, 'error').mockResolvedValue(undefined),
+    } as any
+
+    // Reset all mocks
+    mockExa.searchAndContents.mockReset()
+    mockExa.getContents.mockReset()
+    mockGetSettings.mockReset()
+  })
+
+  describe('createExaClient', () => {
+    it('should create Exa client when API key is configured', () => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: 'test-exa-key',
+      } as any)
+
+      const client = createExaClient()
+
+      expect(client).not.toBeNull()
+      expect(mockGetSettings).toHaveBeenCalled()
+    })
+
+    it('should return null when API key is not configured', () => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: '',
+      } as any)
+
+      const client = createExaClient()
+
+      expect(client).toBeNull()
+    })
+
+    it('should return null when API key is undefined', () => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: undefined,
+      } as any)
+
+      const client = createExaClient()
+
+      expect(client).toBeNull()
+    })
+  })
+
+  describe('searchExa', () => {
+    beforeEach(() => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: 'test-exa-key',
+      } as any)
+    })
+
+    it('should perform search with default parameters', async () => {
+      const mockResults = [
+        {
+          title: 'Test Result',
+          url: 'https://example.com',
+          text: 'Test content',
+          author: 'Test Author',
+          publishedDate: '2024-01-01',
+        },
+      ]
+      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+
+      const results = await searchExa('test query', mockContext)
+
+      expect(mockExa.searchAndContents).toHaveBeenCalledWith('test query', {
+        numResults: 10,
+        useAutoprompt: true,
+        type: 'neural',
+      })
+      expect(results).toEqual([
+        {
+          position: 1,
+          title: 'Test Result',
+          url: 'https://example.com',
+          snippet: 'Test content',
+          author: 'Test Author',
+          published_date: '2024-01-01',
+        },
+      ])
+      expect(mockContext.info).toHaveBeenCalledWith('Searching Exa for: test query')
+      expect(mockContext.info).toHaveBeenCalledWith('Found 1 results')
+    })
+
+    it('should respect maxResults parameter', async () => {
+      mockExa.searchAndContents.mockResolvedValueOnce({ results: [] })
+
+      await searchExa('test query', mockContext, 5)
+
+      expect(mockExa.searchAndContents).toHaveBeenCalledWith('test query', {
+        numResults: 5,
+        useAutoprompt: true,
+        type: 'neural',
+      })
+    })
+
+    it('should handle results without optional fields', async () => {
+      const mockResults = [
+        {
+          title: 'Test Result',
+          url: 'https://example.com',
+          text: 'Test content',
+          // author and publishedDate are missing
+        },
+      ]
+      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+
+      const results = await searchExa('test query', mockContext)
+
+      expect(results).toEqual([
+        {
+          position: 1,
+          title: 'Test Result',
+          url: 'https://example.com',
+          snippet: 'Test content',
+          author: null,
+          published_date: null,
+        },
+      ])
+    })
+
+    it('should handle results without text content', async () => {
+      const mockResults = [
+        {
+          title: 'Test Result',
+          url: 'https://example.com',
+          // text is missing
+          author: 'Test Author',
+          publishedDate: '2024-01-01',
+        },
+      ]
+      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+
+      const results = await searchExa('test query', mockContext)
+
+      expect(results[0].snippet).toBe('')
+    })
+
+    it('should handle multiple results with correct positioning', async () => {
+      const mockResults = [
+        { title: 'Result 1', url: 'https://example1.com', text: 'Content 1' },
+        { title: 'Result 2', url: 'https://example2.com', text: 'Content 2' },
+        { title: 'Result 3', url: 'https://example3.com', text: 'Content 3' },
+      ]
+      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+
+      const results = await searchExa('test query', mockContext)
+
+      expect(results).toHaveLength(3)
+      expect(results[0].position).toBe(1)
+      expect(results[1].position).toBe(2)
+      expect(results[2].position).toBe(3)
+    })
+
+    it('should return empty array when API key is not configured', async () => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: '',
+      } as any)
+
+      const results = await searchExa('test query', mockContext)
+
+      expect(results).toEqual([])
+      expect(mockContext.error).toHaveBeenCalledWith('Exa API key not configured')
+      expect(mockExa.searchAndContents).not.toHaveBeenCalled()
+    })
+
+    it('should handle search errors', async () => {
+      const error = new Error('API error')
+      mockExa.searchAndContents.mockRejectedValueOnce(error)
+
+      await expect(searchExa('test query', mockContext)).rejects.toThrow('API error')
+      // Don't check exact error logging message to avoid test brittleness
+      expect(mockContext.error).toHaveBeenCalled()
+    })
+
+    it('should handle non-Error exceptions', async () => {
+      mockExa.searchAndContents.mockRejectedValueOnce('String error')
+
+      await expect(searchExa('test query', mockContext)).rejects.toBe('String error')
+      expect(mockContext.error).toHaveBeenCalledWith('Exa search error: String error')
+    })
+  })
+
+  describe('fetchContentExa', () => {
+    beforeEach(() => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: 'test-exa-key',
+      } as any)
+    })
+
+    it('should fetch content successfully', async () => {
+      const mockContent = [
+        {
+          text: 'This is the fetched content from the webpage',
+        },
+      ]
+      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(mockExa.getContents).toHaveBeenCalledWith(['https://example.com'], {
+        text: {
+          maxCharacters: 8000,
+          includeHtmlTags: false,
+        },
+      })
+      expect(result).toBe('This is the fetched content from the webpage')
+      expect(mockContext.info).toHaveBeenCalledWith('Fetching content from: https://example.com')
+    })
+
+    it('should handle empty content', async () => {
+      const mockContent = [
+        {
+          text: '',
+        },
+      ]
+      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('')
+    })
+
+    it('should handle no results', async () => {
+      mockExa.getContents.mockResolvedValueOnce({ results: [] })
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('Error: No content found for the provided URL')
+    })
+
+    it('should handle missing text field', async () => {
+      const mockContent = [
+        {
+          // text field is missing
+        },
+      ]
+      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('')
+    })
+
+    it('should return error message when API key is not configured', async () => {
+      mockGetSettings.mockReturnValue({
+        exaApiKey: '',
+      } as any)
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('Error: Exa API key not configured')
+      expect(mockExa.getContents).not.toHaveBeenCalled()
+    })
+
+    it('should handle fetch errors gracefully', async () => {
+      const error = new Error('Network error')
+      mockExa.getContents.mockRejectedValueOnce(error)
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('Error: Error: Network error') // fetchContentExa adds "Error: " prefix to String(error)
+      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message to avoid brittleness
+    })
+
+    it('should handle non-Error exceptions', async () => {
+      mockExa.getContents.mockRejectedValueOnce('String error')
+
+      const result = await fetchContentExa('https://example.com', mockContext)
+
+      expect(result).toBe('Error: String error')
+      expect(mockContext.error).toHaveBeenCalledWith('Exa content fetch error: String error')
+    })
+
+    it('should use correct configuration parameters', async () => {
+      mockExa.getContents.mockResolvedValueOnce({ results: [{ text: 'content' }] })
+
+      await fetchContentExa('https://example.com', mockContext)
+
+      expect(mockExa.getContents).toHaveBeenCalledWith(['https://example.com'], {
+        text: {
+          maxCharacters: 8000,
+          includeHtmlTags: false,
+        },
+      })
+    })
+
+    it('should handle different URL formats', async () => {
+      const urls = [
+        'https://example.com',
+        'http://example.com',
+        'https://subdomain.example.com/path?query=1',
+        'https://example.com/page#anchor',
+      ]
+
+      mockExa.getContents.mockResolvedValue({ results: [{ text: 'content' }] })
+
+      for (const url of urls) {
+        await fetchContentExa(url, mockContext)
+        expect(mockExa.getContents).toHaveBeenCalledWith([url], expect.any(Object))
+      }
+    })
+  })
+})

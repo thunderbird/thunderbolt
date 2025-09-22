@@ -227,11 +227,6 @@ Use this tool whenever the user asks for a forecast that spans more than one day
     execute: async (params: WeatherParams) => {
       const forecastData = await getWeatherForecast(params)
       return forecastData
-
-      // return {
-      //   location: 'testing location',
-      //   days: [],
-      // }
     },
   },
 ]

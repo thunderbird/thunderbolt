@@ -36,8 +36,8 @@ const isDayTime = (dateString: string): boolean => {
   }
 }
 
-export const getWeatherMetadata = (code: number, dateString?: string): WeatherMetadata => {
-  const isDay = dateString ? isDayTime(dateString) : true
+export const getWeatherMetadata = (code: number, dateString: string): WeatherMetadata => {
+  const isDay = isDayTime(dateString)
 
   const weatherMetadata: Record<number, { description: string; dayIcon: string; nightIcon: string }> = {
     0: {

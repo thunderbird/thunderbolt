@@ -1,0 +1,98 @@
+import { z } from 'zod'
+
+/**
+ * Settings schema for environment variables validation
+ */
+const settingsSchema = z.object({
+  // API Keys
+  fireworksApiKey: z.string().default(''),
+  flowerMgmtKey: z.string().default(''),
+  flowerProjId: z.string().default(''),
+  exaApiKey: z.string().default(''),
+
+  // Health Check Configuration
+  monitoringToken: z.string().default(''),
+
+  // OAuth Settings
+  googleClientId: z.string().default(''),
+  googleClientSecret: z.string().default(''),
+  microsoftClientId: z.string().default(''),
+  microsoftClientSecret: z.string().default(''),
+
+  // General settings
+  logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
+  port: z.coerce.number().default(8000),
+
+  // Analytics settings
+  posthogHost: z.string().default('https://us.i.posthog.com'),
+  posthogApiKey: z.string().default(''),
+
+  // CORS settings
+  corsOrigins: z.string().default('http://localhost:1420'),
+  corsOriginRegex: z.string().default(''),
+  corsAllowCredentials: z.boolean().default(true),
+  corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
+  corsAllowHeaders: z.string().default('*'),
+  corsExposeHeaders: z.string().default('mcp-session-id'),
+})
+
+export type Settings = z.infer<typeof settingsSchema>
+
+/**
+ * Parse and validate environment variables into settings
+ */
+const parseSettings = (): Settings => {
+  const env = {
+    fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
+    flowerMgmtKey: process.env.FLOWER_MGMT_KEY || '',
+    flowerProjId: process.env.FLOWER_PROJ_ID || '',
+    exaApiKey: process.env.EXA_API_KEY || '',
+    monitoringToken: process.env.MONITORING_TOKEN || '',
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
+    microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    logLevel: process.env.LOG_LEVEL || 'INFO',
+    port: process.env.PORT || '8000',
+    posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
+    posthogApiKey: process.env.POSTHOG_API_KEY || '',
+    corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
+    corsOriginRegex: process.env.CORS_ORIGIN_REGEX || '',
+    corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
+    corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+    corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '*',
+    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id',
+  }
+
+  return settingsSchema.parse(env)
+}
+
+// Global settings instance
+let settings: Settings | null = null
+
+/**
+ * Get the current settings instance (cached)
+ */
+export const getSettings = (): Settings => {
+  if (!settings) {
+    settings = parseSettings()
+  }
+  return settings
+}
+
+/**
+ * Derived properties similar to the Python version
+ */
+export const getCorsOriginsList = (settings: Settings): string[] => {
+  return settings.corsOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+}
+
+export const getCorsMethodsList = (settings: Settings): string[] => {
+  return settings.corsAllowMethods
+    .split(',')
+    .map((method) => method.trim())
+    .filter((method) => method.length > 0)
+}

@@ -81,6 +81,13 @@ export const getSettings = (): Settings => {
 }
 
 /**
+ * Clear the cached settings (for testing)
+ */
+export const clearSettingsCache = (): void => {
+  settings = null
+}
+
+/**
  * Derived properties similar to the Python version
  */
 export const getCorsOriginsList = (settings: Settings): string[] => {

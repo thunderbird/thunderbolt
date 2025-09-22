@@ -17,20 +17,27 @@ export class ProxyService {
    * Get the proxy configuration for a given path
    */
   getConfig(path: string): ProxyConfig | null {
+    let bestMatch: { prefix: string; config: ProxyConfig } | null = null
+    
     for (const [prefix, config] of this.configs) {
       if (path.startsWith(prefix)) {
-        return config
+        // Keep the longest matching prefix
+        if (!bestMatch || prefix.length > bestMatch.prefix.length) {
+          bestMatch = { prefix, config }
+        }
       }
     }
-    return null
+    
+    return bestMatch?.config || null
   }
 
   /**
    * Verify the request has proper authentication
    */
   verifyAuth(ctx: ProxyContext): boolean {
-    // For now, just check if Authorization header exists
-    return 'authorization' in ctx.headers
+    // Check if Authorization header exists (case insensitive)
+    const headerKeys = Object.keys(ctx.headers).map(key => key.toLowerCase())
+    return headerKeys.includes('authorization')
   }
 
   /**

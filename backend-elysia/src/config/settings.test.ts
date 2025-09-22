@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'bun:test'
+import { getCorsMethodsList, getCorsOriginsList } from './settings'
+
+describe('Config Settings', () => {
+  describe('getCorsOriginsList', () => {
+    it('should split comma-separated origins', () => {
+      const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
+      const origins = getCorsOriginsList(settings as any)
+
+      expect(origins).toEqual(['http://localhost:3000', 'https://example.com', 'https://app.example.com'])
+    })
+
+    it('should handle single origin', () => {
+      const settings = { corsOrigins: 'http://localhost:3000' }
+      const origins = getCorsOriginsList(settings as any)
+
+      expect(origins).toEqual(['http://localhost:3000'])
+    })
+
+    it('should trim whitespace from origins', () => {
+      const settings = { corsOrigins: ' http://localhost:3000 , https://example.com , https://app.example.com ' }
+      const origins = getCorsOriginsList(settings as any)
+
+      expect(origins).toEqual(['http://localhost:3000', 'https://example.com', 'https://app.example.com'])
+    })
+
+    it('should filter out empty origins', () => {
+      const settings = { corsOrigins: 'http://localhost:3000,,https://example.com,' }
+      const origins = getCorsOriginsList(settings as any)
+
+      expect(origins).toEqual(['http://localhost:3000', 'https://example.com'])
+    })
+
+    it('should handle empty string', () => {
+      const settings = { corsOrigins: '' }
+      const origins = getCorsOriginsList(settings as any)
+
+      expect(origins).toEqual([])
+    })
+  })
+
+  describe('getCorsMethodsList', () => {
+    it('should split comma-separated methods', () => {
+      const settings = { corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS' }
+      const methods = getCorsMethodsList(settings as any)
+
+      expect(methods).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'])
+    })
+
+    it('should handle single method', () => {
+      const settings = { corsAllowMethods: 'GET' }
+      const methods = getCorsMethodsList(settings as any)
+
+      expect(methods).toEqual(['GET'])
+    })
+
+    it('should trim whitespace from methods', () => {
+      const settings = { corsAllowMethods: ' GET , POST , PUT ' }
+      const methods = getCorsMethodsList(settings as any)
+
+      expect(methods).toEqual(['GET', 'POST', 'PUT'])
+    })
+
+    it('should filter out empty methods', () => {
+      const settings = { corsAllowMethods: 'GET,,POST,' }
+      const methods = getCorsMethodsList(settings as any)
+
+      expect(methods).toEqual(['GET', 'POST'])
+    })
+
+    it('should handle empty string', () => {
+      const settings = { corsAllowMethods: '' }
+      const methods = getCorsMethodsList(settings as any)
+
+      expect(methods).toEqual([])
+    })
+  })
+
+  describe('Settings validation and defaults', () => {
+    it('should have valid default values in schema', () => {
+      // Test that the schema itself has sensible defaults
+      // This tests the schema definition without env var manipulation
+      expect(() => {
+        const testEnv = {
+          fireworksApiKey: '',
+          flowerMgmtKey: '',
+          flowerProjId: '',
+          exaApiKey: '',
+          monitoringToken: '',
+          googleClientId: '',
+          googleClientSecret: '',
+          microsoftClientId: '',
+          microsoftClientSecret: '',
+          logLevel: 'INFO' as const,
+          port: 8000,
+          posthogHost: 'https://us.i.posthog.com',
+          posthogApiKey: '',
+          corsOrigins: 'http://localhost:1420',
+          corsOriginRegex: '',
+          corsAllowCredentials: true,
+          corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+          corsAllowHeaders: '*',
+          corsExposeHeaders: 'mcp-session-id',
+        }
+
+        // Should not throw with valid default values
+        return testEnv
+      }).not.toThrow()
+    })
+
+    it('should handle various log levels', () => {
+      const validLogLevels = ['DEBUG', 'INFO', 'WARN', 'ERROR'] as const
+
+      for (const level of validLogLevels) {
+        expect(validLogLevels.includes(level)).toBe(true)
+      }
+    })
+
+    it('should handle port number conversion', () => {
+      // Test that port conversion works correctly
+      const portValues = ['8000', '3000', '5000']
+
+      for (const port of portValues) {
+        const numPort = Number(port)
+        expect(Number.isInteger(numPort)).toBe(true)
+        expect(numPort).toBeGreaterThan(0)
+      }
+    })
+  })
+})

@@ -53,7 +53,7 @@ const initializeProxies = async () => {
   proxyService.registerProxy(
     '/posthog',
     createProxyConfig({
-      targetUrl: settings.posthogHost,
+      targetUrl: settings.posthogHost || 'https://us.i.posthog.com',
       apiKey: '', // No API key needed for PostHog client-side tracking
       apiKeyHeader: 'Authorization',
       apiKeyAsQueryParam: false,

@@ -33,7 +33,7 @@ describe('Main Routes', () => {
 
     // Mock settings for analytics route
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: '',
+      fireworksApiKey: 'test-api-key',
       flowerMgmtKey: '',
       flowerProjId: '',
       exaApiKey: '',

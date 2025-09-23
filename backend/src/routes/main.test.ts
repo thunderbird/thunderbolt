@@ -65,7 +65,7 @@ describe('Main Routes', () => {
   })
 
   it('should return health status', async () => {
-    const response = await app.handle(new Request('http://localhost/health'))
+    const response = await app.handle(new Request('http://localhost/v1/health'))
     expect(response.status).toBe(200)
 
     const data = await response.json()
@@ -73,7 +73,7 @@ describe('Main Routes', () => {
   })
 
   it('should return analytics config', async () => {
-    const response = await app.handle(new Request('http://localhost/analytics/config'))
+    const response = await app.handle(new Request('http://localhost/v1/analytics/config'))
     expect(response.status).toBe(200)
 
     const data = await response.json()
@@ -81,12 +81,12 @@ describe('Main Routes', () => {
   })
 
   it('should require query parameter for locations endpoint', async () => {
-    const response = await app.handle(new Request('http://localhost/locations'))
+    const response = await app.handle(new Request('http://localhost/v1/locations'))
     expect(response.status).toBe(400) // Global error handler coerces to 400
   })
 
   it('should search locations with valid query', async () => {
-    const response = await app.handle(new Request('http://localhost/locations?query=London'))
+    const response = await app.handle(new Request('http://localhost/v1/locations?query=London'))
     expect(response.status).toBe(200)
 
     const data = await response.json()

@@ -19,7 +19,9 @@ export const supportedModels = [
 export const createOpenAIRoutes = () => {
   const openai = getOpenAI() as PostHogOpenAI
 
-  return new Elysia().post('/openai/chat/completions', async (ctx) => {
+  return new Elysia({
+    prefix: '/chat',
+  }).post('/completions', async (ctx) => {
     const body = await ctx.request.json()
 
     if (!body.stream) {
@@ -42,7 +44,7 @@ export const createOpenAIRoutes = () => {
           posthogProperties: {
             privacy_mode: true,
             model_provider: 'fireworks',
-            endpoint: '/openai/chat/completions',
+            endpoint: '/chat/completions',
             has_tools: !!body.tools,
             temperature: body.temperature,
             // @todo add distinct id and trace id

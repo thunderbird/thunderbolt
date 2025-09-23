@@ -61,7 +61,7 @@ describe('OpenAI Routes', () => {
     consoleSpy?.mockRestore()
   })
 
-  describe('POST /openai/chat/completions', () => {
+  describe('POST /chat/completions', () => {
     const validRequestBody = {
       model: supportedModels[0],
       messages: [{ role: 'user', content: 'Hello' }],
@@ -85,7 +85,7 @@ describe('OpenAI Routes', () => {
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(validRequestBody),
@@ -120,7 +120,7 @@ describe('OpenAI Routes', () => {
       }
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestWithTools),
@@ -142,7 +142,7 @@ describe('OpenAI Routes', () => {
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(validRequestBody),
@@ -155,7 +155,7 @@ describe('OpenAI Routes', () => {
           posthogProperties: expect.objectContaining({
             privacy_mode: true,
             model_provider: 'fireworks',
-            endpoint: '/openai/chat/completions',
+            endpoint: '/chat/completions',
             has_tools: false,
             temperature: validRequestBody.temperature,
           }),
@@ -173,7 +173,7 @@ describe('OpenAI Routes', () => {
       }
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nonStreamingRequest),
@@ -191,7 +191,7 @@ describe('OpenAI Routes', () => {
       }
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(unsupportedModelRequest),
@@ -207,7 +207,7 @@ describe('OpenAI Routes', () => {
       mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
 
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(validRequestBody),
@@ -220,7 +220,7 @@ describe('OpenAI Routes', () => {
 
     it('should handle malformed JSON requests', async () => {
       const response = await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: '{ invalid json',
@@ -248,7 +248,7 @@ describe('OpenAI Routes', () => {
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
       await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(validRequestBody),
@@ -273,7 +273,7 @@ describe('OpenAI Routes', () => {
       }
 
       await app.handle(
-        new Request('http://localhost/openai/chat/completions', {
+        new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestWithTools),

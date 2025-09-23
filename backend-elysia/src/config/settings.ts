@@ -29,10 +29,14 @@ const settingsSchema = z.object({
 
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
-  corsOriginRegex: z.string().default(''),
+  corsOriginRegex: z.string().default('^(tauri:\/\/localhost|http:\/\/localhost:\d+)$'),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
-  corsAllowHeaders: z.string().default('*'),
+  corsAllowHeaders: z
+    .string()
+    .default(
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
+    ),
   corsExposeHeaders: z.string().default('mcp-session-id'),
 })
 
@@ -60,7 +64,9 @@ const parseSettings = (): Settings => {
     corsOriginRegex: process.env.CORS_ORIGIN_REGEX || '',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-    corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '*',
+    corsAllowHeaders:
+      process.env.CORS_ALLOW_HEADERS ||
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id',
   }
 

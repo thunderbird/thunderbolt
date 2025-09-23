@@ -99,7 +99,8 @@ describe('Config Settings', () => {
           corsOriginRegex: '',
           corsAllowCredentials: true,
           corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-          corsAllowHeaders: '*',
+          corsAllowHeaders:
+            'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
           corsExposeHeaders: 'mcp-session-id',
         }
 

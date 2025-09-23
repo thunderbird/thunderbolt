@@ -10,7 +10,7 @@
     "test": "bun test",
     "test:watch": "bun test --watch",
     "type-check": "bun tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "format": "prettier --write src"
   },
   "dependencies": {
@@ -27,11 +27,12 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
-    "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
-    "prettier": "^3.2.4"
+    "eslint": "^8.56.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

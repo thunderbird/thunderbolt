@@ -1,6 +1,6 @@
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
-import { getCorsMethodsList, getCorsOriginsList, getSettings } from '@/config/settings'
+import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { createHealthCheckRoutes } from '@/health/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createFlowerRoutes } from '@/routes/flower'
@@ -33,9 +33,9 @@ const createApp = async () => {
       cors({
         origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
         credentials: settings.corsAllowCredentials,
-        methods: getCorsMethodsList(settings),
-        allowedHeaders: settings.corsAllowHeaders === '*' ? ['*'] : [settings.corsAllowHeaders],
-        exposeHeaders: settings.corsExposeHeaders ? [settings.corsExposeHeaders] : [],
+        methods: settings.corsAllowMethods,
+        allowedHeaders: settings.corsAllowHeaders,
+        exposeHeaders: settings.corsExposeHeaders,
       }),
     )
     .onError(({ code, error, set }) => {

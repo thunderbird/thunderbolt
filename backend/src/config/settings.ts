@@ -103,6 +103,13 @@ export const getCorsOriginsList = (settings: Settings): string[] => {
     .filter((origin) => origin.length > 0)
 }
 
+/**
+ * Get CORS origins as either a RegExp pattern or array of strings
+ */
+export const getCorsOrigins = (settings: Settings): RegExp | string[] => {
+  return settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings)
+}
+
 export const getCorsMethodsList = (settings: Settings): string[] => {
   return settings.corsAllowMethods
     .split(',')

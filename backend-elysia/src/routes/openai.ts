@@ -1,8 +1,5 @@
 import { getSettings } from '@/config/settings'
-import { createFireworks } from '@ai-sdk/fireworks'
-import { streamText } from 'ai'
-import { Elysia, sse } from 'elysia'
-import { defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
+import { Elysia } from 'elysia'
 
 /**
  * OpenAI/Fireworks AI proxy routes
@@ -10,60 +7,99 @@ import { defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '.
 export const createOpenAIRoutes = () => {
   const settings = getSettings()
 
-  const fireworks = createFireworks({
-    apiKey: settings.fireworksApiKey,
-  })
+  return new Elysia().post('/openai/chat/completions', async (ctx) => {
+    const body = await ctx.request.json()
 
-  return new Elysia()
-    .post('/openai/chat/completions', async function* (ctx) {
-      const body = await ctx.request.json()
+    if (!body.stream) {
+      throw new Error('Non-streaming requests are not supported')
+    }
 
-      if (!body.stream) {
-        throw new Error('Non-streaming requests are not supported')
-      }
+    if (!settings.fireworksApiKey) {
+      ctx.set.status = 500
+      throw new Error('Fireworks API key not configured')
+    }
 
-      const { textStream } = await streamText({
-        model: fireworks(`accounts/fireworks/models/${body.model}`),
-        messages: body.messages,
-        temperature: body.temperature,
-        tools: body.tools,
-        toolChoice: body.tool_choice,
-      })
+    const fireworksBody = {
+      ...body,
+      model: `accounts/fireworks/models/${body.model}`,
+    }
 
-      console.log('textStream', textStream)
-      for await (const textPart of textStream) {
-        yield sse(textPart)
-      }
+    const response = await fetch('https://api.fireworks.ai/inference/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.fireworksApiKey}`,
+      },
+      body: JSON.stringify(fireworksBody),
     })
-    .all(
-      '/openai/*',
-      async (ctx) => {
-        const path = ctx.params['*'] || ''
-        const url = `https://api.fireworks.ai/inference/v1/${path}`
 
-        if (!settings.fireworksApiKey) {
-          ctx.set.status = 500
-          throw new Error('Fireworks API key not configured')
+    if (!response.ok) {
+      ctx.set.status = response.status
+      throw new Error(`Fireworks API error: ${response.statusText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      ctx.set.status = 502
+      throw new Error('Failed to read Fireworks response stream')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let lastUsage: any = null
+
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const { done, value } = await reader.read()
+        if (done) {
+          if (lastUsage) {
+            console.log('Fireworks usage', {
+              model: body.model,
+              usage: lastUsage,
+            })
+          }
+          controller.close()
+          return
         }
 
-        const headers = {
-          ...filterHeaders(ctx.headers, defaultRequestDenylist),
-          Authorization: `Bearer ${settings.fireworksApiKey}`,
+        // Pass-through to client
+        controller.enqueue(value!)
+
+        // Parse SSE lines to capture usage if present
+        buffer += decoder.decode(value, { stream: true })
+        let newlineIndex = buffer.indexOf('\n')
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex)
+          buffer = buffer.slice(newlineIndex + 1)
+
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6)
+            if (dataStr && dataStr !== '[DONE]') {
+              try {
+                const json = JSON.parse(dataStr)
+                if (json && json.usage) {
+                  lastUsage = json.usage
+                }
+              } catch (_) {
+                // Ignore JSON parse errors on partial lines
+              }
+            }
+          }
+
+          newlineIndex = buffer.indexOf('\n')
         }
-
-        const response = await fetch(url + (ctx.query ? `?${new URLSearchParams(ctx.query)}` : ''), {
-          method: ctx.request.method,
-          headers,
-          body: ctx.request.body as BodyInit,
-        })
-
-        return new Response(response.body, {
-          status: response.status,
-          headers: extractResponseHeaders(response.headers),
-        })
       },
-      {
-        parse: 'none',
+      cancel() {
+        reader.releaseLock()
       },
-    )
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
+  })
 }

@@ -17,9 +17,11 @@
     "@elysiajs/cors": "latest",
     "@elysiajs/static": "latest",
     "@elysiajs/swagger": "latest",
+    "@posthog/ai": "^6.4.1",
     "elysia": "latest",
     "exa-js": "^1.0.11",
     "openai": "^5.22.1",
+    "posthog-node": "^5.8.8",
     "zod": "^3.22.4"
   },
   "devDependencies": {

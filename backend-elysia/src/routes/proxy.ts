@@ -6,23 +6,50 @@ import { Elysia } from 'elysia'
  * Convert Elysia context to ProxyContext
  */
 const createProxyContext = (ctx: any): ProxyContext => {
-  // Get raw body as Uint8Array
-  let body: Uint8Array
-  if (ctx.body instanceof Uint8Array) {
-    body = ctx.body
-  } else if (ctx.body !== null && ctx.body !== undefined && ctx.body !== '') {
-    // Only encode non-empty bodies
-    body = new TextEncoder().encode(JSON.stringify(ctx.body))
-  } else {
-    // For GET requests and empty bodies, use empty Uint8Array
-    body = new Uint8Array(0)
+  const method = ctx.request.method as string
+  const headers = { ...(ctx.headers || {}) } as Record<string, string>
+
+  // Use Elysia's already-parsed body and convert to Uint8Array
+  let body = new Uint8Array(0)
+  let bodyWasReconstructed = false
+
+  if (method !== 'GET' && method !== 'HEAD' && ctx.body !== undefined && ctx.body !== null) {
+    if (ctx.body instanceof Uint8Array) {
+      body = ctx.body
+    } else if (typeof ctx.body === 'string') {
+      body = new TextEncoder().encode(ctx.body)
+      bodyWasReconstructed = true
+    } else {
+      // For objects, assume JSON unless content-type suggests otherwise
+      const contentType = headers['content-type'] || ''
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        // Convert object to URL-encoded string
+        const params = new URLSearchParams()
+        for (const [key, value] of Object.entries(ctx.body as Record<string, any>)) {
+          if (value !== undefined && value !== null) {
+            params.append(key, String(value))
+          }
+        }
+        body = new TextEncoder().encode(params.toString())
+      } else {
+        // Default to JSON
+        body = new TextEncoder().encode(JSON.stringify(ctx.body))
+      }
+      bodyWasReconstructed = true
+    }
+  }
+
+  // If we reconstructed the body, remove compression headers since it's no longer compressed
+  if (bodyWasReconstructed) {
+    delete headers['content-encoding']
+    delete headers['content-length'] // Will be set by fetch
   }
 
   return {
     ...ctx,
     path: ctx.params['*'] || '',
-    method: ctx.request.method,
-    headers: ctx.headers || {},
+    method,
+    headers,
     query: ctx.query || {},
     body,
   }
@@ -36,14 +63,7 @@ export const createProxyRoutes = () => {
     new Elysia()
       // Flower AI proxy endpoints
       .all('/flower/*', async (ctx) => {
-        const { request, set } = ctx
-
-        // Handle OPTIONS preflight requests
-        if (request.method === 'OPTIONS') {
-          return new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'content-type': 'application/json' },
-          })
-        }
+        const { set } = ctx
 
         // Get the configuration for this path
         const config = proxyService.getConfig('/flower')
@@ -74,14 +94,7 @@ export const createProxyRoutes = () => {
 
       // OpenAI-compatible endpoints
       .all('/openai/*', async (ctx) => {
-        const { request, set } = ctx
-
-        // Handle OPTIONS preflight requests
-        if (request.method === 'OPTIONS') {
-          return new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'content-type': 'application/json' },
-          })
-        }
+        const { set } = ctx
 
         // Get the configuration for this path
         const config = proxyService.getConfig('/openai')
@@ -108,14 +121,7 @@ export const createProxyRoutes = () => {
 
       // PostHog Analytics proxy endpoint
       .all('/posthog/*', async (ctx) => {
-        const { request, set } = ctx
-
-        // Handle OPTIONS preflight requests
-        if (request.method === 'OPTIONS') {
-          return new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'content-type': 'application/json' },
-          })
-        }
+        const { set } = ctx
 
         // Get the configuration for this path
         const config = proxyService.getConfig('/posthog')
@@ -170,14 +176,7 @@ export const createProxyRoutes = () => {
 
       // Generic proxy endpoint that routes based on path
       .all('/proxy/*', async (ctx) => {
-        const { request, set } = ctx
-
-        // Handle OPTIONS preflight requests
-        if (request.method === 'OPTIONS') {
-          return new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'content-type': 'application/json' },
-          })
-        }
+        const { set } = ctx
 
         // Convert to proxy context
         const proxyCtx = createProxyContext(ctx)

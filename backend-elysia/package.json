@@ -14,10 +14,12 @@
     "format": "prettier --write src"
   },
   "dependencies": {
-    "elysia": "latest",
+    "@ai-sdk/fireworks": "^1.0.18",
     "@elysiajs/cors": "latest",
     "@elysiajs/static": "latest",
     "@elysiajs/swagger": "latest",
+    "ai": "^5.0.48",
+    "elysia": "latest",
     "exa-js": "^1.0.11",
     "zod": "^3.22.4"
   },

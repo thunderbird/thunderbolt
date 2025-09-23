@@ -1,189 +1,169 @@
-# Thunderbolt Backend
+# Thunderbolt Backend (Elysia)
 
-This repository contains the backend service for the Thunderbolt project. It is built using FastAPI and provides a unified proxy interface for accessing various APIs including OpenAI-compatible language models.
+A modern TypeScript backend rewritten from Python FastAPI to Elysia.js, providing exact API compatibility while leveraging TypeScript's type safety and Bun's performance.
 
 ## Features
 
-- Exposes OpenAI-compatible proxy endpoints at `/openai/*` for language model interactions
-- Generic proxy system for external APIs with authentication handling
-- Support for streaming responses (SSE) for chat completions
-- CORS support for frontend integration
-- Production-ready Docker deployment
+- 🦊 **Elysia.js** - Fast, type-safe web framework
+- ⚡ **Bun** - JavaScript runtime and package manager
+- 🔒 **TypeScript** - Full type safety with no `any` or `unknown` types
+- 🔄 **API Proxy** - Seamless proxying to external services (Fireworks, Flower AI, PostHog)
+- 🔐 **OAuth** - Google and Microsoft authentication
+- 🛠️ **Pro Tools** - Exa search, weather data, content fetching
+- 📊 **Health Checks** - Comprehensive monitoring with Flower AI validation
+- 🧪 **Testing** - Comprehensive test suite with Bun's test runner
+- 📚 **OpenAPI** - Auto-generated Swagger documentation
 
-## Installation
+## Getting Started
 
-### Local Development
+### Prerequisites
 
-```bash
-cp .env.example .env
-# Update .env with env vars
-uv venv
-source .venv/bin/activate
-uv sync --extra dev
-```
+- [Bun](https://bun.sh/) >= 1.0.0
 
-### Docker Deployment
-
-#### Prerequisites
-
-- Docker Engine 20.10+ or Docker Desktop
-- Docker Compose (optional, for easier deployment)
-
-#### Quick Start with Docker Compose
-
-1. Clone the repository and navigate to the backend directory:
+### Installation
 
 ```bash
-cd backend
+# Clone and navigate to the directory
+cd backend-elysia-sonnet
+
+# Install dependencies
+bun install
+
+# Copy environment configuration
+cp env.example .env
+
+# Edit .env with your configuration
 ```
 
-2. Create a `.env` file with your API keys:
+### Development
 
 ```bash
-cp .env.example .env
-# Edit .env with your actual API keys
+# Start development server with hot reload
+bun run dev
+
+# Run tests
+bun test
+
+# Run tests in watch mode
+bun run test:watch
+
+# Type checking
+bun run type-check
 ```
 
-3. Build and run with Docker Compose:
+### Production
 
 ```bash
-docker-compose up -d
+# Build the application
+bun run build
+
+# Start production server
+bun run start
 ```
 
-The service will be available at `http://localhost:8000`.
+## Configuration
 
-#### Manual Docker Deployment
+All configuration is handled through environment variables. See `env.example` for available options.
 
-1. Build the Docker image:
+### Key Environment Variables
 
-```bash
-docker build -t thunderbolt-backend:latest .
-```
-
-2. Run the container:
-
-```bash
-docker run -d \
-  --name thunderbolt-backend \
-  -p 8000:8000 \
-  -e FIREWORKS_API_KEY=your_fireworks_api_key \
-  -e WEATHER_API_KEY=your_weather_api_key \
-  --restart unless-stopped \
-  thunderbolt-backend:latest
-```
-
-#### Production Deployment Best Practices
-
-1. **Use environment variables or secrets management**:
-
-   - Never hardcode API keys in the Dockerfile
-   - Use Docker secrets or environment variables from your orchestration platform
-
-2. **Cloud-Native Deployment**:
-
-   - **AWS Fargate**: Use Application Load Balancer (ALB) for SSL termination and load balancing
-   - **Render.com**: Built-in SSL and load balancing included
-   - **Other platforms**: Most cloud providers handle SSL/TLS and load balancing at the platform level
-
-   Your application is already production-ready with Gunicorn + UvicornWorker - no additional reverse proxy needed!
-
-3. **Resource limits**:
-
-   - Adjust the resource limits in `docker-compose.yml` based on your needs
-   - Monitor memory and CPU usage in production
-
-4. **Logging**:
-
-   ```bash
-   # View logs
-   docker logs thunderbolt-backend
-
-   # Follow logs
-   docker logs -f thunderbolt-backend
-   ```
-
-5. **Health monitoring**:
-   - The container includes a health check endpoint at `/health`
-   - Use monitoring tools to track the health status
-
-## Running the Server
-
-### Development Server
-
-Start the development server:
-
-```bash
-uv run uvicorn backend.main:app --reload
-```
-
-### Production Server (without Docker)
-
-For production without Docker, use multiple workers:
-
-```bash
-uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-The server will be available at `http://localhost:8000`.
+- `FIREWORKS_API_KEY` - Fireworks AI API key for OpenAI-compatible proxy
+- `FLOWER_MGMT_KEY` - Flower AI management key
+- `FLOWER_PROJ_ID` - Flower AI project ID
+- `EXA_API_KEY` - Exa AI API key for search and content fetching
+- `GOOGLE_CLIENT_ID/SECRET` - Google OAuth credentials
+- `MICROSOFT_CLIENT_ID/SECRET` - Microsoft OAuth credentials
+- `MONITORING_TOKEN` - Token for health check endpoints
+- `PORT` - Server port (default: 8000)
 
 ## API Endpoints
 
-1. **Health Check**: `GET /health`
-2. **OpenAI-Compatible Proxy**: `/openai/*` - Proxies requests to Fireworks' OpenAI-compatible API
-3. **Generic Proxy**: `/proxy/*` - Configurable proxy for other external APIs
+### Core Routes
 
-## OpenAI Proxy Usage
+- `GET /health` - Basic health check
+- `GET /locations?query=<location>` - Search for locations using OpenMeteo
+- `POST /flower/api-key` - Get Flower AI API key for authenticated users
+- `GET /analytics/config` - Get analytics configuration
 
-The OpenAI proxy at `/openai/*` provides transparent access to Fireworks' language models using the OpenAI API format:
+### Authentication
 
-- `POST /openai/chat/completions` - Chat completions (supports streaming)
-- `GET /openai/models` - List available models
-- `POST /openai/completions` - Text completions
-- `POST /openai/embeddings` - Generate embeddings
+- `GET /auth/google/config` - Google OAuth configuration
+- `POST /auth/google/exchange` - Exchange Google authorization code
+- `POST /auth/google/refresh` - Refresh Google access token
+- `GET /auth/microsoft/config` - Microsoft OAuth configuration
+- `POST /auth/microsoft/exchange` - Exchange Microsoft authorization code
+- `POST /auth/microsoft/refresh` - Refresh Microsoft access token
 
-See `OPENAI_PROXY_README.md` for detailed usage examples.
+### Pro Tools
 
-## Docker Image Details
+- `POST /pro/search` - Neural search with Exa AI
+- `POST /pro/fetch-content` - Fetch webpage content
+- `POST /pro/weather/current` - Get current weather
+- `POST /pro/weather/forecast` - Get weather forecast
+- `POST /pro/locations/search` - Search locations for weather
 
-The Docker image is built using a multi-stage build process for optimal size and security:
+### Health Checks
 
-- **Base image**: Python 3.12-slim-bookworm
-- **Package manager**: uv (installed from official Docker image)
-- **Security**: Runs as non-root user (appuser)
-- **Health check**: Built-in health check endpoint
-- **Size**: Optimized using multi-stage build
-- **Production server**: Gunicorn with UvicornWorker for async support
+- `GET /healthcheck/flower/{model}?token=<token>` - Test Flower AI model
+- `GET /healthcheck/status?token=<token>` - Get health check status
 
-### Building for Different Architectures
+### Proxy Endpoints
 
-To build for ARM64 (e.g., Apple Silicon, AWS Graviton):
+- `/openai/*` - Proxy to Fireworks AI (OpenAI-compatible)
+- `/flower/*` - Proxy to Flower AI
+- `/posthog/*` - Proxy to PostHog analytics
+- `/proxy/*` - Generic proxy endpoint
 
-```bash
-docker buildx build --platform linux/arm64 -t thunderbolt-backend:latest .
+## Architecture
+
+The application is structured around Elysia's plugin system:
+
+```
+src/
+├── auth/           # Authentication (OAuth, Flower API keys)
+├── config/         # Configuration and settings
+├── health/         # Health check system
+├── pro/           # Pro tools (Exa, weather)
+├── proxy/         # Proxy service and configurations
+├── routes/        # Main API routes
+├── utils/         # Utility functions
+└── index.ts       # Application entry point
 ```
 
-To build for multiple architectures:
+## API Compatibility
+
+This backend maintains 100% API compatibility with the original Python FastAPI version. You can point your frontend to this backend without any changes.
+
+## Testing
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t thunderbolt-backend:latest .
+# Run all tests
+bun test
+
+# Run specific test file
+bun test test/main.test.ts
+
+# Run tests with coverage
+bun test --coverage
 ```
 
-## Troubleshooting
+## Development
 
-### Container won't start
+The codebase follows these principles:
 
-1. Check logs: `docker logs thunderbolt-backend`
-2. Verify environment variables are set correctly
-3. Ensure port 8000 is not already in use
+- **Type Safety** - No `any` or `unknown` types
+- **Simplicity** - Prefer concise, readable code
+- **Early Returns** - Avoid nested conditionals
+- **Const over Let** - Immutable by default
+- **JSDoc** - Document utility functions
+- **Error Handling** - Optimistic with proper error boundaries
 
-### Connection refused
+## Documentation
 
-1. Verify the container is running: `docker ps`
-2. Check the health status: `docker inspect thunderbolt-backend | grep -A 5 Health`
-3. Ensure you're connecting to the correct port
+- API documentation is available at `/swagger` when running the server
+- All routes are automatically documented with OpenAPI/Swagger
+- TypeScript provides inline documentation and type checking
 
-### Performance issues
+## License
 
-1. Increase resource limits in `docker-compose.yml`
-2. Add more workers by modifying the CMD in Dockerfile
-3. Use a production ASGI server like gunicorn with uvicorn workers
+Mozilla Public License 2.0

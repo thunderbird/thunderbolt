@@ -1,3 +1,0 @@
-"""
-Thunderbolt Pro Tools Package
-"""

@@ -4,7 +4,7 @@
   "description": "Thunderbolt Backend rewritten with TypeScript + Elysia",
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/server.ts",
+    "dev": "bun run --watch src/index.ts",
     "build": "bun build --compile --minify-whitespace --minify-syntax --target bun --outfile server src/cluster.ts",
     "start": "./server",
     "test": "bun test",

@@ -119,7 +119,13 @@ const startServer = async () => {
   try {
     const app = await createApp()
 
-    app.listen(settings.port, () => {
+    const hostname = process.env.HOST ? process.env.HOST : process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost'
+    
+    app.listen({
+      hostname,
+      port: settings.port,
+      reusePort: true,
+    }, () => {
       console.log(`🦊 Elysia is running at http://localhost:${settings.port}`)
       console.log(`📚 Documentation available at http://localhost:${settings.port}/swagger`)
     })

@@ -112,14 +112,7 @@ jobs:
 
       - name: Run tests
         run: |
-          # TEMPORARY: Skip Google utils tests in CI due to module resolution issues
-          # The Google utils tests work locally but fail in CI environment because:
-          # - Functions return 'undefined' despite successful imports (shows as 'function' type)
-          # - Issue occurs when @/lib/* path-mapped imports are mocked with Bun's mock.module()
-          # - Problem persists across different import strategies (relative vs path-mapped)
-          # - All other tests (105+ tests) pass successfully
-          # TODO: Investigate Bun module mocking behavior in CI environment
-          bun test --test-name-pattern="^(?!.*Google Utils).*$"
+          bun test ./src
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps

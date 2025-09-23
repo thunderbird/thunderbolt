@@ -1,6 +1,38 @@
 import type { Context } from 'elysia'
 
 /**
+ * Default denylist for request headers that should not be forwarded in proxy scenarios.
+ * These headers are either hop-by-hop or would cause issues when forwarding.
+ */
+export const defaultRequestDenylist = [
+  'host',
+  'connection',
+  'transfer-encoding',
+  'upgrade',
+  /^proxy-/i,
+  /^x-forwarded-/i,
+  'x-real-ip',
+  'content-length',
+]
+
+/**
+ * Default denylist for response headers that should not be forwarded.
+ * These headers can cause issues when proxying responses back to clients.
+ */
+export const defaultResponseDenylist = [
+  'access-control-allow-origin',
+  'access-control-allow-methods',
+  'access-control-allow-headers',
+  'access-control-allow-credentials',
+  'access-control-expose-headers',
+  'content-encoding',
+  'transfer-encoding',
+  'cross-origin-resource-policy',
+  'cross-origin-embedder-policy',
+  'cross-origin-opener-policy',
+]
+
+/**
  * Build a stable user identifier from request metadata.
  *
  * Uses the User-Agent and client IP to produce a simple, stable identifier
@@ -11,4 +43,77 @@ export const buildUserIdHash = (ctx: Context, fallback = 'unknown'): string => {
   const clientIp = ctx.headers['x-forwarded-for'] || ctx.headers['x-real-ip'] || fallback
 
   return `${userAgent}:${clientIp}`
+}
+
+/**
+ * Generic function to filter headers based on a denylist.
+ * Works with both request headers (plain object) and response headers (Headers object).
+ *
+ * @param headers - Either a plain object (request headers) or Headers object (response headers)
+ * @param denylist - Array of strings (exact match) or RegExp objects to exclude
+ * @returns Filtered headers in the same format as input
+ */
+export const filterHeaders = <T extends Record<string, string | undefined> | Headers>(
+  headers: T,
+  denylist: (string | RegExp)[],
+): T extends Headers ? Headers : Record<string, string> => {
+  const shouldExclude = (key: string): boolean => {
+    return denylist.some((filter) => {
+      if (typeof filter === 'string') {
+        return key.toLowerCase() === filter.toLowerCase()
+      }
+      return filter.test(key)
+    })
+  }
+
+  if (headers instanceof Headers) {
+    const cleanHeaders = new Headers()
+    headers.forEach((value, key) => {
+      if (!shouldExclude(key)) {
+        cleanHeaders.set(key, value)
+      }
+    })
+    return cleanHeaders as T extends Headers ? Headers : Record<string, string>
+  } else {
+    const cleanHeaders: Record<string, string> = {}
+    Object.entries(headers).forEach(([key, value]) => {
+      if (value && !shouldExclude(key)) {
+        cleanHeaders[key] = value
+      }
+    })
+    return cleanHeaders as T extends Headers ? Headers : Record<string, string>
+  }
+}
+
+/**
+ * Safely builds a query string from query parameters, handling null/undefined values gracefully.
+ * Uses try-catch to handle URLSearchParams constructor errors.
+ *
+ * @param query - Query parameters object that may contain null/undefined values
+ * @returns Query string with leading '?' if parameters exist, empty string otherwise
+ */
+export const buildQueryString = (query: Record<string, unknown> | undefined): string => {
+  if (!query) return ''
+
+  try {
+    const queryParams = new URLSearchParams(query as Record<string, string>)
+    return queryParams.toString() ? `?${queryParams.toString()}` : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Extract response headers, removing denylisted ones.
+ * Used for cleaning up response headers when proxying API responses.
+ *
+ * @param headers - Headers object from a fetch response
+ * @param denylist - Array of strings (exact match) or RegExp objects to exclude from headers
+ * @returns New Headers object with denylisted headers removed
+ */
+export const extractResponseHeaders = (
+  headers: Headers,
+  denylist: (string | RegExp)[] = defaultResponseDenylist,
+): Headers => {
+  return filterHeaders(headers, denylist)
 }

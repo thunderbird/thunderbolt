@@ -1,2 +1,0 @@
-- Prefer `uv over pip`
-- Prefer `ruff` over anything

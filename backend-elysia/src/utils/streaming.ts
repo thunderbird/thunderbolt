@@ -1,0 +1,54 @@
+import type { Stream } from 'openai/streaming'
+
+type ChatCompletionChunk = {
+  usage?: any
+  [key: string]: any
+}
+
+/**
+ * Creates a ReadableStream from an OpenAI completion stream with SSE formatting
+ * @param completion - The OpenAI completion stream
+ * @param model - Model name for logging purposes
+ * @returns ReadableStream formatted for Server-Sent Events
+ */
+export const createSSEStreamFromCompletion = (
+  completion: Stream<ChatCompletionChunk>,
+  model: string,
+): ReadableStream<Uint8Array> => {
+  const encoder = new TextEncoder()
+  let lastUsage: any = null
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of completion) {
+          // Track usage data if present
+          if (chunk.usage) {
+            lastUsage = chunk.usage
+          }
+
+          // Convert chunk back to SSE format for client compatibility
+          const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
+          controller.enqueue(encoder.encode(sseChunk))
+        }
+
+        // Send [DONE] message
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+
+        // Log usage if captured (PostHog will also capture this automatically)
+        if (lastUsage) {
+          console.log('Fireworks usage', {
+            model,
+            usage: lastUsage,
+            analytics: 'captured by PostHog',
+          })
+        }
+
+        controller.close()
+      } catch (error) {
+        console.error('OpenAI streaming error:', error)
+        controller.error(error)
+      }
+    },
+  })
+}

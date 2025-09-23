@@ -12,7 +12,7 @@ export const createPostHogRoutes = () => {
   return new Elysia().use(
     cors({
       origin: getCorsOrigins(settings),
-      allowedHeaders: [...settings.corsAllowHeaders],
+      allowedHeaders: settings.corsAllowHeaders,
       exposeHeaders: settings.corsExposeHeaders,
     }),
   ).all(

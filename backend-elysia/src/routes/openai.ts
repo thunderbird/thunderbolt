@@ -1,11 +1,18 @@
 import { getSettings } from '@/config/settings'
 import { Elysia } from 'elysia'
+import OpenAI from 'openai'
 
 /**
  * OpenAI/Fireworks AI proxy routes
  */
 export const createOpenAIRoutes = () => {
   const settings = getSettings()
+
+  // Configure OpenAI client to use Fireworks API
+  const openai = new OpenAI({
+    apiKey: settings.fireworksApiKey,
+    baseURL: 'https://api.fireworks.ai/inference/v1',
+  })
 
   return new Elysia().post('/openai/chat/completions', async (ctx) => {
     const body = await ctx.request.json()
@@ -19,87 +26,64 @@ export const createOpenAIRoutes = () => {
       throw new Error('Fireworks API key not configured')
     }
 
-    const fireworksBody = {
-      ...body,
-      model: `accounts/fireworks/models/${body.model}`,
-    }
+    try {
+      // Create streaming completion
+      const completion = await openai.chat.completions.create({
+        model: `accounts/fireworks/models/${body.model}`,
+        messages: body.messages,
+        temperature: body.temperature,
+        tools: body.tools,
+        tool_choice: body.tool_choice,
+        stream: true,
+      })
 
-    const response = await fetch('https://api.fireworks.ai/inference/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.fireworksApiKey}`,
-      },
-      body: JSON.stringify(fireworksBody),
-    })
+      const encoder = new TextEncoder()
+      let lastUsage: any = null
 
-    if (!response.ok) {
-      ctx.set.status = response.status
-      throw new Error(`Fireworks API error: ${response.statusText}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      ctx.set.status = 502
-      throw new Error('Failed to read Fireworks response stream')
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let lastUsage: any = null
-
-    const stream = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        const { done, value } = await reader.read()
-        if (done) {
-          if (lastUsage) {
-            console.log('Fireworks usage', {
-              model: body.model,
-              usage: lastUsage,
-            })
-          }
-          controller.close()
-          return
-        }
-
-        // Pass-through to client
-        controller.enqueue(value!)
-
-        // Parse SSE lines to capture usage if present
-        buffer += decoder.decode(value, { stream: true })
-        let newlineIndex = buffer.indexOf('\n')
-        while (newlineIndex !== -1) {
-          const line = buffer.slice(0, newlineIndex)
-          buffer = buffer.slice(newlineIndex + 1)
-
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6)
-            if (dataStr && dataStr !== '[DONE]') {
-              try {
-                const json = JSON.parse(dataStr)
-                if (json && json.usage) {
-                  lastUsage = json.usage
-                }
-              } catch (_) {
-                // Ignore JSON parse errors on partial lines
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of completion) {
+              // Track usage data if present
+              if (chunk.usage) {
+                lastUsage = chunk.usage
               }
+
+              // Convert chunk back to SSE format for client compatibility
+              const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
+              controller.enqueue(encoder.encode(sseChunk))
             }
+
+            // Send [DONE] message
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+
+            // Log usage if captured
+            if (lastUsage) {
+              console.log('Fireworks usage', {
+                model: body.model,
+                usage: lastUsage,
+              })
+            }
+
+            controller.close()
+          } catch (error) {
+            console.error('OpenAI streaming error:', error)
+            controller.error(error)
           }
+        },
+      })
 
-          newlineIndex = buffer.indexOf('\n')
-        }
-      },
-      cancel() {
-        reader.releaseLock()
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    })
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      })
+    } catch (error) {
+      console.error('OpenAI completion error:', error)
+      ctx.set.status = 500
+      throw new Error(`OpenAI completion failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   })
 }

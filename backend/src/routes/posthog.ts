@@ -1,4 +1,5 @@
-import { getSettings } from '@/config/settings'
+import { getCorsOrigins, getSettings } from '@/config/settings'
+import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
 
@@ -8,7 +9,13 @@ import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filte
 export const createPostHogRoutes = () => {
   const settings = getSettings()
 
-  return new Elysia().all(
+  return new Elysia().use(
+    cors({
+      origin: getCorsOrigins(settings),
+      allowedHeaders: [...settings.corsAllowHeaders],
+      exposeHeaders: settings.corsExposeHeaders,
+    }),
+  ).all(
     '/posthog/*',
     async (ctx) => {
       const path = ctx.params['*'] || ''
@@ -25,7 +32,11 @@ export const createPostHogRoutes = () => {
         body: ctx.request.body as BodyInit,
       })
 
+
       const responseHeaders = extractResponseHeaders(response.headers)
+
+      responseHeaders.set('cross-origin-resource-policy', 'cross-origin')
+
 
       return new Response(response.body, {
         status: response.status,

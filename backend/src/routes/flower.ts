@@ -9,14 +9,16 @@ import { defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '.
 export const createFlowerRoutes = () => {
   const settings = getSettings()
   
-  return new Elysia().use(
+  return new Elysia({
+    prefix: '/flower',
+  }).use(
     cors({
       origin: getCorsOrigins(settings),
       allowedHeaders: [...settings.corsAllowHeaders.split(','), 'fi-sdk-type', 'fi-sdk-version'],
-      exposeHeaders: [settings.corsExposeHeaders],
+      exposeHeaders: settings.corsExposeHeaders,
     }),
   ).all(
-    '/flower/*',
+    '/*',
     async (ctx) => {
       const path = ctx.params['*'] || ''
       const url = `https://api.flower.ai/${path}`

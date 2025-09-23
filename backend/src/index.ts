@@ -17,7 +17,9 @@ import { Elysia } from 'elysia'
 const createApp = async () => {
   const settings = getSettings()
 
-  const app = new Elysia()
+  const app = new Elysia({
+    prefix: '/v1',
+  })
     .use(
       swagger({
         documentation: {

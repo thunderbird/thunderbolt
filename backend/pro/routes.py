@@ -94,9 +94,11 @@ def create_pro_tools_app() -> FastAPI:
                 request.location, ctx
             )
 
-            return WeatherResponse(weather_data=weather_data, success=True)
+            return WeatherResponse(weather_data=weather_data, data=None, success=True)
         except Exception as e:
-            return WeatherResponse(weather_data="", success=False, error=str(e))
+            return WeatherResponse(
+                weather_data="", data=None, success=False, error=str(e)
+            )
 
     @app.post("/weather/forecast", response_model=WeatherResponse)
     async def weather_forecast_endpoint(request: WeatherRequest) -> WeatherResponse:
@@ -107,9 +109,11 @@ def create_pro_tools_app() -> FastAPI:
                 request.location, request.days, ctx
             )
 
-            return WeatherResponse(weather_data=weather_data, success=True)
+            return WeatherResponse(weather_data=None, data=weather_data, success=True)
         except Exception as e:
-            return WeatherResponse(weather_data="", success=False, error=str(e))
+            return WeatherResponse(
+                weather_data=None, data=None, success=False, error=str(e)
+            )
 
     @app.post("/locations/search", response_model=LocationSearchResponse)
     async def search_locations_endpoint(

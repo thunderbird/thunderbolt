@@ -109,6 +109,45 @@ class TestProToolsEndpoints:
         data = response.json()
         assert data["success"] is True
         assert "weather_data" in data
+        assert data["data"] is None
+
+    @patch("pro.openmeteo.OpenMeteoWeather.get_weather_forecast")
+    def test_weather_forecast_endpoint_success(
+        self, mock_forecast: AsyncMock, client: TestClient
+    ) -> None:
+        """Test successful weather forecast endpoint response."""
+        from pro.models import WeatherDay, WeatherForecastData
+
+        mock_forecast.return_value = WeatherForecastData(
+            location="London, England, United Kingdom",
+            days=[
+                WeatherDay(
+                    date="2024-01-15",
+                    weather_code=1,
+                    temperature_max=15.0,
+                    temperature_min=8.0,
+                    apparent_temperature_max=14.0,
+                    apparent_temperature_min=7.0,
+                    precipitation_sum=0.0,
+                    precipitation_probability_max=10,
+                    wind_speed_10m_max=12.0,
+                )
+            ],
+        )
+
+        response = client.post(
+            "/pro/weather/forecast", json={"location": "London", "days": 1}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "data" in data
+        assert data["weather_data"] is None
+        assert data["data"]["location"] == "London, England, United Kingdom"
+        assert len(data["data"]["days"]) == 1
+        assert data["data"]["days"][0]["date"] == "2024-01-15"
+        assert data["data"]["days"][0]["weather_code"] == 1
 
     @patch("pro.openmeteo.OpenMeteoWeather.search_locations")
     def test_locations_search_endpoint_success(

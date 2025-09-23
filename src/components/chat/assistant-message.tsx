@@ -3,8 +3,8 @@ import type { UIMessage, ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ToolPart } from './tool-part'
 import { memo } from 'react'
+import { DisplayToolHandler } from './display-tool-handler'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -37,14 +37,14 @@ export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
   }
 
   filteredParts.forEach((part) => {
-    const [type] = splitPartType(part.type)
+    const [partType] = splitPartType(part.type)
 
-    switch (type) {
+    switch (partType) {
       case 'reasoning':
         partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
       case 'tool':
-        partElements.push(<ToolPart part={part as ToolUIPart} />)
+        partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
         break
       case 'text':
         partElements.push(<TextPart part={part as TextUIPart} />)

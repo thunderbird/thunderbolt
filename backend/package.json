@@ -14,19 +14,19 @@
     "format": "prettier --write src"
   },
   "dependencies": {
-    "@elysiajs/cors": "latest",
-    "@elysiajs/static": "latest",
-    "@elysiajs/swagger": "latest",
+    "@elysiajs/cors": "^1.4.0",
+    "@elysiajs/static": "^1.4.0",
+    "@elysiajs/swagger": "^1.3.1",
     "@posthog/ai": "^6.4.1",
-    "elysia": "latest",
+    "@types/bun": "^1.2.22",
+    "bun-types": "^1.2.22",
+    "elysia": "^1.4.7",
     "exa-js": "^1.0.11",
     "openai": "^5.22.1",
     "posthog-node": "^5.8.8",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "bun-types": "latest",
     "typescript": "^5.3.3",
     "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",

@@ -1,3 +1,5 @@
+import { getCorsOrigins, getSettings } from '@/config/settings'
+import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
 
@@ -5,7 +7,15 @@ import { defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '.
  * Flower AI proxy routes
  */
 export const createFlowerRoutes = () => {
-  return new Elysia().all(
+  const settings = getSettings()
+  
+  return new Elysia().use(
+    cors({
+      origin: getCorsOrigins(settings),
+      allowedHeaders: [...settings.corsAllowHeaders.split(','), 'fi-sdk-type', 'fi-sdk-version'],
+      exposeHeaders: [settings.corsExposeHeaders],
+    }),
+  ).all(
     '/flower/*',
     async (ctx) => {
       const path = ctx.params['*'] || ''

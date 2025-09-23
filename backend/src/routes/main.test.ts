@@ -15,7 +15,7 @@ describe('Main Routes', () => {
     spyOn(console, 'warn').mockImplementation(() => {})
 
     // Mock fetch for geocoding API
-    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = input instanceof Request ? input.url : input.toString()
       if (url.startsWith('https://geocoding-api.open-meteo.com')) {
         return new Response(

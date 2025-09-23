@@ -4,6 +4,15 @@ import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { type OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia } from 'elysia'
 
+export const supportedModels = [
+  'qwen3-235b-a22b-instruct-2507',
+  'qwen3-235b-a22b-thinking-2507',
+  'kimi-k2-instruct',
+  'deepseek-r1-0528',
+  'qwen3-235b-a22b',
+  'llama-v3p1-405b-instruct',
+]
+
 /**
  * OpenAI/Fireworks AI proxy routes
  */
@@ -15,6 +24,10 @@ export const createOpenAIRoutes = () => {
 
     if (!body.stream) {
       throw new Error('Non-streaming requests are not supported')
+    }
+
+    if (!supportedModels.includes(body.model)) {
+      throw new Error('Model not found')
     }
 
     try {

@@ -67,7 +67,6 @@ export default function ChatSidebar() {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
-  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -286,16 +285,14 @@ export default function ChatSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {isAutomationsEnabled && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink to="/automations">
-                      <Zap className="size-4" />
-                      <span>Automations</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <NavLink to="/automations">
+                    <Zap className="size-4" />
+                    <span>Automations</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 {isMobile ? (
                   <SidebarMenuButton onClick={showSettingsMenu} className="cursor-pointer">

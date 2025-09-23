@@ -1,4 +1,6 @@
 import { getCloudUrl } from '@/lib/config'
+import { WeatherForecastDataSchema } from '@/lib/weather-forecast'
+import { type WeatherForecastData } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
@@ -117,7 +119,7 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 /**
  * Get weather forecast for specified coordinates
  */
-export const getWeatherForecast = async (params: WeatherParams): Promise<string> => {
+export const getWeatherForecast = async (params: WeatherParams): Promise<WeatherForecastData> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
@@ -127,13 +129,14 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<string>
           days: params.days || 3,
         },
       })
-      .json<{ weather_data: string; success: boolean; error?: string }>()
+      .json<{ weather_data: string | null; data: unknown; success: boolean; error?: string }>()
 
-    if (!response.success) {
+    if (!response.success || !response.data) {
       throw new Error(response.error || 'Weather forecast request failed')
     }
 
-    return response.weather_data
+    const validatedData = WeatherForecastDataSchema.parse(response.data)
+    return validatedData
   } catch (error) {
     console.error('Weather forecast error:', error)
     throw new Error(`Weather forecast request failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -185,16 +188,45 @@ export const configs: ToolConfig[] = [
   },
   {
     name: 'get_current_weather',
-    description: 'Get the current weather for a given location.',
-    verb: 'getting weather for {location}',
+    description: `Return the current weather (today only) as text.
+- Use this tool when the user asks about the weather "now" or "today".
+- Provide a concise one-day summary (temperature, condition, highs/lows).
+- Do not render a component.`,
+    verb: 'Write current weather for {location}',
     parameters: weatherSchema,
     execute: getCurrentWeather,
   },
   {
     name: 'get_weather_forecast',
-    description: 'Get the weather forecast for a given location.',
-    verb: 'getting forecast for {location}',
+    description: `Return a 7-day forecast as plain text only (no component).
+
+This tool is a **fallback** when, for some reason, rendering a component is not possible
+(e.g. the user explicitly asks for a text forecast).
+
+- Output a clear day-by-day breakdown (one line per day with condition + high/low).
+- Optionally add a brief overall summary and friendly suggestions after the breakdown.
+- If the user did not explicitly request a text-only format, prefer 'display-weather_forecast' instead.`,
+    verb: 'Write 7-day text forecast for {location}',
     parameters: weatherSchema,
-    execute: getWeatherForecast,
+    execute: async (params: WeatherParams) => {
+      const forecastData = await getWeatherForecast(params)
+      return forecastData
+    },
+  },
+  {
+    name: 'display-weather_forecast',
+    description: `Render the custom 7-day weather forecast component in the UI.
+
+Use this tool whenever the user asks for a forecast that spans more than one day.
+- This is the **preferred tool** for multi-day forecasts (2–7 days).
+- Provide the structured parameters (location, days, forecast details).
+- Do NOT include a day-by-day breakdown in text when this tool is used.
+- You may still write a short overview (2–4 sentences) and friendly suggestions (bulleted).`,
+    verb: 'Display 7-day forecast for {location}',
+    parameters: weatherSchema,
+    execute: async (params: WeatherParams) => {
+      const forecastData = await getWeatherForecast(params)
+      return forecastData
+    },
   },
 ]

@@ -74,7 +74,6 @@ function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
 
   const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
-  const [isAutomationsEnabled] = useBooleanSetting('experimental_feature_automations')
 
   return (
     <Routes>
@@ -84,7 +83,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
           <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
           {isTasksEnabled && <Route path="tasks" element={<TasksPage />} />}
-          {isAutomationsEnabled && <Route path="automations" element={<AutomationsPage />} />}
+          <Route path="automations" element={<AutomationsPage />} />
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
 

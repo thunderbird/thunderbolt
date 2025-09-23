@@ -102,7 +102,6 @@ const privacyFormSchema = z.object({
 })
 
 const previewFeaturesFormSchema = z.object({
-  experimentalFeatureAutomations: z.boolean(),
   experimentalFeatureTasks: z.boolean(),
 })
 
@@ -162,7 +161,6 @@ export default function PreferencesSettingsPage() {
   const previewFeaturesForm = useForm<z.infer<typeof previewFeaturesFormSchema>>({
     resolver: zodResolver(previewFeaturesFormSchema),
     defaultValues: {
-      experimentalFeatureAutomations: false,
       experimentalFeatureTasks: false,
     },
   })
@@ -188,7 +186,6 @@ export default function PreferencesSettingsPage() {
       })
 
       previewFeaturesForm.reset({
-        experimentalFeatureAutomations: settings.experimentalFeatureAutomations,
         experimentalFeatureTasks: settings.experimentalFeatureTasks,
       })
 
@@ -205,7 +202,6 @@ export default function PreferencesSettingsPage() {
   // Sync preview features when telemetry is disabled
   useEffect(() => {
     if (!settings?.dataCollection) {
-      previewFeaturesForm.setValue('experimentalFeatureAutomations', false)
       previewFeaturesForm.setValue('experimentalFeatureTasks', false)
     }
   }, [settings?.dataCollection, previewFeaturesForm])
@@ -318,7 +314,6 @@ export default function PreferencesSettingsPage() {
   const savePreviewFeaturesMutation = useMutation({
     mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
       // Save each feature setting
-      await updateBooleanSetting('experimental_feature_automations', values.experimentalFeatureAutomations)
       await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
     },
     onSuccess: () => {
@@ -329,11 +324,9 @@ export default function PreferencesSettingsPage() {
   // Disable all preview features (when telemetry is turned off)
   const disableAllPreviewFeatures = async () => {
     await savePreviewFeaturesMutation.mutateAsync({
-      experimentalFeatureAutomations: false,
       experimentalFeatureTasks: false,
     })
 
-    trackEvent('settings_experimental_feature_automations_disabled')
     trackEvent('settings_experimental_feature_tasks_disabled')
   }
 
@@ -608,45 +601,23 @@ export default function PreferencesSettingsPage() {
 
         <Form {...previewFeaturesForm}>
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            {postHog.isFeatureEnabled('automations') && (
-              <FormField
-                control={previewFeaturesForm.control}
-                name="experimentalFeatureAutomations"
-                render={({ field }) => (
-                  <div className="flex-row flex items-center gap-4">
-                    <div className="flex-1">
-                      <label className="text-sm font-medium">Automations</label>
-                    </div>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={async (value) =>
-                        await handleExperimentalFeaturesToggle('experimentalFeatureAutomations', value)
-                      }
-                    />
+            <FormField
+              control={previewFeaturesForm.control}
+              name="experimentalFeatureTasks"
+              render={({ field }) => (
+                <div className="flex-row flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Tasks</label>
                   </div>
-                )}
-              />
-            )}
-
-            {postHog.isFeatureEnabled('tasks') && (
-              <FormField
-                control={previewFeaturesForm.control}
-                name="experimentalFeatureTasks"
-                render={({ field }) => (
-                  <div className="flex-row flex items-center gap-4">
-                    <div className="flex-1">
-                      <label className="text-sm font-medium">Tasks</label>
-                    </div>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={async (value) =>
-                        await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                      }
-                    />
-                  </div>
-                )}
-              />
-            )}
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={async (value) =>
+                      await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
+                    }
+                  />
+                </div>
+              )}
+            />
           </form>
         </Form>
       </SectionCard>

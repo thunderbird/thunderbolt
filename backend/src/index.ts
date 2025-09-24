@@ -7,7 +7,6 @@ import { createMainRoutes } from '@/routes/main'
 import { createOpenAIRoutes } from '@/routes/openai'
 import { createPostHogRoutes } from '@/routes/posthog'
 import { cors } from '@elysiajs/cors'
-import { swagger } from '@elysiajs/swagger'
 import { Elysia } from 'elysia'
 
 /**
@@ -19,7 +18,10 @@ const createApp = async () => {
   const app = new Elysia({
     prefix: '/v1',
   })
-    .use(
+
+  if (process.env.NODE_ENV !== 'production') {
+    const { swagger } = await import('@elysiajs/swagger')
+    app.use(
       swagger({
         documentation: {
           info: {
@@ -30,7 +32,9 @@ const createApp = async () => {
         },
       }),
     )
-    .use(
+  }
+
+  return app.use(
       cors({
         origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
         credentials: settings.corsAllowCredentials,
@@ -98,8 +102,6 @@ const createApp = async () => {
     .use(createOpenAIRoutes())
     .use(createPostHogRoutes())
     .use(createFlowerRoutes())
-
-  return app
 }
 
 /**
@@ -125,7 +127,9 @@ const startServer = async () => {
       reusePort: true,
     }, () => {
       console.log(`🦊 Elysia is running at http://localhost:${settings.port}`)
-      console.log(`📚 Documentation available at http://localhost:${settings.port}/swagger`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`📚 Documentation available at http://localhost:${settings.port}/swagger`)
+      }
     })
 
     // Graceful shutdown

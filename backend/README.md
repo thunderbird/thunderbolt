@@ -104,8 +104,7 @@ All configuration is handled through environment variables. See `env.example` fo
 
 ### Health Checks
 
-- `GET /healthcheck/flower/{model}?token=<token>` - Test Flower AI model
-- `GET /healthcheck/status?token=<token>` - Get health check status
+- `GET /flower/healthcheck/{model}?token=<token>` - Test Flower AI model
 
 ### Proxy Endpoints
 

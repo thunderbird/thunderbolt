@@ -2,23 +2,15 @@ import { getFlowerApiKey } from '@/auth/flower'
 import { getCorsOrigins, getSettings } from '@/config/settings'
 import cors from '@elysiajs/cors'
 import { Elysia, t } from 'elysia'
-import { z } from 'zod'
 import { buildUserIdHash, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
 
 /**
- * Health check response schema
+ * Standard API response format for health checks
  */
-const healthCheckResponseSchema = z.object({
-  ok: z.boolean(),
-  model: z.string(),
-  service: z.string(),
-  latency_ms: z.number(),
-  timestamp: z.string(),
-  response: z.string().nullable(),
-  error: z.string().nullable(),
-})
-
-type HealthCheckResponse = z.infer<typeof healthCheckResponseSchema>
+type HealthCheckResponse = {
+  success: boolean
+  error?: string
+}
 
 /**
  * Health check configuration
@@ -32,12 +24,6 @@ interface HealthCheckConfig {
 const FLOWER_CHAT_COMPLETIONS_URL = 'https://api.flower.ai/v1/chat/completions'
 const HEALTHCHECK_USER_AGENT = 'Thunderbolt-HealthCheck/1.0'
 
-/**
- * Get current UTC time as RFC3339 with a trailing Z
- */
-const utcNow = (): string => {
-  return new Date().toISOString()
-}
 
 /**
  * Health check configurations for different models
@@ -63,40 +49,16 @@ const DEFAULT_HEALTH_CHECK_CONFIG: HealthCheckConfig = {
 /**
  * Create success response
  */
-const createSuccessResponse = (
-  model: string,
-  service: string,
-  timestamp: string,
-  latencyMs: number,
-  response: string,
-): HealthCheckResponse => ({
-  ok: true,
-  model,
-  service,
-  timestamp,
-  latency_ms: latencyMs,
-  response,
-  error: null,
+const createSuccessResponse = (): HealthCheckResponse => ({
+  success: true,
 })
 
 /**
  * Create error response
  */
-const createErrorResponse = (
-  model: string,
-  service: string,
-  timestamp: string,
-  latencyMs: number,
-  error: string,
-  response?: string,
-): HealthCheckResponse => ({
-  ok: false,
-  model,
-  service,
-  timestamp,
-  latency_ms: latencyMs,
-  error,
-  response: response || null,
+const createErrorResponse = (model: string, error: string): HealthCheckResponse => ({
+  success: false,
+  error: `Health check failed for model '${model}': ${error}`,
 })
 
 /**
@@ -122,20 +84,35 @@ const collectStreamedContent = async (response: Response): Promise<string> => {
       for (const line of lines) {
         if (line.trim() === '') continue
 
+        let dataLine = line
+        // Handle both "data: " and "data:" prefixes
         if (line.startsWith('data: ')) {
-          const data = line.slice(6)
+          dataLine = line.slice(6)
+        } else if (line.startsWith('data:')) {
+          dataLine = line.slice(5)
+        }
 
-          if (data === '[DONE]') {
-            return collectedContent
-          }
+        if (dataLine === '[DONE]') {
+          return collectedContent
+        }
 
+        if (dataLine.trim() && dataLine !== line) {
           try {
-            const parsed = JSON.parse(data)
-            const content = parsed?.choices?.[0]?.delta?.content
-            if (typeof content === 'string') {
+            const parsed = JSON.parse(dataLine)
+            
+            // Try different content paths for different API formats
+            let content = parsed?.choices?.[0]?.delta?.content
+            if (!content) {
+              content = parsed?.choices?.[0]?.message?.content
+            }
+            if (!content) {
+              content = parsed?.choices?.[0]?.text
+            }
+            
+            if (typeof content === 'string' && content.length > 0) {
               collectedContent += content
             }
-          } catch {
+          } catch (parseError) {
             // Ignore JSON parsing errors for individual chunks
           }
         }
@@ -199,7 +176,7 @@ export const createFlowerRoutes = () => {
     }
   })
   .get(
-    '/healthcheck/:model',
+    '/healthcheck/:publisher/:model',
     async ({ params, query, set, headers }): Promise<HealthCheckResponse> => {
       // Validate monitoring token
       const tokenValidation = validateMonitoringToken({ query, set })
@@ -207,9 +184,15 @@ export const createFlowerRoutes = () => {
         return tokenValidation as HealthCheckResponse
       }
 
-      const model = params.model
-      const startTime = Date.now()
-      const timestamp = utcNow()
+      const publisher = params.publisher || ''
+      const modelName = params.model || ''
+      
+      if (!publisher || !modelName) {
+        set.status = 400
+        return createErrorResponse('', 'Publisher and model parameters are required')
+      }
+      
+      const model = `${publisher}/${modelName}`
       const settings = getSettings()
 
       // Get model configuration (use default if not specifically configured)
@@ -217,8 +200,7 @@ export const createFlowerRoutes = () => {
 
       // Early return if Flower AI not configured
       if (!settings.flowerMgmtKey || !settings.flowerProjId) {
-        const latencyMs = Math.round(Date.now() - startTime)
-        return createErrorResponse(model, 'flower', timestamp, latencyMs, 'Flower AI not configured')
+        return createErrorResponse(model, 'Flower AI not configured')
       }
 
       try {
@@ -228,7 +210,7 @@ export const createFlowerRoutes = () => {
 
         const apiKey = await getFlowerApiKey(userIdHash, undefined, settings)
 
-        // Build the request payload
+        // Build the request payload (non-streaming for simpler health checks)
         const payload = {
           model,
           messages: [
@@ -237,12 +219,12 @@ export const createFlowerRoutes = () => {
               content: modelConfig.prompt,
             },
           ],
-          stream: true,
+          stream: false,
           max_tokens: 50,
           temperature: 0.0, // Deterministic responses for reliable testing
         }
 
-        // Make streaming request to Flower AI
+        // Make request to Flower AI
         const requestHeaders = {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -263,8 +245,6 @@ export const createFlowerRoutes = () => {
           clearTimeout(timeoutId)
 
           if (!response.ok) {
-            const latencyMs = Math.round(Date.now() - startTime)
-
             // Handle model not allowed errors specifically
             let errorMessage = `HTTP ${response.status}: ${response.statusText}`
             try {
@@ -281,53 +261,46 @@ export const createFlowerRoutes = () => {
               // Ignore JSON parsing errors
             }
 
-            return createErrorResponse(model, 'flower', timestamp, latencyMs, errorMessage)
+            return createErrorResponse(model, errorMessage)
           }
 
-          const collectedContent = await collectStreamedContent(response)
-
-          // Calculate final latency
-          const latencyMs = Math.round(Date.now() - startTime)
+          const jsonResponse = await response.json()
+          
+          const collectedContent = jsonResponse?.choices?.[0]?.message?.content || 
+                                 jsonResponse?.choices?.[0]?.text || 
+                                 ''
 
           // Validate response matches exactly what we expect
           const expected = modelConfig.expected_response
           const actual = collectedContent.trim()
 
           if (actual === expected) {
-            return createSuccessResponse(model, 'flower', timestamp, latencyMs, actual)
+            return createSuccessResponse()
           }
 
           return createErrorResponse(
             model,
-            'flower',
-            timestamp,
-            latencyMs,
-            `Response mismatch: expected '${expected}' but got '${actual}'`,
-            actual,
+            `Response mismatch: expected '${expected}' but got '${actual}'`
           )
         } catch (error) {
           clearTimeout(timeoutId)
 
           if (error instanceof Error && error.name === 'AbortError') {
-            const latencyMs = Math.round(Date.now() - startTime)
             return createErrorResponse(
               model,
-              'flower',
-              timestamp,
-              latencyMs,
-              `Request timeout after ${modelConfig.timeout / 1000}s`,
+              `Request timeout after ${modelConfig.timeout / 1000}s`
             )
           }
           throw error
         }
       } catch (error) {
-        const latencyMs = Math.round(Date.now() - startTime)
         console.error(`Health check failed for ${model}:`, error)
-        return createErrorResponse(model, 'flower', timestamp, latencyMs, String(error))
+        return createErrorResponse(model, String(error))
       }
     },
     {
       params: t.Object({
+        publisher: t.String(),
         model: t.String(),
       }),
       query: t.Object({

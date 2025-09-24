@@ -23,8 +23,8 @@ const createApp = async () => {
       swagger({
         documentation: {
           info: {
-            title: 'Thunderbolt Backend (Elysia)',
-            description: 'A TypeScript backend with proxy capabilities built with Elysia',
+            title: 'Thunderbolt Backend',
+            description: 'Backend for Thunderbolt',
             version: '0.1.0',
           },
         },

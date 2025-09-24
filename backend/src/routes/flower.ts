@@ -1,9 +1,33 @@
 import { getFlowerApiKey } from '@/auth/flower'
 import { getCorsOrigins, getSettings } from '@/config/settings'
-import type { HealthCheckConfig, HealthCheckResponse } from '@/health/types'
 import cors from '@elysiajs/cors'
 import { Elysia, t } from 'elysia'
+import { z } from 'zod'
 import { buildUserIdHash, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
+
+/**
+ * Health check response schema
+ */
+const healthCheckResponseSchema = z.object({
+  ok: z.boolean(),
+  model: z.string(),
+  service: z.string(),
+  latency_ms: z.number(),
+  timestamp: z.string(),
+  response: z.string().nullable(),
+  error: z.string().nullable(),
+})
+
+type HealthCheckResponse = z.infer<typeof healthCheckResponseSchema>
+
+/**
+ * Health check configuration
+ */
+interface HealthCheckConfig {
+  prompt: string
+  expected_response: string
+  timeout: number
+}
 
 const FLOWER_CHAT_COMPLETIONS_URL = 'https://api.flower.ai/v1/chat/completions'
 const HEALTHCHECK_USER_AGENT = 'Thunderbolt-HealthCheck/1.0'
@@ -156,6 +180,24 @@ export const createFlowerRoutes = () => {
       exposeHeaders: settings.corsExposeHeaders,
     }),
   )
+  .post('/api-key', async ({ headers }): Promise<{ api_key: string }> => {
+    const settings = getSettings()
+
+    if (!settings.flowerMgmtKey || !settings.flowerProjId) {
+      throw new Error('Flower AI not configured')
+    }
+
+    // Derive a stable, non-PII user identifier for per-user API keys
+    const ctx = { headers } as any // Simplified context for buildUserIdHash
+    const userIdHash = buildUserIdHash(ctx, 'unknown')
+
+    try {
+      const apiKey = await getFlowerApiKey(userIdHash, undefined, settings)
+      return { api_key: apiKey }
+    } catch (error) {
+      throw new Error(`Failed to get Flower API key: ${String(error)}`)
+    }
+  })
   .get(
     '/healthcheck/:model',
     async ({ params, query, set, headers }): Promise<HealthCheckResponse> => {

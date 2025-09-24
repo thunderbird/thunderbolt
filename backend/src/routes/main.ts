@@ -1,6 +1,4 @@
-import { getFlowerApiKey } from '@/auth/flower'
 import { getSettings } from '@/config/settings'
-import { buildUserIdHash } from '@/utils/request'
 import { Elysia, t } from 'elysia'
 
 export interface LocationResult {
@@ -86,30 +84,4 @@ export const createMainRoutes = () => {
         }),
       },
     )
-
-    .post('/flower/api-key', async ({ headers }): Promise<{ api_key: string }> => {
-      const settings = getSettings()
-
-      if (!settings.flowerMgmtKey || !settings.flowerProjId) {
-        throw new Error('Flower AI not configured')
-      }
-
-      // Derive a stable, non-PII user identifier for per-user API keys
-      const ctx = { headers } as any // Simplified context for buildUserIdHash
-      const userIdHash = buildUserIdHash(ctx, 'unknown')
-
-      try {
-        const apiKey = await getFlowerApiKey(userIdHash, undefined, settings)
-        return { api_key: apiKey }
-      } catch (error) {
-        throw new Error(`Failed to get Flower API key: ${String(error)}`)
-      }
-    })
-
-    .get('/analytics/config', async () => {
-      const settings = getSettings()
-      return {
-        posthog_api_key: settings.posthogApiKey,
-      }
-    })
 }

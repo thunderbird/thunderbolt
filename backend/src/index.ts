@@ -1,5 +1,6 @@
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
+import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createFlowerRoutes } from '@/routes/flower'
@@ -34,7 +35,9 @@ const createApp = async () => {
     )
   }
 
-  return app.use(
+  return app
+    .use(createLoggerMiddleware(settings))
+    .use(
       cors({
         origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
         credentials: settings.corsAllowCredentials,
@@ -43,16 +46,21 @@ const createApp = async () => {
         exposeHeaders: settings.corsExposeHeaders,
       }),
     )
-    .onError(({ code, error, set }) => {
+    .onError((ctx) => {
+      const { code, error, set, request } = ctx
+      const log = (ctx as any).log
+      
       switch (code) {
         case 'VALIDATION':
           set.status = 400
+          log?.warn({ error: error.message }, 'Validation failed')
           return {
             error: 'Validation failed',
             message: error.message,
           }
         case 'NOT_FOUND':
           set.status = 404
+          log?.warn({ url: request.url }, 'Resource not found')
           return {
             error: 'Not found',
             message: 'The requested resource was not found',
@@ -60,12 +68,11 @@ const createApp = async () => {
         default:
           // Handle custom HTTP errors
           if (error instanceof Error) {
-            console.error('Request error:', error)
-
             const status = (error as any).status || set.status || 500
             set.status = status
 
             if (status === 503) {
+              log?.error({ error: error.message, stack: error.stack }, 'Service unavailable')
               return {
                 error: 'Service unavailable',
                 message: error.message,
@@ -73,6 +80,7 @@ const createApp = async () => {
             }
 
             if (status === 401) {
+              log?.warn({ error: error.message }, 'Unauthorized request')
               return {
                 error: 'Unauthorized',
                 message: error.message,
@@ -80,11 +88,16 @@ const createApp = async () => {
             }
 
             if (status === 400) {
+              log?.warn({ error: error.message }, 'Bad request')
               return {
                 error: 'Bad request',
                 message: error.message,
               }
             }
+
+            log?.error({ error: error.message, stack: error.stack }, 'Unhandled request error')
+          } else {
+            log?.error({ error }, 'Non-Error exception thrown')
           }
 
           set.status = 500
@@ -109,12 +122,16 @@ const createApp = async () => {
  */
 const startServer = async () => {
   const settings = getSettings()
+  const log = createStandaloneLogger(settings)
 
   // Set up logging
-  console.log('Starting Thunderbolt Backend (Elysia)...')
-  console.log(`Log level: ${settings.logLevel}`)
-  console.log(`Port: ${settings.port}`)
-  console.log(`CORS origins: ${getCorsOriginsList(settings).join(', ')}`)
+  log.info('Starting Thunderbolt Backend (Elysia)...')
+  log.info({
+    logLevel: settings.logLevel,
+    port: settings.port,
+    corsOrigins: getCorsOriginsList(settings),
+    nodeEnv: process.env.NODE_ENV,
+  }, 'Server configuration')
 
   try {
     const app = await createApp()
@@ -126,24 +143,31 @@ const startServer = async () => {
       port: settings.port,
       reusePort: true,
     }, () => {
-      console.log(`🦊 Elysia is running at http://localhost:${settings.port}`)
+      log.info({
+        hostname,
+        port: settings.port,
+        url: `http://localhost:${settings.port}`,
+      }, '🦊 Elysia server started')
+
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`📚 Documentation available at http://localhost:${settings.port}/swagger`)
+        log.info({
+          swaggerUrl: `http://localhost:${settings.port}/swagger`,
+        }, '📚 Swagger documentation available')
       }
     })
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
-      console.log('Shutting down gracefully...')
+      log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
-      console.log('Shutting down gracefully...')
+      log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })
   } catch (error) {
-    console.error('Failed to start server:', error)
+    log.error({ error }, 'Failed to start server')
     process.exit(1)
   }
 }

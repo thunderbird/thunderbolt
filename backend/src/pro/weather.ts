@@ -22,8 +22,6 @@ export class OpenMeteoWeather {
    */
   async searchLocations(query: string, ctx: SimpleContext): Promise<Location[]> {
     try {
-      await ctx.info(`Searching locations for: ${query}`)
-
       const url = new URL(this.geocodingUrl)
       url.searchParams.set('name', query)
       url.searchParams.set('count', '10')
@@ -39,10 +37,8 @@ export class OpenMeteoWeather {
       const data = (await response.json()) as { results?: Location[] }
       const locations = data.results || []
 
-      await ctx.info(`Found ${locations.length} locations`)
       return locations
     } catch (error) {
-      await ctx.error(`Location search error: ${String(error)}`)
       throw error
     }
   }
@@ -52,8 +48,6 @@ export class OpenMeteoWeather {
    */
   async getCurrentWeather(location: string, ctx: SimpleContext): Promise<string> {
     try {
-      await ctx.info(`Getting current weather for: ${location}`)
-
       // First, search for the location
       const locations = await this.searchLocations(location, ctx)
       if (locations.length === 0) {
@@ -109,7 +103,6 @@ export class OpenMeteoWeather {
 
       return result.join('\n')
     } catch (error) {
-      await ctx.error(`Weather fetch error: ${String(error)}`)
       throw error
     }
   }
@@ -119,13 +112,10 @@ export class OpenMeteoWeather {
    */
   async getWeatherForecast(location: string, days: number, ctx: SimpleContext): Promise<WeatherForecastData> {
     try {
-      await ctx.info(`Getting ${days}-day forecast for: ${location}`)
-
       // First, search for the location
       const locations = await this.searchLocations(location, ctx)
       if (locations.length === 0) {
         const errorMsg = `Could not find coordinates for location '${location}'`
-        await ctx.error(errorMsg)
         throw new Error(errorMsg)
       }
 
@@ -199,7 +189,6 @@ export class OpenMeteoWeather {
         days: weatherDays,
       }
     } catch (error) {
-      await ctx.error(String(error))
       throw new Error(`Could not fetch forecast data: ${String(error)}`)
     }
   }

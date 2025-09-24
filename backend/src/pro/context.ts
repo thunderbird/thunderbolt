@@ -1,18 +1,18 @@
 /**
- * Simple context for logging and operations
+ * Simple context for operations (logging removed to keep business logic clean)
  */
 export class SimpleContext {
   /**
-   * Log an info message
+   * Info method - no longer logs to keep business logic clean
    */
   async info(message: string): Promise<void> {
-    console.info(message)
+    // Business logic logging removed - HTTP logging handled by middleware
   }
 
   /**
-   * Log an error message
+   * Error method - no longer logs to keep business logic clean  
    */
   async error(message: string): Promise<void> {
-    console.error(message)
+    // Business logic logging removed - HTTP logging handled by middleware
   }
 }

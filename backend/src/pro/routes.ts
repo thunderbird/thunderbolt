@@ -2,14 +2,15 @@ import { Elysia, t } from 'elysia'
 import { SimpleContext } from './context'
 import { createExaClient, fetchContentExa, searchExa } from './exa'
 import type {
-    FetchContentRequest,
-    FetchContentResponse,
-    LocationSearchRequest,
-    LocationSearchResponse,
-    SearchRequest,
-    SearchResponse,
-    WeatherRequest,
-    WeatherResponse,
+  FetchContentRequest,
+  FetchContentResponse,
+  LocationSearchRequest,
+  LocationSearchResponse,
+  SearchRequest,
+  SearchResponse,
+  WeatherCurrentResponse,
+  WeatherForecastResponse,
+  WeatherRequest,
 } from './types'
 import { OpenMeteoWeather } from './weather'
 
@@ -29,7 +30,7 @@ export const createProToolsRoutes = () => {
 
         if (!exaClient) {
           return {
-            results: '',
+            data: null,
             success: false,
             error: 'Search service is not configured. Please set the EXA_API_KEY environment variable.',
           }
@@ -42,7 +43,7 @@ export const createProToolsRoutes = () => {
           // Format results for LLM - Exa SDK already provides LLM-optimized format
           if (!results || results.length === 0) {
             return {
-              results: 'No results found.',
+              data: 'No results found.',
               success: true,
             }
           }
@@ -57,12 +58,12 @@ export const createProToolsRoutes = () => {
           }
 
           return {
-            results: formattedResults.join('\n'),
+            data: formattedResults.join('\n'),
             success: true,
           }
         } catch (error) {
           return {
-            results: '',
+            data: null,
             success: false,
             error: String(error),
           }
@@ -85,7 +86,7 @@ export const createProToolsRoutes = () => {
         // Require Exa to be configured
         if (!exaClient) {
           return {
-            content: '',
+            data: null,
             success: false,
             error: 'Content fetching service is not configured. Please set the EXA_API_KEY environment variable.',
           }
@@ -97,14 +98,14 @@ export const createProToolsRoutes = () => {
         // Check if Exa returned an error message
         if (content.startsWith('Error:')) {
           return {
-            content: '',
+            data: null,
             success: false,
             error: content,
           }
         }
 
         return {
-          content,
+          data: content,
           success: true,
         }
       },
@@ -117,7 +118,7 @@ export const createProToolsRoutes = () => {
 
     .post(
       '/weather/current',
-      async ({ body }): Promise<WeatherResponse> => {
+      async ({ body }): Promise<WeatherCurrentResponse> => {
         const request = body as WeatherRequest
 
         try {
@@ -125,13 +126,11 @@ export const createProToolsRoutes = () => {
           const weatherData = await weatherClient.getCurrentWeather(request.location, ctx)
 
           return {
-            weather_data: weatherData,
-            data: null,
+            data: weatherData,
             success: true,
           }
         } catch (error) {
           return {
-            weather_data: '',
             data: null,
             success: false,
             error: String(error),
@@ -148,7 +147,7 @@ export const createProToolsRoutes = () => {
 
     .post(
       '/weather/forecast',
-      async ({ body }): Promise<WeatherResponse> => {
+      async ({ body }): Promise<WeatherForecastResponse> => {
         const request = body as WeatherRequest
 
         try {
@@ -156,13 +155,11 @@ export const createProToolsRoutes = () => {
           const weatherData = await weatherClient.getWeatherForecast(request.location, request.days, ctx)
 
           return {
-            weather_data: null,
             data: weatherData,
             success: true,
           }
         } catch (error) {
           return {
-            weather_data: null,
             data: null,
             success: false,
             error: String(error),
@@ -188,7 +185,7 @@ export const createProToolsRoutes = () => {
 
           if (!locations || locations.length === 0) {
             return {
-              locations: `No locations found matching: ${request.query}`,
+              data: `No locations found matching: ${request.query}`,
               success: true,
             }
           }
@@ -220,12 +217,12 @@ export const createProToolsRoutes = () => {
           }
 
           return {
-            locations: result.join('\n').trim(),
+            data: result.join('\n').trim(),
             success: true,
           }
         } catch (error) {
           return {
-            locations: '',
+            data: null,
             success: false,
             error: String(error),
           }

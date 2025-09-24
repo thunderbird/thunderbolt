@@ -31,10 +31,10 @@ describe('Pro Tools Routes', () => {
 
     const data = await response.json()
     expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('results')
+    expect(data).toHaveProperty('data')
     // Check if search succeeded or failed (depends on API key configuration)
     if (data.success) {
-      expect(data.results).toBeDefined()
+      expect(data.data).toBeDefined()
     } else {
       expect(data).toHaveProperty('error')
     }
@@ -52,10 +52,10 @@ describe('Pro Tools Routes', () => {
 
     const data = await response.json()
     expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('content')
+    expect(data).toHaveProperty('data')
     // Check if fetch succeeded or failed (depends on API key configuration)
     if (data.success) {
-      expect(data.content).toBeDefined()
+      expect(data.data).toBeDefined()
     } else {
       expect(data).toHaveProperty('error')
     }
@@ -73,7 +73,7 @@ describe('Pro Tools Routes', () => {
 
     const data = await response.json()
     expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('weather_data')
+    expect(data).toHaveProperty('data')
   })
 
   it('should handle weather forecast request', async () => {
@@ -88,7 +88,7 @@ describe('Pro Tools Routes', () => {
 
     const data = await response.json()
     expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('weather_data')
+    expect(data).toHaveProperty('data')
   })
 
   it('should handle location search request', async () => {
@@ -103,7 +103,7 @@ describe('Pro Tools Routes', () => {
 
     const data = await response.json()
     expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('locations')
+    expect(data).toHaveProperty('data')
   })
 
   it('should require valid body for requests', async () => {

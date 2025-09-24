@@ -1,6 +1,22 @@
 import { z } from 'zod'
 
 /**
+ * Base API response schema that all endpoints should extend
+ */
+export const baseApiResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
+  z.object({
+    data: dataSchema.nullable(),
+    success: z.boolean(),
+    error: z.string().nullable().optional(),
+  })
+
+export type BaseApiResponse<T> = {
+  data: T | null
+  success: boolean
+  error?: string | null
+}
+
+/**
  * Search request/response schemas
  */
 export const searchRequestSchema = z.object({
@@ -8,11 +24,7 @@ export const searchRequestSchema = z.object({
   max_results: z.number().default(10),
 })
 
-export const searchResponseSchema = z.object({
-  results: z.string(),
-  success: z.boolean(),
-  error: z.string().nullable().optional(),
-})
+export const searchResponseSchema = baseApiResponseSchema(z.string())
 
 export type SearchRequest = z.infer<typeof searchRequestSchema>
 export type SearchResponse = z.infer<typeof searchResponseSchema>
@@ -24,11 +36,7 @@ export const fetchContentRequestSchema = z.object({
   url: z.string(),
 })
 
-export const fetchContentResponseSchema = z.object({
-  content: z.string(),
-  success: z.boolean(),
-  error: z.string().nullable().optional(),
-})
+export const fetchContentResponseSchema = baseApiResponseSchema(z.string())
 
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 export type FetchContentResponse = z.infer<typeof fetchContentResponseSchema>
@@ -58,17 +66,14 @@ export const weatherForecastDataSchema = z.object({
   days: z.array(weatherDaySchema),
 })
 
-export const weatherResponseSchema = z.object({
-  weather_data: z.string().nullable().optional(),
-  data: weatherForecastDataSchema.nullable().optional(),
-  success: z.boolean(),
-  error: z.string().nullable().optional(),
-})
+export const weatherCurrentResponseSchema = baseApiResponseSchema(z.string())
+export const weatherForecastResponseSchema = baseApiResponseSchema(weatherForecastDataSchema)
 
 export type WeatherRequest = z.infer<typeof weatherRequestSchema>
 export type WeatherDay = z.infer<typeof weatherDaySchema>
 export type WeatherForecastData = z.infer<typeof weatherForecastDataSchema>
-export type WeatherResponse = z.infer<typeof weatherResponseSchema>
+export type WeatherCurrentResponse = z.infer<typeof weatherCurrentResponseSchema>
+export type WeatherForecastResponse = z.infer<typeof weatherForecastResponseSchema>
 
 /**
  * Location search request/response schemas
@@ -77,11 +82,7 @@ export const locationSearchRequestSchema = z.object({
   query: z.string(),
 })
 
-export const locationSearchResponseSchema = z.object({
-  locations: z.string(),
-  success: z.boolean(),
-  error: z.string().nullable().optional(),
-})
+export const locationSearchResponseSchema = baseApiResponseSchema(z.string())
 
 export type LocationSearchRequest = z.infer<typeof locationSearchRequestSchema>
 export type LocationSearchResponse = z.infer<typeof locationSearchResponseSchema>

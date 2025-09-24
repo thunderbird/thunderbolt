@@ -72,8 +72,8 @@ describe('Main Routes', () => {
     expect(data).toEqual({ status: 'ok' })
   })
 
-  it('should return analytics config', async () => {
-    const response = await app.handle(new Request('http://localhost/v1/analytics/config'))
+  it('should return posthog config', async () => {
+    const response = await app.handle(new Request('http://localhost/v1/posthog/config'))
     expect(response.status).toBe(200)
 
     const data = await response.json()

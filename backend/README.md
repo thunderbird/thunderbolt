@@ -83,7 +83,7 @@ All configuration is handled through environment variables. See `env.example` fo
 - `GET /health` - Basic health check
 - `GET /locations?query=<location>` - Search for locations using OpenMeteo
 - `POST /flower/api-key` - Get Flower AI API key for authenticated users
-- `GET /analytics/config` - Get analytics configuration
+- `GET /posthog/config` - Get PostHog analytics configuration
 
 ### Authentication
 
@@ -110,7 +110,7 @@ All configuration is handled through environment variables. See `env.example` fo
 
 - `/openai/*` - Proxy to Fireworks AI (OpenAI-compatible)
 - `/flower/*` - Proxy to Flower AI
-- `/posthog/*` - Proxy to PostHog analytics
+- `/posthog/*` - Proxy to PostHog analytics  
 - `/proxy/*` - Generic proxy endpoint
 
 ## Architecture
@@ -121,10 +121,8 @@ The application is structured around Elysia's plugin system:
 src/
 ├── auth/           # Authentication (OAuth, Flower API keys)
 ├── config/         # Configuration and settings
-├── health/         # Health check system
 ├── pro/           # Pro tools (Exa, weather)
-├── proxy/         # Proxy service and configurations
-├── routes/        # Main API routes
+├── routes/        # Main API routes (including flower proxy & health)
 ├── utils/         # Utility functions
 └── index.ts       # Application entry point
 ```

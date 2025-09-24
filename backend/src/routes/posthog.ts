@@ -9,14 +9,22 @@ import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filte
 export const createPostHogRoutes = () => {
   const settings = getSettings()
 
-  return new Elysia().use(
+  return new Elysia({
+    prefix: '/posthog',
+  }).use(
     cors({
       origin: getCorsOrigins(settings),
       allowedHeaders: settings.corsAllowHeaders,
       exposeHeaders: settings.corsExposeHeaders,
     }),
-  ).all(
-    '/posthog/*',
+  )
+  .get('/config', async () => {
+    return {
+      posthog_api_key: settings.posthogApiKey,
+    }
+  })
+  .all(
+    '/*',
     async (ctx) => {
       const path = ctx.params['*'] || ''
       const posthogHost = settings.posthogHost || 'https://us.i.posthog.com'

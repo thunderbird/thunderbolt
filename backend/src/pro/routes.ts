@@ -2,14 +2,14 @@ import { Elysia, t } from 'elysia'
 import { SimpleContext } from './context'
 import { createExaClient, fetchContentExa, searchExa } from './exa'
 import type {
-  FetchContentRequest,
-  FetchContentResponse,
-  LocationSearchRequest,
-  LocationSearchResponse,
-  SearchRequest,
-  SearchResponse,
-  WeatherRequest,
-  WeatherResponse,
+    FetchContentRequest,
+    FetchContentResponse,
+    LocationSearchRequest,
+    LocationSearchResponse,
+    SearchRequest,
+    SearchResponse,
+    WeatherRequest,
+    WeatherResponse,
 } from './types'
 import { OpenMeteoWeather } from './weather'
 
@@ -126,11 +126,13 @@ export const createProToolsRoutes = () => {
 
           return {
             weather_data: weatherData,
+            data: null,
             success: true,
           }
         } catch (error) {
           return {
             weather_data: '',
+            data: null,
             success: false,
             error: String(error),
           }
@@ -154,12 +156,14 @@ export const createProToolsRoutes = () => {
           const weatherData = await weatherClient.getWeatherForecast(request.location, request.days, ctx)
 
           return {
-            weather_data: weatherData,
+            weather_data: null,
+            data: weatherData,
             success: true,
           }
         } catch (error) {
           return {
-            weather_data: '',
+            weather_data: null,
+            data: null,
             success: false,
             error: String(error),
           }

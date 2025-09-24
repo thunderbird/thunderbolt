@@ -72,11 +72,16 @@ const resetAppDirOpfs = async (): Promise<void> => {
     throw new Error('OPFS is not available')
   }
 
-  const appDataDirPath = await createAppDirOpfs()
-  const root = await navigator.storage.getDirectory()
+  const appDataDirPath = await createAppDir()
+  const root: any = await navigator.storage.getDirectory()
 
-  await root.removeEntry(appDataDirPath, { recursive: true })
-  await root.getDirectoryHandle(appDataDirPath, { create: true })
+  for await (const [name] of root.entries()) {
+    await root.removeEntry(name, { recursive: true })
+  }
+
+  if (!isTauri()) {
+    await root.getDirectoryHandle(appDataDirPath, { create: true })
+  }
 }
 
 /**
@@ -95,9 +100,11 @@ export const resetAppDir = async (): Promise<void> => {
     return
   }
 
-  if (isTauri()) {
+  if (databaseType === 'libsql-tauri') {
     await resetAppDirTauri()
-  } else {
+  } else if (databaseType === 'sqlocal') {
     await resetAppDirOpfs()
+  } else {
+    throw new Error(`Unsupported database type: ${databaseType}`)
   }
 }

@@ -1,6 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { WeatherForecastDataSchema } from '@/lib/weather-forecast'
-import { type WeatherForecastData } from '@/lib/weather-forecast'
+import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
@@ -54,12 +53,12 @@ export const search = async (params: SearchParams): Promise<string> => {
           max_results: params.max_results || 10,
         },
       })
-      .json<{ results: string; success: boolean; error?: string }>()
+      .json<{ data: string; success: boolean; error?: string }>()
     if (!response.success) {
       throw new Error(response.error || 'Search failed')
     }
 
-    return response.results
+    return response.data
   } catch (error) {
     console.error('Search error:', error)
     throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -78,13 +77,13 @@ export const fetchContent = async (params: FetchContentParams): Promise<string> 
           url: params.url,
         },
       })
-      .json<{ content: string; success: boolean; error?: string }>()
+      .json<{ data: string; success: boolean; error?: string }>()
 
     if (!response.success) {
       throw new Error(response.error || 'Fetch content failed')
     }
 
-    return response.content
+    return response.data
   } catch (error) {
     console.error('Fetch content error:', error)
     throw new Error(`Fetch content failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -103,13 +102,13 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
           location: params.location,
         },
       })
-      .json<{ weather_data: string; success: boolean; error?: string }>()
+      .json<{ data: string; success: boolean; error?: string }>()
 
     if (!response.success) {
       throw new Error(response.error || 'Weather request failed')
     }
 
-    return response.weather_data
+    return response.data
   } catch (error) {
     console.error('Weather error:', error)
     throw new Error(`Weather request failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -129,7 +128,7 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
           days: params.days || 3,
         },
       })
-      .json<{ weather_data: string | null; data: unknown; success: boolean; error?: string }>()
+      .json<{ data: unknown; success: boolean; error?: string }>()
 
     if (!response.success || !response.data) {
       throw new Error(response.error || 'Weather forecast request failed')
@@ -155,13 +154,13 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
           query: params.query,
         },
       })
-      .json<{ locations: string; success: boolean; error?: string }>()
+      .json<{ data: string; success: boolean; error?: string }>()
 
     if (!response.success) {
       throw new Error(response.error || 'Location search failed')
     }
 
-    return response.locations
+    return response.data
   } catch (error) {
     console.error('Location search error:', error)
     throw new Error(`Location search failed: ${error instanceof Error ? error.message : 'Unknown error'}`)

@@ -155,7 +155,7 @@ describe('Pro - OpenMeteoWeather', () => {
       expect(result).toContain('Feels like: 14.5°C')
       expect(result).toContain('Humidity: 65%')
       expect(result).toContain('Wind: 12.5km/h at 180°')
-      expect(result).toContain('Weather code: 1')
+      expect(result).toContain('Conditions: Mainly clear (Code 1)')
       expect(result).toContain('Last updated: 2024-01-15T15:00')
 
       expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -241,16 +241,22 @@ describe('Pro - OpenMeteoWeather', () => {
     const mockForecastData = {
       daily: {
         time: ['2024-01-15', '2024-01-16', '2024-01-17'],
+        weather_code: [1, 2, 3],
         temperature_2m_max: [18.5, 20.1, 16.8],
         temperature_2m_min: [10.2, 12.5, 8.9],
-        weather_code: [1, 2, 3],
+        apparent_temperature_max: [17.8, 19.5, 16.2],
+        apparent_temperature_min: [9.5, 11.8, 8.2],
         precipitation_sum: [0.0, 2.5, 5.1],
+        precipitation_probability_max: [10, 65, 85],
         wind_speed_10m_max: [15.2, 18.7, 22.1],
       },
       daily_units: {
         temperature_2m_max: '°C',
         temperature_2m_min: '°C',
+        apparent_temperature_max: '°C',
+        apparent_temperature_min: '°C',
         precipitation_sum: 'mm',
+        precipitation_probability_max: '%',
         wind_speed_10m_max: 'km/h',
       },
     }
@@ -268,19 +274,50 @@ describe('Pro - OpenMeteoWeather', () => {
 
       const result = await weather.getWeatherForecast('London', 3, mockContext)
 
-      expect(result).toContain('3-day weather forecast for London, England, United Kingdom:')
-      expect(result).toContain('1/15/2024:')
-      expect(result).toContain('High: 18.5°C')
-      expect(result).toContain('Low: 10.2°C')
-      expect(result).toContain('Precipitation: 0mm')
-      expect(result).toContain('Max wind: 15.2km/h')
-      expect(result).toContain('Weather code: 1')
+      expect(result).toEqual({
+        location: 'London, England, United Kingdom',
+        days: [
+          {
+            date: '2024-01-15',
+            weather_code: 1,
+            temperature_max: 18.5,
+            temperature_min: 10.2,
+            apparent_temperature_max: 17.8,
+            apparent_temperature_min: 9.5,
+            precipitation_sum: 0.0,
+            precipitation_probability_max: 10,
+            wind_speed_10m_max: 15.2,
+          },
+          {
+            date: '2024-01-16',
+            weather_code: 2,
+            temperature_max: 20.1,
+            temperature_min: 12.5,
+            apparent_temperature_max: 19.5,
+            apparent_temperature_min: 11.8,
+            precipitation_sum: 2.5,
+            precipitation_probability_max: 65,
+            wind_speed_10m_max: 18.7,
+          },
+          {
+            date: '2024-01-17',
+            weather_code: 3,
+            temperature_max: 16.8,
+            temperature_min: 8.9,
+            apparent_temperature_max: 16.2,
+            apparent_temperature_min: 8.2,
+            precipitation_sum: 5.1,
+            precipitation_probability_max: 85,
+            wind_speed_10m_max: 22.1,
+          },
+        ],
+      })
 
       expect(mockFetch).toHaveBeenCalledTimes(2)
 
       // Check forecast API call
       const forecastCall = mockFetch.mock.calls[1][0] as string
-      expect(forecastCall).toContain('daily=temperature_2m_max')
+      expect(forecastCall).toContain('daily=weather_code%2Ctemperature_2m_max%2Ctemperature_2m_min%2Capparent_temperature_max%2Capparent_temperature_min%2Cprecipitation_sum%2Cprecipitation_probability_max%2Cwind_speed_10m_max')
       expect(forecastCall).toContain('forecast_days=3')
     })
 
@@ -297,10 +334,13 @@ describe('Pro - OpenMeteoWeather', () => {
           daily: {
             ...mockForecastData.daily,
             time: ['2024-01-15'],
+            weather_code: [1],
             temperature_2m_max: [18.5],
             temperature_2m_min: [10.2],
-            weather_code: [1],
+            apparent_temperature_max: [17.8],
+            apparent_temperature_min: [9.5],
             precipitation_sum: [0.0],
+            precipitation_probability_max: [10],
             wind_speed_10m_max: [15.2],
           },
         }),
@@ -308,7 +348,9 @@ describe('Pro - OpenMeteoWeather', () => {
 
       const result = await weather.getWeatherForecast('London', 1, mockContext)
 
-      expect(result).toContain('1-day weather forecast')
+      expect(result.location).toBe('London, England, United Kingdom')
+      expect(result.days).toHaveLength(1)
+      expect(result.days[0].date).toBe('2024-01-15')
       expect(mockContext.info).toHaveBeenCalledWith('Getting 1-day forecast for: London')
 
       const forecastCall = mockFetch.mock.calls[1][0] as string
@@ -321,9 +363,9 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => ({ results: [] }),
       } as Response)
 
-      const result = await weather.getWeatherForecast('NonexistentPlace', 3, mockContext)
-
-      expect(result).toBe('No location found matching: NonexistentPlace')
+      await expect(weather.getWeatherForecast('NonexistentPlace', 3, mockContext)).rejects.toThrow(
+        "Could not fetch forecast data: Error: Could not find coordinates for location 'NonexistentPlace'"
+      )
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
@@ -355,10 +397,10 @@ describe('Pro - OpenMeteoWeather', () => {
 
       const result = await weather.getWeatherForecast('London', 3, mockContext)
 
-      // Check that dates are formatted as expected
-      expect(result).toContain('1/15/2024:')
-      expect(result).toContain('1/16/2024:')
-      expect(result).toContain('1/17/2024:')
+      // Check that dates are returned in the structured format
+      expect(result.days[0].date).toBe('2024-01-15')
+      expect(result.days[1].date).toBe('2024-01-16')
+      expect(result.days[2].date).toBe('2024-01-17')
     })
 
     it('should handle missing forecast data gracefully', async () => {
@@ -370,10 +412,13 @@ describe('Pro - OpenMeteoWeather', () => {
       const emptyForecast = {
         daily: {
           time: [],
+          weather_code: [],
           temperature_2m_max: [],
           temperature_2m_min: [],
-          weather_code: [],
+          apparent_temperature_max: [],
+          apparent_temperature_min: [],
           precipitation_sum: [],
+          precipitation_probability_max: [],
           wind_speed_10m_max: [],
         },
         daily_units: {},
@@ -386,7 +431,8 @@ describe('Pro - OpenMeteoWeather', () => {
 
       const result = await weather.getWeatherForecast('London', 3, mockContext)
 
-      expect(result).toContain('3-day weather forecast for London, England, United Kingdom:')
+      expect(result.location).toBe('London, England, United Kingdom')
+      expect(result.days).toEqual([])
       // Should not crash with empty data
     })
   })

@@ -37,11 +37,11 @@ export const createSSEStreamFromCompletion = (
 
         // Log usage if captured (PostHog will also capture this automatically)
         if (lastUsage) {
-          console.log('Fireworks usage', {
-            model,
-            usage: lastUsage,
-            analytics: 'captured by PostHog',
-          })
+          // console.log('Fireworks usage', {
+          //   model,
+          //   usage: lastUsage,
+          //   analytics: 'captured by PostHog',
+          // })
         }
 
         controller.close()

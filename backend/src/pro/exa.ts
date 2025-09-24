@@ -26,13 +26,10 @@ export const searchExa = async (
 ): Promise<Array<Record<string, unknown>>> => {
   const client = createExaClient()
   if (!client) {
-    await ctx.error('Exa API key not configured')
     return []
   }
 
   try {
-    await ctx.info(`Searching Exa for: ${query}`)
-
     // Use Exa's search with autoprompt for better results
     const response = await client.searchAndContents(query, {
       numResults: maxResults,
@@ -53,10 +50,8 @@ export const searchExa = async (
       })
     })
 
-    await ctx.info(`Found ${results.length} results`)
     return results
   } catch (error) {
-    await ctx.error(`Exa search error: ${String(error)}`)
     throw error
   }
 }
@@ -71,8 +66,6 @@ export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<
   }
 
   try {
-    await ctx.info(`Fetching content from: ${url}`)
-
     // Use Exa's getContents method
     const response = await client.getContents([url], {
       text: {

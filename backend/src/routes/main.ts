@@ -1,4 +1,3 @@
-import { getSettings } from '@/config/settings'
 import { Elysia, t } from 'elysia'
 
 export interface LocationResult {
@@ -20,7 +19,8 @@ export const createMainRoutes = () => {
 
     .get(
       '/locations',
-      async ({ query, set }): Promise<LocationResult[]> => {
+      async (ctx): Promise<LocationResult[]> => {
+        const { query, set } = ctx
         const queryParam = query.query
 
         if (!queryParam) {
@@ -38,6 +38,7 @@ export const createMainRoutes = () => {
           const response = await fetch(url.toString())
 
           if (!response.ok) {
+
             if (response.status === 400) {
               set.status = 400
               throw new Error('Invalid search query')

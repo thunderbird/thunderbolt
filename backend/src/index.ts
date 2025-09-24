@@ -1,7 +1,6 @@
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
-import { createHealthCheckRoutes } from '@/health/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createFlowerRoutes } from '@/routes/flower'
 import { createMainRoutes } from '@/routes/main'
@@ -96,7 +95,6 @@ const createApp = async () => {
     .use(createGoogleAuthRoutes())
     .use(createMicrosoftAuthRoutes())
     .use(createProToolsRoutes())
-    .use(createHealthCheckRoutes())
     .use(createOpenAIRoutes())
     .use(createPostHogRoutes())
     .use(createFlowerRoutes())

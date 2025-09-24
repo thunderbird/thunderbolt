@@ -19,10 +19,10 @@ import type { LanguageModelV2 } from '@ai-sdk/provider'
 import { createFlowerProvider } from '@/flower'
 import {
   convertToModelMessages,
-  type experimental_createMCPClient,
   stepCountIs,
   streamText,
   wrapLanguageModel,
+  type experimental_createMCPClient,
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
@@ -68,7 +68,7 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
       const cloudUrl = await getCloudUrl()
       const openaiCompatible = createOpenAICompatible({
         name: 'thunderbolt',
-        baseURL: `${cloudUrl}/openai`,
+        baseURL: cloudUrl,
         fetch,
       })
       return openaiCompatible(modelConfig.model)

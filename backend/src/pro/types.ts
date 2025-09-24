@@ -41,13 +41,33 @@ export const weatherRequestSchema = z.object({
   days: z.number().default(3), // Only used for forecast
 })
 
+export const weatherDaySchema = z.object({
+  date: z.string(),
+  weather_code: z.number(),
+  temperature_max: z.number(),
+  temperature_min: z.number(),
+  apparent_temperature_max: z.number(),
+  apparent_temperature_min: z.number(),
+  precipitation_sum: z.number(),
+  precipitation_probability_max: z.number(),
+  wind_speed_10m_max: z.number(),
+})
+
+export const weatherForecastDataSchema = z.object({
+  location: z.string(),
+  days: z.array(weatherDaySchema),
+})
+
 export const weatherResponseSchema = z.object({
-  weather_data: z.string(),
+  weather_data: z.string().nullable().optional(),
+  data: weatherForecastDataSchema.nullable().optional(),
   success: z.boolean(),
   error: z.string().nullable().optional(),
 })
 
 export type WeatherRequest = z.infer<typeof weatherRequestSchema>
+export type WeatherDay = z.infer<typeof weatherDaySchema>
+export type WeatherForecastData = z.infer<typeof weatherForecastDataSchema>
 export type WeatherResponse = z.infer<typeof weatherResponseSchema>
 
 /**

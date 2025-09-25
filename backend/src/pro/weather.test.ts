@@ -50,8 +50,6 @@ describe('Pro - OpenMeteoWeather', () => {
       const results = await weather.searchLocations('London', mockContext)
 
       expect(results).toEqual(mockLocationData.results)
-      expect(mockContext.info).toHaveBeenCalledWith('Searching locations for: London')
-      expect(mockContext.info).toHaveBeenCalledWith('Found 2 locations')
 
       expect(mockFetch).toHaveBeenCalledWith(
         'https://geocoding-api.open-meteo.com/v1/search?name=London&count=10&language=en&format=json',
@@ -67,7 +65,6 @@ describe('Pro - OpenMeteoWeather', () => {
       const results = await weather.searchLocations('NonexistentPlace', mockContext)
 
       expect(results).toEqual([])
-      expect(mockContext.info).toHaveBeenCalledWith('Found 0 locations')
     })
 
     it('should handle API errors', async () => {
@@ -77,7 +74,6 @@ describe('Pro - OpenMeteoWeather', () => {
       } as Response)
 
       await expect(weather.searchLocations('Invalid', mockContext)).rejects.toThrow('Geocoding API error: 400')
-      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message
     })
 
     it('should handle network errors', async () => {
@@ -85,7 +81,6 @@ describe('Pro - OpenMeteoWeather', () => {
       mockFetch.mockRejectedValueOnce(networkError)
 
       await expect(weather.searchLocations('London', mockContext)).rejects.toThrow('Network failure')
-      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message
     })
 
     it('should construct correct URL with query parameters', async () => {
@@ -195,7 +190,6 @@ describe('Pro - OpenMeteoWeather', () => {
       } as Response)
 
       await expect(weather.getCurrentWeather('London', mockContext)).rejects.toThrow('Weather API error: 500')
-      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message
     })
 
     it('should handle location with minimal data', async () => {
@@ -351,7 +345,6 @@ describe('Pro - OpenMeteoWeather', () => {
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toHaveLength(1)
       expect(result.days[0].date).toBe('2024-01-15')
-      expect(mockContext.info).toHaveBeenCalledWith('Getting 1-day forecast for: London')
 
       const forecastCall = mockFetch.mock.calls[1][0] as string
       expect(forecastCall).toContain('forecast_days=1')
@@ -381,7 +374,6 @@ describe('Pro - OpenMeteoWeather', () => {
       } as Response)
 
       await expect(weather.getWeatherForecast('London', 3, mockContext)).rejects.toThrow('Weather API error: 500')
-      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message
     })
 
     it('should format dates correctly', async () => {

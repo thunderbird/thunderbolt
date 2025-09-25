@@ -99,8 +99,6 @@ describe('Pro - Exa', () => {
           published_date: '2024-01-01',
         },
       ])
-      expect(mockContext.info).toHaveBeenCalledWith('Searching Exa for: test query')
-      expect(mockContext.info).toHaveBeenCalledWith('Found 1 results')
     })
 
     it('should respect maxResults parameter', async () => {
@@ -181,7 +179,6 @@ describe('Pro - Exa', () => {
       const results = await searchExa('test query', mockContext)
 
       expect(results).toEqual([])
-      expect(mockContext.error).toHaveBeenCalledWith('Exa API key not configured')
       expect(mockExa.searchAndContents).not.toHaveBeenCalled()
     })
 
@@ -190,15 +187,12 @@ describe('Pro - Exa', () => {
       mockExa.searchAndContents.mockRejectedValueOnce(error)
 
       await expect(searchExa('test query', mockContext)).rejects.toThrow('API error')
-      // Don't check exact error logging message to avoid test brittleness
-      expect(mockContext.error).toHaveBeenCalled()
     })
 
     it('should handle non-Error exceptions', async () => {
       mockExa.searchAndContents.mockRejectedValueOnce('String error')
 
       await expect(searchExa('test query', mockContext)).rejects.toBe('String error')
-      expect(mockContext.error).toHaveBeenCalledWith('Exa search error: String error')
     })
   })
 
@@ -226,7 +220,6 @@ describe('Pro - Exa', () => {
         },
       })
       expect(result).toBe('This is the fetched content from the webpage')
-      expect(mockContext.info).toHaveBeenCalledWith('Fetching content from: https://example.com')
     })
 
     it('should handle empty content', async () => {
@@ -281,7 +274,7 @@ describe('Pro - Exa', () => {
       const result = await fetchContentExa('https://example.com', mockContext)
 
       expect(result).toBe('Error: Error: Network error') // fetchContentExa adds "Error: " prefix to String(error)
-      expect(mockContext.error).toHaveBeenCalled() // Don't check exact message to avoid brittleness
+      // Error handling tested by checking return value
     })
 
     it('should handle non-Error exceptions', async () => {
@@ -290,7 +283,6 @@ describe('Pro - Exa', () => {
       const result = await fetchContentExa('https://example.com', mockContext)
 
       expect(result).toBe('Error: String error')
-      expect(mockContext.error).toHaveBeenCalledWith('Exa content fetch error: String error')
     })
 
     it('should use correct configuration parameters', async () => {

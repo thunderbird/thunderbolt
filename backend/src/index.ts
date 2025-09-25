@@ -36,7 +36,6 @@ const createApp = async () => {
   }
 
   return app
-    .use(createLoggerMiddleware(settings))
     .use(
       cors({
         origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
@@ -46,6 +45,62 @@ const createApp = async () => {
         exposeHeaders: settings.corsExposeHeaders,
       }),
     )
+    // App-level request logging
+    .onRequest((ctx) => {
+      const url = new URL(ctx.request.url)
+      // Skip health/static
+      if (url.pathname === '/v1/health' || url.pathname.startsWith('/static/')) return
+      ;(ctx as any)._startTime = Date.now()
+    })
+    .onAfterHandle((ctx) => {
+      const url = new URL(ctx.request.url)
+      // Skip health/static and most PostHog endpoints (except config)
+      if (url.pathname === '/v1/health' || url.pathname.startsWith('/static/')) return
+      if (url.pathname.startsWith('/v1/posthog/') && url.pathname !== '/v1/posthog/config') return
+      const startTime = (ctx as any)._startTime
+      const responseTime = startTime ? Date.now() - startTime : undefined
+      const log = (ctx as any).log
+      const status = ctx.set.status || 200
+      const statusTextMap: Record<string, string> = {
+        200: 'OK',
+        201: 'Created',
+        204: 'No Content',
+        400: 'Bad Request',
+        401: 'Unauthorized',
+        403: 'Forbidden',
+        404: 'Not Found',
+        405: 'Method Not Allowed',
+        409: 'Conflict',
+        422: 'Unprocessable Entity',
+        429: 'Too Many Requests',
+        500: 'Internal Server Error',
+        503: 'Service Unavailable',
+      }
+
+      // Determine client address (best-effort behind proxies)
+      const headers = ctx.request.headers
+      const forwarded = headers.get('forwarded')
+      let clientIp: string | undefined
+      if (forwarded) {
+        const m = forwarded.match(/for=\"?([^;\"]+)/i)
+        if (m && m[1]) clientIp = m[1]
+      }
+      if (!clientIp) {
+        const xff = headers.get('x-forwarded-for')
+        if (xff) clientIp = xff.split(',')[0].trim()
+      }
+      if (!clientIp) clientIp = headers.get('cf-connecting-ip') || headers.get('true-client-ip') || headers.get('x-real-ip') || undefined
+      const clientPort = headers.get('x-forwarded-port') || undefined
+      const client = clientIp || '-'
+      const httpVersion = 'HTTP/1.1'
+      const statusText = statusTextMap[String(status)] || ''
+      const rt = responseTime !== undefined ? ` ${responseTime}ms` : ''
+      const line = `${client} - "${ctx.request.method} ${url.pathname} ${httpVersion}" ${status}${statusText ? ` ${statusText}` : ''}${rt}`
+
+      // Log single-line message to avoid pino pretty printing sub-lines
+      log?.info(line)
+    })
+    .use(createLoggerMiddleware(settings))
     .onError((ctx) => {
       const { code, error, set, request } = ctx
       const log = (ctx as any).log
@@ -125,7 +180,7 @@ const startServer = async () => {
   const log = createStandaloneLogger(settings)
 
   // Set up logging
-  log.info('Starting Thunderbolt Backend (Elysia)...')
+  log.info('Starting Thunderbolt Server...')
   log.info({
     logLevel: settings.logLevel,
     port: settings.port,
@@ -141,7 +196,7 @@ const startServer = async () => {
     app.listen({
       hostname,
       port: settings.port,
-      reusePort: true,
+      reusePort: process.env.NODE_ENV === 'production',
     }, () => {
       log.info({
         hostname,

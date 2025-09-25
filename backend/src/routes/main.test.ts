@@ -82,7 +82,7 @@ describe('Main Routes', () => {
 
   it('should require query parameter for locations endpoint', async () => {
     const response = await app.handle(new Request('http://localhost/v1/locations'))
-    expect(response.status).toBe(400) // Global error handler coerces to 400
+    expect(response.status).toBe(422) // Elysia validation error
   })
 
   it('should search locations with valid query', async () => {

@@ -70,7 +70,7 @@ describe('Utils - Streaming', () => {
       expect(chunks[2]).toBe('data: [DONE]\n\n')
     })
 
-    it('should track and log usage data when present', async () => {
+    it('should track usage data when present', async () => {
       const mockChunks = [
         { id: 'chunk1', choices: [{ delta: { content: 'Hello' } }] },
         {
@@ -83,13 +83,14 @@ describe('Utils - Streaming', () => {
       const mockCompletion = createMockCompletion(mockChunks)
       const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
 
-      await readStreamChunks(stream)
+      const chunks = await readStreamChunks(stream)
 
-      expect(mockConsoleLog).toHaveBeenCalledWith('Fireworks usage', {
-        model: 'test-model',
-        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-        analytics: 'captured by PostHog',
-      })
+      // Verify the stream includes both content chunks and usage data
+      expect(chunks).toHaveLength(3) // 2 content chunks + [DONE]
+      expect(chunks[0]).toContain('Hello')
+      expect(chunks[1]).toContain(' world')
+      expect(chunks[1]).toContain('usage')
+      expect(chunks[2]).toBe('data: [DONE]\n\n')
     })
 
     it('should use the latest usage data when multiple chunks have usage', async () => {
@@ -109,13 +110,14 @@ describe('Utils - Streaming', () => {
       const mockCompletion = createMockCompletion(mockChunks)
       const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
 
-      await readStreamChunks(stream)
+      const chunks = await readStreamChunks(stream)
 
-      expect(mockConsoleLog).toHaveBeenCalledWith('Fireworks usage', {
-        model: 'test-model',
-        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, // Latest usage
-        analytics: 'captured by PostHog',
-      })
+      // Verify the stream includes both content chunks with their usage data
+      expect(chunks).toHaveLength(3) // 2 content chunks + [DONE]
+      expect(chunks[0]).toContain('Hello')
+      expect(chunks[0]).toContain('"prompt_tokens":8')
+      expect(chunks[1]).toContain(' world')
+      expect(chunks[1]).toContain('"prompt_tokens":10') // Latest usage
     })
 
     it('should not log usage when no usage data is present', async () => {

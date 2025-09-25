@@ -38,7 +38,7 @@ export const sanitizeUrl = (url: string): string => {
 export const initPosthog = async (): Promise<PostHog | null> => {
   const cloudUrl = await getCloudUrl()
 
-  const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/analytics/config`).json<{ posthog_api_key?: string }>()
+  const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
 
   if (!apiKey) {
     console.log('Posthog analytics disabled - no API key provided')

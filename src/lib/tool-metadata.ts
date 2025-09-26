@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@/types'
 import { memoize } from './memoize'
 import { getAvailableTools } from './tools'
+import { Calendar, CloudSun, Inbox, Rss, Search } from 'lucide-react'
 
 export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communication' | 'weather' | 'unknown'
 
@@ -8,6 +9,7 @@ export type ToolMetadata = {
   displayName: string
   loadingMessage: string
   category: ToolCategory
+  icon: any
 }
 
 // Cache for performance
@@ -145,6 +147,29 @@ const generateLoadingMessage = (toolName: string, category: ToolCategory, input?
   return messages[category] || `Using "${toolName}" tool...`
 }
 
+const getToolIcon = (toolName: string) => {
+  switch (toolName) {
+    case 'get_current_weather':
+    case 'get_weather_forecast':
+      return CloudSun
+
+    case 'search':
+      return Search
+
+    case 'google_check_inbox':
+      return Inbox
+
+    case 'google_check_calendar':
+      return Calendar
+
+    case 'fetch_content':
+      return Rss
+
+    default:
+      return null
+  }
+}
+
 /**
  * Gets tool metadata with caching for performance (async version)
  */
@@ -163,6 +188,7 @@ export const getToolMetadata = async (toolName: string, args?: unknown): Promise
     displayName: formatDisplayName(toolName),
     loadingMessage: generateLoadingMessage(toolName, category, args, toolConfig?.verb),
     category,
+    icon: getToolIcon(toolName),
   }
 
   metadataCache.set(cacheKey, metadata)
@@ -185,6 +211,7 @@ export const getToolMetadataSync = (toolName: string, input?: unknown): ToolMeta
     displayName: formatDisplayName(toolName),
     loadingMessage: generateLoadingMessage(toolName, category, input),
     category,
+    icon: getToolIcon(toolName),
   }
 
   metadataCache.set(cacheKey, metadata)

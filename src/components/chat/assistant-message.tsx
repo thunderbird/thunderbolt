@@ -5,6 +5,7 @@ import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { memo } from 'react'
 import { DisplayToolHandler } from './display-tool-handler'
+import { ToolGroup } from './tool-group'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -54,6 +55,7 @@ export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
 
   return (
     <div>
+      <ToolGroup />
       {partElements.map((partElement, index) => (
         // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
         // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption

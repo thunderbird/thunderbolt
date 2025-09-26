@@ -45,7 +45,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                         }}
                         exit={{ scale: 0 }}
                       >
-                        <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                       </motion.div>
                     ) : Icon ? (
                       <motion.div

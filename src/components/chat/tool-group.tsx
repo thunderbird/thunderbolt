@@ -18,16 +18,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
         const [, toolName] = splitPartType(tool.type)
         const metadata = getToolMetadataSync(toolName, tool.input)
         const Icon = metadata.icon
-        const fallbackLabel = metadata.displayName || toolName
-        const initials =
-          fallbackLabel
-            .split(' ')
-            .map((word) => word[0])
-            .filter(Boolean)
-            .join('')
-            .slice(0, 2)
-            .toUpperCase() || toolName.slice(0, 2).toUpperCase()
-        const isStreaming = tool.state !== 'output-available' || !tool.output
+        const isLoading = tool.state !== 'output-available' || !tool.output
         const tooltipKey = tool.toolCallId ?? `${toolName}-${index}`
 
         return (
@@ -41,12 +32,12 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
               >
                 <Avatar className="border-2 border-background size-11">
                   <AvatarFallback>
-                    {isStreaming ? (
+                    {isLoading ? (
                       <motion.div
                         key={`${tooltipKey}-loading`}
                         initial={{ scale: 0 }}
                         animate={{
-                          scale: isStreaming ? 1 : 0,
+                          scale: isLoading ? 1 : 0,
                         }}
                         exit={{ scale: 0 }}
                       >
@@ -57,14 +48,14 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                         key={`${tooltipKey}-icon`}
                         initial={{ scale: 0 }}
                         animate={{
-                          scale: isStreaming ? 0 : 1,
+                          scale: isLoading ? 0 : 1,
                         }}
                         exit={{ scale: 0 }}
                       >
                         <Icon className="size-5" />
                       </motion.div>
                     ) : (
-                      initials
+                      metadata.initials
                     )}
                   </AvatarFallback>
                 </Avatar>
@@ -72,7 +63,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="font-medium">{metadata.displayName}</p>
-              {isStreaming ? <p className="text-xs text-muted-foreground">{metadata.loadingMessage}</p> : null}
+              {isLoading ? <p className="text-xs text-muted-foreground">{metadata.loadingMessage}</p> : null}
             </TooltipContent>
           </Tooltip>
         )

@@ -7,6 +7,7 @@ export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communic
 
 export type ToolMetadata = {
   displayName: string
+  initials: string
   loadingMessage: string
   category: ToolCategory
   icon: any
@@ -182,6 +183,15 @@ const getToolIcon = (toolName: string) => {
   }
 }
 
+const getDisplayNameInitials = (displayName: string) =>
+  displayName
+    .split(' ')
+    .slice(0, 2)
+    .map((word) => word[0])
+    .filter(Boolean)
+    .join('')
+    .toUpperCase()
+
 /**
  * Gets tool metadata with caching for performance (async version)
  */
@@ -196,8 +206,11 @@ export const getToolMetadata = async (toolName: string, args?: unknown): Promise
   const toolConfig = await getToolConfigByName(toolName)
   const category = detectCategory(toolName)
 
+  const displayName = formatDisplayName(toolName)
+
   const metadata: ToolMetadata = {
-    displayName: formatDisplayName(toolName),
+    displayName,
+    initials: getDisplayNameInitials(displayName),
     loadingMessage: generateLoadingMessage(toolName, category, args, toolConfig?.verb),
     category,
     icon: getToolIcon(toolName),
@@ -219,8 +232,11 @@ export const getToolMetadataSync = (toolName: string, input?: unknown): ToolMeta
   }
 
   const category = detectCategory(toolName)
+  const displayName = formatDisplayName(toolName)
+
   const metadata: ToolMetadata = {
-    displayName: formatDisplayName(toolName),
+    displayName,
+    initials: getDisplayNameInitials(displayName),
     loadingMessage: generateLoadingMessage(toolName, category, input),
     category,
     icon: getToolIcon(toolName),

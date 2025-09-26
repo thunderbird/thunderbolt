@@ -16,6 +16,7 @@ import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
+import { toolCallDetailsRef, ToolCallDetails } from './tool-call-details'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -352,6 +353,7 @@ export default function ChatUI({
         maxTokens={maxTokens ?? undefined}
         onNewChat={handleNewChat}
       />
+      <ToolCallDetails ref={toolCallDetailsRef} />
     </div>
   )
 }

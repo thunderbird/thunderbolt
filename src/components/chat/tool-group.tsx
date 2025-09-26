@@ -6,6 +6,7 @@ import { memo } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { motion } from 'framer-motion'
+import { toolCallDetailsRef } from './tool-call-details'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
@@ -30,7 +31,10 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                   scale: 1,
                 }}
               >
-                <Avatar className="border-2 border-background size-11">
+                <Avatar
+                  className="border-2 border-background size-11 cursor-pointer"
+                  onClick={() => toolCallDetailsRef.current?.open(tool)}
+                >
                   <AvatarFallback>
                     {isLoading ? (
                       <motion.div

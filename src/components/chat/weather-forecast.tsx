@@ -26,7 +26,7 @@ export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) =
   }
 
   return (
-    <Card className="w-full pb-0 overflow-hidden">
+    <Card className="w-full pb-0 overflow-hidden my-4">
       <CardHeader className="flex-col md:flex-row flex justify-between items-start gap-6">
         <div>
           <p className="text-2xl font-bold">{selectedDayMetadata.description}</p>

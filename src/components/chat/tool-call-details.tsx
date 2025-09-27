@@ -1,25 +1,16 @@
 import { createRef, forwardRef, useImperativeHandle, useState } from 'react'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog'
+import { AlertDialog, AlertDialogOverlay } from '@/components/ui/alert-dialog'
 import type { ToolUIPart } from 'ai'
 import { splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { ScrollArea } from '../ui/scroll-area'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable'
+import { Button } from '../ui/button'
+import { X } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export type ToolCallDetailsRef = {
   open: (toolCall: ToolUIPart) => void
   close: () => void
-}
-
-type ToolCallDetailsProps = {
-  //   onConfirm: () => void
 }
 
 const getOutput = (part: any) => {
@@ -32,19 +23,17 @@ const getOutput = (part: any) => {
 
 export const toolCallDetailsRef = createRef<ToolCallDetailsRef>()
 
-export const ToolCallDetails = forwardRef<ToolCallDetailsRef, ToolCallDetailsProps>((_, ref) => {
+export const ToolCallDetails = forwardRef<ToolCallDetailsRef>((_, ref) => {
   const [open, setOpen] = useState(false)
   const [toolCall, setToolCall] = useState<ToolUIPart | null>()
 
   const [, toolName] = splitPartType(toolCall?.type ?? '')
   const metadata = getToolMetadataSync(toolName, toolCall?.input)
 
+  const isMobile = useIsMobile()
+
   const onOpenChange = (isOpen: boolean) => {
     setOpen(isOpen)
-
-    if (!isOpen) {
-      setToolCall(null)
-    }
   }
 
   useImperativeHandle(ref, () => ({
@@ -57,17 +46,23 @@ export const ToolCallDetails = forwardRef<ToolCallDetailsRef, ToolCallDetailsPro
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{metadata.displayName}</AlertDialogTitle>
-          <ScrollArea className="max-h-100 min-h-10">
-            <AlertDialogDescription className="whitespace-pre-wrap">{getOutput(toolCall)}</AlertDialogDescription>
-          </ScrollArea>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => onOpenChange(false)}>Close</AlertDialogCancel>
-        </AlertDialogFooter>
-      </AlertDialogContent>
+      <AlertDialogOverlay>
+        <ResizablePanelGroup direction="horizontal" className="w-full">
+          <ResizablePanel onClick={() => onOpenChange(false)} />
+          <ResizableHandle />
+          <ResizablePanel defaultSize={isMobile ? 90 : 30}>
+            <div className="flex flex-1 h-full bg-card flex-col">
+              <div className="flex flex-row justify-between items-center p-6 gap-6">
+                <p className="text-lg leading-none font-semibold">{metadata.displayName}</p>
+                <Button onClick={() => onOpenChange(false)} variant="ghost">
+                  <X />
+                </Button>
+              </div>
+              <div className="whitespace-pre-wrap bg-accent p-6 flex flex-1 overflow-scroll">{getOutput(toolCall)}</div>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </AlertDialogOverlay>
     </AlertDialog>
   )
 })

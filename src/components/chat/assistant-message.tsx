@@ -30,23 +30,21 @@ const groupToolParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
   const grouped: GroupedUIPart[] = []
   let currentGroup: ToolUIPart[] = []
 
+  // Collects the currently buffered tool parts into a single group node so they render via ToolGroup.
   const flushGroup = () => {
     if (currentGroup.length === 0) {
       return
     }
 
-    if (currentGroup.length === 1) {
-      grouped.push(currentGroup[0])
-    } else {
-      grouped.push({
-        type: 'group_tools',
-        tools: [...currentGroup],
-      })
-    }
+    grouped.push({
+      type: 'group_tools',
+      tools: [...currentGroup],
+    })
 
     currentGroup = []
   }
 
+  // Walk through the incoming parts and buffer every consecutive non-display tool call.
   parts.forEach((part) => {
     const [partType, toolName] = splitPartType(part.type)
 
@@ -55,10 +53,12 @@ const groupToolParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
       return
     }
 
+    // Non-bufferable parts break the current streak, so flush first then append the part itself.
     flushGroup()
     grouped.push(part)
   })
 
+  // Ensure any trailing tool streak is output after iteration.
   flushGroup()
 
   return grouped

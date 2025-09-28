@@ -14,7 +14,7 @@ type ToolGroupProps = {
 
 export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
   return (
-    <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 my-4 flex-wrap">
+    <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 my-4 flex-wrap">
       {tools.map((tool, index) => {
         const [, toolName] = splitPartType(tool.type)
         const metadata = getToolMetadataSync(toolName, tool.input)

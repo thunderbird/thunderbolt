@@ -1,7 +1,7 @@
 import type { ToolConfig } from '@/types'
 import { memoize } from './memoize'
 import { getAvailableTools } from './tools'
-import { Calendar, CloudSun, FileText, FolderSearch, Inbox, Mail, MailSearch, Rss, Search } from 'lucide-react'
+import { Calendar, CloudSun, FileText, FolderSearch, Globe, Inbox, Mail, MailSearch, Search } from 'lucide-react'
 
 export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communication' | 'weather' | 'unknown'
 
@@ -176,7 +176,7 @@ const getToolIcon = (toolName: string) => {
       return FileText
 
     case 'fetch_content':
-      return Rss
+      return Globe
 
     default:
       return null

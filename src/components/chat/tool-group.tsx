@@ -32,7 +32,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                 }}
               >
                 <Avatar
-                  className="border-2 border-background size-11 cursor-pointer"
+                  className="border-2 border-background size-9 cursor-pointer"
                   onClick={() => toolCallDetailsRef.current?.open(tool)}
                 >
                   <AvatarFallback>
@@ -45,7 +45,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                         }}
                         exit={{ scale: 0 }}
                       >
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       </motion.div>
                     ) : Icon ? (
                       <motion.div
@@ -56,7 +56,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
                         }}
                         exit={{ scale: 0 }}
                       >
-                        <Icon className="size-5" />
+                        <Icon className="size-4" />
                       </motion.div>
                     ) : (
                       metadata.initials

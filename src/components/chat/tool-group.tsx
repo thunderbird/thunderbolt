@@ -2,17 +2,18 @@ import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
 import { Loader2 } from 'lucide-react'
-import { memo } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { motion } from 'framer-motion'
-import { toolCallDetailsRef } from './tool-call-details'
+import { useObjectView } from './object-view-provider'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
 }
 
-export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
+export const ToolGroup = ({ tools }: ToolGroupProps) => {
+  const { openObjectSidebar } = useObjectView()
+
   return (
     <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 my-4 flex-wrap">
       {tools.map((tool, index) => {
@@ -33,7 +34,7 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
               >
                 <Avatar
                   className="border-2 border-background size-9 cursor-pointer"
-                  onClick={() => toolCallDetailsRef.current?.open(tool)}
+                  onClick={() => openObjectSidebar(tool)}
                 >
                   <AvatarFallback>
                     {isLoading ? (
@@ -74,4 +75,4 @@ export const ToolGroup = memo(({ tools }: ToolGroupProps) => {
       })}
     </div>
   )
-})
+}

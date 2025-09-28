@@ -55,6 +55,7 @@ import { ImapSyncClient, ImapSyncProvider } from './sync'
 import type { InitData, SideviewType } from './types'
 import UiKitPage from './ui-kit'
 import { useBooleanSetting } from './hooks/use-setting'
+import { ObjectViewProvider } from './components/chat/object-view-provider'
 
 const queryClient = new QueryClient()
 
@@ -180,6 +181,7 @@ export const App = () => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<Error>()
   const [isClearingDatabase, setIsClearingDatabase] = useState(false)
+  const [objectSidebarOpen, setObjectSidebarOpen] = useState(false)
 
   useEffect(() => {
     init()
@@ -249,10 +251,22 @@ export const App = () => {
             <MCPProvider>
               <ImapProvider client={initData.imap}>
                 <ImapSyncProvider client={initData.imapSync}>
-                  <SidebarProvider>
-                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <AppContent initData={initData} />
-                    </SideviewProvider>
+                  <SidebarProvider
+                    open={objectSidebarOpen}
+                    onOpenChange={setObjectSidebarOpen}
+                    style={{
+                      // @ts-expect-error CSS custom property
+                      '--sidebar-width': '26rem',
+                      '--sidebar-width-mobile': '26rem',
+                    }}
+                  >
+                    <ObjectViewProvider>
+                      <SidebarProvider>
+                        <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
+                          <AppContent initData={initData} />
+                        </SideviewProvider>
+                      </SidebarProvider>
+                    </ObjectViewProvider>
                   </SidebarProvider>
                 </ImapSyncProvider>
               </ImapProvider>

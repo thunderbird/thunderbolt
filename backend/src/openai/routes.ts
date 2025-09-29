@@ -1,8 +1,8 @@
-import { getOpenAI } from '@/services/openai'
-import { isPostHogConfigured } from '@/services/posthog'
+import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { type OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia } from 'elysia'
+import { getOpenAI } from './client'
 
 export const supportedModels = [
   'qwen3-235b-a22b-instruct-2507',
@@ -68,3 +68,4 @@ export const createOpenAIRoutes = () => {
     }
   })
 }
+

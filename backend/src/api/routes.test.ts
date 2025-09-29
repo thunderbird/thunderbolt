@@ -1,6 +1,6 @@
+import * as settingsModule from '@/config/settings'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { createApp } from '..'
-import * as settingsModule from '../config/settings'
+import { createApp } from '../index'
 
 describe('Main Routes', () => {
   let app: Awaited<ReturnType<typeof createApp>>
@@ -93,3 +93,4 @@ describe('Main Routes', () => {
     expect(Array.isArray(data)).toBe(true)
   })
 })
+

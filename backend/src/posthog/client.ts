@@ -41,3 +41,4 @@ export const isPostHogConfigured = (): boolean => {
   const settings = getSettings()
   return !!settings.posthogApiKey
 }
+

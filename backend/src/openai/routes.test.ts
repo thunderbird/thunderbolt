@@ -1,9 +1,9 @@
+import * as posthogClient from '@/posthog/client'
+import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import * as openaiService from '../services/openai'
-import * as posthogService from '../services/posthog'
-import * as streamingUtils from '../utils/streaming'
-import { createOpenAIRoutes, supportedModels } from './openai'
+import * as openaiClient from './client'
+import { createOpenAIRoutes, supportedModels } from './routes'
 
 describe('OpenAI Routes', () => {
   let app: Elysia
@@ -45,8 +45,8 @@ describe('OpenAI Routes', () => {
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
     // Mock dependencies
-    getOpenAISpy = spyOn(openaiService, 'getOpenAI').mockReturnValue(mockOpenAIClient as any)
-    isPostHogConfiguredSpy = spyOn(posthogService, 'isPostHogConfigured').mockReturnValue(false)
+    getOpenAISpy = spyOn(openaiClient, 'getOpenAI').mockReturnValue(mockOpenAIClient as any)
+    isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(
       createMockSSEStream(),
     )
@@ -293,3 +293,4 @@ describe('OpenAI Routes', () => {
     })
   })
 })
+

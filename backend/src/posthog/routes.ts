@@ -1,7 +1,7 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
+import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
-import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '../utils/request'
 
 /**
  * PostHog analytics proxy routes
@@ -56,3 +56,4 @@ export const createPostHogRoutes = () => {
     },
   )
 }
+

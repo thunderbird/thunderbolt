@@ -2,9 +2,10 @@ import { getSetting } from '@/lib/dal'
 
 /**
  * Get the default cloud URL from environment variables or fallback to localhost
+ * Includes /v1 API version prefix
  */
 export const getDefaultCloudUrl = (): string => {
-  return import.meta.env?.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000'
+  return import.meta.env?.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1'
 }
 
 /**

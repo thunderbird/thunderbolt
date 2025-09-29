@@ -188,12 +188,25 @@ export const getBridgeSettings = async () => {
 }
 
 /**
+ * Check if a setting exists in the settings table
+ */
+export const hasSetting = async (key: string): Promise<boolean> => {
+  const db = DatabaseSingleton.instance.db
+  const result = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(settingsTable)
+    .where(eq(settingsTable.key, key))
+    .get()
+  return (result?.count ?? 0) > 0
+}
+
+/**
  * Get a setting value from the settings table
  */
 export const getSetting = async <T = string>(key: string, defaultValue: T | null = null): Promise<T | null> => {
   const db = DatabaseSingleton.instance.db
   const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
-  return (setting?.value as T) || defaultValue
+  return (setting?.value as T) ?? defaultValue
 }
 
 /**
@@ -202,6 +215,15 @@ export const getSetting = async <T = string>(key: string, defaultValue: T | null
 export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
   const setting = await getSetting(key, defaultValue.toString())
   return setting === 'true'
+}
+
+/**
+ * Create a setting only if it doesn't already exist
+ * Does nothing if the setting already exists (preserves existing value)
+ */
+export const createSetting = async (key: string, value: string | null): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(settingsTable).values({ key, value }).onConflictDoNothing()
 }
 
 /**
@@ -224,6 +246,15 @@ export const updateBooleanSetting = async (key: string, value: boolean): Promise
       target: settingsTable.key,
       set: { value: value ? 'true' : 'false' },
     })
+}
+
+/**
+ * Delete a setting from the settings table
+ * Useful for removing user overrides so the code default is used
+ */
+export const deleteSetting = async (key: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(settingsTable).where(eq(settingsTable.key, key))
 }
 
 // ============================================================================

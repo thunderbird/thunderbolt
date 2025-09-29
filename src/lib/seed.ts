@@ -1,8 +1,8 @@
-import { getDefaultCloudUrl } from '@/lib/config'
+import { createSetting, deleteSetting, getSetting } from '@/lib/dal'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
-import { accountsTable, modelsTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
+import { accountsTable, modelsTable, promptsTable, tasksTable } from '../db/tables'
 
 export const seedAccounts = async () => {
   const db = DatabaseSingleton.instance.db
@@ -71,48 +71,30 @@ export const seedModels = async () => {
   }
 }
 
+/**
+ * Clean up old default settings that should now use code defaults
+ * Deletes cloud_url if it matches old default patterns so users get the new /v1 endpoint
+ * Also removes other settings that were previously seeded with defaults
+ */
+export const cleanupOldDefaultSettings = async () => {
+  const cloudUrl = await getSetting<string>('cloud_url', null)
+
+  if (cloudUrl) {
+    const shouldDelete =
+      cloudUrl.startsWith('https://thunderbolt-hooc.onrender.com') || cloudUrl.startsWith('http://localhost:8000')
+
+    if (shouldDelete) {
+      await deleteSetting('cloud_url')
+    }
+  }
+}
+
 export const seedSettings = async () => {
-  const db = DatabaseSingleton.instance.db
+  await cleanupOldDefaultSettings()
 
-  await db
-    .insert(settingsTable)
-    .values({
-      key: 'cloud_url',
-      value: getDefaultCloudUrl(),
-    })
-    .onConflictDoNothing()
-
-  await db
-    .insert(settingsTable)
-    .values({
-      key: 'anonymous_id',
-      value: uuidv7(), // @todo this should really be cryptographically secure
-    })
-    .onConflictDoNothing()
-
-  await db
-    .insert(settingsTable)
-    .values({
-      key: 'is_triggers_enabled',
-      value: 'false',
-    })
-    .onConflictDoNothing()
-
-  await db
-    .insert(settingsTable)
-    .values({
-      key: 'disable_flower_encryption',
-      value: 'false',
-    })
-    .onConflictDoNothing()
-
-  await db
-    .insert(settingsTable)
-    .values({
-      key: 'debug_posthog',
-      value: 'false',
-    })
-    .onConflictDoNothing()
+  // Only set anonymous_id if it doesn't exist (unique per user)
+  // @todo this should really be cryptographically secure
+  await createSetting('anonymous_id', uuidv7())
 }
 
 export const seedTasks = async () => {

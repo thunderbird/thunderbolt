@@ -31,7 +31,7 @@ export function ObjectSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
       <SidebarContent className="p-4 overflow-x-hidden">
         <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(objectContent)}</p>
       </SidebarContent>
-      <SidebarRail />
+      <SidebarRail enableDrag direction="left" maxResizeWidth="52rem" />
     </Sidebar>
   )
 }

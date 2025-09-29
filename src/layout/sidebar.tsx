@@ -242,7 +242,6 @@ export default function ChatSidebar() {
 
           <SidebarFooter />
         </SidebarContent>
-        <SidebarRail />
       </Sidebar>
     )
   }
@@ -408,7 +407,6 @@ export default function ChatSidebar() {
 
         <SidebarFooter />
       </SidebarContent>
-      <SidebarRail />
       <DeleteAllChatsDialog onConfirm={() => deleteAllChatsMutation.mutate()} ref={deleteAllChatsDialogRef} />
       <DeleteChatDialog
         onCancel={() => {

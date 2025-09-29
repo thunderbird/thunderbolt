@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react'
-import { useSidebar } from '../ui/sidebar'
+import { SidebarInset, useSidebar } from '../ui/sidebar'
 import { ObjectSidebar } from './object-sidebar'
 
 interface ObjectViewContextType {
@@ -35,7 +35,7 @@ export function ObjectViewProvider({ children }: ObjectViewProviderProps) {
         closeObjectSidebar,
       }}
     >
-      {children}
+      <SidebarInset>{children}</SidebarInset>
       <ObjectSidebar />
     </ObjectViewContext.Provider>
   )

@@ -251,15 +251,7 @@ export const App = () => {
             <MCPProvider>
               <ImapProvider client={initData.imap}>
                 <ImapSyncProvider client={initData.imapSync}>
-                  <SidebarProvider
-                    open={objectSidebarOpen}
-                    onOpenChange={setObjectSidebarOpen}
-                    style={{
-                      // @ts-expect-error CSS custom property
-                      '--sidebar-width': '26rem',
-                      '--sidebar-width-mobile': '26rem',
-                    }}
-                  >
+                  <SidebarProvider open={objectSidebarOpen} onOpenChange={setObjectSidebarOpen} defaultWidth="26rem">
                     <ObjectViewProvider>
                       <SidebarProvider>
                         <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>

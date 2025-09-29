@@ -47,6 +47,8 @@ export const searchExa = async (
         snippet: result.text || '',
         author: result.author || null,
         published_date: result.publishedDate || null,
+        favicon: result.favicon || null,
+        image: result.image || null,
       })
     })
 
@@ -58,6 +60,7 @@ export const searchExa = async (
 
 /**
  * Fetch content from a URL using Exa's privacy-protected proxy
+ * Returns a JSON string with content, favicon, and image
  */
 export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<string> => {
   const client = createExaClient()
@@ -76,8 +79,17 @@ export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<
 
     if (response.results && response.results.length > 0) {
       const content = response.results[0]
-      // Return the text content
-      return content.text || ''
+      // Return structured data including favicon and image
+      const result = {
+        url: content.url,
+        title: content.title || null,
+        text: content.text || '',
+        favicon: content.favicon || null,
+        image: content.image || null,
+        author: content.author || null,
+        published_date: content.publishedDate || null,
+      }
+      return JSON.stringify(result, null, 2)
     } else {
       return 'Error: No content found for the provided URL'
     }

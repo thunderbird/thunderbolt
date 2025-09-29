@@ -78,6 +78,8 @@ describe('Pro - Exa', () => {
           text: 'Test content',
           author: 'Test Author',
           publishedDate: '2024-01-01',
+          favicon: 'https://example.com/favicon.ico',
+          image: 'https://example.com/image.png',
         },
       ]
       mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
@@ -97,6 +99,8 @@ describe('Pro - Exa', () => {
           snippet: 'Test content',
           author: 'Test Author',
           published_date: '2024-01-01',
+          favicon: 'https://example.com/favicon.ico',
+          image: 'https://example.com/image.png',
         },
       ])
     })
@@ -119,7 +123,7 @@ describe('Pro - Exa', () => {
           title: 'Test Result',
           url: 'https://example.com',
           text: 'Test content',
-          // author and publishedDate are missing
+          // author, publishedDate, favicon, and image are missing
         },
       ]
       mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
@@ -134,6 +138,8 @@ describe('Pro - Exa', () => {
           snippet: 'Test content',
           author: null,
           published_date: null,
+          favicon: null,
+          image: null,
         },
       ])
     })
@@ -206,7 +212,13 @@ describe('Pro - Exa', () => {
     it('should fetch content successfully', async () => {
       const mockContent = [
         {
+          url: 'https://example.com',
+          title: 'Test Page',
           text: 'This is the fetched content from the webpage',
+          favicon: 'https://example.com/favicon.ico',
+          image: 'https://example.com/image.png',
+          author: 'Test Author',
+          publishedDate: '2024-01-01',
         },
       ]
       mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
@@ -219,12 +231,24 @@ describe('Pro - Exa', () => {
           includeHtmlTags: false,
         },
       })
-      expect(result).toBe('This is the fetched content from the webpage')
+      
+      const parsed = JSON.parse(result)
+      expect(parsed).toEqual({
+        url: 'https://example.com',
+        title: 'Test Page',
+        text: 'This is the fetched content from the webpage',
+        favicon: 'https://example.com/favicon.ico',
+        image: 'https://example.com/image.png',
+        author: 'Test Author',
+        published_date: '2024-01-01',
+      })
     })
 
     it('should handle empty content', async () => {
       const mockContent = [
         {
+          url: 'https://example.com',
+          title: null,
           text: '',
         },
       ]
@@ -232,7 +256,9 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('')
+      const parsed = JSON.parse(result)
+      expect(parsed.text).toBe('')
+      expect(parsed.url).toBe('https://example.com')
     })
 
     it('should handle no results', async () => {
@@ -246,6 +272,7 @@ describe('Pro - Exa', () => {
     it('should handle missing text field', async () => {
       const mockContent = [
         {
+          url: 'https://example.com',
           // text field is missing
         },
       ]
@@ -253,7 +280,8 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('')
+      const parsed = JSON.parse(result)
+      expect(parsed.text).toBe('')
     })
 
     it('should return error message when API key is not configured', async () => {
@@ -286,7 +314,7 @@ describe('Pro - Exa', () => {
     })
 
     it('should use correct configuration parameters', async () => {
-      mockExa.getContents.mockResolvedValueOnce({ results: [{ text: 'content' }] })
+      mockExa.getContents.mockResolvedValueOnce({ results: [{ url: 'https://example.com', text: 'content' }] })
 
       await fetchContentExa('https://example.com', mockContext)
 
@@ -306,9 +334,8 @@ describe('Pro - Exa', () => {
         'https://example.com/page#anchor',
       ]
 
-      mockExa.getContents.mockResolvedValue({ results: [{ text: 'content' }] })
-
       for (const url of urls) {
+        mockExa.getContents.mockResolvedValueOnce({ results: [{ url, text: 'content' }] })
         await fetchContentExa(url, mockContext)
         expect(mockExa.getContents).toHaveBeenCalledWith([url], expect.any(Object))
       }

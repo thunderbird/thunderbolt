@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { SimpleContext } from './context'
 import { createExaClient, fetchContentExa, searchExa } from './exa'
+import { createProxyRoutes } from './proxy'
 import type {
   FetchContentRequest,
   FetchContentResponse,
@@ -23,6 +24,7 @@ const weatherClient = new OpenMeteoWeather()
  */
 export const createProToolsRoutes = () => {
   return new Elysia({ prefix: '/pro' })
+    .use(createProxyRoutes())
     .post(
       '/search',
       async ({ body }): Promise<SearchResponse> => {

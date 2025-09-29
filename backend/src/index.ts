@@ -1,6 +1,7 @@
 import { createMainRoutes } from '@/api/routes'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
+import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { createFlowerRoutes } from '@/flower/routes'
@@ -37,7 +38,9 @@ const createApp = async () => {
     )
   }
 
-  return app
+  const configuredApp = instrumentation ? app.use(instrumentation) : app
+
+  return configuredApp
     .use(
       cors({
         origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),

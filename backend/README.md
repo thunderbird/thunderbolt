@@ -57,6 +57,42 @@ bun run start
 
 - `GET /flower/healthcheck/{publisher}/{model}?token=<token>` - Test Flower AI model (e.g., `/flower/healthcheck/qwen/qwen3-235b?token=...`)
 
+## OpenTelemetry
+
+OpenTelemetry integration is available for distributed tracing and observability. To enable:
+
+1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` in your `.env` file
+2. Configure authentication headers via `OTEL_EXPORTER_OTLP_HEADERS`
+
+### Supported Backends
+
+- BetterStack
+- Jaeger
+- Zipkin
+- New Relic
+- Grafana Cloud
+- Any OpenTelemetry-compatible backend
+
+### Example: BetterStack
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-instance.betterstackdata.com/v1/traces
+OTEL_EXPORTER_OTLP_TOKEN=your_betterstack_token
+```
+
+### Example: Local Jaeger
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+```
+
+OpenTelemetry will automatically:
+- Collect span data for all requests
+- Group lifecycle hooks together
+- Measure function execution time
+- Instrument HTTP requests/responses
+- Collect errors and exceptions
+
 ## Testing
 
 ```bash

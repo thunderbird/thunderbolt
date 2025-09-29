@@ -1,0 +1,4 @@
+# Bun configuration for OpenTelemetry
+# The instrumentation file must be preloaded to ensure OpenTelemetry SDK
+# is initialized before any instrumented modules are imported
+preload = ["./src/config/instrumentation.ts"]

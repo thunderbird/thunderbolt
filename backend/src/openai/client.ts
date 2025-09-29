@@ -1,7 +1,7 @@
 import { getSettings } from '@/config/settings'
+import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import OpenAI from 'openai'
-import { getPostHogClient, isPostHogConfigured } from './posthog'
 
 export const getOpenAI = () => {
   const settings = getSettings()
@@ -24,3 +24,4 @@ export const getOpenAI = () => {
 
   return openai
 }
+

@@ -16,14 +16,14 @@ This is the REST API backend that powers Thunderbolt's AI inference, tool calls,
 bun install
 
 # Copy environment configuration
-cp env.example .env
+cp .env.example .env
 
 # Edit .env with your configuration
 ```
 
 ### Documentation via Swagger
 
-- API documentation is available at `/swagger` when running the server
+- API documentation is available at `/v1/swagger` when running the server
 - All routes are automatically documented with OpenAPI/Swagger
 - TypeScript provides inline documentation and type checking
 
@@ -62,7 +62,7 @@ bun run start
 OpenTelemetry integration is available for distributed tracing and observability. To enable:
 
 1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` in your `.env` file
-2. Configure authentication headers via `OTEL_EXPORTER_OTLP_HEADERS`
+2. (Optional) Set `OTEL_EXPORTER_OTLP_TOKEN` for authenticated backends
 
 ### Supported Backends
 

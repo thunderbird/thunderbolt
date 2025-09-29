@@ -6,15 +6,13 @@ import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolGroup } from './tool-group'
-
-type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
-
-type ToolGroupUIPart = {
-  type: 'group_tools'
-  tools: ToolUIPart[]
-}
-
-type GroupedUIPart = GroupableUIPart | ToolGroupUIPart
+import {
+  filterMessageParts,
+  type GroupableUIPart,
+  groupToolParts,
+  type ToolGroupUIPart,
+  type GroupedUIPart,
+} from '@/lib/assistant-message'
 
 interface AssistantMessageProps {
   message: UIMessage
@@ -23,61 +21,6 @@ interface AssistantMessageProps {
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
-
-const supportedPartTypes = ['reasoning', 'tool', 'text']
-
-const groupToolParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
-  const grouped: GroupedUIPart[] = []
-  let currentGroup: ToolUIPart[] = []
-
-  // Collects the currently buffered tool parts into a single group node so they render via ToolGroup.
-  const flushGroup = () => {
-    if (currentGroup.length === 0) {
-      return
-    }
-
-    grouped.push({
-      type: 'group_tools',
-      tools: [...currentGroup],
-    })
-
-    currentGroup = []
-  }
-
-  // Walk through the incoming parts and buffer every consecutive non-display tool call.
-  parts.forEach((part) => {
-    const [partType, toolName] = splitPartType(part.type)
-
-    if (partType === 'tool' && !toolName.startsWith('display-')) {
-      currentGroup.push(part as ToolUIPart)
-      return
-    }
-
-    // Non-bufferable parts break the current streak, so flush first then append the part itself.
-    flushGroup()
-    grouped.push(part)
-  })
-
-  // Ensure any trailing tool streak is output after iteration.
-  flushGroup()
-
-  return grouped
-}
-
-const filterMessageParts = (parts: UIMessage['parts']) =>
-  parts.filter((part) => {
-    const [partType] = splitPartType(part.type)
-
-    if (!supportedPartTypes.includes(partType)) {
-      return false
-    }
-
-    if (partType === 'text') {
-      return (part as TextUIPart).text.trim() !== ''
-    }
-
-    return true
-  })
 
 const mountMessageParts = (groupedParts: GroupedUIPart[]) => {
   const partElements: ReactNode[] = []

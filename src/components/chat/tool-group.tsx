@@ -34,7 +34,7 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
               >
                 <Avatar
                   className="border-2 border-background size-9 cursor-pointer"
-                  onClick={() => openObjectSidebar(tool)}
+                  onClick={() => !isLoading && openObjectSidebar(tool)}
                 >
                   <AvatarFallback>
                     {isLoading ? (

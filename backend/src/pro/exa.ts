@@ -62,10 +62,18 @@ export const searchExa = async (
  * Fetch content from a URL using Exa's privacy-protected proxy
  * Returns a JSON string with content, favicon, and image
  */
-export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<string> => {
+export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<{
+        url: string
+        title: string | null
+        text: string
+        favicon: string | null
+        image: string | null
+        author: string | null
+        published_date: string | null
+      } | { error:string }> => {
   const client = createExaClient()
   if (!client) {
-    return 'Error: Exa API key not configured'
+    return {error: 'Error: Exa API key not configured'}
   }
 
   try {
@@ -89,12 +97,12 @@ export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<
         author: content.author || null,
         published_date: content.publishedDate || null,
       }
-      return JSON.stringify(result, null, 2)
+      return result
     } else {
-      return 'Error: No content found for the provided URL'
+      return {error: 'Error: No content found for the provided URL'}
     }
   } catch (error) {
     await ctx.error(`Exa content fetch error: ${String(error)}`)
-    return `Error: ${String(error)}`
+    return {error: `Error: ${String(error)}`}
   }
 }

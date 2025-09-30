@@ -1,10 +1,10 @@
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { splitPartType } from '@/lib/utils'
+import { cn, splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
+import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
-import { motion } from 'framer-motion'
 import { useObjectView } from './object-view-provider'
 
 type ToolGroupProps = {
@@ -20,7 +20,8 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
         const [, toolName] = splitPartType(tool.type)
         const metadata = getToolMetadataSync(toolName, tool.input)
         const Icon = metadata.icon
-        const isLoading = tool.state !== 'output-available' || !tool.output
+        const isError = tool.state === 'output-error'
+        const isLoading = (tool.state !== 'output-available' || !tool.output) && !isError
         const tooltipKey = tool.toolCallId ?? `${toolName}-${index}`
 
         return (
@@ -34,7 +35,7 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
               >
                 <Avatar
                   className="border-2 border-background size-9 cursor-pointer"
-                  onClick={() => !isLoading && openObjectSidebar(tool)}
+                  onClick={() => !isLoading && !isError && openObjectSidebar(tool)}
                 >
                   <AvatarFallback>
                     {isLoading ? (
@@ -57,7 +58,7 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
                         }}
                         exit={{ scale: 0 }}
                       >
-                        <Icon className="size-4" />
+                        <Icon className={cn('size-4', isError && 'text-yellow-500')} />
                       </motion.div>
                     ) : (
                       metadata.initials

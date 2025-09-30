@@ -232,8 +232,7 @@ describe('Pro - Exa', () => {
         },
       })
       
-      const parsed = JSON.parse(result)
-      expect(parsed).toEqual({
+      expect(result).toEqual({
         url: 'https://example.com',
         title: 'Test Page',
         text: 'This is the fetched content from the webpage',
@@ -256,9 +255,10 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      const parsed = JSON.parse(result)
-      expect(parsed.text).toBe('')
-      expect(parsed.url).toBe('https://example.com')
+      expect(result).toMatchObject({
+        text: '',
+        url: 'https://example.com',
+      })
     })
 
     it('should handle no results', async () => {
@@ -266,7 +266,7 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('Error: No content found for the provided URL')
+      expect(result).toEqual({ error: 'Error: No content found for the provided URL' })
     })
 
     it('should handle missing text field', async () => {
@@ -280,8 +280,9 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      const parsed = JSON.parse(result)
-      expect(parsed.text).toBe('')
+      expect(result).toMatchObject({
+        text: '',
+      })
     })
 
     it('should return error message when API key is not configured', async () => {
@@ -291,7 +292,7 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('Error: Exa API key not configured')
+      expect(result).toEqual({ error: 'Error: Exa API key not configured' })
       expect(mockExa.getContents).not.toHaveBeenCalled()
     })
 
@@ -301,7 +302,7 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('Error: Error: Network error') // fetchContentExa adds "Error: " prefix to String(error)
+      expect(result).toEqual({ error: 'Error: Error: Network error' }) // fetchContentExa adds "Error: " prefix to String(error)
       // Error handling tested by checking return value
     })
 
@@ -310,7 +311,7 @@ describe('Pro - Exa', () => {
 
       const result = await fetchContentExa('https://example.com', mockContext)
 
-      expect(result).toBe('Error: String error')
+      expect(result).toEqual({ error: 'Error: String error' })
     })
 
     it('should use correct configuration parameters', async () => {

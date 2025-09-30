@@ -98,11 +98,11 @@ export const createProToolsRoutes = () => {
         const content = await fetchContentExa(request.url, ctx)
 
         // Check if Exa returned an error message
-        if (content.startsWith('Error:')) {
+        if (content.error) {
           return {
             data: null,
             success: false,
-            error: content,
+            error: content.error,
           }
         }
 

@@ -40,6 +40,16 @@ export type FetchContentParams = z.infer<typeof fetchContentSchema>
 export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
+type FetchContentData = {
+  url: string
+  title: string | null
+  text: string
+  favicon: string | null
+  image: string | null
+  author: string | null
+  published_date: string | null
+}
+
 /**
  * Search the web and return formatted results
  */
@@ -68,7 +78,7 @@ export const search = async (params: SearchParams): Promise<string> => {
 /**
  * Fetch and parse content from a webpage URL
  */
-export const fetchContent = async (params: FetchContentParams): Promise<string> => {
+export const fetchContent = async (params: FetchContentParams): Promise<FetchContentData> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
@@ -77,12 +87,11 @@ export const fetchContent = async (params: FetchContentParams): Promise<string> 
           url: params.url,
         },
       })
-      .json<{ data: string; success: boolean; error?: string }>()
+      .json<{ data: FetchContentData; success: boolean; error?: string }>()
 
     if (!response.success) {
       throw new Error(response.error || 'Fetch content failed')
     }
-
     return response.data
   } catch (error) {
     console.error('Fetch content error:', error)

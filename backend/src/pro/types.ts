@@ -36,9 +36,20 @@ export const fetchContentRequestSchema = z.object({
   url: z.string(),
 })
 
-export const fetchContentResponseSchema = baseApiResponseSchema(z.string())
+export const fetchContentDataSchema = z.object({
+  url: z.string(),
+  title: z.string().nullable(),
+  text: z.string(),
+  favicon: z.string().nullable(),
+  image: z.string().nullable(),
+  author: z.string().nullable(),
+  published_date: z.string().nullable(),
+})
+
+export const fetchContentResponseSchema = baseApiResponseSchema(fetchContentDataSchema)
 
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
+export type FetchContentData = z.infer<typeof fetchContentDataSchema>
 export type FetchContentResponse = z.infer<typeof fetchContentResponseSchema>
 
 /**

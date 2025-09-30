@@ -12,9 +12,6 @@ const makeInit = (messages: ThunderboltUIMessage[], chatId: string): RequestInit
 })
 
 beforeAll(async () => {
-  // Reset singleton to ensure test isolation
-  DatabaseSingleton.reset()
-
   // Use in-memory database for testing
   await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
 

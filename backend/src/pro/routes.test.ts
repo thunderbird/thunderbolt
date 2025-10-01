@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { Elysia } from 'elysia'
 import { createProToolsRoutes } from './routes'
 
 describe('Pro Tools Routes', () => {
-  let app: Elysia
+  let app: ReturnType<typeof createProToolsRoutes>
 
   beforeAll(async () => {
     // Mock console methods to reduce test noise
@@ -12,7 +11,7 @@ describe('Pro Tools Routes', () => {
     spyOn(console, 'error').mockImplementation(() => {})
     spyOn(console, 'warn').mockImplementation(() => {})
 
-    app = new Elysia().use(createProToolsRoutes())
+    app = createProToolsRoutes()
   })
 
   afterAll(async () => {

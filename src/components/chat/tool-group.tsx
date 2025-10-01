@@ -3,16 +3,34 @@ import { cn, splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
 import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '../ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useObjectView } from './object-view-provider'
+import { useSetting } from '@/hooks/use-setting'
+import { getDefaultCloudUrl } from '@/lib/config'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
 }
 
+const getFavicon = (tool: ToolUIPart, cloudUrl: string | null) => {
+  const favicon = (tool.output as any)?.favicon
+
+  if (favicon) {
+    return favicon
+  }
+
+  const domain = (tool.output as any)?.url?.split('/')?.[2]
+
+  if (domain && cloudUrl) {
+    return `${cloudUrl}/pro/proxy/https://icons.duckduckgo.com/ip3/${domain}.ico`
+  }
+}
+
 export const ToolGroup = ({ tools }: ToolGroupProps) => {
   const { openObjectSidebar } = useObjectView()
+
+  const [cloudUrl] = useSetting('cloud_url', getDefaultCloudUrl())
 
   return (
     <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 my-4 flex-wrap">
@@ -23,6 +41,7 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
         const isError = tool.state === 'output-error'
         const isLoading = (tool.state !== 'output-available' || !tool.output) && !isError
         const tooltipKey = tool.toolCallId ?? `${toolName}-${index}`
+        const favicon = getFavicon(tool, cloudUrl)
 
         return (
           <Tooltip key={tooltipKey}>
@@ -34,9 +53,10 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
                 }}
               >
                 <Avatar
-                  className="border-2 border-background size-9 cursor-pointer"
+                  className="border-2 border-background size-9 cursor-pointer items-center justify-center bg-muted"
                   onClick={() => !isLoading && !isError && openObjectSidebar(tool)}
                 >
+                  {!isLoading && !isError && favicon && <AvatarImage className="size-4" src={favicon} />}
                   <AvatarFallback>
                     {isLoading ? (
                       <motion.div

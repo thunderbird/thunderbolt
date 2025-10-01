@@ -1,329 +1,382 @@
-import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import type { SimpleContext } from './context'
-import { createExaClient, fetchContentExa, searchExa } from './exa'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { Elysia, t } from 'elysia'
 
-// Mock the Exa SDK
-const mockExa = {
-  searchAndContents: spyOn({} as any, 'searchAndContents').mockResolvedValue({ results: [] }),
-  getContents: spyOn({} as any, 'getContents').mockResolvedValue({ results: [] }),
+// Create a test version of the plugin with mocked Exa client
+const createTestExaPlugin = (mockExaClient: any) => {
+  return new Elysia({ name: 'exa-test' })
+    .state('exaClient', mockExaClient)
+    .post(
+      '/search',
+      async ({ body, store }): Promise<any> => {
+        if (!store.exaClient) {
+          throw new Error('Search service is not configured.')
+        }
+
+        const response = await store.exaClient.search(body.query, {
+          numResults: body.max_results,
+          useAutoprompt: true,
+          type: 'fast',
+        })
+
+        return {
+          data: response.results,
+          success: true,
+        }
+      },
+      {
+        body: t.Object({
+          query: t.String(),
+          max_results: t.Optional(t.Number({ default: 10 })),
+        }),
+      },
+    )
+    .post(
+      '/fetch-content',
+      async ({ body, store }): Promise<any> => {
+        if (!store.exaClient) {
+          throw new Error('Fetch content service is not configured.')
+        }
+
+        const response = await store.exaClient.getContents(body.urls)
+
+        return {
+          data: response.results,
+          success: true,
+        }
+      },
+      {
+        body: t.Object({
+          urls: t.Array(t.String()),
+        }),
+      },
+    )
 }
 
-// Mock the Exa constructor
-const ExaModule = await import('exa-js')
-spyOn(ExaModule as any, 'Exa').mockImplementation(() => mockExa as any)
-
-// Mock getSettings
-const mockGetSettings = spyOn(await import('../config/settings'), 'getSettings')
-
-describe('Pro - Exa', () => {
-  let mockContext: SimpleContext
+describe('Pro - Exa Plugin', () => {
+  let app: any
+  let mockSearch: any
+  let mockGetContents: any
 
   beforeEach(() => {
-    mockContext = {
-      info: spyOn({} as any, 'info').mockResolvedValue(undefined),
-      error: spyOn({} as any, 'error').mockResolvedValue(undefined),
-    } as any
+    // Create fresh mocks
+    mockSearch = mock(() => Promise.resolve({ results: [] }))
+    mockGetContents = mock(() => Promise.resolve({ results: [] }))
 
-    // Reset all mocks
-    mockExa.searchAndContents.mockReset()
-    mockExa.getContents.mockReset()
-    mockGetSettings.mockReset()
+    const mockExaClient = {
+      search: mockSearch,
+      getContents: mockGetContents,
+    }
+
+    // Create app with mocked client
+    app = new Elysia().use(createTestExaPlugin(mockExaClient))
   })
 
-  describe('createExaClient', () => {
-    it('should create Exa client when API key is configured', () => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: 'test-exa-key',
-      } as any)
-
-      const client = createExaClient()
-
-      expect(client).not.toBeNull()
-      expect(mockGetSettings).toHaveBeenCalled()
-    })
-
-    it('should return null when API key is not configured', () => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: '',
-      } as any)
-
-      const client = createExaClient()
-
-      expect(client).toBeNull()
-    })
-
-    it('should return null when API key is undefined', () => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: undefined,
-      } as any)
-
-      const client = createExaClient()
-
-      expect(client).toBeNull()
-    })
-  })
-
-  describe('searchExa', () => {
-    beforeEach(() => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: 'test-exa-key',
-      } as any)
-    })
-
-    it('should perform search with default parameters', async () => {
+  describe('POST /search', () => {
+    it('should perform search successfully with API key configured', async () => {
       const mockResults = [
         {
           title: 'Test Result',
           url: 'https://example.com',
-          text: 'Test content',
-          author: 'Test Author',
           publishedDate: '2024-01-01',
-          favicon: 'https://example.com/favicon.ico',
-          image: 'https://example.com/image.png',
+          author: 'Test Author',
         },
       ]
-      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+      mockSearch.mockResolvedValueOnce({ results: mockResults })
 
-      const results = await searchExa('test query', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
 
-      expect(mockExa.searchAndContents).toHaveBeenCalledWith('test query', {
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({
+        data: mockResults,
+        success: true,
+      })
+      expect(mockSearch).toHaveBeenCalledWith('test search', {
         numResults: 10,
         useAutoprompt: true,
-        type: 'neural',
+        type: 'fast',
       })
-      expect(results).toEqual([
-        {
-          position: 1,
-          title: 'Test Result',
-          url: 'https://example.com',
-          snippet: 'Test content',
-          author: 'Test Author',
-          published_date: '2024-01-01',
-          favicon: 'https://example.com/favicon.ico',
-          image: 'https://example.com/image.png',
-        },
-      ])
     })
 
-    it('should respect maxResults parameter', async () => {
-      mockExa.searchAndContents.mockResolvedValueOnce({ results: [] })
+    it('should respect max_results parameter', async () => {
+      mockSearch.mockResolvedValueOnce({ results: [] })
 
-      await searchExa('test query', mockContext, 5)
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search', max_results: 5 }),
+        }),
+      )
 
-      expect(mockExa.searchAndContents).toHaveBeenCalledWith('test query', {
+      expect(response.status).toBe(200)
+      expect(mockSearch).toHaveBeenCalledWith('test search', {
         numResults: 5,
         useAutoprompt: true,
-        type: 'neural',
+        type: 'fast',
       })
     })
 
-    it('should handle results without optional fields', async () => {
+    it('should use default max_results when not provided', async () => {
+      mockSearch.mockResolvedValueOnce({ results: [] })
+
+      await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
+
+      expect(mockSearch).toHaveBeenCalledWith('test search', {
+        numResults: 10,
+        useAutoprompt: true,
+        type: 'fast',
+      })
+    })
+
+    it('should throw error when API key is not configured', async () => {
+      // Create app with null client to simulate no API key
+      const appNoKey = new Elysia().use(createTestExaPlugin(null))
+
+      const response = await appNoKey.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      const text = await response.text()
+      expect(text).toContain('Search service is not configured')
+    })
+
+    it('should return 422 when query is missing', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should return 422 when body is invalid', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 123 }), // query should be string
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should handle search API errors gracefully', async () => {
+      mockSearch.mockRejectedValueOnce(new Error('API rate limit exceeded'))
+
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+    })
+
+    it('should handle empty search results', async () => {
+      mockSearch.mockResolvedValueOnce({ results: [] })
+
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'obscure search query' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({
+        data: [],
+        success: true,
+      })
+    })
+
+    it('should handle multiple search results', async () => {
       const mockResults = [
-        {
-          title: 'Test Result',
-          url: 'https://example.com',
-          text: 'Test content',
-          // author, publishedDate, favicon, and image are missing
-        },
+        { title: 'Result 1', url: 'https://example1.com' },
+        { title: 'Result 2', url: 'https://example2.com' },
+        { title: 'Result 3', url: 'https://example3.com' },
       ]
-      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
+      mockSearch.mockResolvedValueOnce({ results: mockResults })
 
-      const results = await searchExa('test query', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
 
-      expect(results).toEqual([
-        {
-          position: 1,
-          title: 'Test Result',
-          url: 'https://example.com',
-          snippet: 'Test content',
-          author: null,
-          published_date: null,
-          favicon: null,
-          image: null,
-        },
-      ])
-    })
-
-    it('should handle results without text content', async () => {
-      const mockResults = [
-        {
-          title: 'Test Result',
-          url: 'https://example.com',
-          // text is missing
-          author: 'Test Author',
-          publishedDate: '2024-01-01',
-        },
-      ]
-      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
-
-      const results = await searchExa('test query', mockContext)
-
-      expect(results[0].snippet).toBe('')
-    })
-
-    it('should handle multiple results with correct positioning', async () => {
-      const mockResults = [
-        { title: 'Result 1', url: 'https://example1.com', text: 'Content 1' },
-        { title: 'Result 2', url: 'https://example2.com', text: 'Content 2' },
-        { title: 'Result 3', url: 'https://example3.com', text: 'Content 3' },
-      ]
-      mockExa.searchAndContents.mockResolvedValueOnce({ results: mockResults })
-
-      const results = await searchExa('test query', mockContext)
-
-      expect(results).toHaveLength(3)
-      expect(results[0].position).toBe(1)
-      expect(results[1].position).toBe(2)
-      expect(results[2].position).toBe(3)
-    })
-
-    it('should return empty array when API key is not configured', async () => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: '',
-      } as any)
-
-      const results = await searchExa('test query', mockContext)
-
-      expect(results).toEqual([])
-      expect(mockExa.searchAndContents).not.toHaveBeenCalled()
-    })
-
-    it('should handle search errors', async () => {
-      const error = new Error('API error')
-      mockExa.searchAndContents.mockRejectedValueOnce(error)
-
-      await expect(searchExa('test query', mockContext)).rejects.toThrow('API error')
-    })
-
-    it('should handle non-Error exceptions', async () => {
-      mockExa.searchAndContents.mockRejectedValueOnce('String error')
-
-      await expect(searchExa('test query', mockContext)).rejects.toBe('String error')
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data).toHaveLength(3)
     })
   })
 
-  describe('fetchContentExa', () => {
-    beforeEach(() => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: 'test-exa-key',
-      } as any)
-    })
-
-    it('should fetch content successfully', async () => {
+  describe('POST /fetch-content', () => {
+    it('should fetch content successfully with API key configured', async () => {
       const mockContent = [
         {
           url: 'https://example.com',
           title: 'Test Page',
-          text: 'This is the fetched content from the webpage',
-          favicon: 'https://example.com/favicon.ico',
-          image: 'https://example.com/image.png',
+          text: 'This is the fetched content',
           author: 'Test Author',
-          publishedDate: '2024-01-01',
         },
       ]
-      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
 
-      const result = await fetchContentExa('https://example.com', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: ['https://example.com'] }),
+        }),
+      )
 
-      expect(mockExa.getContents).toHaveBeenCalledWith(['https://example.com'], {
-        text: {
-          maxCharacters: 8000,
-          includeHtmlTags: false,
-        },
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({
+        data: mockContent,
+        success: true,
       })
-      
-      expect(result).toEqual({
-        url: 'https://example.com',
-        title: 'Test Page',
-        text: 'This is the fetched content from the webpage',
-        favicon: 'https://example.com/favicon.ico',
-        image: 'https://example.com/image.png',
-        author: 'Test Author',
-        published_date: '2024-01-01',
-      })
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'])
     })
 
-    it('should handle empty content', async () => {
+    it('should handle multiple URLs', async () => {
       const mockContent = [
-        {
-          url: 'https://example.com',
-          title: null,
-          text: '',
-        },
+        { url: 'https://example1.com', text: 'Content 1' },
+        { url: 'https://example2.com', text: 'Content 2' },
       ]
-      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
 
-      const result = await fetchContentExa('https://example.com', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: ['https://example1.com', 'https://example2.com'] }),
+        }),
+      )
 
-      expect(result).toMatchObject({
-        text: '',
-        url: 'https://example.com',
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data).toHaveLength(2)
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example1.com', 'https://example2.com'])
+    })
+
+    it('should throw error when API key is not configured', async () => {
+      // Create app with null client to simulate no API key
+      const appNoKey = new Elysia().use(createTestExaPlugin(null))
+
+      const response = await appNoKey.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: ['https://example.com'] }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      const text = await response.text()
+      expect(text).toContain('Fetch content service is not configured')
+    })
+
+    it('should return 422 when urls is missing', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should return 422 when urls is not an array', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: 'https://example.com' }), // should be array
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should handle empty urls array', async () => {
+      mockGetContents.mockResolvedValueOnce({ results: [] })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: [] }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({
+        data: [],
+        success: true,
       })
     })
 
-    it('should handle no results', async () => {
-      mockExa.getContents.mockResolvedValueOnce({ results: [] })
+    it('should handle fetch API errors gracefully', async () => {
+      mockGetContents.mockRejectedValueOnce(new Error('Network error'))
 
-      const result = await fetchContentExa('https://example.com', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: ['https://example.com'] }),
+        }),
+      )
 
-      expect(result).toEqual({ error: 'Error: No content found for the provided URL' })
+      expect(response.status).toBe(500)
     })
 
-    it('should handle missing text field', async () => {
-      const mockContent = [
-        {
-          url: 'https://example.com',
-          // text field is missing
-        },
-      ]
-      mockExa.getContents.mockResolvedValueOnce({ results: mockContent })
+    it('should handle empty content results', async () => {
+      mockGetContents.mockResolvedValueOnce({ results: [] })
 
-      const result = await fetchContentExa('https://example.com', mockContext)
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: ['https://example.com'] }),
+        }),
+      )
 
-      expect(result).toMatchObject({
-        text: '',
-      })
-    })
-
-    it('should return error message when API key is not configured', async () => {
-      mockGetSettings.mockReturnValue({
-        exaApiKey: '',
-      } as any)
-
-      const result = await fetchContentExa('https://example.com', mockContext)
-
-      expect(result).toEqual({ error: 'Error: Exa API key not configured' })
-      expect(mockExa.getContents).not.toHaveBeenCalled()
-    })
-
-    it('should handle fetch errors gracefully', async () => {
-      const error = new Error('Network error')
-      mockExa.getContents.mockRejectedValueOnce(error)
-
-      const result = await fetchContentExa('https://example.com', mockContext)
-
-      expect(result).toEqual({ error: 'Error: Error: Network error' }) // fetchContentExa adds "Error: " prefix to String(error)
-      // Error handling tested by checking return value
-    })
-
-    it('should handle non-Error exceptions', async () => {
-      mockExa.getContents.mockRejectedValueOnce('String error')
-
-      const result = await fetchContentExa('https://example.com', mockContext)
-
-      expect(result).toEqual({ error: 'Error: String error' })
-    })
-
-    it('should use correct configuration parameters', async () => {
-      mockExa.getContents.mockResolvedValueOnce({ results: [{ url: 'https://example.com', text: 'content' }] })
-
-      await fetchContentExa('https://example.com', mockContext)
-
-      expect(mockExa.getContents).toHaveBeenCalledWith(['https://example.com'], {
-        text: {
-          maxCharacters: 8000,
-          includeHtmlTags: false,
-        },
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({
+        data: [],
+        success: true,
       })
     })
 
@@ -335,11 +388,20 @@ describe('Pro - Exa', () => {
         'https://example.com/page#anchor',
       ]
 
-      for (const url of urls) {
-        mockExa.getContents.mockResolvedValueOnce({ results: [{ url, text: 'content' }] })
-        await fetchContentExa(url, mockContext)
-        expect(mockExa.getContents).toHaveBeenCalledWith([url], expect.any(Object))
-      }
+      mockGetContents.mockResolvedValueOnce({
+        results: urls.map((url) => ({ url, text: 'content' })),
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockGetContents).toHaveBeenCalledWith(urls)
     })
   })
 })

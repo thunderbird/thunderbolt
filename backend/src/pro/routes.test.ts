@@ -45,7 +45,7 @@ describe('Pro Tools Routes', () => {
       new Request('http://localhost/pro/fetch-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: 'https://example.com' }),
+        body: JSON.stringify({ urls: ['https://example.com'] }),
       }),
     )
     expect(response.status).toBe(200)

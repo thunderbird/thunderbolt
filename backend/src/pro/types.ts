@@ -1,3 +1,4 @@
+import { type SearchResult } from 'exa-js'
 import { z } from 'zod'
 
 /**
@@ -24,16 +25,18 @@ export const searchRequestSchema = z.object({
   max_results: z.number().default(10),
 })
 
-export const searchResponseSchema = baseApiResponseSchema(z.string())
-
 export type SearchRequest = z.infer<typeof searchRequestSchema>
-export type SearchResponse = z.infer<typeof searchResponseSchema>
+export type SearchResponse = {
+  data: SearchResult<{}>[]
+  success: boolean
+  error?: string | null
+}
 
 /**
  * Fetch content request/response schemas
  */
 export const fetchContentRequestSchema = z.object({
-  url: z.string(),
+  urls: z.array(z.string()),
 })
 
 export const fetchContentDataSchema = z.object({
@@ -46,11 +49,19 @@ export const fetchContentDataSchema = z.object({
   published_date: z.string().nullable(),
 })
 
-export const fetchContentResponseSchema = baseApiResponseSchema(fetchContentDataSchema)
+export const fetchContentResponseSchema = baseApiResponseSchema(z.array(fetchContentDataSchema))
 
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
-export type FetchContentData = z.infer<typeof fetchContentDataSchema>
-export type FetchContentResponse = z.infer<typeof fetchContentResponseSchema>
+export type FetchContentResponse = {
+  data: SearchResult<{
+    text: {
+      maxCharacters: number
+      includeHtmlTags: false
+    }
+  }>[]
+  success: boolean
+  error?: string | null
+}
 
 /**
  * Weather request/response schemas

@@ -1,11 +1,10 @@
 import { getSettings } from '@/config/settings'
+import { memoize } from '@/lib/memoize'
+import { Elysia, t } from 'elysia'
 import { Exa } from 'exa-js'
-import type { SimpleContext } from './context'
+import type { FetchContentResponse, SearchResponse } from './types'
 
-/**
- * Create an Exa client instance if API key is configured
- */
-export const createExaClient = (): Exa | null => {
+const getExaClient = memoize(() => {
   const settings = getSettings()
   const apiKey = settings.exaApiKey
 
@@ -14,95 +13,56 @@ export const createExaClient = (): Exa | null => {
   }
 
   return new Exa(apiKey)
-}
+})
 
 /**
- * Search using Exa's neural search API
+ * Elysia plugin that provides Exa client in state
  */
-export const searchExa = async (
-  query: string,
-  ctx: SimpleContext,
-  maxResults = 10,
-): Promise<Array<Record<string, unknown>>> => {
-  const client = createExaClient()
-  if (!client) {
-    return []
-  }
-
-  try {
-    // Use Exa's search with autoprompt for better results
-    const response = await client.searchAndContents(query, {
-      numResults: maxResults,
-      useAutoprompt: true,
-      type: 'neural',
-    })
-
-    // Convert results to dictionary format for compatibility
-    const results: Array<Record<string, unknown>> = []
-    response.results.forEach((result, idx) => {
-      results.push({
-        position: idx + 1,
-        title: result.title,
-        url: result.url,
-        snippet: result.text || '',
-        author: result.author || null,
-        published_date: result.publishedDate || null,
-        favicon: result.favicon || null,
-        image: result.image || null,
-      })
-    })
-
-    return results
-  } catch (error) {
-    throw error
-  }
-}
-
-/**
- * Fetch content from a URL using Exa's privacy-protected proxy
- * Returns a JSON string with content, favicon, and image
- */
-export const fetchContentExa = async (url: string, ctx: SimpleContext): Promise<{
-        url: string
-        title: string | null
-        text: string
-        favicon: string | null
-        image: string | null
-        author: string | null
-        published_date: string | null
-      } | { error:string }> => {
-  const client = createExaClient()
-  if (!client) {
-    return {error: 'Error: Exa API key not configured'}
-  }
-
-  try {
-    // Use Exa's getContents method
-    const response = await client.getContents([url], {
-      text: {
-        maxCharacters: 8000,
-        includeHtmlTags: false,
-      },
-    })
-
-    if (response.results && response.results.length > 0) {
-      const content = response.results[0]
-      // Return structured data including favicon and image
-      const result = {
-        url: content.url,
-        title: content.title || null,
-        text: content.text || '',
-        favicon: content.favicon || null,
-        image: content.image || null,
-        author: content.author || null,
-        published_date: content.publishedDate || null,
+export const exaPlugin = new Elysia({ name: 'exa' })
+  .state('exaClient', getExaClient())
+  .post(
+    '/search',
+    async ({ body, store }): Promise<SearchResponse> => {
+      if (!store.exaClient) {
+        throw new Error('Search service is not configured.')
       }
-      return result
-    } else {
-      return {error: 'Error: No content found for the provided URL'}
-    }
-  } catch (error) {
-    await ctx.error(`Exa content fetch error: ${String(error)}`)
-    return {error: `Error: ${String(error)}`}
-  }
-}
+
+      const response = await store.exaClient.search(body.query, {
+        numResults: body.max_results,
+        useAutoprompt: true,
+        type: 'fast',
+      })
+
+      return {
+        data: response.results,
+        success: true,
+      }
+    },
+    {
+      body: t.Object({
+        query: t.String(),
+        max_results: t.Optional(t.Number({ default: 10 })),
+      }),
+    },
+  )
+
+  .post(
+    '/fetch-content',
+    async ({ body, store }): Promise<FetchContentResponse> => {
+      if (!store.exaClient) {
+        throw new Error('Fetch content service is not configured.')
+      }
+
+      const response = await store.exaClient.getContents(body.urls)
+
+      return {
+        data: response.results,
+        success: true,
+      }
+    },
+    {
+      body: t.Object({
+        urls: t.Array(t.String()),
+      }),
+    },
+  )

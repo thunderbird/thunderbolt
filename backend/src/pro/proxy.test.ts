@@ -82,7 +82,7 @@ describe('Proxy Routes', () => {
               'content-type': 'image/png',
               'content-length': '12345',
               'cache-control': 'public, max-age=86400',
-              'etag': '"abc123"',
+              etag: '"abc123"',
               'last-modified': 'Mon, 01 Jan 2024 00:00:00 GMT',
             },
           }),
@@ -103,12 +103,18 @@ describe('Proxy Routes', () => {
 
       mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('content')))
 
-      const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
+      // Make request with Origin header matching default CORS settings
+      const response = await app.handle(
+        new Request(`http://localhost/proxy/${targetUrl}`, {
+          method: 'GET',
+          headers: { Origin: 'http://localhost:1420' },
+        }),
+      )
 
       expect(response.status).toBe(200)
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
-      expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS')
-      expect(response.headers.get('Access-Control-Allow-Headers')).toBe('*')
+      // CORS headers are set by the @elysiajs/cors plugin based on settings
+      expect(response.headers.has('Access-Control-Allow-Origin')).toBe(true)
+      expect(response.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
     })
 
     it('should return 400 when no URL is provided', async () => {

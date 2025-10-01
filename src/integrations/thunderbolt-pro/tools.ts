@@ -16,7 +16,7 @@ export const searchSchema = z
 
 export const fetchContentSchema = z
   .object({
-    urls: z.array(z.string()).describe('Array of webpage URLs to fetch content from'),
+    url: z.string().describe('Webpage URL to fetch content from'),
   })
   .strict()
 
@@ -48,7 +48,7 @@ type FetchContentData = {
   image: string | null
   author: string | null
   published_date: string | null
-}
+} | null
 
 /**
  * Search the web and return formatted results
@@ -76,18 +76,18 @@ export const search = async (params: SearchParams): Promise<string> => {
 }
 
 /**
- * Fetch and parse content from one or more webpage URLs
+ * Fetch and parse content from a webpage URL
  */
-export const fetchContent = async (params: FetchContentParams): Promise<FetchContentData[]> => {
+export const fetchContent = async (params: FetchContentParams): Promise<FetchContentData> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
       .post(`${cloudUrl}/pro/fetch-content`, {
         json: {
-          urls: params.urls,
+          url: params.url,
         },
       })
-      .json<{ data: FetchContentData[]; success: boolean; error?: string }>()
+      .json<{ data: FetchContentData; success: boolean; error?: string }>()
 
     if (!response.success) {
       throw new Error(response.error || 'Fetch content failed')
@@ -189,8 +189,8 @@ export const configs: ToolConfig[] = [
   },
   {
     name: 'fetch_content',
-    description: 'Fetch and parse content from one or more webpage URLs. Can fetch multiple pages in a single request.',
-    verb: 'fetching {urls}',
+    description: 'Fetch and parse content from a webpage URL.',
+    verb: 'fetching {url}',
     parameters: fetchContentSchema,
     execute: fetchContent,
   },

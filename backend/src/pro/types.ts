@@ -36,7 +36,7 @@ export type SearchResponse = {
  * Fetch content request/response schemas
  */
 export const fetchContentRequestSchema = z.object({
-  urls: z.array(z.string()),
+  url: z.string(),
 })
 
 export const fetchContentDataSchema = z.object({
@@ -49,7 +49,7 @@ export const fetchContentDataSchema = z.object({
   published_date: z.string().nullable(),
 })
 
-export const fetchContentResponseSchema = baseApiResponseSchema(z.array(fetchContentDataSchema))
+export const fetchContentResponseSchema = baseApiResponseSchema(fetchContentDataSchema)
 
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 export type FetchContentResponse = {
@@ -58,7 +58,7 @@ export type FetchContentResponse = {
       maxCharacters: number
       includeHtmlTags: false
     }
-  }>[]
+  }> | null
   success: boolean
   error?: string | null
 }

@@ -37,16 +37,16 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Fetch content service is not configured.')
         }
 
-        const response = await store.exaClient.getContents(body.urls)
+        const response = await store.exaClient.getContents([body.url])
 
         return {
-          data: response.results,
+          data: response.results[0] || null,
           success: true,
         }
       },
       {
         body: t.Object({
-          urls: t.Array(t.String()),
+          url: t.String(),
         }),
       },
     )
@@ -253,38 +253,17 @@ describe('Pro - Exa Plugin', () => {
         new Request('http://localhost/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: ['https://example.com'] }),
+          body: JSON.stringify({ url: 'https://example.com' }),
         }),
       )
 
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data).toEqual({
-        data: mockContent,
+        data: mockContent[0],
         success: true,
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'])
-    })
-
-    it('should handle multiple URLs', async () => {
-      const mockContent = [
-        { url: 'https://example1.com', text: 'Content 1' },
-        { url: 'https://example2.com', text: 'Content 2' },
-      ]
-      mockGetContents.mockResolvedValueOnce({ results: mockContent })
-
-      const response = await app.handle(
-        new Request('http://localhost/fetch-content', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: ['https://example1.com', 'https://example2.com'] }),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      const data = await response.json()
-      expect(data.data).toHaveLength(2)
-      expect(mockGetContents).toHaveBeenCalledWith(['https://example1.com', 'https://example2.com'])
     })
 
     it('should throw error when API key is not configured', async () => {
@@ -295,7 +274,7 @@ describe('Pro - Exa Plugin', () => {
         new Request('http://localhost/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: ['https://example.com'] }),
+          body: JSON.stringify({ url: 'https://example.com' }),
         }),
       )
 
@@ -304,7 +283,7 @@ describe('Pro - Exa Plugin', () => {
       expect(text).toContain('Fetch content service is not configured')
     })
 
-    it('should return 422 when urls is missing', async () => {
+    it('should return 422 when url is missing', async () => {
       const response = await app.handle(
         new Request('http://localhost/fetch-content', {
           method: 'POST',
@@ -316,35 +295,16 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(422)
     })
 
-    it('should return 422 when urls is not an array', async () => {
+    it('should return 422 when url is not a string', async () => {
       const response = await app.handle(
         new Request('http://localhost/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: 'https://example.com' }), // should be array
+          body: JSON.stringify({ url: 123 }), // should be string
         }),
       )
 
       expect(response.status).toBe(422)
-    })
-
-    it('should handle empty urls array', async () => {
-      mockGetContents.mockResolvedValueOnce({ results: [] })
-
-      const response = await app.handle(
-        new Request('http://localhost/fetch-content', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: [] }),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      const data = await response.json()
-      expect(data).toEqual({
-        data: [],
-        success: true,
-      })
     })
 
     it('should handle fetch API errors gracefully', async () => {
@@ -354,7 +314,7 @@ describe('Pro - Exa Plugin', () => {
         new Request('http://localhost/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: ['https://example.com'] }),
+          body: JSON.stringify({ url: 'https://example.com' }),
         }),
       )
 
@@ -368,40 +328,40 @@ describe('Pro - Exa Plugin', () => {
         new Request('http://localhost/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: ['https://example.com'] }),
+          body: JSON.stringify({ url: 'https://example.com' }),
         }),
       )
 
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data).toEqual({
-        data: [],
+        data: null,
         success: true,
       })
     })
 
     it('should handle different URL formats', async () => {
-      const urls = [
+      const testCases = [
         'https://example.com',
         'http://example.com',
         'https://subdomain.example.com/path?query=1',
         'https://example.com/page#anchor',
       ]
 
-      mockGetContents.mockResolvedValueOnce({
-        results: urls.map((url) => ({ url, text: 'content' })),
-      })
+      for (const url of testCases) {
+        mockGetContents.mockResolvedValueOnce({ results: [{ url, text: 'content' }] })
 
-      const response = await app.handle(
-        new Request('http://localhost/fetch-content', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls }),
-        }),
-      )
+        const response = await app.handle(
+          new Request('http://localhost/fetch-content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+          }),
+        )
 
-      expect(response.status).toBe(200)
-      expect(mockGetContents).toHaveBeenCalledWith(urls)
+        expect(response.status).toBe(200)
+        expect(mockGetContents).toHaveBeenCalledWith([url])
+      }
     })
   })
 })

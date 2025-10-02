@@ -53,7 +53,9 @@ export const exaPlugin = new Elysia({ name: 'exa' })
         throw new Error('Fetch content service is not configured.')
       }
 
-      const response = await store.exaClient.getContents([body.url])
+      const response = await store.exaClient.getContents([body.url], {
+        livecrawlTimeout: 5_000,
+      })
 
       return {
         data: response.results[0] || null,

@@ -1,28 +1,33 @@
+import {
+  filterMessageParts,
+  type GroupableUIPart,
+  type GroupedUIPart,
+  groupToolParts,
+  type ToolGroupUIPart,
+} from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
-import type { UIMessage, ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
+import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { memo, type ReactNode } from 'react'
 import { DisplayToolHandler } from './display-tool-handler'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolGroup } from './tool-group'
-import {
-  filterMessageParts,
-  type GroupableUIPart,
-  groupToolParts,
-  type ToolGroupUIPart,
-  type GroupedUIPart,
-} from '@/lib/assistant-message'
 
 interface AssistantMessageProps {
   message: UIMessage
-  isStreaming: boolean // @todo legacy - can remove this
+  isStreaming: boolean
 }
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
 
-const mountMessageParts = (groupedParts: GroupedUIPart[]) => {
+/**
+ * Converts grouped message parts into React elements for rendering.
+ * Handles different part types (reasoning, tools, text) and manages loading states.
+ * @internal - Exported for testing only
+ */
+export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0) {
@@ -30,16 +35,31 @@ const mountMessageParts = (groupedParts: GroupedUIPart[]) => {
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
-  groupedParts.forEach((part) => {
+  const hasTextPart = groupedParts.some((part) => {
     const [partType] = splitPartType(part.type)
+    return partType === 'text'
+  })
+
+  groupedParts.forEach((part, index) => {
+    const [partType] = splitPartType(part.type)
+    const isLastPart = index === groupedParts.length - 1
 
     switch (partType) {
       case 'reasoning':
         partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
         break
-      case 'group_tools':
-        partElements.push(<ToolGroup tools={(part as ToolGroupUIPart).tools} />)
+      case 'group_tools': {
+        const toolGroup = part as ToolGroupUIPart
+        partElements.push(
+          <ToolGroup
+            tools={toolGroup.tools}
+            isStreaming={isStreaming}
+            isLastPartInMessage={isLastPart}
+            hasTextInMessage={hasTextPart}
+          />,
+        )
         break
+      }
       case 'tool':
         partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
         break
@@ -52,12 +72,12 @@ const mountMessageParts = (groupedParts: GroupedUIPart[]) => {
   return partElements
 }
 
-export const AssistantMessage = memo(({ message }: AssistantMessageProps) => {
+export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
   const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
 
   const groupedParts = groupToolParts(filteredParts)
 
-  const partElements: ReactNode[] = mountMessageParts(groupedParts)
+  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming)
 
   return (
     <div>

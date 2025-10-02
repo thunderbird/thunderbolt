@@ -2,12 +2,15 @@ import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/src/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createSetting,
   deleteSetting,
   getAllSettings,
   getBooleanSetting,
+  getDefaultModelForThread,
+  getModelById,
   getSelectedModel,
   getSetting,
   hasSetting,
@@ -268,6 +271,49 @@ describe('Models DAL', () => {
     await db.delete(settingsTable)
   })
 
+  describe('getModelById', () => {
+    it('should return null when model does not exist', async () => {
+      const model = await getModelById('nonexistent-model-id')
+      expect(model).toBe(null)
+    })
+
+    it('should return null when model ID is empty string', async () => {
+      const model = await getModelById('')
+      expect(model).toBe(null)
+    })
+
+    it('should return model when it exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      const model = await getModelById(modelId)
+      expect(model).not.toBe(null)
+      expect(model?.id).toBe(modelId)
+      expect(model?.name).toBe('Test Model')
+    })
+
+    it('should handle sqlocal bug where .get() returns empty object for missing records', async () => {
+      // This test verifies the fix for the sqlocal bug where .get() returns {}
+      // instead of undefined when no record is found
+      const db = DatabaseSingleton.instance.db
+
+      // Query a non-existent model directly with Drizzle
+      const result = await db.select().from(modelsTable).where(eq(modelsTable.id, 'nonexistent')).get()
+
+      // The result should be undefined (not an empty object)
+      expect(result).toBeUndefined()
+    })
+  })
+
   describe('getSelectedModel', () => {
     it('should return system model when no selected_model setting exists', async () => {
       const db = DatabaseSingleton.instance.db
@@ -320,6 +366,135 @@ describe('Models DAL', () => {
       const model = await getSelectedModel()
       expect(model.id).toBe(selectedModelId)
       expect(model.name).toBe('Selected Model')
+    })
+  })
+
+  describe('getDefaultModelForThread', () => {
+    afterEach(async () => {
+      // Clean up chat data after each test (must be done before deleting models due to FK constraints)
+      const db = DatabaseSingleton.instance.db
+      await db.delete(chatMessagesTable)
+      await db.delete(chatThreadsTable)
+    })
+
+    it('should fall back to system model when thread has no messages', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a system model
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'flower',
+        name: 'System Model',
+        model: 'system/model',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      // Create an empty thread
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const model = await getDefaultModelForThread(threadId)
+      expect(model.id).toBe(systemModelId)
+    })
+
+    it('should return last message model when thread has messages', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create models
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'flower',
+        name: 'System Model',
+        model: 'system/model',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      const lastUsedModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: lastUsedModelId,
+        provider: 'openai',
+        name: 'Last Used Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Create thread with message
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      await db.insert(chatMessagesTable).values({
+        id: uuidv7(),
+        chatThreadId: threadId,
+        role: 'assistant',
+        content: 'Hello',
+        modelId: lastUsedModelId,
+      })
+
+      const model = await getDefaultModelForThread(threadId)
+      expect(model.id).toBe(lastUsedModelId)
+    })
+
+    it('should fall back correctly when last message model is deleted', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a system model
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'flower',
+        name: 'System Model',
+        model: 'system/model',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      // Create a temporary model that will be "deleted"
+      const deletedModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: deletedModelId,
+        provider: 'openai',
+        name: 'Deleted Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Create thread with message
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      await db.insert(chatMessagesTable).values({
+        id: uuidv7(),
+        chatThreadId: threadId,
+        role: 'assistant',
+        content: 'Hello',
+        modelId: deletedModelId,
+      })
+
+      // Delete the model (simulating a model that no longer exists)
+      await db.delete(chatMessagesTable)
+      await db.delete(modelsTable).where(eq(modelsTable.id, deletedModelId))
+
+      // Should fall back to system model when the last message's model doesn't exist
+      const model = await getDefaultModelForThread(threadId)
+      expect(model.id).toBe(systemModelId)
     })
   })
 })

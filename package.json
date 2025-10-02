@@ -74,7 +74,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dayjs": "^1.11.13",
-    "drizzle-orm": "^0.44.4",
+    "drizzle-orm": "^0.44.6",
     "framer-motion": "^12.23.12",
     "ky": "^1.9.0",
     "lucide-react": "^0.540.0",

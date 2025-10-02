@@ -61,7 +61,8 @@ export const getAvailableModels = async (): Promise<Model[]> => {
 export const getModelById = async (id: string): Promise<Model | null> => {
   const db = DatabaseSingleton.instance.db
   const model = await db.select().from(modelsTable).where(eq(modelsTable.id, id)).get()
-  return model ? mapModel(model) : null
+
+  return model?.id ? mapModel(model) : null
 }
 
 /**

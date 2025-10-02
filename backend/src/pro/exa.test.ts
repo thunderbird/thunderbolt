@@ -4,6 +4,14 @@ import { Elysia, t } from 'elysia'
 // Create a test version of the plugin with mocked Exa client
 const createTestExaPlugin = (mockExaClient: any) => {
   return new Elysia({ name: 'exa-test' })
+    .onError(({ code, error, set }) => {
+      set.status = code === 'VALIDATION' ? 400 : 500
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    })
     .state('exaClient', mockExaClient)
     .post(
       '/search',
@@ -154,11 +162,14 @@ describe('Pro - Exa Plugin', () => {
       )
 
       expect(response.status).toBe(500)
-      const text = await response.text()
-      expect(text).toContain('Search service is not configured')
+      const data = await response.json()
+      expect(data).toHaveProperty('success', false)
+      expect(data).toHaveProperty('data', null)
+      expect(data).toHaveProperty('error')
+      expect(data.error).toContain('Search service is not configured')
     })
 
-    it('should return 422 when query is missing', async () => {
+    it('should return 400 when query is missing', async () => {
       const response = await app.handle(
         new Request('http://localhost/search', {
           method: 'POST',
@@ -167,10 +178,13 @@ describe('Pro - Exa Plugin', () => {
         }),
       )
 
-      expect(response.status).toBe(422)
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toHaveProperty('success', false)
+      expect(data).toHaveProperty('error')
     })
 
-    it('should return 422 when body is invalid', async () => {
+    it('should return 400 when body is invalid', async () => {
       const response = await app.handle(
         new Request('http://localhost/search', {
           method: 'POST',
@@ -179,7 +193,10 @@ describe('Pro - Exa Plugin', () => {
         }),
       )
 
-      expect(response.status).toBe(422)
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toHaveProperty('success', false)
+      expect(data).toHaveProperty('error')
     })
 
     it('should handle search API errors gracefully', async () => {
@@ -283,7 +300,7 @@ describe('Pro - Exa Plugin', () => {
       expect(text).toContain('Fetch content service is not configured')
     })
 
-    it('should return 422 when url is missing', async () => {
+    it('should return 400 when url is missing', async () => {
       const response = await app.handle(
         new Request('http://localhost/fetch-content', {
           method: 'POST',
@@ -292,10 +309,13 @@ describe('Pro - Exa Plugin', () => {
         }),
       )
 
-      expect(response.status).toBe(422)
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toHaveProperty('success', false)
+      expect(data).toHaveProperty('error')
     })
 
-    it('should return 422 when url is not a string', async () => {
+    it('should return 400 when url is not a string', async () => {
       const response = await app.handle(
         new Request('http://localhost/fetch-content', {
           method: 'POST',
@@ -304,7 +324,10 @@ describe('Pro - Exa Plugin', () => {
         }),
       )
 
-      expect(response.status).toBe(422)
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toHaveProperty('success', false)
+      expect(data).toHaveProperty('error')
     })
 
     it('should handle fetch API errors gracefully', async () => {

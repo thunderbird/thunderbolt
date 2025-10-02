@@ -19,6 +19,14 @@ const weatherClient = new OpenMeteoWeather()
  */
 export const createProToolsRoutes = () => {
   return new Elysia({ prefix: '/pro' })
+    .onError(({ code, error, set }) => {
+      set.status = code === 'VALIDATION' ? 400 : 500
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    })
     .use(exaPlugin)
     .use(createProxyRoutes())
 

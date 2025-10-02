@@ -18,7 +18,7 @@ describe('Pro Tools Routes', () => {
     // Cleanup if needed
   })
 
-  it('should handle search request without API key', async () => {
+  it('should return error when search API key is not configured', async () => {
     const response = await app.handle(
       new Request('http://localhost/pro/search', {
         method: 'POST',
@@ -26,20 +26,17 @@ describe('Pro Tools Routes', () => {
         body: JSON.stringify({ query: 'test search', max_results: 5 }),
       }),
     )
-    expect(response.status).toBe(200)
 
+    expect(response.status).toBe(500)
     const data = await response.json()
-    expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('data')
-    // Check if search succeeded or failed (depends on API key configuration)
-    if (data.success) {
-      expect(data.data).toBeDefined()
-    } else {
-      expect(data).toHaveProperty('error')
-    }
+    expect(data).toEqual({
+      success: false,
+      data: null,
+      error: 'Search service is not configured.',
+    })
   })
 
-  it('should handle fetch-content request without API key', async () => {
+  it('should return error when fetch-content API key is not configured', async () => {
     const response = await app.handle(
       new Request('http://localhost/pro/fetch-content', {
         method: 'POST',
@@ -47,17 +44,14 @@ describe('Pro Tools Routes', () => {
         body: JSON.stringify({ url: 'https://example.com' }),
       }),
     )
-    expect(response.status).toBe(200)
 
+    expect(response.status).toBe(500)
     const data = await response.json()
-    expect(data).toHaveProperty('success')
-    expect(data).toHaveProperty('data')
-    // Check if fetch succeeded or failed (depends on API key configuration)
-    if (data.success) {
-      expect(data.data).toBeDefined()
-    } else {
-      expect(data).toHaveProperty('error')
-    }
+    expect(data).toEqual({
+      success: false,
+      data: null,
+      error: 'Fetch content service is not configured.',
+    })
   })
 
   it('should handle current weather request', async () => {
@@ -113,6 +107,10 @@ describe('Pro Tools Routes', () => {
         body: JSON.stringify({}),
       }),
     )
-    expect(response.status).toBe(422) // Validation error when not using global error handler
+    expect(response.status).toBe(400) // Validation error
+    const data = await response.json()
+    expect(data).toHaveProperty('success', false)
+    expect(data).toHaveProperty('data', null)
+    expect(data).toHaveProperty('error')
   })
 })

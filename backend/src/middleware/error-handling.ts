@@ -9,13 +9,15 @@ interface ErrorContext extends Context {
 }
 
 interface ErrorResponse {
+  success: false
+  data: null
   error: string
-  message: string
 }
 
 /**
  * Global error handling middleware for Elysia
  * Provides consistent error responses and logging
+ * Returns format: { success: false, data: null, error: string }
  */
 export const createErrorHandlingMiddleware = () => {
   const errorHandler: ErrorHandler = (ctx) => {
@@ -26,12 +28,12 @@ export const createErrorHandlingMiddleware = () => {
       case 'VALIDATION':
         set.status = 400
         log?.warn({ error: error.message }, 'Validation failed')
-        return createErrorResponse('Validation failed', error.message)
+        return createErrorResponse(`Validation failed: ${error.message}`)
 
       case 'NOT_FOUND':
         set.status = 404
         log?.warn({ url: request.url }, 'Resource not found')
-        return createErrorResponse('Not found', 'The requested resource was not found')
+        return createErrorResponse('The requested resource was not found')
 
       default:
         return handleGenericError(error, set, log)
@@ -44,11 +46,7 @@ export const createErrorHandlingMiddleware = () => {
 /**
  * Handle generic errors with appropriate status codes and logging
  */
-function handleGenericError(
-  error: unknown,
-  set: Context['set'],
-  log?: any
-): ErrorResponse {
+function handleGenericError(error: unknown, set: Context['set'], log?: any): ErrorResponse {
   if (error instanceof Error) {
     const status = (error as any).status || set.status || 500
     set.status = status
@@ -56,15 +54,15 @@ function handleGenericError(
     switch (status) {
       case 503:
         log?.error({ error: error.message, stack: error.stack }, 'Service unavailable')
-        return createErrorResponse('Service unavailable', error.message)
+        return createErrorResponse(`Service unavailable: ${error.message}`)
 
       case 401:
         log?.warn({ error: error.message }, 'Unauthorized request')
-        return createErrorResponse('Unauthorized', error.message)
+        return createErrorResponse(`Unauthorized: ${error.message}`)
 
       case 400:
         log?.warn({ error: error.message }, 'Bad request')
-        return createErrorResponse('Bad request', error.message)
+        return createErrorResponse(`Bad request: ${error.message}`)
 
       default:
         log?.error({ error: error.message, stack: error.stack }, 'Unhandled request error')
@@ -75,16 +73,16 @@ function handleGenericError(
   }
 
   set.status = 500
-  return createErrorResponse(
-    'Internal server error',
-    error instanceof Error ? error.message : 'An unexpected error occurred'
-  )
+  return createErrorResponse(error instanceof Error ? error.message : 'An unexpected error occurred')
 }
 
 /**
  * Create a standardized error response object
  */
-function createErrorResponse(error: string, message: string): ErrorResponse {
-  return { error, message }
+function createErrorResponse(error: string): ErrorResponse {
+  return {
+    success: false,
+    data: null,
+    error,
+  }
 }
-

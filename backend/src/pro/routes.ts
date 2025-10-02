@@ -35,7 +35,7 @@ export const createProToolsRoutes = () => {
       async ({ body }): Promise<WeatherCurrentResponse> => {
         try {
           const ctx = new SimpleContext()
-          const weatherData = await weatherClient.getCurrentWeather(body.location, ctx)
+          const weatherData = await weatherClient.getCurrentWeather(body.location, body.region, body.country, ctx)
 
           return {
             data: weatherData,
@@ -52,6 +52,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           location: t.String(),
+          region: t.String(),
+          country: t.String(),
           days: t.Optional(t.Number({ default: 3 })),
         }),
       },
@@ -64,7 +66,13 @@ export const createProToolsRoutes = () => {
 
         try {
           const ctx = new SimpleContext()
-          const weatherData = await weatherClient.getWeatherForecast(request.location, request.days, ctx)
+          const weatherData = await weatherClient.getWeatherForecast(
+            request.location,
+            request.region,
+            request.country,
+            request.days,
+            ctx,
+          )
 
           return {
             data: weatherData,
@@ -81,6 +89,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           location: t.String(),
+          region: t.String(),
+          country: t.String(),
           days: t.Optional(t.Number({ default: 3 })),
         }),
       },
@@ -93,7 +103,7 @@ export const createProToolsRoutes = () => {
 
         try {
           const ctx = new SimpleContext()
-          const locations = await weatherClient.searchLocations(request.query, ctx)
+          const locations = await weatherClient.searchLocations(request.query, request.region, request.country, ctx)
 
           if (!locations || locations.length === 0) {
             return {
@@ -143,6 +153,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           query: t.String(),
+          region: t.String(),
+          country: t.String(),
         }),
       },
     )

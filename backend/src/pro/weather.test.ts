@@ -47,7 +47,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockLocationData,
       } as Response)
 
-      const results = await weather.searchLocations('London', mockContext)
+      const results = await weather.searchLocations('London', 'United Kingdom', 'England', mockContext)
 
       expect(results).toEqual(mockLocationData.results)
 
@@ -62,7 +62,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => ({}),
       } as Response)
 
-      const results = await weather.searchLocations('NonexistentPlace', mockContext)
+      const results = await weather.searchLocations('NonexistentPlace', '', '', mockContext)
 
       expect(results).toEqual([])
     })
@@ -73,14 +73,16 @@ describe('Pro - OpenMeteoWeather', () => {
         status: 400,
       } as Response)
 
-      await expect(weather.searchLocations('Invalid', mockContext)).rejects.toThrow('Geocoding API error: 400')
+      await expect(weather.searchLocations('Invalid', '', '', mockContext)).rejects.toThrow('Geocoding API error: 400')
     })
 
     it('should handle network errors', async () => {
       const networkError = new Error('Network failure')
       mockFetch.mockRejectedValueOnce(networkError)
 
-      await expect(weather.searchLocations('London', mockContext)).rejects.toThrow('Network failure')
+      await expect(weather.searchLocations('London', 'United Kingdom', 'England', mockContext)).rejects.toThrow(
+        'Network failure',
+      )
     })
 
     it('should construct correct URL with query parameters', async () => {
@@ -89,7 +91,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => ({ results: [] }),
       } as Response)
 
-      await weather.searchLocations('New York', mockContext)
+      await weather.searchLocations('New York', 'NY', 'United States', mockContext)
 
       expect(mockFetch).toHaveBeenCalledWith(
         'https://geocoding-api.open-meteo.com/v1/search?name=New+York&count=10&language=en&format=json',
@@ -143,7 +145,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockWeatherData,
       } as Response)
 
-      const result = await weather.getCurrentWeather('London', mockContext)
+      const result = await weather.getCurrentWeather('London', 'United Kingdom', 'England', mockContext)
 
       expect(result).toContain('Current weather for London, England, United Kingdom:')
       expect(result).toContain('Temperature: 15.2°C')
@@ -170,7 +172,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => ({ results: [] }),
       } as Response)
 
-      const result = await weather.getCurrentWeather('NonexistentPlace', mockContext)
+      const result = await weather.getCurrentWeather('NonexistentPlace', '', '', mockContext)
 
       expect(result).toBe('No location found matching: NonexistentPlace')
       expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -189,7 +191,9 @@ describe('Pro - OpenMeteoWeather', () => {
         status: 500,
       } as Response)
 
-      await expect(weather.getCurrentWeather('London', mockContext)).rejects.toThrow('Weather API error: 500')
+      await expect(weather.getCurrentWeather('London', 'United Kingdom', 'England', mockContext)).rejects.toThrow(
+        'Weather API error: 500',
+      )
     })
 
     it('should handle location with minimal data', async () => {
@@ -213,7 +217,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockWeatherData,
       } as Response)
 
-      const result = await weather.getCurrentWeather('TestCity', mockContext)
+      const result = await weather.getCurrentWeather('TestCity', 'TestRegion', 'TestCountry', mockContext)
 
       expect(result).toContain('Current weather for TestCity:')
     })
@@ -266,7 +270,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockForecastData,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
 
       expect(result).toEqual({
         location: 'London, England, United Kingdom',
@@ -311,7 +315,9 @@ describe('Pro - OpenMeteoWeather', () => {
 
       // Check forecast API call
       const forecastCall = mockFetch.mock.calls[1][0] as string
-      expect(forecastCall).toContain('daily=weather_code%2Ctemperature_2m_max%2Ctemperature_2m_min%2Capparent_temperature_max%2Capparent_temperature_min%2Cprecipitation_sum%2Cprecipitation_probability_max%2Cwind_speed_10m_max')
+      expect(forecastCall).toContain(
+        'daily=weather_code%2Ctemperature_2m_max%2Ctemperature_2m_min%2Capparent_temperature_max%2Capparent_temperature_min%2Cprecipitation_sum%2Cprecipitation_probability_max%2Cwind_speed_10m_max',
+      )
       expect(forecastCall).toContain('forecast_days=3')
     })
 
@@ -340,7 +346,7 @@ describe('Pro - OpenMeteoWeather', () => {
         }),
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 1, mockContext)
+      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 1, mockContext)
 
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toHaveLength(1)
@@ -356,8 +362,8 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => ({ results: [] }),
       } as Response)
 
-      await expect(weather.getWeatherForecast('NonexistentPlace', 3, mockContext)).rejects.toThrow(
-        "Could not fetch forecast data: Error: Could not find coordinates for location 'NonexistentPlace'"
+      await expect(weather.getWeatherForecast('NonexistentPlace', '', '', 3, mockContext)).rejects.toThrow(
+        "Could not fetch forecast data: Error: Could not find coordinates for location 'NonexistentPlace'",
       )
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
@@ -373,7 +379,9 @@ describe('Pro - OpenMeteoWeather', () => {
         status: 500,
       } as Response)
 
-      await expect(weather.getWeatherForecast('London', 3, mockContext)).rejects.toThrow('Weather API error: 500')
+      await expect(weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)).rejects.toThrow(
+        'Weather API error: 500',
+      )
     })
 
     it('should format dates correctly', async () => {
@@ -387,7 +395,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockForecastData,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
 
       // Check that dates are returned in the structured format
       expect(result.days[0].date).toBe('2024-01-15')
@@ -421,7 +429,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => emptyForecast,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
 
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toEqual([])

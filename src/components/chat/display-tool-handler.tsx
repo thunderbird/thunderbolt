@@ -1,9 +1,9 @@
 import { splitPartType } from '@/lib/utils'
+import { type WeatherForecastData } from '@/lib/weather-forecast'
 import { type ToolUIPart } from 'ai'
 import { memo } from 'react'
-import { WeatherForecast } from './weather-forecast'
-import { type WeatherForecastData } from '@/lib/weather-forecast'
 import { ToolPart } from './tool-part'
+import { WeatherForecast } from './weather-forecast'
 
 type DisplayToolHandlerProps = {
   part: ToolUIPart

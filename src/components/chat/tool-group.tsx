@@ -1,11 +1,10 @@
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { cn, splitPartType } from '@/lib/utils'
+import { splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
 import { motion } from 'framer-motion'
-import { Loader2 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useObjectView } from './object-view-provider'
+import { ToolIcon } from './tool-icon'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
@@ -33,38 +32,16 @@ export const ToolGroup = ({ tools }: ToolGroupProps) => {
                   scale: 1,
                 }}
               >
-                <Avatar
-                  className="border-2 border-background size-9 cursor-pointer"
+                <ToolIcon
+                  toolName={toolName}
+                  toolOutput={tool.output}
+                  Icon={Icon}
+                  initials={metadata.initials}
+                  isLoading={isLoading}
+                  isError={isError}
+                  tooltipKey={tooltipKey}
                   onClick={() => !isLoading && !isError && openObjectSidebar(tool)}
-                >
-                  <AvatarFallback>
-                    {isLoading ? (
-                      <motion.div
-                        key={`${tooltipKey}-loading`}
-                        initial={{ scale: 0 }}
-                        animate={{
-                          scale: isLoading ? 1 : 0,
-                        }}
-                        exit={{ scale: 0 }}
-                      >
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      </motion.div>
-                    ) : Icon ? (
-                      <motion.div
-                        key={`${tooltipKey}-icon`}
-                        initial={{ scale: 0 }}
-                        animate={{
-                          scale: isLoading ? 0 : 1,
-                        }}
-                        exit={{ scale: 0 }}
-                      >
-                        <Icon className={cn('size-4', isError && 'text-yellow-500')} />
-                      </motion.div>
-                    ) : (
-                      metadata.initials
-                    )}
-                  </AvatarFallback>
-                </Avatar>
+                />
               </motion.div>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">

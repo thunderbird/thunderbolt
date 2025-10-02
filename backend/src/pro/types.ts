@@ -39,26 +39,14 @@ export const fetchContentRequestSchema = z.object({
   url: z.string(),
 })
 
-export const fetchContentDataSchema = z.object({
-  url: z.string(),
-  title: z.string().nullable(),
-  text: z.string(),
-  favicon: z.string().nullable(),
-  image: z.string().nullable(),
-  author: z.string().nullable(),
-  published_date: z.string().nullable(),
-})
-
-export const fetchContentResponseSchema = baseApiResponseSchema(fetchContentDataSchema)
-
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
+
+/**
+ * FetchContentResponse returns the raw SearchResult from Exa's getContents API.
+ * The SearchResult includes properties like url, title, text, favicon, image, author, publishedDate, etc.
+ */
 export type FetchContentResponse = {
-  data: SearchResult<{
-    text: {
-      maxCharacters: number
-      includeHtmlTags: false
-    }
-  }> | null
+  data: SearchResult<{}> | null
   success: boolean
   error?: string | null
 }

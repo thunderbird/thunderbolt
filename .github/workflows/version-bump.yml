@@ -170,6 +170,36 @@ jobs:
           git push origin HEAD
           git push origin "$TAG_NAME"
 
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          # Find the previous version tag (excluding the one just created)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${TAG_NAME}" | head -1 || true)
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE=""
+            echo "No previous tag found; using full history"
+          else
+            RANGE="$PREV_TAG..HEAD"
+            echo "Generating changelog since $PREV_TAG"
+          fi
+
+          {
+            echo "## Changelog"
+            if [ -z "$RANGE" ]; then
+              git log --pretty=format:"- %s (%h) by %an"
+            else
+              git log --pretty=format:"- %s (%h) by %an" $RANGE
+            fi
+          } > CHANGELOG.md
+
+          {
+            echo "log<<'EOF'"
+            cat CHANGELOG.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -182,10 +212,11 @@ jobs:
 
             This is a release candidate for ${{ inputs.platform }} platform.
 
-            ### Changes
-            - Version bumped to ${{ steps.version.outputs.new_version }}
+            - Version: ${{ steps.version.outputs.new_version }}
             - Platform: ${{ inputs.platform }}
             - Version type: ${{ steps.version.outputs.version_type }}
+
+            ${{ steps.changelog.outputs.log }}
 
             ### Next Steps
             After successful build and testing, the final release will be created.

@@ -53,6 +53,8 @@ jobs:
     if: ${{ !inputs.skip_build }}
     runs-on: macos-14
     environment: thunderbolt_release
+    outputs:
+      build_version: ${{ steps.determine_version.outputs.build_version }}
 
     steps:
       - name: Checkout repository
@@ -76,6 +78,29 @@ jobs:
             CURRENT_VERSION=$(node -p "require('./package.json').version")
             echo "📦 Current version: $CURRENT_VERSION"
           fi
+
+      - name: Determine build version
+        id: determine_version
+        uses: ./.github/actions/determine-version
+        with:
+          version: ${{ inputs.version }}
+          version_type: ${{ inputs.version_type }}
+
+      - name: Export build version env
+        run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
+
+      - name: Set build version locally for TestFlight
+        run: |
+          VERSION="$BUILD_VERSION"
+          echo "🔧 Applying version $VERSION locally for the build"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          # macOS sed requires an empty backup suffix
+          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
@@ -346,5 +371,6 @@ jobs:
     uses: ./.github/workflows/version-bump.yml
     with:
       platform: ios
+      version: ${{ needs.build_and_deploy_ios.outputs.build_version }}
       version_type: ${{ inputs.version_type }}
     secrets: inherit

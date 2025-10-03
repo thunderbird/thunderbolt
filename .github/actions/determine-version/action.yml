@@ -1,0 +1,59 @@
+name: Determine Build Version
+description: Computes build version from explicit input or auto/typed bump of current package.json version
+inputs:
+  version:
+    description: Explicit version to use (e.g., 1.2.3)
+    required: false
+  version_type:
+    description: Version bump type when version is not provided (auto, patch, minor, major)
+    required: false
+    default: auto
+outputs:
+  build_version:
+    description: The resolved build version
+    value: ${{ steps.compute.outputs.build_version }}
+runs:
+  using: composite
+  steps:
+    - name: Determine build version
+      id: compute
+      shell: bash
+      run: |
+        INPUT_VERSION="${{ inputs.version }}"
+        VERSION_TYPE_INPUT="${{ inputs.version_type }}"
+
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+        if [ -n "$INPUT_VERSION" ]; then
+          BUILD_VERSION="$INPUT_VERSION"
+          echo "Using explicit version: $BUILD_VERSION"
+        else
+          # Auto-detect version type if requested
+          if [ "$VERSION_TYPE_INPUT" = "auto" ]; then
+            COMMITS=$(git log --pretty=format:"%s" --reverse)
+            if echo "$COMMITS" | grep -qiE "(breaking|!|BREAKING)"; then
+              DETECTED="major"
+            elif echo "$COMMITS" | grep -qiE "^(feat|feature|add)"; then
+              DETECTED="minor"
+            else
+              DETECTED="patch"
+            fi
+          else
+            DETECTED="$VERSION_TYPE_INPUT"
+          fi
+
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          case "$DETECTED" in
+            major)
+              BUILD_VERSION="$((major + 1)).0.0";;
+            minor)
+              BUILD_VERSION="$major.$((minor + 1)).0";;
+            patch)
+              BUILD_VERSION="$major.$minor.$((patch + 1))";;
+            *)
+              echo "❌ Invalid version type: $DETECTED"; exit 1;;
+          esac
+          echo "Calculated build version: $CURRENT_VERSION → $BUILD_VERSION ($DETECTED)"
+        fi
+
+        echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT

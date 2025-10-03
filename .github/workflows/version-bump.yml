@@ -11,6 +11,10 @@ on:
           - ios
           - android
           - desktop
+      version:
+        description: 'Explicit version to set (e.g., 1.2.3). Overrides detection.'
+        required: false
+        type: string
       version_type:
         description: 'Type of version bump (patch, minor, major, auto)'
         required: false
@@ -26,6 +30,10 @@ on:
       platform:
         description: 'Platform for the release (ios, android, desktop)'
         required: true
+        type: string
+      version:
+        description: 'Explicit version to set (e.g., 1.2.3). Overrides detection.'
+        required: false
         type: string
       version_type:
         description: 'Type of version bump (patch, minor, major, auto)'
@@ -102,31 +110,38 @@ jobs:
         run: |
           CURRENT_VERSION="${{ steps.current_version.outputs.current_version }}"
 
-          # Use auto-detected or manual version type
-          if [ "${{ inputs.version_type }}" == "auto" ]; then
-            VERSION_TYPE="${{ steps.auto_detect.outputs.detected_version_type }}"
+          # If an explicit version was provided, use it and mark as explicit
+          if [ -n "${{ inputs.version }}" ]; then
+            NEW_VERSION="${{ inputs.version }}"
+            VERSION_TYPE="explicit"
+            echo "Using explicit version: $NEW_VERSION"
           else
-            VERSION_TYPE="${{ inputs.version_type }}"
+            # Use auto-detected or manual version type
+            if [ "${{ inputs.version_type }}" == "auto" ]; then
+              VERSION_TYPE="${{ steps.auto_detect.outputs.detected_version_type }}"
+            else
+              VERSION_TYPE="${{ inputs.version_type }}"
+            fi
+
+            # Parse and bump version
+            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+
+            case "$VERSION_TYPE" in
+              "major")
+                NEW_VERSION="$((major + 1)).0.0"
+                ;;
+              "minor")
+                NEW_VERSION="$major.$((minor + 1)).0"
+                ;;
+              "patch")
+                NEW_VERSION="$major.$minor.$((patch + 1))"
+                ;;
+              *)
+                echo "❌ Invalid version type: $VERSION_TYPE"
+                exit 1
+                ;;
+            esac
           fi
-
-          # Parse and bump version
-          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
-
-          case "$VERSION_TYPE" in
-            "major")
-              NEW_VERSION="$((major + 1)).0.0"
-              ;;
-            "minor")
-              NEW_VERSION="$major.$((minor + 1)).0"
-              ;;
-            "patch")
-              NEW_VERSION="$major.$minor.$((patch + 1))"
-              ;;
-            *)
-              echo "❌ Invalid version type: $VERSION_TYPE"
-              exit 1
-              ;;
-          esac
 
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT

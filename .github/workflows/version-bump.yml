@@ -207,27 +207,18 @@ jobs:
           PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${TAG_NAME}" | head -1 || true)
 
           if [ -z "$PREV_TAG" ]; then
-            RANGE=""
             echo "No previous tag found; using full history"
+            echo "log<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+            echo "## Changelog" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s (%h) by %an" >> "$GITHUB_OUTPUT"
+            echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
           else
-            RANGE="$PREV_TAG..HEAD"
             echo "Generating changelog since $PREV_TAG"
+            echo "log<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+            echo "## Changelog" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s (%h) by %an" "$PREV_TAG..HEAD" >> "$GITHUB_OUTPUT"
+            echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
           fi
-
-          {
-            echo "## Changelog"
-            if [ -z "$RANGE" ]; then
-              git log --pretty=format:"- %s (%h) by %an"
-            else
-              git log --pretty=format:"- %s (%h) by %an" $RANGE
-            fi
-          } > CHANGELOG.md
-
-          {
-            echo log<<CHANGELOG_EOF
-            cat CHANGELOG.md
-            echo CHANGELOG_EOF
-          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

@@ -1,6 +1,26 @@
 name: Version Bump and Release Generation
 
 on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform for the release (ios, android, desktop)'
+        required: true
+        type: choice
+        options:
+          - ios
+          - android
+          - desktop
+      version_type:
+        description: 'Type of version bump (patch, minor, major, auto)'
+        required: false
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - patch
+          - minor
+          - major
   workflow_call:
     inputs:
       platform:

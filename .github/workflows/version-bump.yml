@@ -210,7 +210,7 @@ jobs:
           } > CHANGELOG.md
 
           {
-            echo "log<<'EOF'"
+            echo "log<<EOF"
             cat CHANGELOG.md
             echo "EOF"
           } >> "$GITHUB_OUTPUT"

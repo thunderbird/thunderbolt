@@ -208,35 +208,38 @@ jobs:
 
           if [ -z "$PREV_TAG" ]; then
             echo "No previous tag found; using full history"
-            echo "log<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
-            echo "## Changelog" >> "$GITHUB_OUTPUT"
-            git log --pretty=format:"- %s (%h) by %an" >> "$GITHUB_OUTPUT"
-            echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s (%h) by %an" > changelog.txt
           else
             echo "Generating changelog since $PREV_TAG"
-            echo "log<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
-            echo "## Changelog" >> "$GITHUB_OUTPUT"
-            git log --pretty=format:"- %s (%h) by %an" "$PREV_TAG..HEAD" >> "$GITHUB_OUTPUT"
-            echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s (%h) by %an" "$PREV_TAG..HEAD" > changelog.txt
           fi
 
+          # Use base64 encoding to safely pass multiline content
+          CHANGELOG_B64=$(base64 -w 0 changelog.txt)
+          echo "changelog_b64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.tag.outputs.tag_name }}
-          name: Release ${{ steps.tag.outputs.tag_name }}
-          draft: true
-          prerelease: true
-          body: |
-            ## Release Candidate ${{ steps.tag.outputs.tag_name }}
+        run: |
+          # Decode the changelog
+          CHANGELOG=$(echo "${{ steps.changelog.outputs.changelog_b64 }}" | base64 -d)
 
-            This is a release candidate for ${{ inputs.platform }} platform.
+          # Create release using GitHub CLI
+          gh release create "${{ steps.tag.outputs.tag_name }}" \
+            --title "Release ${{ steps.tag.outputs.tag_name }}" \
+            --notes "## Release Candidate ${{ steps.tag.outputs.tag_name }}
 
-            - Version: ${{ steps.version.outputs.new_version }}
-            - Platform: ${{ inputs.platform }}
-            - Version type: ${{ steps.version.outputs.version_type }}
+          This is a release candidate for ${{ inputs.platform }} platform.
 
-            ${{ steps.changelog.outputs.log }}
+          - Version: ${{ steps.version.outputs.new_version }}
+          - Platform: ${{ inputs.platform }}
+          - Version type: ${{ steps.version.outputs.version_type }}
 
-            ### Next Steps
-            After successful build and testing, the final release will be created.
+          ## Changelog
+          $CHANGELOG
+
+          ### Next Steps
+          After successful build and testing, the final release will be created." \
+            --draft \
+            --prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

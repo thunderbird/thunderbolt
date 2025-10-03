@@ -1,0 +1,171 @@
+name: Version Bump and Release Generation
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: 'Platform for the release (ios, android, desktop)'
+        required: true
+        type: string
+      version_type:
+        description: 'Type of version bump (patch, minor, major, auto)'
+        required: false
+        type: string
+        default: 'auto'
+    outputs:
+      new_version:
+        description: 'The new version that was created'
+        value: ${{ jobs.version_bump.outputs.new_version }}
+      tag_name:
+        description: 'The tag name that was created'
+        value: ${{ jobs.version_bump.outputs.tag_name }}
+
+jobs:
+  version_bump:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
+      tag_name: ${{ steps.tag.outputs.tag_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Get current version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Auto-detect version type
+        id: auto_detect
+        if: ${{ inputs.version_type == 'auto' }}
+        run: |
+          # Get commits since last tag or from beginning
+          if [ -z "$(git tag -l)" ]; then
+            echo "🆕 First-time release detected"
+            COMMITS=$(git log --pretty=format:"%s" --reverse)
+          else
+            COMMITS=$(git log --pretty=format:"%s" --reverse)
+          fi
+
+          # Simple detection logic
+          if echo "$COMMITS" | grep -qiE "(breaking|!|BREAKING)"; then
+            VERSION_TYPE="major"
+            echo "🔴 Breaking changes detected - major version bump"
+          elif echo "$COMMITS" | grep -qiE "^(feat|feature|add)"; then
+            VERSION_TYPE="minor"
+            echo "🟡 New features detected - minor version bump"
+          else
+            VERSION_TYPE="patch"
+            echo "🟢 Bug fixes and maintenance - patch version bump"
+          fi
+
+          echo "detected_version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Calculate new version
+        id: version
+        run: |
+          CURRENT_VERSION="${{ steps.current_version.outputs.current_version }}"
+
+          # Use auto-detected or manual version type
+          if [ "${{ inputs.version_type }}" == "auto" ]; then
+            VERSION_TYPE="${{ steps.auto_detect.outputs.detected_version_type }}"
+          else
+            VERSION_TYPE="${{ inputs.version_type }}"
+          fi
+
+          # Parse and bump version
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+
+          case "$VERSION_TYPE" in
+            "major")
+              NEW_VERSION="$((major + 1)).0.0"
+              ;;
+            "minor")
+              NEW_VERSION="$major.$((minor + 1)).0"
+              ;;
+            "patch")
+              NEW_VERSION="$major.$minor.$((patch + 1))"
+              ;;
+            *)
+              echo "❌ Invalid version type: $VERSION_TYPE"
+              exit 1
+              ;;
+          esac
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+          echo "Version bump: $CURRENT_VERSION → $NEW_VERSION ($VERSION_TYPE)"
+
+      - name: Create platform-specific tag
+        id: tag
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          PLATFORM="${{ inputs.platform }}"
+          TAG_NAME="v$NEW_VERSION-$PLATFORM-rc"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Creating tag: $TAG_NAME"
+
+      - name: Update package.json version
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Update Cargo.toml version
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
+
+      - name: Create version commit
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          git add package.json src-tauri/Cargo.toml
+          git commit -m "chore: bump version to $NEW_VERSION for ${{ inputs.platform }} release"
+          git tag "$TAG_NAME"
+
+      - name: Push changes
+        run: |
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          git push origin HEAD
+          git push origin "$TAG_NAME"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: Release ${{ steps.tag.outputs.tag_name }}
+          draft: true
+          prerelease: true
+          body: |
+            ## Release Candidate ${{ steps.tag.outputs.tag_name }}
+
+            This is a release candidate for ${{ inputs.platform }} platform.
+
+            ### Changes
+            - Version bumped to ${{ steps.version.outputs.new_version }}
+            - Platform: ${{ inputs.platform }}
+            - Version type: ${{ steps.version.outputs.version_type }}
+
+            ### Next Steps
+            After successful build and testing, the final release will be created.

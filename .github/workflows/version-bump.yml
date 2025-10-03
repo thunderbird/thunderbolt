@@ -173,17 +173,31 @@ jobs:
 
       - name: Create version commit
         run: |
+          set -e
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+
           git add package.json src-tauri/Cargo.toml
-          git commit -m "chore: bump version to $NEW_VERSION for ${{ inputs.platform }} release"
-          git tag "$TAG_NAME"
+
+          if git diff --cached --quiet; then
+            echo "No file changes to commit; skipping commit."
+          else
+            git commit -m "chore: bump version to $NEW_VERSION for ${{ inputs.platform }} release"
+          fi
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists; skipping tag creation."
+          else
+            git tag "$TAG_NAME"
+          fi
 
       - name: Push changes
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
-          git push origin HEAD
-          git push origin "$TAG_NAME"
+          # Push commit if any; ignore if nothing to push
+          git push origin HEAD || echo "No commit to push"
+          # Push tag; ignore if already pushed
+          git push origin "$TAG_NAME" || echo "Tag already pushed or unchanged"
 
       - name: Generate changelog
         id: changelog

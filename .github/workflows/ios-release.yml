@@ -18,6 +18,26 @@ on:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
+      version_type:
+        description: 'Type of version bump (auto, patch, minor, major)'
+        required: false
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      skip_version_bump:
+        description: 'Skip version bumping and use existing version'
+        required: false
+        default: false
+        type: boolean
+      skip_build:
+        description: 'Skip building and deploying (run version bump only)'
+        required: false
+        default: false
+        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
@@ -30,12 +50,15 @@ concurrency:
 
 jobs:
   build_and_deploy_ios:
+    if: ${{ !inputs.skip_build }}
     runs-on: macos-14
     environment: thunderbolt_release
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          ref: ${{ github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
@@ -44,6 +67,15 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # using commit hash for security reasons
+
+      - name: Display version information
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "🏷️ Using specified version: ${{ inputs.version }}"
+          else
+            CURRENT_VERSION=$(node -p "require('./package.json').version")
+            echo "📦 Current version: $CURRENT_VERSION"
+          fi
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
@@ -307,3 +339,12 @@ jobs:
         run: |
           rm -f fastlane/AuthKey_*.p8
           rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
+
+  version_bump:
+    if: ${{ !inputs.skip_version_bump && (inputs.skip_build || needs.build_and_deploy_ios.result == 'success') }}
+    needs: [build_and_deploy_ios]
+    uses: ./.github/workflows/version-bump.yml
+    with:
+      platform: ios
+      version_type: ${{ inputs.version_type }}
+    secrets: inherit

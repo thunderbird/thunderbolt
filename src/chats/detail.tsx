@@ -6,7 +6,7 @@ import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import Chat from './chat'
 import { getChatMessagesByThreadId } from '@/lib/dal'
 import { v7 as uuidv7 } from 'uuid'
@@ -56,6 +56,8 @@ export default function ChatDetailPage() {
     enabled: !!chatThreadId,
   })
 
+  const navigate = useNavigate()
+
   const addMessagesMutation = useMutation({
     mutationFn: async (messages: ThunderboltUIMessage[]) => {
       if (!chatThreadId) {
@@ -64,6 +66,10 @@ export default function ChatDetailPage() {
 
       // Fetch thread info to check if we need to generate a title
       const thread = await getOrCreateChatThreadById(chatThreadId)
+
+      if (params.chatThreadId === 'new') {
+        navigate(`/chats/${chatThreadId}`, { relative: 'path' })
+      }
 
       // Save messages and update context size using DAL
       const dbChatMessages = await saveMessagesWithContextUpdate(chatThreadId, messages)

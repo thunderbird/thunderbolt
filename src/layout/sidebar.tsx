@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
+import { getAllChatThreads } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
@@ -105,25 +105,20 @@ export default function ChatSidebar() {
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
       await db.delete(chatThreadsTable)
-      // Create a new thread immediately after deletion
-      const chatThreadId = await getOrCreateChatThread()
-      return chatThreadId
     },
-    onSuccess: async (chatThreadId) => {
+    onSuccess: async () => {
       trackEvent('chat_clear_all')
       deleteAllChatsDialogRef.current?.close()
       // Invalidate queries after the new thread is created
       await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-      navigate(`/chats/${chatThreadId}`)
+      navigate('/chats/new')
     },
   })
 
   const createNewChat = async (closeAfter: boolean = true) => {
     try {
       trackEvent('chat_new_clicked')
-      const chatThreadId = await getOrCreateChatThread()
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-      navigate(`/chats/${chatThreadId}`)
+      navigate(`/chats/new`)
       // Close mobile sidebar after navigation
       if (closeAfter && isMobile) {
         setOpenMobile(false)

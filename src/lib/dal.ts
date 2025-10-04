@@ -278,6 +278,23 @@ export const getChatThreadById = async (id: string) => {
 }
 
 /**
+ * Gets a specific chat thread by ID or create a new one with the provided ID
+ */
+export const getOrCreateChatThreadById = async (id: string) => {
+  const db = DatabaseSingleton.instance.db
+
+  const thread = await getChatThreadById(id)
+
+  if (thread?.id) {
+    return thread
+  }
+
+  await db.insert(chatThreadsTable).values({ id, title: 'New Chat' })
+
+  return await getChatThreadById(id)
+}
+
+/**
  * Gets an existing empty chat thread or creates a new one
  */
 export const getOrCreateChatThread = async (isEncrypted: boolean = false): Promise<string> => {

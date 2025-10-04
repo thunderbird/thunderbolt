@@ -166,6 +166,8 @@ export default function ChatUI({
   const isStreaming = chatHelpers.status === 'streaming'
 
   const handleSubmit = async () => {
+    navigate(`/chats/${chatThreadId}`, { relative: 'path' })
+
     // Prevent submitting while streaming or if input is empty
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return

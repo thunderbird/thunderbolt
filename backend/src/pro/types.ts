@@ -92,6 +92,8 @@ export type WeatherForecastResponse = z.infer<typeof weatherForecastResponseSche
  */
 export const locationSearchRequestSchema = z.object({
   query: z.string(),
+  region: z.string(),
+  country: z.string(),
 })
 
 export const locationSearchResponseSchema = baseApiResponseSchema(z.string())

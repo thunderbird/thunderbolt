@@ -103,7 +103,7 @@ export const createProToolsRoutes = () => {
 
         try {
           const ctx = new SimpleContext()
-          const locations = await weatherClient.searchLocations(request.query, null, null, ctx)
+          const locations = await weatherClient.searchLocations(request.query, request.region, request.country, ctx)
 
           if (!locations || locations.length === 0) {
             return {
@@ -153,6 +153,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           query: t.String(),
+          region: t.String(),
+          country: t.String(),
         }),
       },
     )

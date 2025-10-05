@@ -23,6 +23,8 @@ export const fetchContentSchema = z
 export const searchLocationSchema = z
   .object({
     query: z.string().describe('The location name to search for'),
+    region: z.string().describe("The location's state or region."),
+    country: z.string().describe("The location's country."),
   })
   .strict()
 
@@ -167,6 +169,8 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
       .post(`${cloudUrl}/pro/locations/search`, {
         json: {
           query: params.query,
+          region: params.region,
+          country: params.country,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()

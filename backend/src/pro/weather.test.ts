@@ -47,9 +47,9 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockLocationData,
       } as Response)
 
-      const results = await weather.searchLocations('London', 'United Kingdom', 'England', mockContext)
+      const results = await weather.searchLocations('London', 'England', 'United Kingdom', mockContext)
 
-      expect(results).toEqual(mockLocationData.results)
+      expect(results).toEqual([mockLocationData.results[0]]) // Should only return London, England
 
       expect(mockFetch).toHaveBeenCalledWith(
         'https://geocoding-api.open-meteo.com/v1/search?name=London&count=10&language=en&format=json',
@@ -80,7 +80,7 @@ describe('Pro - OpenMeteoWeather', () => {
       const networkError = new Error('Network failure')
       mockFetch.mockRejectedValueOnce(networkError)
 
-      await expect(weather.searchLocations('London', 'United Kingdom', 'England', mockContext)).rejects.toThrow(
+      await expect(weather.searchLocations('London', 'England', 'United Kingdom', mockContext)).rejects.toThrow(
         'Network failure',
       )
     })
@@ -429,7 +429,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockWeatherData,
       } as Response)
 
-      const result = await weather.getCurrentWeather('London', 'United Kingdom', 'England', mockContext)
+      const result = await weather.getCurrentWeather('London', 'England', 'United Kingdom', mockContext)
 
       expect(result).toContain('Current weather for London, England, United Kingdom:')
       expect(result).toContain('Temperature: 15.2°C')
@@ -475,7 +475,7 @@ describe('Pro - OpenMeteoWeather', () => {
         status: 500,
       } as Response)
 
-      await expect(weather.getCurrentWeather('London', 'United Kingdom', 'England', mockContext)).rejects.toThrow(
+      await expect(weather.getCurrentWeather('London', 'England', 'United Kingdom', mockContext)).rejects.toThrow(
         'Weather API error: 500',
       )
     })
@@ -554,7 +554,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockForecastData,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'England', 'United Kingdom', 3, mockContext)
 
       expect(result).toEqual({
         location: 'London, England, United Kingdom',
@@ -630,7 +630,7 @@ describe('Pro - OpenMeteoWeather', () => {
         }),
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 1, mockContext)
+      const result = await weather.getWeatherForecast('London', 'England', 'United Kingdom', 1, mockContext)
 
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toHaveLength(1)
@@ -663,7 +663,7 @@ describe('Pro - OpenMeteoWeather', () => {
         status: 500,
       } as Response)
 
-      await expect(weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)).rejects.toThrow(
+      await expect(weather.getWeatherForecast('London', 'England', 'United Kingdom', 3, mockContext)).rejects.toThrow(
         'Weather API error: 500',
       )
     })
@@ -679,7 +679,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => mockForecastData,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'England', 'United Kingdom', 3, mockContext)
 
       // Check that dates are returned in the structured format
       expect(result.days[0].date).toBe('2024-01-15')
@@ -713,7 +713,7 @@ describe('Pro - OpenMeteoWeather', () => {
         json: async () => emptyForecast,
       } as Response)
 
-      const result = await weather.getWeatherForecast('London', 'United Kingdom', 'England', 3, mockContext)
+      const result = await weather.getWeatherForecast('London', 'England', 'United Kingdom', 3, mockContext)
 
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toEqual([])

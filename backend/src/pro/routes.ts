@@ -52,8 +52,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           location: t.String(),
-          region: t.String(),
-          country: t.String(),
+          region: t.MaybeEmpty(t.String()),
+          country: t.MaybeEmpty(t.String()),
           days: t.Optional(t.Number({ default: 3 })),
         }),
       },
@@ -89,8 +89,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           location: t.String(),
-          region: t.String(),
-          country: t.String(),
+          region: t.MaybeEmpty(t.String()),
+          country: t.MaybeEmpty(t.String()),
           days: t.Optional(t.Number({ default: 3 })),
         }),
       },
@@ -153,8 +153,8 @@ export const createProToolsRoutes = () => {
       {
         body: t.Object({
           query: t.String(),
-          region: t.String(),
-          country: t.String(),
+          region: t.MaybeEmpty(t.String()),
+          country: t.MaybeEmpty(t.String()),
         }),
       },
     )

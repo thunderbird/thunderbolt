@@ -72,7 +72,12 @@ export class OpenMeteoWeather {
   /**
    * Get current weather for a location
    */
-  async getCurrentWeather(location: string, region: string, country: string, ctx: SimpleContext): Promise<string> {
+  async getCurrentWeather(
+    location: string,
+    region: string | null,
+    country: string | null,
+    ctx: SimpleContext,
+  ): Promise<string> {
     // First, search for the location
     const locations = await this.searchLocations(location, region, country, ctx)
     if (locations.length === 0) {
@@ -134,8 +139,8 @@ export class OpenMeteoWeather {
    */
   async getWeatherForecast(
     location: string,
-    region: string,
-    country: string,
+    region: string | null,
+    country: string | null,
     days: number,
     ctx: SimpleContext,
   ): Promise<WeatherForecastData> {

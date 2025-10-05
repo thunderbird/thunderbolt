@@ -56,8 +56,8 @@ export type FetchContentResponse = {
  */
 export const weatherRequestSchema = z.object({
   location: z.string(),
-  region: z.string(),
-  country: z.string(),
+  region: z.string().nullable(),
+  country: z.string().nullable(),
   days: z.number().default(3), // Only used for forecast
 })
 

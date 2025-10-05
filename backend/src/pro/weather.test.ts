@@ -97,6 +97,290 @@ describe('Pro - OpenMeteoWeather', () => {
         'https://geocoding-api.open-meteo.com/v1/search?name=New+York&count=10&language=en&format=json',
       )
     })
+
+    describe('disambiguateLocation', () => {
+      const mockLocations = [
+        {
+          name: 'London',
+          admin1: 'England',
+          country: 'United Kingdom',
+          latitude: 51.5074,
+          longitude: -0.1278,
+          elevation: 25,
+        },
+        {
+          name: 'London',
+          admin1: 'Ontario',
+          country: 'Canada',
+          latitude: 42.9849,
+          longitude: -81.2453,
+          elevation: 251,
+        },
+        {
+          name: 'London',
+          admin1: 'Kentucky',
+          country: 'United States',
+          latitude: 37.1289,
+          longitude: -84.0833,
+          elevation: 300,
+        },
+        {
+          name: 'Paris',
+          admin1: 'Île-de-France',
+          country: 'France',
+          latitude: 48.8566,
+          longitude: 2.3522,
+          elevation: 35,
+        },
+        {
+          name: 'Paris',
+          admin1: 'Texas',
+          country: 'United States',
+          latitude: 33.6609,
+          longitude: -95.5555,
+          elevation: 180,
+        },
+      ]
+
+      it('should filter by region when provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', 'England', null, mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('England')
+        expect(results[0].country).toBe('United Kingdom')
+      })
+
+      it('should filter by country when provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', null, 'Canada', mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('Ontario')
+        expect(results[0].country).toBe('Canada')
+      })
+
+      it('should filter by both region and country when provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', 'England', 'United Kingdom', mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('England')
+        expect(results[0].country).toBe('United Kingdom')
+      })
+
+      it('should return all locations when no region or country provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', null, null, mockContext)
+
+        expect(results).toHaveLength(5) // All locations (London and Paris)
+        expect(results.every((loc) => loc.name === 'London' || loc.name === 'Paris')).toBe(true)
+      })
+
+      it('should handle case-insensitive region matching', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', 'ENGLAND', null, mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('England')
+      })
+
+      it('should handle case-insensitive country matching', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', null, 'CANADA', mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].country).toBe('Canada')
+      })
+
+      it('should handle partial region matching', async () => {
+        const locationsWithPartialMatch = [
+          {
+            name: 'Springfield',
+            admin1: 'Massachusetts',
+            country: 'United States',
+            latitude: 42.1015,
+            longitude: -72.5898,
+          },
+          {
+            name: 'Springfield',
+            admin1: 'Missouri',
+            country: 'United States',
+            latitude: 37.2083,
+            longitude: -93.2923,
+          },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: locationsWithPartialMatch }),
+        } as Response)
+
+        const results = await weather.searchLocations('Springfield', 'Mass', null, mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('Massachusetts')
+      })
+
+      it('should handle partial country matching', async () => {
+        const locationsWithPartialMatch = [
+          {
+            name: 'Manchester',
+            admin1: 'England',
+            country: 'United Kingdom',
+            latitude: 53.4808,
+            longitude: -2.2426,
+          },
+          {
+            name: 'Manchester',
+            admin1: 'New Hampshire',
+            country: 'United States',
+            latitude: 42.9956,
+            longitude: -71.4548,
+          },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: locationsWithPartialMatch }),
+        } as Response)
+
+        const results = await weather.searchLocations('Manchester', null, 'United', mockContext)
+
+        expect(results).toHaveLength(2) // Both United Kingdom and United States
+      })
+
+      it('should handle whitespace trimming in region and country', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', '  England  ', '  United Kingdom  ', mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('England')
+        expect(results[0].country).toBe('United Kingdom')
+      })
+
+      it('should return all locations when no region matches found', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', 'NonExistentRegion', null, mockContext)
+
+        // When no region matches are found, the method returns all locations (permissive behavior)
+        expect(results).toHaveLength(5)
+        expect(results.every((loc) => loc.name === 'London' || loc.name === 'Paris')).toBe(true)
+      })
+
+      it('should return all locations when no country matches found', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', null, 'NonExistentCountry', mockContext)
+
+        // When no country matches are found, the method returns all locations (permissive behavior)
+        expect(results).toHaveLength(5)
+        expect(results.every((loc) => loc.name === 'London' || loc.name === 'Paris')).toBe(true)
+      })
+
+      it('should handle locations with missing admin1 field', async () => {
+        const locationsWithMissingAdmin = [
+          {
+            name: 'TestCity',
+            country: 'TestCountry',
+            latitude: 40.0,
+            longitude: -74.0,
+          },
+          {
+            name: 'TestCity',
+            admin1: 'TestRegion',
+            country: 'TestCountry',
+            latitude: 41.0,
+            longitude: -75.0,
+          },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: locationsWithMissingAdmin }),
+        } as Response)
+
+        const results = await weather.searchLocations('TestCity', 'TestRegion', null, mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].admin1).toBe('TestRegion')
+      })
+
+      it('should handle locations with missing country field', async () => {
+        const locationsWithMissingCountry = [
+          {
+            name: 'TestCity',
+            admin1: 'TestRegion',
+            latitude: 40.0,
+            longitude: -74.0,
+          },
+          {
+            name: 'TestCity',
+            admin1: 'TestRegion',
+            country: 'TestCountry',
+            latitude: 41.0,
+            longitude: -75.0,
+          },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: locationsWithMissingCountry }),
+        } as Response)
+
+        const results = await weather.searchLocations('TestCity', null, 'TestCountry', mockContext)
+
+        expect(results).toHaveLength(1)
+        expect(results[0].country).toBe('TestCountry')
+      })
+
+      it('should handle empty region and country strings', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ results: mockLocations }),
+        } as Response)
+
+        const results = await weather.searchLocations('London', '', '', mockContext)
+
+        expect(results).toHaveLength(5) // All locations (London and Paris)
+        expect(results.every((loc) => loc.name === 'London' || loc.name === 'Paris')).toBe(true)
+      })
+    })
   })
 
   describe('getCurrentWeather', () => {

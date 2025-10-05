@@ -56,8 +56,8 @@ export type FetchContentResponse = {
  */
 export const weatherRequestSchema = z.object({
   location: z.string(),
-  region: z.string().nullable(),
-  country: z.string().nullable(),
+  region: z.string(),
+  country: z.string(),
   days: z.number().default(3), // Only used for forecast
 })
 
@@ -92,8 +92,6 @@ export type WeatherForecastResponse = z.infer<typeof weatherForecastResponseSche
  */
 export const locationSearchRequestSchema = z.object({
   query: z.string(),
-  region: z.string().nullable(),
-  country: z.string().nullable(),
 })
 
 export const locationSearchResponseSchema = baseApiResponseSchema(z.string())

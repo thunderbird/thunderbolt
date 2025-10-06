@@ -217,13 +217,11 @@ This is useful for:
 
 **Never push workflow changes directly to `main`!**
 
-Instead, use test branches (`gh-action-sandbox` or any branch starting with `ci-`):
+Instead, use test branches that start with `ci-`:
 
 ```bash
-# 1. Create test branch (can be gh-action-sandbox or any ci-* branch)
+# 1. Create test branch (can be any ci-* branch)
 git checkout -b ci-my-test
-# or
-git checkout -b gh-action-sandbox
 
 # 2. Make your workflow changes
 # Edit .github/workflows/*.yml files
@@ -243,7 +241,6 @@ git push origin main
 
 All workflows are configured to run on:
 
-- `gh-action-sandbox` - Legacy test branch
 - `ci-*` - Any branch starting with `ci-` (recommended for parallel testing)
 
 ## Troubleshooting
@@ -268,7 +265,7 @@ Or update all files manually and recommit before tagging.
 
 1. **Check GitHub Actions logs** for detailed error messages
 2. **Verify secrets are configured** (especially for iOS/Android signing)
-3. **Test workflow** on `gh-action-sandbox` branch first
+3. **Test workflow** on a branch starting with `ci-` branch first
 4. **Check recent changes** that might have broken the build
 
 ### iOS Build Issues
@@ -323,7 +320,7 @@ The following secrets must be configured in your repository:
 ## Best Practices
 
 1. ✅ **Always use the helper workflow** for version bumps (it updates all 4 files for you)
-2. ✅ **Test on `gh-action-sandbox`** before merging workflow changes
+2. ✅ **Test on a branch starting with `ci-*`** before merging workflow changes
 3. ✅ **Use semantic versioning** (major.minor.patch)
 4. ✅ **Write good commit messages** for auto-detection to work
 5. ✅ **Check version files** are in sync before manually tagging

@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - gh-action-sandbox
       - 'ci-*' # Matches ci-test, ci-release-automation, etc.
     tags:
       - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.

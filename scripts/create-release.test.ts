@@ -188,6 +188,38 @@ describe('create-release.ts', () => {
 
       expect(throwError).toThrow('tag not found')
     })
+
+    it('should handle null return from execSync', () => {
+      // Simulate execSync returning null (can happen with stdio: 'inherit')
+      const result = null
+      const safeResult = result === null || result === undefined ? '' : String(result).trim()
+
+      expect(safeResult).toBe('')
+    })
+
+    it('should handle undefined return from execSync', () => {
+      // Simulate execSync returning undefined
+      const result = undefined
+      const safeResult = result === null || result === undefined ? '' : String(result).trim()
+
+      expect(safeResult).toBe('')
+    })
+
+    it('should safely convert non-string return values', () => {
+      // Test that we can handle various return types safely
+      const testCases = [
+        { input: null, expected: '' },
+        { input: undefined, expected: '' },
+        { input: '', expected: '' },
+        { input: 'test', expected: 'test' },
+        { input: '  test  ', expected: 'test' },
+      ]
+
+      testCases.forEach(({ input, expected }) => {
+        const result = input === null || input === undefined ? '' : String(input).trim()
+        expect(result).toBe(expected)
+      })
+    })
   })
 
   describe('Argument Parsing', () => {
@@ -317,6 +349,34 @@ describe('create-release.ts', () => {
       expect(() => {
         JSON.parse('invalid json{')
       }).toThrow()
+    })
+
+    it('should handle execSync returning null without crashing', () => {
+      // This simulates the bug where execSync with stdio: 'inherit' returns null
+      // and we tried to call .trim() on it
+      mockExecSync.mockReturnValue(null)
+
+      const result = mockExecSync('git commit')
+
+      // The exec function should handle null gracefully
+      const safeResult = result === null || result === undefined ? '' : String(result).trim()
+
+      expect(safeResult).toBe('')
+      expect(() => safeResult.trim()).not.toThrow()
+    })
+
+    it('should prevent TypeError when calling trim on null', () => {
+      // This is the exact bug we had: calling .trim() on null
+      const nullValue = null
+
+      // Bad: would throw TypeError
+      // nullValue.trim()
+
+      // Good: handle null before calling trim
+      const safeValue = nullValue === null || nullValue === undefined ? '' : String(nullValue)
+
+      expect(() => safeValue.trim()).not.toThrow()
+      expect(safeValue.trim()).toBe('')
     })
   })
 

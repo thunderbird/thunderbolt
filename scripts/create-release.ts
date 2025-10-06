@@ -32,11 +32,18 @@ const REPO_ROOT = join(import.meta.dir, '..')
  */
 const exec = (command: string, silent = false): string => {
   try {
-    return execSync(command, {
+    const result = execSync(command, {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: silent ? 'pipe' : 'inherit',
-    }).trim()
+    })
+
+    // Handle null or undefined results
+    if (result === null || result === undefined) {
+      return ''
+    }
+
+    return String(result).trim()
   } catch (error) {
     if (silent) return ''
     throw error

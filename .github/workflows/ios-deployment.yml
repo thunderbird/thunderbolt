@@ -1,6 +1,10 @@
 name: iOS Deployment
 
 on:
+  push:
+    branches:
+      - main
+      - gh-action-sandbox
   workflow_dispatch:
     inputs:
       version:

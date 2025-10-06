@@ -2,8 +2,11 @@ name: Tauri v2 Release Process
 run-name: triggered by ${{ github.actor }}.
 on:
   push:
+    branches:
+      - main
+      - gh-action-sandbox
     tags:
-      - 'v*-rc*' # This will trigger on any tag matching v*-rc* (e.g., v1.0.0-rc1)
+      - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +14,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          # Check if this is a tag push
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            # Remove 'v' prefix and any suffix like -rc, -beta
+            VERSION=${GITHUB_REF#refs/tags/v}
+            # Extract just the semver part (1.2.3)
+            VERSION=$(echo $VERSION | sed 's/-.*$//')
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "📌 Tag version: $VERSION"
+          else
+            # Not a tag, get current version from package.json
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "📦 Current version: $VERSION"
+          fi
+
+      - name: Validate version matches files (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          CARGO_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+
+          echo "Tag version: $TAG_VERSION"
+          echo "package.json version: $PKG_VERSION"
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "tauri.conf.json version: $TAURI_VERSION"
+
+          VALIDATION_FAILED=false
+
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match package.json ($PKG_VERSION)"
+            VALIDATION_FAILED=true
+          fi
+
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match Cargo.toml ($CARGO_VERSION)"
+            VALIDATION_FAILED=true
+          fi
+
+          if [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match tauri.conf.json ($TAURI_VERSION)"
+            VALIDATION_FAILED=true
+          fi
+
+          # Check iOS project.yml if it exists
+          if [ -f "src-tauri/gen/apple/project.yml" ]; then
+            IOS_VERSION=$(grep 'CFBundleShortVersionString:' src-tauri/gen/apple/project.yml | sed 's/.*CFBundleShortVersionString: //')
+            echo "iOS project.yml version: $IOS_VERSION"
+            if [ "$TAG_VERSION" != "$IOS_VERSION" ]; then
+              echo "❌ Error: Tag version ($TAG_VERSION) doesn't match iOS project.yml ($IOS_VERSION)"
+              VALIDATION_FAILED=true
+            fi
+          fi
+
+          if [ "$VALIDATION_FAILED" = true ]; then
+            echo ""
+            echo "💡 Tip: Use 'gh workflow run create-version-tag.yml -f version=$TAG_VERSION' to update all version files"
+            exit 1
+          fi
+
+          echo "✅ All version numbers validated successfully"
+
   draft:
+    needs: validate_version
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.get-version.outputs.version }}
@@ -42,7 +122,7 @@ jobs:
             Binaries will be attached to this release after successful builds.
 
   build_desktop:
-    needs: draft
+    needs: [validate_version, draft]
 
     strategy:
       fail-fast: false
@@ -185,7 +265,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.draft.outputs.version }}
+          tag_name: v${{ needs.validate_version.outputs.version }}
           draft: true
           files: |
             src-tauri/target/release/bundle/deb/*.deb
@@ -196,7 +276,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.draft.outputs.version }}
+          tag_name: v${{ needs.validate_version.outputs.version }}
           draft: true
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
@@ -208,7 +288,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.draft.outputs.version }}
+          tag_name: v${{ needs.validate_version.outputs.version }}
           draft: true
           files: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
@@ -217,7 +297,7 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
 
   build_android:
-    needs: draft
+    needs: [validate_version, draft]
 
     runs-on: ubuntu-latest
 
@@ -285,7 +365,7 @@ jobs:
       #     bun tauri android build
 
   build_ios:
-    needs: draft
+    needs: [validate_version, draft]
 
     runs-on: macos-latest
 
@@ -343,31 +423,28 @@ jobs:
       #     bun tauri ios build --export-method app-store-connect
 
   publish:
-    needs: [build_desktop]
+    needs: [validate_version, draft, build_desktop]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch all history for proper tagging
+          fetch-depth: 0
 
       - name: Get version info
         id: get-version
         run: |
-          # Extract version from RC tag (e.g., v1.0.0-rc1 -> v1.0.0)
-          RC_VERSION=${GITHUB_REF#refs/tags/}
-          FINAL_VERSION=${RC_VERSION%-rc*}
-          echo "rc_version=$RC_VERSION" >> $GITHUB_OUTPUT
-          echo "final_version=$FINAL_VERSION" >> $GITHUB_OUTPUT
+          VERSION=${{ needs.validate_version.outputs.version }}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.draft.outputs.version }}
+          tag_name: v${{ needs.validate_version.outputs.version }}
           draft: false
           prerelease: false
-          name: Release ${{ steps.get-version.outputs.final_version }}
+          name: Release v${{ needs.validate_version.outputs.version }}
           body: |
-            ## Release ${{ steps.get-version.outputs.final_version }}
+            ## Release v${{ needs.validate_version.outputs.version }}
 
             ### Downloads
 
@@ -378,16 +455,10 @@ jobs:
             - **macOS**: `.dmg` installer (Intel and Apple Silicon)
             - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
 
+            #### Mobile
+            - **iOS**: Available via TestFlight
+            - **Android**: Coming soon
+
             ### Release Notes
 
             _Add your release notes here_
-
-            ---
-
-            **Note:** This release was built from RC tag `${{ steps.get-version.outputs.rc_version }}`. 
-
-            To create the final release tag after verification:
-            ```bash
-            git tag ${{ steps.get-version.outputs.final_version }}
-            git push origin ${{ steps.get-version.outputs.final_version }}
-            ```

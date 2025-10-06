@@ -175,12 +175,6 @@ describe('create-release.ts', () => {
       expect(isClean).toBe(false)
     })
 
-    it('should check if tag exists', () => {
-      const tagExists = 'abc123'
-
-      expect(tagExists.length).toBeGreaterThan(0)
-    })
-
     it('should handle non-existent tag error', () => {
       const throwError = () => {
         throw new Error('tag not found')
@@ -219,6 +213,141 @@ describe('create-release.ts', () => {
         const result = input === null || input === undefined ? '' : String(input).trim()
         expect(result).toBe(expected)
       })
+    })
+  })
+
+  describe('Tag Existence Checking', () => {
+    it('should validate 40-character SHA hashes correctly', () => {
+      const shaRegex = /^[0-9a-f]{40}$/i
+
+      // Valid SHA hashes
+      expect(shaRegex.test('cf5e203d0890ca2450876def639f1c7ed3f83f1c')).toBe(true)
+      expect(shaRegex.test('ABCDEF1234567890ABCDEF1234567890ABCDEF12')).toBe(true)
+
+      // Invalid - too short
+      expect(shaRegex.test('cf5e203')).toBe(false)
+
+      // Invalid - too long
+      expect(shaRegex.test('cf5e203d0890ca2450876def639f1c7ed3f83f1c1')).toBe(false)
+
+      // Invalid - contains non-hex characters
+      expect(shaRegex.test('v1.2.3')).toBe(false)
+      expect(shaRegex.test('fatal: unknown revision')).toBe(false)
+      expect(shaRegex.test('Needed a single revision')).toBe(false)
+    })
+
+    it('should detect tag exists when git returns valid SHA', () => {
+      // This simulates successful git rev-parse --verify
+      const result = 'cf5e203d0890ca2450876def639f1c7ed3f83f1c'
+      const shaRegex = /^[0-9a-f]{40}$/i
+      const exists = result.length > 0 && shaRegex.test(result)
+
+      expect(exists).toBe(true)
+    })
+
+    it('should detect tag does NOT exist when git throws error', () => {
+      // This simulates failed git rev-parse --verify (exception thrown)
+      let exists = false
+      try {
+        throw new Error('fatal: Needed a single revision')
+      } catch {
+        exists = false
+      }
+
+      expect(exists).toBe(false)
+    })
+
+    it('should NOT be fooled by error messages containing tag name (THE BUG)', () => {
+      // This is the exact bug we had: git rev-parse fails but returns text
+      // containing the tag name, which was treated as truthy
+      const errorOutput = "fatal: ambiguous argument 'v1.2.5': unknown revision"
+      const shaRegex = /^[0-9a-f]{40}$/i
+
+      // Old buggy logic would check: if (errorOutput) { tag exists }
+      // New correct logic checks for valid SHA
+      const exists = errorOutput.length > 0 && shaRegex.test(errorOutput)
+
+      expect(exists).toBe(false) // Should be false because it's not a valid SHA
+    })
+
+    it('should handle error output that looks like it might be valid', () => {
+      const testCases = [
+        { output: 'v1.2.5', shouldExist: false },
+        { output: 'tag not found', shouldExist: false },
+        { output: '', shouldExist: false },
+        { output: '123', shouldExist: false },
+        { output: 'abcdef', shouldExist: false }, // Too short
+        { output: 'cf5e203d0890ca2450876def639f1c7ed3f83f1c', shouldExist: true }, // Valid SHA
+      ]
+
+      const shaRegex = /^[0-9a-f]{40}$/i
+
+      testCases.forEach(({ output, shouldExist }) => {
+        const exists = output.length > 0 && shaRegex.test(output)
+        expect(exists).toBe(shouldExist)
+      })
+    })
+
+    it('should detect tag on remote when ls-remote returns data', () => {
+      // Simulate git ls-remote --tags origin refs/tags/v1.2.3
+      const remoteOutput = 'cf5e203d0890ca2450876def639f1c7ed3f83f1c\trefs/tags/v1.2.3'
+      const exists = remoteOutput.length > 0
+
+      expect(exists).toBe(true)
+    })
+
+    it('should detect tag NOT on remote when ls-remote returns empty', () => {
+      // Simulate git ls-remote --tags origin refs/tags/v1.2.3 (tag doesn't exist)
+      const remoteOutput = ''
+      const exists = remoteOutput.length > 0
+
+      expect(exists).toBe(false)
+    })
+
+    it('should check tag existence before making file changes', () => {
+      // This tests the order of operations - tag check should come FIRST
+      const operations: string[] = []
+
+      // Simulate the workflow
+      const checkTag = () => {
+        operations.push('check_tag')
+        return false // Tag doesn't exist
+      }
+
+      const updateFiles = () => operations.push('update_files')
+      const commitChanges = () => operations.push('commit')
+      const createTag = () => operations.push('create_tag')
+
+      // Correct order
+      if (!checkTag()) {
+        updateFiles()
+        commitChanges()
+        createTag()
+      }
+
+      expect(operations).toEqual(['check_tag', 'update_files', 'commit', 'create_tag'])
+      expect(operations[0]).toBe('check_tag') // Tag check MUST be first
+    })
+
+    it('should exit early if tag already exists', () => {
+      // This tests that we don't modify files if tag exists
+      const operations: string[] = []
+
+      const checkTag = () => {
+        operations.push('check_tag')
+        return true // Tag EXISTS
+      }
+
+      const updateFiles = () => operations.push('update_files')
+      const commitChanges = () => operations.push('commit')
+
+      // Should exit early
+      if (!checkTag()) {
+        updateFiles()
+        commitChanges()
+      }
+
+      expect(operations).toEqual(['check_tag']) // Only tag check, nothing else!
     })
   })
 

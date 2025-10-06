@@ -232,9 +232,39 @@ const isGitClean = (): boolean => {
 }
 
 /**
+ * Check if a tag exists (locally or remotely)
+ */
+const tagExists = (tagName: string): boolean => {
+  try {
+    // Check if tag exists locally
+    const result = exec(`git rev-parse --verify ${tagName}`, true)
+    // If the command succeeds and returns a SHA, the tag exists
+    return result.length > 0 && /^[0-9a-f]{40}$/i.test(result)
+  } catch {
+    // Tag doesn't exist locally, check remote
+    try {
+      const output = exec(`git ls-remote --tags origin refs/tags/${tagName}`, true)
+      return output.length > 0
+    } catch {
+      return false
+    }
+  }
+}
+
+/**
  * Commit and tag the version
  */
 const commitAndTag = (version: string) => {
+  const tagName = `v${version}`
+
+  // Check if tag already exists BEFORE making any changes
+  if (tagExists(tagName)) {
+    console.error(`\n❌ Tag ${tagName} already exists!`)
+    console.error(`💡 Tip: Delete the local tag with: git tag -d ${tagName}`)
+    console.error('💡 Or use a different version number')
+    process.exit(1)
+  }
+
   console.log('\n📦 Committing changes...')
 
   exec('git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json')
@@ -246,15 +276,6 @@ const commitAndTag = (version: string) => {
 
   exec(`git commit -m "chore: bump version to ${version}"`)
   console.log('  ✓ Changes committed')
-
-  const tagName = `v${version}`
-
-  // Check if tag already exists
-  const tagExists = exec(`git rev-parse ${tagName} 2>/dev/null || echo ''`, true)
-  if (tagExists) {
-    console.error(`\n❌ Tag ${tagName} already exists!`)
-    process.exit(1)
-  }
 
   console.log(`\n🏷️  Creating tag: ${tagName}`)
   exec(`git tag ${tagName}`)

@@ -1,9 +1,14 @@
-name: Tauri v2 Release Process
-run-name: triggered by ${{ github.actor }}.
+name: Release
+run-name: Release triggered by ${{ github.actor }}
+
 on:
   push:
+    branches:
+      - main
+      - gh-action-sandbox
+      - 'ci-*' # Matches ci-test, ci-release-automation, etc.
     tags:
-      - 'v*-rc*' # This will trigger on any tag matching v*-rc* (e.g., v1.0.0-rc1)
+      - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.
   workflow_dispatch:
 
 concurrency:
@@ -11,383 +16,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  draft:
-    runs-on: ubuntu-22.04
-    outputs:
-      version: ${{ steps.get-version.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Get version from tag
-        id: get-version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get-version.outputs.version }}
-          name: Release ${{ steps.get-version.outputs.version }}
-          draft: true
-          prerelease: true
-          body: |
-            ## Release Candidate ${{ steps.get-version.outputs.version }}
-
-            This is a release candidate. The final release will be created after successful builds.
-
-            ### Downloads
-
-            Binaries will be attached to this release after successful builds.
-
-  build_desktop:
-    needs: draft
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            build_name: 'Linux'
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            build_name: 'macOS (Apple Silicon)'
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            build_name: 'macOS (Intel)'
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            build_name: 'Windows (x64)'
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            build_name: 'Windows (ARM64)'
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-          rustflags: ''
-
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
-            ${{ runner.os }}-cargo-
-
-      - name: install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
-
-      - name: build Tauri app for Linux
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          bun install
-          bun tauri build
-        env:
-          RUSTFLAGS: ''
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: build Tauri app for Windows (x86_64)
-        if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
-        run: |
-          bun install
-          bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
-        env:
-          RUSTFLAGS: ''
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: build Tauri app for Windows (ARM64)
-        if: matrix.os == 'windows-latest' && matrix.target == 'aarch64-pc-windows-msvc'
-        run: |
-          # Install ARM64 target
-          rustup target add aarch64-pc-windows-msvc
-          # Build for ARM64
-          bun install
-          bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
-        env:
-          RUSTFLAGS: ''
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: Build Tauri app for macOS (Silicon)
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        run: |
-          bun install
-          bun tauri build --bundles app,dmg --target aarch64-apple-darwin
-        env:
-          RUSTFLAGS: ''
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: Build Tauri app for macOS (Intel)
-        if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
-        run: |
-          # Install x86_64 target with retry logic
-          rustup target add x86_64-apple-darwin || rustup target add x86_64-apple-darwin
-          # Verify target is installed
-          rustup target list --installed | grep x86_64-apple-darwin
-          # Clean only the x86_64 target to avoid architecture conflicts
-          rm -rf src-tauri/target/x86_64-apple-darwin
-          # Build for Intel with proper environment
-          bun install
-          bun tauri build --bundles app,dmg --target x86_64-apple-darwin
-        env:
-          # Override the target-cpu=native flag
-          RUSTFLAGS: '-C target-cpu=x86-64'
-          CARGO_INCREMENTAL: 0
-          RUSTC_WRAPPER: ''
-          # Set C compiler for cross-compilation
-          CC_x86_64_apple_darwin: 'clang -target x86_64-apple-darwin'
-          CXX_x86_64_apple_darwin: 'clang++ -target x86_64-apple-darwin'
-          AR_x86_64_apple_darwin: 'ar'
-          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: 'clang'
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: Upload Linux artifacts to GitHub Release
-        if: matrix.os == 'ubuntu-22.04'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.draft.outputs.version }}
-          draft: true
-          files: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/rpm/*.rpm
-
-      - name: Upload Windows artifacts to GitHub Release
-        if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.draft.outputs.version }}
-          draft: true
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
-            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
-
-      - name: Upload macOS artifacts to GitHub Release
-        if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.draft.outputs.version }}
-          draft: true
-          files: |
-            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-
-  build_android:
-    needs: draft
-
+  validate_version:
+    name: Validate Version Files
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      is_tag: ${{ steps.extract.outputs.is_tag }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-          rustflags: ''
-
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
-            ${{ runner.os }}-cargo-
-
-      - name: setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: setup Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r26d
-          link-to-sdk: true
-
-      - name: install Android targets
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-
-      # TODO: Add Android signing
-      # - name: setup Android signing
-      #   working-directory: src-tauri/gen/android
-      #   run: |
-      #     echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
-      #     echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
-      #     base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
-      #     echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
-
-      # - name: build Tauri app for Android
-      #   env:
-      #     NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-      #   run: |
-      #     bun install
-      #     bun tauri android build
-
-  build_ios:
-    needs: draft
-
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-          rustflags: ''
-
-      - name: Cache cargo registry and build
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
-            ${{ runner.os }}-cargo-
-
-      - name: install iOS target
-        run: rustup target add aarch64-apple-ios
-
-      - name: setup xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
-      # TODO: Add iOS signing
-      # - name: setup Apple API key
-      #   run: |
-      #     APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
-      #     echo "${{ secrets.APPLE_API_KEY }}" > $APPLE_API_KEY_PATH
-      #     echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> $GITHUB_ENV
-      #     echo "API_PRIVATE_KEYS_DIR=$RUNNER_TEMP" >> $GITHUB_ENV
-
-      # - name: build Tauri app for iOS
-      #   env:
-      #     APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
-      #     APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      #     APPLE_DEVELOPMENT_TEAM: <ENTER TEAM HERE>
-      #   run: |
-      #     bun install
-      #     bun tauri ios build --export-method app-store-connect
-
-  publish:
-    needs: [build_desktop]
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for proper tagging
-
-      - name: Get version info
-        id: get-version
+      - name: Extract version from tag or package.json
+        id: extract
         run: |
-          # Extract version from RC tag (e.g., v1.0.0-rc1 -> v1.0.0)
-          RC_VERSION=${GITHUB_REF#refs/tags/}
-          FINAL_VERSION=${RC_VERSION%-rc*}
-          echo "rc_version=$RC_VERSION" >> $GITHUB_OUTPUT
-          echo "final_version=$FINAL_VERSION" >> $GITHUB_OUTPUT
+          # Check if this is a tag push
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            # Remove 'v' prefix and any suffix like -rc, -beta
+            VERSION=${GITHUB_REF#refs/tags/v}
+            # Extract just the semver part (1.2.3)
+            VERSION=$(echo $VERSION | sed 's/-.*$//')
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "📌 Tag version: $VERSION"
+          else
+            # Not a tag, get current version from package.json
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+            echo "📦 Current version: $VERSION"
+          fi
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.draft.outputs.version }}
-          draft: false
-          prerelease: false
-          name: Release ${{ steps.get-version.outputs.final_version }}
-          body: |
-            ## Release ${{ steps.get-version.outputs.final_version }}
+      - name: Validate version matches files (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          CARGO_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
 
-            ### Downloads
+          echo "Tag version: $TAG_VERSION"
+          echo "package.json version: $PKG_VERSION"
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "tauri.conf.json version: $TAURI_VERSION"
 
-            Download the appropriate installer for your platform below.
+          VALIDATION_FAILED=false
 
-            #### Desktop
-            - **Windows**: `.msi` or `.exe` installer
-            - **macOS**: `.dmg` installer (Intel and Apple Silicon)
-            - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match package.json ($PKG_VERSION)"
+            VALIDATION_FAILED=true
+          fi
 
-            ### Release Notes
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match Cargo.toml ($CARGO_VERSION)"
+            VALIDATION_FAILED=true
+          fi
 
-            _Add your release notes here_
+          if [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
+            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match tauri.conf.json ($TAURI_VERSION)"
+            VALIDATION_FAILED=true
+          fi
 
-            ---
+          # Check iOS project.yml if it exists
+          if [ -f "src-tauri/gen/apple/project.yml" ]; then
+            IOS_VERSION=$(grep 'CFBundleShortVersionString:' src-tauri/gen/apple/project.yml | sed 's/.*CFBundleShortVersionString: //')
+            echo "iOS project.yml version: $IOS_VERSION"
+            if [ "$TAG_VERSION" != "$IOS_VERSION" ]; then
+              echo "❌ Error: Tag version ($TAG_VERSION) doesn't match iOS project.yml ($IOS_VERSION)"
+              VALIDATION_FAILED=true
+            fi
+          fi
 
-            **Note:** This release was built from RC tag `${{ steps.get-version.outputs.rc_version }}`. 
+          if [ "$VALIDATION_FAILED" = true ]; then
+            echo ""
+            echo "💡 Tip: Use 'gh workflow run create-version-tag.yml -f version=$TAG_VERSION' to update all version files"
+            exit 1
+          fi
 
-            To create the final release tag after verification:
-            ```bash
-            git tag ${{ steps.get-version.outputs.final_version }}
-            git push origin ${{ steps.get-version.outputs.final_version }}
-            ```
+          echo "✅ All version numbers validated successfully"
+
+  desktop:
+    name: Desktop Release
+    needs: validate_version
+    if: needs.validate_version.outputs.is_tag == 'true'
+    uses: ./.github/workflows/desktop-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.validate_version.outputs.version }}
+
+  ios:
+    name: iOS Release
+    needs: validate_version
+    if: needs.validate_version.outputs.is_tag == 'true'
+    uses: ./.github/workflows/ios-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.validate_version.outputs.version }}
+
+  # Future: Add Android here
+  # android:
+  #   name: Android Release
+  #   needs: validate_version
+  #   if: needs.validate_version.outputs.is_tag == 'true'
+  #   uses: ./.github/workflows/android-release.yml
+  #   secrets: inherit
+  #   with:
+  #     version: ${{ needs.validate_version.outputs.version }}

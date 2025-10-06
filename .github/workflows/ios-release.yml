@@ -1,11 +1,22 @@
-name: iOS Deployment
+name: iOS Release
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.2.3 without v prefix)'
+        required: true
+        type: string
+      notify_testers:
+        description: 'Notify external testers'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (optional)'
-        required: false
+        description: 'Version to build (e.g., 1.2.3 without v prefix)'
+        required: true
         type: string
       notify_testers:
         description: 'Notify external testers'
@@ -14,7 +25,7 @@ on:
         type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ios-release-${{ inputs.version }}
   cancel-in-progress: true
 
 jobs:

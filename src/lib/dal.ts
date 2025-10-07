@@ -63,33 +63,33 @@ export const getModel = async (id: string): Promise<Model | null> => {
   return model ? mapModel(model) : null
 }
 
+export const getSystemModel = async () => {
+  const db = DatabaseSingleton.instance.db
+  const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
+  return systemModel ? mapModel(systemModel) : null
+}
+
 /**
  * Gets the currently selected model or falls back to the system default model
  */
 export const getSelectedModel = async (): Promise<Model> => {
-  const db = DatabaseSingleton.instance.db
-  const model = await db
-    .select()
-    .from(modelsTable)
-    .where(
-      eq(
-        modelsTable.id,
-        db.select({ value: settingsTable.value }).from(settingsTable).where(eq(settingsTable.key, 'selected_model')),
-      ),
-    )
-    .get()
+  const selectedModelId = await getSetting('selected_model')
 
-  if (model?.id) {
-    return mapModel(model)
+  if (selectedModelId) {
+    const model = await getModel(selectedModelId)
+
+    if (model?.id) {
+      return model
+    }
   }
 
-  const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
+  const systemModel = await getSystemModel()
 
   if (!systemModel) {
     throw new Error('No system model found')
   }
 
-  return mapModel(systemModel)
+  return systemModel
 }
 
 /**

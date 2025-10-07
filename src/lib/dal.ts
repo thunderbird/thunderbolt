@@ -96,19 +96,7 @@ export const getSelectedModel = async (): Promise<Model> => {
  * Gets the default model for a chat thread based on the last message in the thread, falling back to the selected_model setting.
  */
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
-  const db = DatabaseSingleton.instance.db
-
-  const lastMessage = await db
-    .select({
-      id: chatMessagesTable.id,
-      chatThreadId: chatMessagesTable.chatThreadId,
-      modelId: chatMessagesTable.modelId,
-    })
-    .from(chatMessagesTable)
-    .where(eq(chatMessagesTable.chatThreadId, threadId))
-    .orderBy(desc(chatMessagesTable.id))
-    .limit(1)
-    .get()
+  const lastMessage = await getLastMessage(threadId)
 
   if (lastMessage?.modelId) {
     const model = await getModel(lastMessage.modelId)
@@ -314,6 +302,22 @@ export const getChatMessagesByThreadId = async (threadId: string) => {
     .where(eq(chatMessagesTable.chatThreadId, threadId))
     .orderBy(chatMessagesTable.id)
   return chatMessages
+}
+
+export const getLastMessage = async (threadId: string) => {
+  const db = DatabaseSingleton.instance.db
+
+  return await db
+    .select({
+      id: chatMessagesTable.id,
+      chatThreadId: chatMessagesTable.chatThreadId,
+      modelId: chatMessagesTable.modelId,
+    })
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .orderBy(desc(chatMessagesTable.id))
+    .limit(1)
+    .get()
 }
 
 // ============================================================================

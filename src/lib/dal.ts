@@ -133,24 +133,20 @@ export const getAllSettings = async () => {
  * Gets preferences settings with specific structure
  */
 export const getPreferencesSettings = async () => {
-  const db = DatabaseSingleton.instance.db
-  const nameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name'))
-  const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
-  const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
-  const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
-  const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
-  const experimentalFeatureTasks = await db
-    .select()
-    .from(settingsTable)
-    .where(eq(settingsTable.key, 'experimental_feature_tasks'))
+  const locationName = await getSetting('location_name', '')
+  const locationLat = await getSetting('location_lat', '')
+  const locationLng = await getSetting('location_lng', '')
+  const preferredName = await getSetting('preferred_name', '')
+  const dataCollection = await getBooleanSetting('data_collection', true)
+  const experimentalFeatureTasks = await getBooleanSetting('experimental_feature_tasks', false)
 
   return {
-    locationName: nameData[0]?.value || '',
-    locationLat: latData[0]?.value || '',
-    locationLng: lngData[0]?.value || '',
-    preferredName: preferredNameData[0]?.value || '',
-    dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-    experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'true' ? true : false,
+    locationName,
+    locationLat,
+    locationLng,
+    preferredName,
+    dataCollection,
+    experimentalFeatureTasks,
   }
 }
 

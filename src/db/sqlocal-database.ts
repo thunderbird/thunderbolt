@@ -42,7 +42,7 @@ export class SQLocalDatabase implements DatabaseInterface {
     // instead of: undefined
     //
     // Impact: This breaks optional chaining and truthy checks throughout the app.
-    // For example, getModelById() was returning malformed models, causing the chat screen
+    // For example, getModel() was returning malformed models, causing the chat screen
     // to render blank when a model reference was missing from the database.
     //
     // Expected behavior: .get() should return undefined when no results are found,

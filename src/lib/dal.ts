@@ -57,7 +57,7 @@ export const getAvailableModels = async (): Promise<Model[]> => {
 /**
  * Gets a specific model by ID
  */
-export const getModelById = async (id: string): Promise<Model | null> => {
+export const getModel = async (id: string): Promise<Model | null> => {
   const db = DatabaseSingleton.instance.db
   const model = await db.select().from(modelsTable).where(eq(modelsTable.id, id)).get()
   return model ? mapModel(model) : null
@@ -111,7 +111,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
     .get()
 
   if (lastMessage?.modelId) {
-    const model = await getModelById(lastMessage.modelId)
+    const model = await getModel(lastMessage.modelId)
 
     if (model) {
       return model
@@ -119,7 +119,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
   }
 
   if (fallbackModelId) {
-    const model = await getModelById(fallbackModelId)
+    const model = await getModel(fallbackModelId)
 
     if (model) {
       return model

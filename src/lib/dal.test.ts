@@ -13,7 +13,7 @@ import {
   getChatThread,
   getOrCreateChatThread,
   getDefaultModelForThread,
-  getModelById,
+  getModel,
   getSelectedModel,
   getSetting,
   hasSetting,
@@ -274,14 +274,14 @@ describe('Models DAL', () => {
     await db.delete(settingsTable)
   })
 
-  describe('getModelById', () => {
+  describe('getModel', () => {
     it('should return null when model does not exist', async () => {
-      const model = await getModelById('nonexistent-model-id')
+      const model = await getModel('nonexistent-model-id')
       expect(model).toBe(null)
     })
 
     it('should return null when model ID is empty string', async () => {
-      const model = await getModelById('')
+      const model = await getModel('')
       expect(model).toBe(null)
     })
 
@@ -298,7 +298,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const model = await getModelById(modelId)
+      const model = await getModel(modelId)
       expect(model).not.toBe(null)
       expect(model?.id).toBe(modelId)
       expect(model?.name).toBe('Test Model')

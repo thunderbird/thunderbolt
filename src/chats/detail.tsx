@@ -1,6 +1,6 @@
 import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
-import { getOrCreateChatThreadById, saveMessagesWithContextUpdate } from '@/lib/dal'
+import { getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -65,7 +65,7 @@ export default function ChatDetailPage() {
       }
 
       // Fetch thread info to check if we need to generate a title
-      const thread = await getOrCreateChatThreadById(chatThreadId)
+      const thread = await getOrCreateChatThread(chatThreadId)
 
       // Save messages and update context size using DAL
       const dbChatMessages = await saveMessagesWithContextUpdate(chatThreadId, messages)

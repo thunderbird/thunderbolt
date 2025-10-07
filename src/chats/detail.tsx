@@ -67,16 +67,16 @@ export default function ChatDetailPage() {
       // Fetch thread info to check if we need to generate a title
       const thread = await getOrCreateChatThreadById(chatThreadId)
 
-      if (params.chatThreadId === 'new') {
-        navigate(`/chats/${chatThreadId}`, { relative: 'path' })
-      }
-
       // Save messages and update context size using DAL
       const dbChatMessages = await saveMessagesWithContextUpdate(chatThreadId, messages)
 
       // Generate title in background if needed
       if (thread?.title === 'New Chat') {
         updateThreadTitle(messages, chatThreadId)
+      }
+
+      if (params.chatThreadId === 'new') {
+        navigate(`/chats/${chatThreadId}`, { relative: 'path' })
       }
 
       // Invalidate context size query to trigger re-fetch

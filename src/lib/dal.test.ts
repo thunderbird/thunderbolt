@@ -55,10 +55,30 @@ beforeAll(async () => {
   await migrate(db)
 })
 
-afterEach(async () => {
-  // Clean up settings table after each test
+beforeEach(async () => {
+  // Ensure clean state before each test
   const db = DatabaseSingleton.instance.db
   await db.delete(settingsTable)
+  await db.delete(modelsTable)
+  await db.delete(chatMessagesTable)
+  await db.delete(chatThreadsTable)
+  await db.delete(tasksTable)
+  await db.delete(accountsTable)
+  await db.delete(mcpServersTable)
+  await db.delete(promptsTable)
+})
+
+afterEach(async () => {
+  // Clean up all tables after each test to ensure proper isolation
+  const db = DatabaseSingleton.instance.db
+  await db.delete(settingsTable)
+  await db.delete(modelsTable)
+  await db.delete(chatMessagesTable)
+  await db.delete(chatThreadsTable)
+  await db.delete(tasksTable)
+  await db.delete(accountsTable)
+  await db.delete(mcpServersTable)
+  await db.delete(promptsTable)
 })
 
 // ============================================================================

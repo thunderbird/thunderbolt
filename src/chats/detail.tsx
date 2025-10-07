@@ -1,16 +1,15 @@
-import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
-import { getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/lib/dal'
+import { chatThreadsTable } from '@/db/tables'
+import { getChatMessagesByThreadId, getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
+import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import Chat from './chat'
-import { getChatMessagesByThreadId } from '@/lib/dal'
 import { v7 as uuidv7 } from 'uuid'
-import { useMemo } from 'react'
+import Chat from './chat'
 
 export default function ChatDetailPage() {
   const params = useParams()
@@ -92,9 +91,12 @@ export default function ChatDetailPage() {
     },
   })
 
-  const saveMessages: SaveMessagesFunction = async ({ messages }) => {
-    await addMessagesMutation.mutateAsync(messages)
-  }
+  const saveMessages: SaveMessagesFunction = useCallback(
+    async ({ messages }) => {
+      await addMessagesMutation.mutateAsync(messages)
+    },
+    [addMessagesMutation.mutateAsync],
+  )
 
   return chatThreadId ? (
     <>

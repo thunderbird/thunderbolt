@@ -1,6 +1,7 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
 import { useSetting } from '@/hooks/use-setting'
+import { useThrottledCallback } from '@/hooks/use-throttle'
 import { trackEvent } from '@/lib/analytics'
 import { getDefaultModelForThread, getTriggerPromptForThread } from '@/lib/dal'
 import { useMCP } from '@/lib/mcp-provider'
@@ -25,46 +26,20 @@ type UseSavePartialAssistantMessages = {
 }
 
 const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseSavePartialAssistantMessages) => {
-  const refSaveInterval = useRef<NodeJS.Timeout>(null)
+  const throttledSave = useThrottledCallback((message: ThunderboltUIMessage) => {
+    saveMessages({
+      id,
+      messages: [message],
+    })
+  }, 200)
 
-  const refLatestMessageLength = useRef(0)
-
-  // ensure interval is cleared on component's unmount
   useEffect(() => {
-    return () => {
-      clearInterval(refSaveInterval.current ?? 0)
+    const latestMessage = chatHelpers.messages[chatHelpers.messages.length - 1]
+
+    if (chatHelpers.status === 'streaming' && latestMessage?.role === 'assistant') {
+      throttledSave(latestMessage)
     }
-  }, [])
-
-  // start the interval to save the latest message while it's streaming
-  useEffect(() => {
-    if (chatHelpers.status === 'streaming') {
-      console.log('DEBUG: streaming...')
-
-      clearInterval(refSaveInterval.current ?? 0)
-
-      refSaveInterval.current = setInterval(() => {
-        const latestMessage = chatHelpers.messages[chatHelpers.messages.length - 1]
-
-        const latestMessageLength = JSON.stringify(latestMessage).length
-
-        if (latestMessage.role === 'assistant' && latestMessageLength !== refLatestMessageLength.current) {
-          refLatestMessageLength.current = latestMessageLength
-
-          console.log('DEBUG: saving each...', refLatestMessageLength.current)
-
-          saveMessages({
-            id,
-            messages: [latestMessage],
-          })
-        }
-      }, 1000)
-      return
-    }
-
-    console.log('DEBUG: clearing...', chatHelpers.status)
-    clearInterval(refSaveInterval.current ?? 0)
-  }, [chatHelpers.status])
+  }, [chatHelpers.messages, chatHelpers.status, throttledSave])
 }
 
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {

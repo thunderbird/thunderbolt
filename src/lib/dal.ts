@@ -288,7 +288,7 @@ export const getOrCreateChatThread = async (id: string) => {
 /**
  * Gets all chat messages for a specific thread
  */
-export const getChatMessagesByThreadId = async (threadId: string) => {
+export const getChatMessages = async (threadId: string) => {
   const db = DatabaseSingleton.instance.db
   const chatMessages = await db
     .select()

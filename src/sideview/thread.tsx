@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getEmailThreadByIdWithMessages, getEmailThreadByMessageIdWithMessages } from '@/lib/dal'
+import { getEmailThreadWithMessages, getEmailThreadByMessageIdWithMessages } from '@/lib/dal'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
@@ -17,7 +17,7 @@ export function EmailThreadView() {
       if (!sideviewId) return null
 
       if (sideviewType === 'thread') {
-        return await getEmailThreadByIdWithMessages(sideviewId)
+        return await getEmailThreadWithMessages(sideviewId)
       }
 
       if (sideviewType === 'message') {

@@ -449,7 +449,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
 // EMAIL THREADS
 // ============================================================================
 
-export const getEmailThreadByIdWithMessages = async (
+export const getEmailThreadWithMessages = async (
   emailThreadId: string,
 ): Promise<EmailThreadWithMessagesAndAddresses | null> => {
   const db = DatabaseSingleton.instance.db

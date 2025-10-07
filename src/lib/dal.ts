@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import {
   accountsTable,
@@ -379,17 +379,19 @@ export const getAllMcpServers = async () => {
  */
 export const getHttpMcpServers = async () => {
   const db = DatabaseSingleton.instance.db
-  const allServers = await db.select().from(mcpServersTable)
-  return allServers
-    .filter((server) => server.type === 'http' && server.url !== null)
-    .map((server) => ({
-      id: server.id,
-      name: server.name,
-      url: server.url as string,
-      enabled: server.enabled,
-      createdAt: server.createdAt,
-      updatedAt: server.updatedAt,
-    }))
+  const allServers = await db
+    .select()
+    .from(mcpServersTable)
+    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url)))
+
+  return allServers.map((server) => ({
+    id: server.id,
+    name: server.name,
+    url: server.url as string,
+    enabled: server.enabled,
+    createdAt: server.createdAt,
+    updatedAt: server.updatedAt,
+  }))
 }
 
 // ============================================================================

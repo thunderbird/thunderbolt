@@ -190,10 +190,10 @@ export const hasSetting = async (key: string): Promise<boolean> => {
 /**
  * Get a setting value from the settings table
  */
-export const getSetting = async <T = string>(key: string, defaultValue: T | null = null): Promise<T | null> => {
+export const getSetting = async <T = string, V = T | null>(key: string, defaultValue: V = null as V): Promise<V> => {
   const db = DatabaseSingleton.instance.db
   const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
-  return (setting?.value as T) ?? defaultValue
+  return (setting?.value as V) ?? defaultValue
 }
 
 /**

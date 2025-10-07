@@ -24,15 +24,10 @@ import {
  * setCloudUrl('https://new-url.com')
  * ```
  */
-export const useSetting = <T = string>(
+export const useSetting = <T = string, V = T | null>(
   key: string,
-  defaultValue: T | null = null,
-): [
-  T | null,
-  (newValue: T | null) => void,
-  UseQueryResult<T | null, Error>,
-  UseMutationResult<void, Error, T | null, unknown>,
-] => {
+  defaultValue: V = null as V,
+): [V, (newValue: V) => void, UseQueryResult<V, Error>, UseMutationResult<void, Error, V, unknown>] => {
   const queryClient = useQueryClient()
 
   const query = useQuery({
@@ -41,13 +36,13 @@ export const useSetting = <T = string>(
   })
 
   const mutation = useMutation({
-    mutationFn: (newValue: T | null) => updateSetting(key, newValue ? newValue.toString() : null),
+    mutationFn: (newValue: V) => updateSetting(key, newValue ? newValue.toString() : null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] })
     },
   })
 
-  const setValue = (newValue: T | null) => {
+  const setValue = (newValue: V) => {
     mutation.mutate(newValue)
   }
 

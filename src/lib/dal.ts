@@ -535,7 +535,7 @@ export const getEmailThreadByMessageIdWithMessages = async (
 /**
  * Gets an email message by ID with sender and recipients
  */
-export const getEmailMessageById = async (messageId: string) => {
+export const getEmailMessage = async (messageId: string) => {
   const db = DatabaseSingleton.instance.db
   const message = await db.query.emailMessagesTable.findFirst({
     where: eq(emailMessagesTable.id, messageId),

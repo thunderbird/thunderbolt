@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { useNavigate, useParams } from 'react-router'
 import Chat from './chat'
-import { getChatMessagesByThreadId } from '@/lib/dal'
+import { getChatMessages } from '@/lib/dal'
 import { v7 as uuidv7 } from 'uuid'
 import { useMemo } from 'react'
 
@@ -50,7 +50,7 @@ export default function ChatDetailPage() {
   } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', chatThreadId],
     queryFn: async () => {
-      const chatMessages = await getChatMessagesByThreadId(chatThreadId!)
+      const chatMessages = await getChatMessages(chatThreadId!)
       return chatMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     },
     enabled: !!chatThreadId,

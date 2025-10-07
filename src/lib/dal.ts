@@ -1,5 +1,4 @@
-import { and, asc, desc, eq, like, notExists, sql } from 'drizzle-orm'
-import { v7 as uuidv7 } from 'uuid'
+import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import {
   accountsTable,

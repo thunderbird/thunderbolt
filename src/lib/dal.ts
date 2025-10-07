@@ -154,19 +154,17 @@ export const getPreferencesSettings = async () => {
  * Gets theme setting with proper typing
  */
 export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
-  const db = DatabaseSingleton.instance.db
-  const result = await db.select().from(settingsTable).where(eq(settingsTable.key, storageKey))
-  return (result[0]?.value as string) || defaultTheme
+  const result = await getSetting(storageKey, defaultTheme)
+  return result
 }
 
 /**
  * Gets bridge settings with specific structure
  */
 export const getBridgeSettings = async () => {
-  const db = DatabaseSingleton.instance.db
-  const enabledData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'bridge_enabled'))
+  const enabled = await getBooleanSetting('bridge_enabled', false)
   return {
-    enabled: enabledData[0]?.value === 'true',
+    enabled,
   }
 }
 

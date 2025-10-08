@@ -99,14 +99,8 @@ export default function ChatDetailPage() {
   return chatThreadId ? (
     <>
       <div className="h-full w-full">
-        {isLoading ? (
-          <div>Loading chat...</div>
-        ) : isError ? (
-          <div>Error loading chat</div>
-        ) : messages ? (
-          <Chat key={chatThreadId} id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />
-        ) : (
-          <div>Error loading chat</div>
+        {!isLoading && !isError && !!messages && (
+          <Chat key={chatThreadId} id={chatThreadId} initialMessages={messages || []} saveMessages={saveMessages} />
         )}
       </div>
     </>

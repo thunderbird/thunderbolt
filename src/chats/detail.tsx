@@ -33,20 +33,12 @@ export default function ChatDetailPage() {
 
     if (!textContent) return
 
-    try {
-      const title = await generateTitle(textContent)
-      await db.update(chatThreadsTable).set({ title }).where(eq(chatThreadsTable.id, threadId))
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-    } catch (error) {
-      console.error('Error generating title:', error)
-    }
+    const title = await generateTitle(textContent)
+    await db.update(chatThreadsTable).set({ title }).where(eq(chatThreadsTable.id, threadId))
+    queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
-  const {
-    data: messages,
-    isLoading,
-    isError,
-  } = useQuery<ThunderboltUIMessage[], Error>({
+  const { data: messages } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', chatThreadId],
     queryFn: async () => {
       const chatMessages = await getChatMessagesByThreadId(chatThreadId!)
@@ -101,14 +93,8 @@ export default function ChatDetailPage() {
   return chatThreadId ? (
     <>
       <div className="h-full w-full">
-        {isLoading ? (
-          <div>Loading chat...</div>
-        ) : isError ? (
-          <div>Error loading chat</div>
-        ) : messages ? (
+        {!!messages && (
           <Chat key={chatThreadId} id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />
-        ) : (
-          <div>Error loading chat</div>
         )}
       </div>
     </>

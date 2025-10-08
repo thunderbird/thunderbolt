@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia'
+import unitsData from '../data/units.json'
 
 export interface LocationResult {
   name: string
@@ -16,6 +17,10 @@ export const createMainRoutes = () => {
     .get('/health', () => ({
       status: 'ok',
     }))
+
+    .get('/units', () => {
+      return unitsData
+    })
 
     .get(
       '/locations',

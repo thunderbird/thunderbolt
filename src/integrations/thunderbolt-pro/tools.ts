@@ -47,7 +47,7 @@ export type FetchContentParams = z.infer<typeof fetchContentSchema>
 export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
-type FetchContentData = {
+export type FetchContentData = {
   url: string
   title: string | null
   text: string

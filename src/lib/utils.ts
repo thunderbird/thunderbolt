@@ -211,3 +211,40 @@ export const hashValues = (values: (string | number | null | undefined)[]): stri
   }
   return hash.toString(36)
 }
+
+export function markdownToText(markdown: string): string {
+  return (
+    markdown
+      // Remove code fences (```…``` / ~~~…~~~)
+      .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, '')
+      // Remove inline code
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove images ![alt](url)
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      // Remove links [text](url)
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Remove footnotes / refs [^1]: ...
+      .replace(/^\s*\[\^.+?\]: .*$/gm, '')
+      // Remove inline footnote markers [^1]
+      .replace(/\[\^.+?\]/g, '')
+      // Remove bold / italic / strikethrough
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')
+      .replace(/(\*|_)(.*?)\1/g, '$2')
+      .replace(/~~(.*?)~~/g, '$1')
+      // Remove headings
+      .replace(/^#{1,6}\s*/gm, '')
+      // Remove blockquotes
+      .replace(/^>\s*/gm, '')
+      // Remove list bullets and checkboxes
+      .replace(/^\s*([-*+]|\d+\.)\s+\[.\]\s+/gm, '')
+      .replace(/^\s*([-*+]|\d+\.)\s+/gm, '')
+      // Remove horizontal rules (---, ***, ___)
+      .replace(/^(-{3,}|\*{3,}|_{3,})$/gm, '')
+      // Collapse multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      // Trim leading/trailing whitespace
+      .trim()
+  )
+}

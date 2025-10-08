@@ -4,6 +4,7 @@ import { type ToolUIPart } from 'ai'
 import { type FetchContentData } from '@/integrations/thunderbolt-pro/tools'
 import { useCloudUrl } from '@/hooks/use-cloud-url'
 import { motion } from 'framer-motion'
+import { markdownToText } from '@/lib/utils'
 
 type LinkPreviewProps = {
   tools: ToolUIPart[]
@@ -27,11 +28,7 @@ const useLinkPreview = (tools: ToolUIPart[]) => {
           const output = tool.output as FetchContentData
           return {
             title: output?.title ?? '',
-            description:
-              output?.text
-                .replace(/\n+/g, ' ')
-                .replace(/#+|\*+|\[.*?\]\(.*?\)/g, '')
-                .trim() ?? '',
+            description: markdownToText(output?.text || ''),
             url: output?.url ?? '',
             image: output?.image ?? '',
           }

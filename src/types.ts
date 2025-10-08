@@ -157,3 +157,34 @@ export type ToolConfig = {
 export type AuthProviderBackendConfig = {
   client_id: string
 }
+
+// Unit types based on backend units.json structure
+export type Unit = {
+  id: string
+  name: string
+  symbol: string
+  type: string
+  conversionFactorToBase?: number
+  usage?: string
+  example?: string
+}
+
+export type TimeFormatUnit = {
+  id: string
+  name: string
+  pattern: string
+  example: string
+  regions: string[]
+  type: string
+}
+
+export type UnitsData = {
+  units: {
+    distance: Unit[]
+    mass: Unit[]
+    temperature: Unit[]
+    speed: Unit[]
+    precipitation: Unit[]
+    timeFormat: TimeFormatUnit[]
+  }
+}

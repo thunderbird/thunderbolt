@@ -1,10 +1,10 @@
-import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
+import { useCloudUrl } from '@/hooks/use-cloud-url'
 
 type ToolIconProps = {
   toolName: string
@@ -46,11 +46,7 @@ export const getProxiedFaviconUrl = (faviconUrl: string, cloudUrl: string): stri
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const [cloudUrl, setCloudUrl] = useState<string>('')
-
-  useEffect(() => {
-    getCloudUrl().then(setCloudUrl)
-  }, [])
+  const cloudUrl = useCloudUrl()
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))

@@ -115,6 +115,7 @@ export type EventType =
   | 'settings_name_clear'
   | 'settings_location_set'
   | 'settings_location_update'
+  | 'settings_localization_update'
   | 'settings_database_reset'
   | 'settings_data_collection_enabled'
   | 'settings_data_collection_disabled'

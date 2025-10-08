@@ -1,6 +1,19 @@
 import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/src/db/tables'
+import {
+  accountsTable,
+  chatMessagesTable,
+  chatThreadsTable,
+  emailAddressesTable,
+  emailMessagesTable,
+  emailMessagesToAddressesTable,
+  emailThreadsTable,
+  mcpServersTable,
+  modelsTable,
+  promptsTable,
+  settingsTable,
+  tasksTable,
+} from '@/src/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -19,6 +32,27 @@ import {
   hasSetting,
   updateBooleanSetting,
   updateSetting,
+  getAllModels,
+  getAvailableModels,
+  getSystemModel,
+  getThemeSetting,
+  getBridgeSettings,
+  getAllChatThreads,
+  getChatMessages,
+  getLastMessage,
+  getIncompleteTasks,
+  getIncompleteTasksCount,
+  getAllAccounts,
+  getAllMcpServers,
+  getHttpMcpServers,
+  getAllPrompts,
+  getTriggerPromptForThread,
+  getEmailThreadWithMessages,
+  getEmailThreadByMessageImapIdWithMessages,
+  getEmailThreadByMessageIdWithMessages,
+  getEmailMessage,
+  getEmailMessageByImapId,
+  getContextSizeForThread,
 } from './dal'
 
 beforeAll(async () => {
@@ -260,6 +294,28 @@ describe('Settings DAL', () => {
       expect(settings.map((s) => s.key)).toContain('key3')
     })
   })
+
+  describe('getThemeSetting', () => {
+    it('should return default theme when setting does not exist', async () => {
+      const theme = await getThemeSetting('theme', 'light')
+      expect(theme).toBe('light')
+    })
+
+    it('should return stored theme when setting exists', async () => {
+      await updateSetting('theme', 'dark')
+      const theme = await getThemeSetting('theme', 'light')
+      expect(theme).toBe('dark')
+    })
+  })
+
+  describe('getBridgeSettings', () => {
+    it('should return default bridge settings when no setting exists', async () => {
+      const bridgeSettings = await getBridgeSettings()
+      expect(bridgeSettings).toEqual({
+        enabled: false,
+      })
+    })
+  })
 })
 
 // ============================================================================
@@ -369,6 +425,129 @@ describe('Models DAL', () => {
       const model = await getSelectedModel()
       expect(model.id).toBe(selectedModelId)
       expect(model.name).toBe('Selected Model')
+    })
+  })
+
+  describe('getAllModels', () => {
+    it('should return empty array when no models exist', async () => {
+      const models = await getAllModels()
+      expect(models).toEqual([])
+    })
+
+    it('should return all models', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId1 = uuidv7()
+      const modelId2 = uuidv7()
+
+      await db.insert(modelsTable).values([
+        {
+          id: modelId1,
+          provider: 'openai',
+          name: 'Model 1',
+          model: 'gpt-4',
+          isSystem: 0,
+          enabled: 1,
+        },
+        {
+          id: modelId2,
+          provider: 'flower',
+          name: 'Model 2',
+          model: 'system/model',
+          isSystem: 1,
+          enabled: 0,
+        },
+      ])
+
+      const models = await getAllModels()
+      expect(models).toHaveLength(2)
+      expect(models.map((m) => m.id)).toContain(modelId1)
+      expect(models.map((m) => m.id)).toContain(modelId2)
+    })
+  })
+
+  describe('getAvailableModels', () => {
+    it('should return empty array when no enabled models exist', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Disabled Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 0,
+      })
+
+      const models = await getAvailableModels()
+      expect(models).toEqual([])
+    })
+
+    it('should return only enabled models', async () => {
+      const db = DatabaseSingleton.instance.db
+      const enabledModelId = uuidv7()
+      const disabledModelId = uuidv7()
+
+      await db.insert(modelsTable).values([
+        {
+          id: enabledModelId,
+          provider: 'openai',
+          name: 'Enabled Model',
+          model: 'gpt-4',
+          isSystem: 0,
+          enabled: 1,
+        },
+        {
+          id: disabledModelId,
+          provider: 'flower',
+          name: 'Disabled Model',
+          model: 'system/model',
+          isSystem: 1,
+          enabled: 0,
+        },
+      ])
+
+      const models = await getAvailableModels()
+      expect(models).toHaveLength(1)
+      expect(models[0]?.id).toBe(enabledModelId)
+    })
+  })
+
+  describe('getSystemModel', () => {
+    it('should return null when no system model exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Non-System Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      const systemModel = await getSystemModel()
+      expect(systemModel).toBe(null)
+    })
+
+    it('should return the system model when it exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const systemModelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'flower',
+        name: 'System Model',
+        model: 'system/model',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      const systemModel = await getSystemModel()
+      expect(systemModel).not.toBe(null)
+      expect(systemModel?.id).toBe(systemModelId)
+      expect(systemModel?.isSystem).toBe(1)
     })
   })
 
@@ -679,6 +858,979 @@ describe('Chat Threads DAL', () => {
       expect(threads).toHaveLength(2)
       expect(threads.map((t) => t.id)).toContain(threadId1)
       expect(threads.map((t) => t.id)).toContain(threadId2)
+    })
+  })
+
+  describe('getAllChatThreads', () => {
+    it('should return empty array when no threads exist', async () => {
+      const threads = await getAllChatThreads()
+      expect(threads).toEqual([])
+    })
+
+    it('should return all threads ordered by creation date (desc)', async () => {
+      const db = DatabaseSingleton.instance.db
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+
+      await db.insert(chatThreadsTable).values([
+        {
+          id: threadId1,
+          title: 'First Thread',
+          isEncrypted: 0,
+        },
+        {
+          id: threadId2,
+          title: 'Second Thread',
+          isEncrypted: 0,
+        },
+      ])
+
+      const threads = await getAllChatThreads()
+      expect(threads).toHaveLength(2)
+      expect(threads.map((t) => t.id)).toContain(threadId1)
+      expect(threads.map((t) => t.id)).toContain(threadId2)
+    })
+  })
+})
+
+// ============================================================================
+// CHAT MESSAGES TESTS
+// ============================================================================
+
+describe('Chat Messages DAL', () => {
+  afterEach(async () => {
+    // Clean up chat data after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(chatMessagesTable)
+    await db.delete(chatThreadsTable)
+  })
+
+  describe('getChatMessages', () => {
+    it('should return empty array when thread has no messages', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const messages = await getChatMessages(threadId)
+      expect(messages).toEqual([])
+    })
+
+    it('should return messages for a thread', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const messageId1 = uuidv7()
+      const messageId2 = uuidv7()
+
+      await db.insert(chatMessagesTable).values([
+        {
+          id: messageId1,
+          chatThreadId: threadId,
+          role: 'user',
+          content: 'Hello',
+        },
+        {
+          id: messageId2,
+          chatThreadId: threadId,
+          role: 'assistant',
+          content: 'Hi there!',
+        },
+      ])
+
+      const messages = await getChatMessages(threadId)
+      expect(messages).toHaveLength(2)
+      expect(messages.map((m) => m.id)).toContain(messageId1)
+      expect(messages.map((m) => m.id)).toContain(messageId2)
+    })
+
+    it('should return messages ordered by id', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const messageId1 = uuidv7()
+      const messageId2 = uuidv7()
+
+      // Insert messages in reverse order
+      await db.insert(chatMessagesTable).values([
+        {
+          id: messageId2,
+          chatThreadId: threadId,
+          role: 'assistant',
+          content: 'Second message',
+        },
+        {
+          id: messageId1,
+          chatThreadId: threadId,
+          role: 'user',
+          content: 'First message',
+        },
+      ])
+
+      const messages = await getChatMessages(threadId)
+      expect(messages).toHaveLength(2)
+      expect(messages[0]?.id).toBe(messageId1)
+      expect(messages[1]?.id).toBe(messageId2)
+    })
+  })
+
+  describe('getLastMessage', () => {
+    it('should return undefined when thread has no messages', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const lastMessage = await getLastMessage(threadId)
+      expect(lastMessage).toBeUndefined()
+    })
+
+    it('should return the last message for a thread', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const messageId1 = uuidv7()
+      const messageId2 = uuidv7()
+      const modelId = uuidv7()
+
+      // Create model first
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(chatMessagesTable).values([
+        {
+          id: messageId1,
+          chatThreadId: threadId,
+          role: 'user',
+          content: 'First message',
+        },
+        {
+          id: messageId2,
+          chatThreadId: threadId,
+          role: 'assistant',
+          content: 'Last message',
+          modelId: modelId,
+        },
+      ])
+
+      const lastMessage = await getLastMessage(threadId)
+      expect(lastMessage).not.toBeUndefined()
+      expect(lastMessage?.id).toBe(messageId2)
+      expect(lastMessage?.modelId).toBe(modelId)
+    })
+  })
+})
+
+// ============================================================================
+// TASKS TESTS
+// ============================================================================
+
+describe('Tasks DAL', () => {
+  afterEach(async () => {
+    // Clean up tasks table after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(tasksTable)
+  })
+
+  describe('getIncompleteTasks', () => {
+    it('should return empty array when no tasks exist', async () => {
+      const tasks = await getIncompleteTasks()
+      expect(tasks).toEqual([])
+    })
+
+    it('should return only incomplete tasks', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId1 = uuidv7()
+      const taskId2 = uuidv7()
+      const taskId3 = uuidv7()
+
+      await db.insert(tasksTable).values([
+        {
+          id: taskId1,
+          item: 'Incomplete task 1',
+          isComplete: 0,
+          order: 1,
+        },
+        {
+          id: taskId2,
+          item: 'Incomplete task 2',
+          isComplete: 0,
+          order: 2,
+        },
+        {
+          id: taskId3,
+          item: 'Completed task',
+          isComplete: 1,
+          order: 3,
+        },
+      ])
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks).toHaveLength(2)
+      expect(tasks.map((t) => t.id)).toContain(taskId1)
+      expect(tasks.map((t) => t.id)).toContain(taskId2)
+      expect(tasks.map((t) => t.id)).not.toContain(taskId3)
+    })
+
+    it('should filter by search query', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId1 = uuidv7()
+      const taskId2 = uuidv7()
+
+      await db.insert(tasksTable).values([
+        {
+          id: taskId1,
+          item: 'Buy groceries',
+          isComplete: 0,
+          order: 1,
+        },
+        {
+          id: taskId2,
+          item: 'Walk the dog',
+          isComplete: 0,
+          order: 2,
+        },
+      ])
+
+      const tasks = await getIncompleteTasks('groceries')
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]?.id).toBe(taskId1)
+    })
+
+    it('should return empty array when no tasks match search query', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Buy groceries',
+        isComplete: 0,
+        order: 1,
+      })
+
+      const tasks = await getIncompleteTasks('nonexistent')
+      expect(tasks).toEqual([])
+    })
+  })
+
+  describe('getIncompleteTasksCount', () => {
+    it('should return 0 when no incomplete tasks exist', async () => {
+      const count = await getIncompleteTasksCount()
+      expect(count).toBe(0)
+    })
+
+    it('should return correct count of incomplete tasks', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId1 = uuidv7()
+      const taskId2 = uuidv7()
+      const taskId3 = uuidv7()
+
+      await db.insert(tasksTable).values([
+        {
+          id: taskId1,
+          item: 'Incomplete task 1',
+          isComplete: 0,
+          order: 1,
+        },
+        {
+          id: taskId2,
+          item: 'Incomplete task 2',
+          isComplete: 0,
+          order: 2,
+        },
+        {
+          id: taskId3,
+          item: 'Completed task',
+          isComplete: 1,
+          order: 3,
+        },
+      ])
+
+      const count = await getIncompleteTasksCount()
+      expect(count).toBe(2)
+    })
+  })
+})
+
+// ============================================================================
+// ACCOUNTS TESTS
+// ============================================================================
+
+describe('Accounts DAL', () => {
+  afterEach(async () => {
+    // Clean up accounts table after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(accountsTable)
+  })
+
+  describe('getAllAccounts', () => {
+    it('should return empty array when no accounts exist', async () => {
+      const accounts = await getAllAccounts()
+      expect(accounts).toEqual([])
+    })
+
+    it('should return all accounts', async () => {
+      const db = DatabaseSingleton.instance.db
+      const accountId1 = uuidv7()
+      const accountId2 = uuidv7()
+
+      await db.insert(accountsTable).values([
+        {
+          id: accountId1,
+          type: 'imap',
+          imapHostname: 'imap.example.com',
+          imapPort: 993,
+          imapUsername: 'user1@example.com',
+          imapPassword: 'password1',
+        },
+        {
+          id: accountId2,
+          type: 'imap',
+          imapHostname: 'imap.example.com',
+          imapPort: 993,
+          imapUsername: 'user2@example.com',
+          imapPassword: 'password2',
+        },
+      ])
+
+      const accounts = await getAllAccounts()
+      expect(accounts).toHaveLength(2)
+      expect(accounts.map((a) => a.id)).toContain(accountId1)
+      expect(accounts.map((a) => a.id)).toContain(accountId2)
+    })
+  })
+})
+
+// ============================================================================
+// MCP SERVERS TESTS
+// ============================================================================
+
+describe('MCP Servers DAL', () => {
+  afterEach(async () => {
+    // Clean up MCP servers table after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(mcpServersTable)
+  })
+
+  describe('getAllMcpServers', () => {
+    it('should return empty array when no MCP servers exist', async () => {
+      const servers = await getAllMcpServers()
+      expect(servers).toEqual([])
+    })
+
+    it('should return all MCP servers', async () => {
+      const db = DatabaseSingleton.instance.db
+      const serverId1 = uuidv7()
+      const serverId2 = uuidv7()
+
+      await db.insert(mcpServersTable).values([
+        {
+          id: serverId1,
+          name: 'Server 1',
+          type: 'stdio',
+          enabled: 1,
+        },
+        {
+          id: serverId2,
+          name: 'Server 2',
+          type: 'http',
+          url: 'http://example.com',
+          enabled: 0,
+        },
+      ])
+
+      const servers = await getAllMcpServers()
+      expect(servers).toHaveLength(2)
+      expect(servers.map((s) => s.id)).toContain(serverId1)
+      expect(servers.map((s) => s.id)).toContain(serverId2)
+    })
+  })
+
+  describe('getHttpMcpServers', () => {
+    it('should return empty array when no HTTP servers exist', async () => {
+      const db = DatabaseSingleton.instance.db
+      const serverId = uuidv7()
+
+      await db.insert(mcpServersTable).values({
+        id: serverId,
+        name: 'STDIO Server',
+        type: 'stdio',
+        enabled: 1,
+      })
+
+      const servers = await getHttpMcpServers()
+      expect(servers).toEqual([])
+    })
+
+    it('should return only HTTP servers with URLs', async () => {
+      const db = DatabaseSingleton.instance.db
+      const serverId1 = uuidv7()
+      const serverId2 = uuidv7()
+      const serverId3 = uuidv7()
+
+      await db.insert(mcpServersTable).values([
+        {
+          id: serverId1,
+          name: 'HTTP Server 1',
+          type: 'http',
+          url: 'http://example1.com',
+          enabled: 1,
+        },
+        {
+          id: serverId2,
+          name: 'HTTP Server 2',
+          type: 'http',
+          url: 'http://example2.com',
+          enabled: 0,
+        },
+        {
+          id: serverId3,
+          name: 'STDIO Server',
+          type: 'stdio',
+          enabled: 1,
+        },
+      ])
+
+      const servers = await getHttpMcpServers()
+      expect(servers).toHaveLength(2)
+      expect(servers.map((s) => s.id)).toContain(serverId1)
+      expect(servers.map((s) => s.id)).toContain(serverId2)
+      expect(servers.map((s) => s.id)).not.toContain(serverId3)
+    })
+  })
+})
+
+// ============================================================================
+// PROMPTS TESTS
+// ============================================================================
+
+describe('Prompts DAL', () => {
+  afterEach(async () => {
+    // Clean up prompts table after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(promptsTable)
+  })
+
+  describe('getAllPrompts', () => {
+    it('should return empty array when no prompts exist', async () => {
+      const prompts = await getAllPrompts()
+      expect(prompts).toEqual([])
+    })
+
+    it('should return all prompts when no search query provided', async () => {
+      const db = DatabaseSingleton.instance.db
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values([
+        {
+          id: promptId1,
+          prompt: 'First prompt',
+          modelId: modelId,
+        },
+        {
+          id: promptId2,
+          prompt: 'Second prompt',
+          modelId: modelId,
+        },
+      ])
+
+      const prompts = await getAllPrompts()
+      expect(prompts).toHaveLength(2)
+      expect(prompts.map((p) => p.id)).toContain(promptId1)
+      expect(prompts.map((p) => p.id)).toContain(promptId2)
+    })
+
+    it('should filter by search query', async () => {
+      const db = DatabaseSingleton.instance.db
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values([
+        {
+          id: promptId1,
+          prompt: 'Write a story about cats',
+          modelId: modelId,
+        },
+        {
+          id: promptId2,
+          prompt: 'Write a story about dogs',
+          modelId: modelId,
+        },
+      ])
+
+      const prompts = await getAllPrompts('cats')
+      expect(prompts).toHaveLength(1)
+      expect(prompts[0]?.id).toBe(promptId1)
+    })
+
+    it('should return empty array when no prompts match search query', async () => {
+      const db = DatabaseSingleton.instance.db
+      const promptId = uuidv7()
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Write a story about cats',
+        modelId: modelId,
+      })
+
+      const prompts = await getAllPrompts('dogs')
+      expect(prompts).toEqual([])
+    })
+  })
+
+  describe('getTriggerPromptForThread', () => {
+    afterEach(async () => {
+      // Clean up chat data after each test
+      const db = DatabaseSingleton.instance.db
+      await db.delete(chatMessagesTable)
+      await db.delete(chatThreadsTable)
+    })
+
+    it('should return null when thread does not exist', async () => {
+      const threadId = uuidv7()
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).toBe(null)
+    })
+
+    it('should return null when thread was not triggered by automation', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 0,
+      })
+
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.wasTriggeredByAutomation).toBe(false)
+      expect(result?.isAutomationDeleted).toBe(false)
+      expect(result?.prompt).toBe(null)
+    })
+
+    it('should return automation info when thread was triggered by automation', async () => {
+      const threadId = uuidv7()
+      const promptId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test automation prompt',
+        modelId: modelId,
+      })
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 1,
+        triggeredBy: promptId,
+      })
+
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.wasTriggeredByAutomation).toBe(true)
+      expect(result?.isAutomationDeleted).toBe(false)
+      expect(result?.prompt?.id).toBe(promptId)
+    })
+
+    it('should return automation info with deleted flag when prompt is deleted', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 1,
+        triggeredBy: null, // No prompt exists, simulating deleted prompt
+      })
+
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.wasTriggeredByAutomation).toBe(true)
+      expect(result?.isAutomationDeleted).toBe(true)
+      expect(result?.prompt).toBe(null)
+    })
+  })
+})
+
+// ============================================================================
+// EMAIL TESTS
+// ============================================================================
+
+describe('Email DAL', () => {
+  afterEach(async () => {
+    // Clean up email data after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(emailMessagesToAddressesTable)
+    await db.delete(emailMessagesTable)
+    await db.delete(emailThreadsTable)
+    await db.delete(emailAddressesTable)
+  })
+
+  describe('getEmailThreadWithMessages', () => {
+    it('should return null when email thread does not exist', async () => {
+      const threadId = uuidv7()
+      const result = await getEmailThreadWithMessages(threadId)
+      expect(result).toBe(null)
+    })
+
+    it('should return email thread with messages when thread exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+
+      // Create email thread
+      await db.insert(emailThreadsTable).values({
+        id: threadId,
+        subject: 'Test Subject',
+        firstMessageAt: Date.now(),
+        lastMessageAt: Date.now(),
+      })
+
+      // Create email address
+      await db.insert(emailAddressesTable).values({
+        address: 'test@example.com',
+        name: 'Test User',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+
+      // Create email message
+      await db.insert(emailMessagesTable).values({
+        id: messageId,
+        emailThreadId: threadId,
+        imapId: 'imap123',
+        subject: 'Test Subject',
+        htmlBody: '<p>Test body</p>',
+        textBody: 'Test body',
+        sentAt: Date.now(),
+        fromAddress: 'test@example.com',
+        mailbox: 'INBOX',
+      })
+
+      const result = await getEmailThreadWithMessages(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.id).toBe(threadId)
+      expect(result?.subject).toBe('Test Subject')
+      expect(result?.messages).toHaveLength(1)
+      expect(result?.messages[0]?.id).toBe(messageId)
+    })
+  })
+
+  describe('getEmailThreadByMessageImapIdWithMessages', () => {
+    it('should return null when message with IMAP ID does not exist', async () => {
+      const imapId = 'nonexistent'
+      const result = await getEmailThreadByMessageImapIdWithMessages(imapId)
+      expect(result).toBe(null)
+    })
+
+    it('should return email thread when message with IMAP ID exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+      const imapId = 'imap123'
+
+      // Create email address first
+      await db.insert(emailAddressesTable).values({
+        address: 'test@example.com',
+        name: 'Test User',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+
+      // Create email thread
+      await db.insert(emailThreadsTable).values({
+        id: threadId,
+        subject: 'Test Subject',
+        firstMessageAt: Date.now(),
+        lastMessageAt: Date.now(),
+      })
+
+      // Create email message
+      await db.insert(emailMessagesTable).values({
+        id: messageId,
+        emailThreadId: threadId,
+        imapId: imapId,
+        subject: 'Test Subject',
+        htmlBody: '<p>Test body</p>',
+        textBody: 'Test body',
+        sentAt: Date.now(),
+        fromAddress: 'test@example.com',
+        mailbox: 'INBOX',
+      })
+
+      const result = await getEmailThreadByMessageImapIdWithMessages(imapId)
+      expect(result).not.toBe(null)
+      expect(result?.id).toBe(threadId)
+    })
+  })
+
+  describe('getEmailThreadByMessageIdWithMessages', () => {
+    it('should return null when message with ID does not exist', async () => {
+      const messageId = uuidv7()
+      const result = await getEmailThreadByMessageIdWithMessages(messageId)
+      expect(result).toBe(null)
+    })
+
+    it('should return email thread when message with ID exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+
+      // Create email address first
+      await db.insert(emailAddressesTable).values({
+        address: 'test@example.com',
+        name: 'Test User',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+
+      // Create email thread
+      await db.insert(emailThreadsTable).values({
+        id: threadId,
+        subject: 'Test Subject',
+        firstMessageAt: Date.now(),
+        lastMessageAt: Date.now(),
+      })
+
+      // Create email message
+      await db.insert(emailMessagesTable).values({
+        id: messageId,
+        emailThreadId: threadId,
+        imapId: 'imap123',
+        subject: 'Test Subject',
+        htmlBody: '<p>Test body</p>',
+        textBody: 'Test body',
+        sentAt: Date.now(),
+        fromAddress: 'test@example.com',
+        mailbox: 'INBOX',
+      })
+
+      const result = await getEmailThreadByMessageIdWithMessages(messageId)
+      expect(result).not.toBe(null)
+      expect(result?.id).toBe(threadId)
+    })
+  })
+
+  describe('getEmailMessage', () => {
+    it('should throw error when message does not exist', async () => {
+      const messageId = uuidv7()
+      await expect(getEmailMessage(messageId)).rejects.toThrow('Message not found')
+    })
+
+    it('should return email message when it exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const messageId = uuidv7()
+
+      // Create email address
+      await db.insert(emailAddressesTable).values({
+        address: 'test@example.com',
+        name: 'Test User',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+
+      // Create email thread
+      const threadId = uuidv7()
+      await db.insert(emailThreadsTable).values({
+        id: threadId,
+        subject: 'Test Subject',
+        firstMessageAt: Date.now(),
+        lastMessageAt: Date.now(),
+      })
+
+      // Create email message
+      await db.insert(emailMessagesTable).values({
+        id: messageId,
+        emailThreadId: threadId,
+        imapId: 'imap123',
+        subject: 'Test Subject',
+        htmlBody: '<p>Test body</p>',
+        textBody: 'Test body',
+        sentAt: Date.now(),
+        fromAddress: 'test@example.com',
+        mailbox: 'INBOX',
+      })
+
+      const result = await getEmailMessage(messageId)
+      expect(result).not.toBe(null)
+      expect(result.id).toBe(messageId)
+      expect(result.subject).toBe('Test Subject')
+    })
+  })
+
+  describe('getEmailMessageByImapId', () => {
+    it('should throw error when message with IMAP ID does not exist', async () => {
+      const imapId = 'nonexistent'
+      await expect(getEmailMessageByImapId(imapId)).rejects.toThrow('Message not found')
+    })
+
+    it('should return email message when IMAP ID exists', async () => {
+      const db = DatabaseSingleton.instance.db
+      const messageId = uuidv7()
+      const imapId = 'imap123'
+
+      // Create email address
+      await db.insert(emailAddressesTable).values({
+        address: 'test@example.com',
+        name: 'Test User',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+
+      // Create email thread
+      const threadId = uuidv7()
+      await db.insert(emailThreadsTable).values({
+        id: threadId,
+        subject: 'Test Subject',
+        firstMessageAt: Date.now(),
+        lastMessageAt: Date.now(),
+      })
+
+      // Create email message
+      await db.insert(emailMessagesTable).values({
+        id: messageId,
+        emailThreadId: threadId,
+        imapId: imapId,
+        subject: 'Test Subject',
+        htmlBody: '<p>Test body</p>',
+        textBody: 'Test body',
+        sentAt: Date.now(),
+        fromAddress: 'test@example.com',
+        mailbox: 'INBOX',
+      })
+
+      const result = await getEmailMessageByImapId(imapId)
+      expect(result).not.toBe(null)
+      expect(result.id).toBe(messageId)
+      expect(result.imapId).toBe(imapId)
+    })
+  })
+})
+
+// ============================================================================
+// CONTEXT SIZE TESTS
+// ============================================================================
+
+describe('Context Size DAL', () => {
+  afterEach(async () => {
+    // Clean up chat data after each test
+    const db = DatabaseSingleton.instance.db
+    await db.delete(chatMessagesTable)
+    await db.delete(chatThreadsTable)
+  })
+
+  describe('getContextSizeForThread', () => {
+    it('should return null when thread does not exist', async () => {
+      const threadId = uuidv7()
+      const contextSize = await getContextSizeForThread(threadId)
+      expect(contextSize).toBe(null)
+    })
+
+    it('should return null when thread has no context size', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const contextSize = await getContextSizeForThread(threadId)
+      expect(contextSize).toBe(null)
+    })
+
+    it('should return context size when thread has it set', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        contextSize: 1500,
+      })
+
+      const contextSize = await getContextSizeForThread(threadId)
+      expect(contextSize).toBe(1500)
     })
   })
 })

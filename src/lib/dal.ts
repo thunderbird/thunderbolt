@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, like, notExists, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
+import { DEFAULT_IMPERIAL_UNITS } from './unit-detection'
 import {
   accountsTable,
   chatMessagesTable,
@@ -156,6 +157,11 @@ export const getPreferencesSettings = async () => {
     .select()
     .from(settingsTable)
     .where(eq(settingsTable.key, 'experimental_feature_tasks'))
+  const temperatureUnit = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit'))
+  const windSpeedUnit = await db.select().from(settingsTable).where(eq(settingsTable.key, 'wind_speed_unit'))
+  const precipitationUnit = await db.select().from(settingsTable).where(eq(settingsTable.key, 'precipitation_unit'))
+  const timeFormat = await db.select().from(settingsTable).where(eq(settingsTable.key, 'time_format'))
+  const distanceUnit = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit'))
 
   return {
     locationName: nameData[0]?.value || '',
@@ -164,6 +170,11 @@ export const getPreferencesSettings = async () => {
     preferredName: preferredNameData[0]?.value || '',
     dataCollection: dataCollection[0]?.value === 'false' ? false : true,
     experimentalFeatureTasks: experimentalFeatureTasks[0]?.value === 'true' ? true : false,
+    temperatureUnit: temperatureUnit[0]?.value || DEFAULT_IMPERIAL_UNITS.temperature,
+    windSpeedUnit: windSpeedUnit[0]?.value || DEFAULT_IMPERIAL_UNITS.speed,
+    precipitationUnit: precipitationUnit[0]?.value || DEFAULT_IMPERIAL_UNITS.precipitation,
+    timeFormat: timeFormat[0]?.value || DEFAULT_IMPERIAL_UNITS.timeFormat,
+    distanceUnit: distanceUnit[0]?.value || DEFAULT_IMPERIAL_UNITS.distance,
   }
 }
 

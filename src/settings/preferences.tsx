@@ -2,10 +2,12 @@ import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, snakeCased } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
+import { useUnits } from '@/hooks/use-units'
+import { detectUnitSystem, getDefaultUnits, DEFAULT_IMPERIAL_UNITS } from '@/lib/unit-detection'
+import { getCloudUrl } from '@/lib/config'
 
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
@@ -111,12 +113,27 @@ const locationFormSchema = z.object({
   locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
 })
 
+const localizationFormSchema = z.object({
+  temperatureUnit: z.string(),
+  windSpeedUnit: z.string(),
+  precipitationUnit: z.string(),
+  timeFormat: z.string(),
+  distanceUnit: z.string(),
+})
+
 export default function PreferencesSettingsPage() {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting } = state
+
+  // Localization dropdown states
+  const [temperatureDropdownOpen, setTemperatureDropdownOpen] = useState(false)
+  const [windSpeedDropdownOpen, setWindSpeedDropdownOpen] = useState(false)
+  const [precipitationDropdownOpen, setPrecipitationDropdownOpen] = useState(false)
+  const [timeFormatDropdownOpen, setTimeFormatDropdownOpen] = useState(false)
+  const [distanceDropdownOpen, setDistanceDropdownOpen] = useState(false)
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -143,6 +160,8 @@ export default function PreferencesSettingsPage() {
     queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
+
+  const { data: unitsData, isLoading: unitsLoading } = useUnits()
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -174,6 +193,17 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  const localizationForm = useForm<z.infer<typeof localizationFormSchema>>({
+    resolver: zodResolver(localizationFormSchema),
+    defaultValues: {
+      temperatureUnit: '',
+      windSpeedUnit: '',
+      precipitationUnit: '',
+      timeFormat: '',
+      distanceUnit: '',
+    },
+  })
+
   // Update forms when data is loaded
   useEffect(() => {
     if (settings) {
@@ -199,6 +229,27 @@ export default function PreferencesSettingsPage() {
     }
   }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
 
+  // Separate effect for localization form to wait for units data
+  useEffect(() => {
+    if (settings && unitsData && !unitsLoading) {
+      // Get the current form values to avoid unnecessary resets
+      const currentValues = localizationForm.getValues()
+
+      // Only reset if we don't have any values set yet
+      const hasAnyValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
+
+      if (!hasAnyValues) {
+        localizationForm.reset({
+          temperatureUnit: settings.temperatureUnit || DEFAULT_IMPERIAL_UNITS.temperature,
+          windSpeedUnit: settings.windSpeedUnit || DEFAULT_IMPERIAL_UNITS.speed,
+          precipitationUnit: settings.precipitationUnit || DEFAULT_IMPERIAL_UNITS.precipitation,
+          timeFormat: settings.timeFormat || DEFAULT_IMPERIAL_UNITS.timeFormat,
+          distanceUnit: settings.distanceUnit || DEFAULT_IMPERIAL_UNITS.distance,
+        })
+      }
+    }
+  }, [settings, unitsData, unitsLoading, localizationForm])
+
   // Sync preview features when telemetry is disabled
   useEffect(() => {
     if (!settings?.dataCollection) {
@@ -220,15 +271,8 @@ export default function PreferencesSettingsPage() {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        // Get cloud_url from database settings
-        const cloudUrlData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
-        const cloudUrl = cloudUrlData[0]?.value
-
-        if (!cloudUrl) {
-          console.error('Cloud URL not configured')
-          dispatch({ type: 'SET_LOCATIONS', payload: [] })
-          return
-        }
+        // Get cloud_url from settings
+        const cloudUrl = await getCloudUrl()
 
         const data = await ky
           .get(`${cloudUrl}/locations`, {
@@ -378,9 +422,115 @@ export default function PreferencesSettingsPage() {
     },
   })
 
+  // Save localization mutation
+  const saveLocalizationMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof localizationFormSchema>) => {
+      try {
+        await db
+          .insert(settingsTable)
+          .values({ key: 'temperature_unit', value: values.temperatureUnit })
+          .onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value: values.temperatureUnit },
+          })
+
+        await db
+          .insert(settingsTable)
+          .values({ key: 'wind_speed_unit', value: values.windSpeedUnit })
+          .onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value: values.windSpeedUnit },
+          })
+
+        await db
+          .insert(settingsTable)
+          .values({ key: 'precipitation_unit', value: values.precipitationUnit })
+          .onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value: values.precipitationUnit },
+          })
+
+        await db
+          .insert(settingsTable)
+          .values({ key: 'time_format', value: values.timeFormat })
+          .onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value: values.timeFormat },
+          })
+
+        await db
+          .insert(settingsTable)
+          .values({ key: 'distance_unit', value: values.distanceUnit })
+          .onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value: values.distanceUnit },
+          })
+      } catch (error) {
+        console.error('Error saving localization settings:', error)
+        throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      trackEvent('settings_localization_update')
+    },
+  })
+
+  // Auto-detect and set default units if no settings exist
+  useEffect(() => {
+    const autoDetectUnits = async () => {
+      if (!settings || !unitsData || unitsLoading) return
+
+      // Check if any localization settings are missing
+      const hasAnyLocalizationSettings =
+        settings.temperatureUnit ||
+        settings.windSpeedUnit ||
+        settings.precipitationUnit ||
+        settings.timeFormat ||
+        settings.distanceUnit
+
+      if (!hasAnyLocalizationSettings) {
+        try {
+          const unitSystem = await detectUnitSystem()
+          const defaultUnits = getDefaultUnits(unitSystem)
+
+          // Set the detected units in the form
+          localizationForm.reset({
+            temperatureUnit: defaultUnits.temperature,
+            windSpeedUnit: defaultUnits.speed,
+            precipitationUnit: defaultUnits.precipitation,
+            timeFormat: defaultUnits.timeFormat,
+            distanceUnit: defaultUnits.distance,
+          })
+
+          // Save the detected units to database
+          await saveLocalizationMutation.mutateAsync({
+            temperatureUnit: defaultUnits.temperature,
+            windSpeedUnit: defaultUnits.speed,
+            precipitationUnit: defaultUnits.precipitation,
+            timeFormat: defaultUnits.timeFormat,
+            distanceUnit: defaultUnits.distance,
+          })
+        } catch (error) {
+          console.warn('Failed to auto-detect units:', error)
+        }
+      }
+    }
+
+    autoDetectUnits()
+  }, [settings, unitsData, unitsLoading, localizationForm, saveLocalizationMutation])
+
   const handleNameBlur = async (value: string) => {
     // Save the value directly
     await saveNameMutation.mutateAsync({ preferredName: value })
+  }
+
+  const handleLocalizationChange = async (fieldName: keyof z.infer<typeof localizationFormSchema>, value: string) => {
+    const currentValues = localizationForm.getValues()
+    await saveLocalizationMutation.mutateAsync({
+      ...currentValues,
+      [fieldName]: value,
+    })
   }
 
   const handleDataCollectionToggle = async (value: boolean) => {
@@ -586,6 +736,277 @@ export default function PreferencesSettingsPage() {
                     </PopoverContent>
                   </Popover>
                   <FormDescription>Select your location to enable location-based features.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Localization">
+        <Form {...localizationForm}>
+          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={localizationForm.control}
+              name="temperatureUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Temperature Unit</FormLabel>
+                    <FormDescription>Choose your preferred temperature unit.</FormDescription>
+                  </div>
+                  <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsLoading
+                            ? 'Loading...'
+                            : unitsData?.units?.temperature?.find((unit) => unit.id === field.value)?.name ||
+                              'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsData?.units?.temperature?.map((unit) => (
+                              <CommandItem
+                                key={unit.id}
+                                value={unit.id}
+                                onSelect={() => {
+                                  field.onChange(unit.id)
+                                  handleLocalizationChange('temperatureUnit', unit.id)
+                                  setTemperatureDropdownOpen(false)
+                                }}
+                              >
+                                {unit.name} {unit.symbol}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="windSpeedUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Wind Speed Unit</FormLabel>
+                    <FormDescription>Choose your preferred wind speed unit.</FormDescription>
+                  </div>
+                  <Popover open={windSpeedDropdownOpen} onOpenChange={setWindSpeedDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsLoading
+                            ? 'Loading...'
+                            : unitsData?.units?.speed?.find((unit) => unit.id === field.value)?.name || 'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsData?.units?.speed?.map((unit) => (
+                              <CommandItem
+                                key={unit.id}
+                                value={unit.id}
+                                onSelect={() => {
+                                  field.onChange(unit.id)
+                                  handleLocalizationChange('windSpeedUnit', unit.id)
+                                  setWindSpeedDropdownOpen(false)
+                                }}
+                              >
+                                {unit.name} ({unit.symbol})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="precipitationUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Precipitation Unit</FormLabel>
+                    <FormDescription>Choose your preferred precipitation unit.</FormDescription>
+                  </div>
+                  <Popover open={precipitationDropdownOpen} onOpenChange={setPrecipitationDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsLoading
+                            ? 'Loading...'
+                            : unitsData?.units?.precipitation?.find((unit) => unit.id === field.value)?.name ||
+                              'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-[200px]">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsData?.units?.precipitation?.map((unit) => (
+                              <CommandItem
+                                key={unit.id}
+                                value={unit.id}
+                                onSelect={() => {
+                                  field.onChange(unit.id)
+                                  handleLocalizationChange('precipitationUnit', unit.id)
+                                  setPrecipitationDropdownOpen(false)
+                                }}
+                              >
+                                {unit.name} ({unit.symbol})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="timeFormat"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Time Format</FormLabel>
+                    <FormDescription>Choose your preferred time format.</FormDescription>
+                  </div>
+                  <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsLoading
+                            ? 'Loading...'
+                            : unitsData?.units?.timeFormat?.find((unit) => unit.id === field.value)?.name ||
+                              'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-[200px]">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsData?.units?.timeFormat?.map((unit) => (
+                              <CommandItem
+                                key={unit.id}
+                                value={unit.id}
+                                onSelect={() => {
+                                  field.onChange(unit.id)
+                                  handleLocalizationChange('timeFormat', unit.id)
+                                  setTimeFormatDropdownOpen(false)
+                                }}
+                              >
+                                {unit.name} ({unit.example})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="distanceUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Distance Unit</FormLabel>
+                    <FormDescription>Choose your preferred distance unit.</FormDescription>
+                  </div>
+                  <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsLoading
+                            ? 'Loading...'
+                            : unitsData?.units?.distance?.find((unit) => unit.id === field.value)?.name || 'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsData?.units?.distance?.map((unit) => (
+                              <CommandItem
+                                key={unit.id}
+                                value={unit.id}
+                                onSelect={() => {
+                                  field.onChange(unit.id)
+                                  handleLocalizationChange('distanceUnit', unit.id)
+                                  setDistanceDropdownOpen(false)
+                                }}
+                              >
+                                {unit.name} ({unit.symbol})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                   <FormMessage />
                 </FormItem>
               )}

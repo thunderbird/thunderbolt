@@ -1,11 +1,12 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
 import { useSetting } from '@/hooks/use-setting'
+import { useThrottledCallback } from '@/hooks/use-throttle'
 import { trackEvent } from '@/lib/analytics'
 import { getDefaultModelForThread, getTriggerPromptForThread } from '@/lib/dal'
 import { useMCP } from '@/lib/mcp-provider'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { useChat } from '@ai-sdk/react'
+import { useChat, type UseChatHelpers } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -16,6 +17,29 @@ interface ChatStateProps {
   models: Model[]
   initialMessages?: ThunderboltUIMessage[]
   saveMessages: SaveMessagesFunction
+}
+
+type UseSavePartialAssistantMessages = {
+  chatHelpers: UseChatHelpers<ThunderboltUIMessage>
+  id: string
+  saveMessages: SaveMessagesFunction
+}
+
+const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseSavePartialAssistantMessages) => {
+  const throttledSave = useThrottledCallback((message: ThunderboltUIMessage) => {
+    saveMessages({
+      id,
+      messages: [message],
+    })
+  }, 200)
+
+  useEffect(() => {
+    const latestMessage = chatHelpers.messages[chatHelpers.messages.length - 1]
+
+    if (chatHelpers.status === 'streaming' && latestMessage?.role === 'assistant') {
+      throttledSave(latestMessage)
+    }
+  }, [chatHelpers.messages, chatHelpers.status, throttledSave])
 }
 
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
@@ -103,6 +127,8 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       // The error will be available in chatHelpers.error for the UI to display
     },
   })
+
+  useSavePartialAssistantMessages({ chatHelpers, id, saveMessages })
 
   const { messages: chatMessages, status } = chatHelpers
 

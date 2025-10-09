@@ -1,16 +1,15 @@
-import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
-import { getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/lib/dal'
+import { chatThreadsTable } from '@/db/tables'
+import { getChatMessagesByThreadId, getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
+import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import Chat from './chat'
-import { getChatMessagesByThreadId } from '@/lib/dal'
 import { v7 as uuidv7 } from 'uuid'
-import { useMemo } from 'react'
+import Chat from './chat'
 
 export default function ChatDetailPage() {
   const params = useParams()
@@ -34,20 +33,12 @@ export default function ChatDetailPage() {
 
     if (!textContent) return
 
-    try {
-      const title = await generateTitle(textContent)
-      await db.update(chatThreadsTable).set({ title }).where(eq(chatThreadsTable.id, threadId))
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-    } catch (error) {
-      console.error('Error generating title:', error)
-    }
+    const title = await generateTitle(textContent)
+    await db.update(chatThreadsTable).set({ title }).where(eq(chatThreadsTable.id, threadId))
+    queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
-  const {
-    data: messages,
-    isLoading,
-    isError,
-  } = useQuery<ThunderboltUIMessage[], Error>({
+  const { data: messages } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', chatThreadId],
     queryFn: async () => {
       const chatMessages = await getChatMessagesByThreadId(chatThreadId!)
@@ -92,21 +83,18 @@ export default function ChatDetailPage() {
     },
   })
 
-  const saveMessages: SaveMessagesFunction = async ({ messages }) => {
-    await addMessagesMutation.mutateAsync(messages)
-  }
+  const saveMessages: SaveMessagesFunction = useCallback(
+    async ({ messages }) => {
+      await addMessagesMutation.mutateAsync(messages)
+    },
+    [addMessagesMutation.mutateAsync],
+  )
 
   return chatThreadId ? (
     <>
       <div className="h-full w-full">
-        {isLoading ? (
-          <div>Loading chat...</div>
-        ) : isError ? (
-          <div>Error loading chat</div>
-        ) : messages ? (
+        {!!messages && (
           <Chat key={chatThreadId} id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />
-        ) : (
-          <div>Error loading chat</div>
         )}
       </div>
     </>

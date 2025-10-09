@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { detectUnitSystem, getDefaultUnits, DEFAULT_IMPERIAL_UNITS, DEFAULT_METRIC_UNITS } from './unit-detection'
 
 describe('unit-detection', () => {
@@ -12,7 +12,6 @@ describe('unit-detection', () => {
   afterEach(() => {
     // Restore original navigator
     global.navigator = originalNavigator
-    vi.restoreAllMocks()
   })
 
   describe('detectUnitSystem', () => {
@@ -20,7 +19,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'en-US',
         languages: ['en-US', 'en'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')
@@ -30,7 +29,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'en-LR',
         languages: ['en-LR'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')
@@ -40,7 +39,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'my-MM',
         languages: ['my-MM'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')
@@ -64,7 +63,7 @@ describe('unit-detection', () => {
         global.navigator = {
           language: locale,
           languages: [locale],
-        } as Navigator
+        } as unknown as Navigator
 
         const result = await detectUnitSystem()
         expect(result).toBe('metric')
@@ -75,7 +74,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'en',
         languages: ['en'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('metric')
@@ -85,7 +84,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'invalid-locale-format',
         languages: ['invalid-locale-format'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('metric')
@@ -95,7 +94,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: undefined,
         languages: ['en-US', 'en-GB', 'en'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial') // Should use en-US from languages array
@@ -105,7 +104,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: undefined,
         languages: ['en-US'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')
@@ -115,7 +114,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'en-US',
         languages: undefined,
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')
@@ -140,7 +139,7 @@ describe('unit-detection', () => {
       global.navigator = {
         language: 'en-us', // lowercase
         languages: ['en-us'],
-      } as Navigator
+      } as unknown as Navigator
 
       const result = await detectUnitSystem()
       expect(result).toBe('imperial')

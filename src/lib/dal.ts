@@ -140,9 +140,9 @@ export const getPreferencesSettings = async () => {
   const preferredName = await getSetting('preferred_name', '')
   const dataCollection = await getBooleanSetting('data_collection', true)
   const experimentalFeatureTasks = await getBooleanSetting('experimental_feature_tasks', false)
-  const temperatureUnit = getSetting('temperature_unit', DEFAULT_IMPERIAL_UNITS.temperature)
+  const temperatureUnit = await getSetting('temperature_unit', DEFAULT_IMPERIAL_UNITS.temperature)
   const windSpeedUnit = await getSetting('wind_speed_unit', DEFAULT_IMPERIAL_UNITS.speed)
-  const precipitationUnit = getSetting('precipitation_unit', DEFAULT_IMPERIAL_UNITS.precipitation)
+  const precipitationUnit = await getSetting('precipitation_unit', DEFAULT_IMPERIAL_UNITS.precipitation)
   const timeFormat = await getSetting('time_format', DEFAULT_IMPERIAL_UNITS.timeFormat)
   const distanceUnit = await getSetting('distance_unit', DEFAULT_IMPERIAL_UNITS.distance)
 

@@ -9,7 +9,7 @@ import { trackEvent } from '@/lib/analytics'
 import { detectUnitSystem, getDefaultUnits, DEFAULT_IMPERIAL_UNITS } from '@/lib/unit-detection'
 import type { UnitsData, PreferencesSettings } from '@/types'
 
-const localizationFormSchema = z.object({
+export const localizationFormSchema = z.object({
   temperatureUnit: z.string(),
   windSpeedUnit: z.string(),
   precipitationUnit: z.string(),
@@ -68,7 +68,6 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
         { key: 'distance_unit', value: values.distanceUnit },
       ]
 
-      // Save all settings sequentially using async/await
       for (const { key, value } of settingsToSave) {
         await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
           target: settingsTable.key,
@@ -92,7 +91,6 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
       const currentValues = localizationForm.getValues()
       const hasFormValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
 
-      // If form already has values, don't reset
       if (hasFormValues) return
 
       const hasAnyLocalizationSettings =

@@ -16,7 +16,7 @@ type DropdownAction =
   | { type: 'TOGGLE_DISTANCE' }
   | { type: 'SET_DROPDOWN'; payload: { dropdown: keyof DropdownState; open: boolean } }
 
-const initialState: DropdownState = {
+export const initialState: DropdownState = {
   temperature: false,
   windSpeed: false,
   precipitation: false,
@@ -24,7 +24,7 @@ const initialState: DropdownState = {
   distance: false,
 }
 
-const dropdownReducer = (state: DropdownState, action: DropdownAction): DropdownState => {
+export const dropdownReducer = (state: DropdownState, action: DropdownAction): DropdownState => {
   switch (action.type) {
     case 'TOGGLE_TEMPERATURE':
       return { ...state, temperature: !state.temperature }
@@ -51,14 +51,12 @@ export const useLocalizationDropdowns = () => {
   const [state, dispatch] = useReducer(dropdownReducer, initialState)
 
   return {
-    // State
     temperatureDropdownOpen: state.temperature,
     windSpeedDropdownOpen: state.windSpeed,
     precipitationDropdownOpen: state.precipitation,
     timeFormatDropdownOpen: state.timeFormat,
     distanceDropdownOpen: state.distance,
 
-    // Actions
     setTemperatureDropdownOpen: (open: boolean) =>
       dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'temperature', open } }),
     setWindSpeedDropdownOpen: (open: boolean) =>

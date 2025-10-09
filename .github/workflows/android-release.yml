@@ -103,7 +103,7 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
       - name: Setup Java
-        uses: actions/setup-java@b1b4a0b7b0b4a0b7b0b4a0b7b0b4a0b7b0b4a0b7 # v4.0.1
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5
         with:
           distribution: 'temurin'
           java-version: '17'

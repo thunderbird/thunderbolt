@@ -24,7 +24,7 @@ import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
-import { getModelById } from '@/lib/dal'
+import { getModel } from '@/lib/dal'
 
 const formSchema = z
   .object({
@@ -71,7 +71,7 @@ export default function ModelDetailPage() {
 
   const { data: model, isLoading } = useQuery({
     queryKey: ['models', modelId],
-    queryFn: () => getModelById(modelId!),
+    queryFn: () => getModel(modelId!),
     enabled: !!modelId,
   })
 

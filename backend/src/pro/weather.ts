@@ -17,103 +17,136 @@ export class OpenMeteoWeather {
   private readonly geocodingUrl = 'https://geocoding-api.open-meteo.com/v1/search'
   private readonly weatherUrl = 'https://api.open-meteo.com/v1/forecast'
 
+  private disambiguateLocation(locations: Location[], region: string | null, country: string | null): Location[] {
+    const regionNorm = region?.trim().toLowerCase()
+    const countryNorm = country?.trim().toLowerCase()
+
+    let matches = [...locations]
+
+    // If region is provided, try to match admin1 (state/region)
+    if (regionNorm) {
+      const regionMatches = matches.filter((r) => r.admin1?.toLowerCase().includes(regionNorm))
+      if (regionMatches.length > 0) {
+        matches = regionMatches
+      }
+    }
+
+    // If country is provided, match against country field
+    if (countryNorm) {
+      const countryMatches = matches.filter((r) => r.country?.toLowerCase().includes(countryNorm))
+      if (countryMatches.length > 0) {
+        matches = countryMatches
+      }
+    }
+
+    return matches
+  }
+
   /**
    * Search for locations by name
    */
-  async searchLocations(query: string, ctx: SimpleContext): Promise<Location[]> {
-    try {
-      const url = new URL(this.geocodingUrl)
-      url.searchParams.set('name', query)
-      url.searchParams.set('count', '10')
-      url.searchParams.set('language', 'en')
-      url.searchParams.set('format', 'json')
+  async searchLocations(
+    query: string,
+    region: string | null,
+    country: string | null,
+    ctx: SimpleContext,
+  ): Promise<Location[]> {
+    const url = new URL(this.geocodingUrl)
+    url.searchParams.set('name', query)
+    url.searchParams.set('count', '10')
+    url.searchParams.set('language', 'en')
+    url.searchParams.set('format', 'json')
 
-      const response = await fetch(url.toString())
+    const response = await fetch(url.toString())
 
-      if (!response.ok) {
-        throw new Error(`Geocoding API error: ${response.status}`)
-      }
-
-      const data = (await response.json()) as { results?: Location[] }
-      const locations = data.results || []
-
-      return locations
-    } catch (error) {
-      throw error
+    if (!response.ok) {
+      throw new Error(`Geocoding API error: ${response.status}`)
     }
+
+    const data = (await response.json()) as { results?: Location[] }
+    const locations = data.results || []
+
+    return this.disambiguateLocation(locations, region, country)
   }
 
   /**
    * Get current weather for a location
    */
-  async getCurrentWeather(location: string, ctx: SimpleContext): Promise<string> {
-    try {
-      // First, search for the location
-      const locations = await this.searchLocations(location, ctx)
-      if (locations.length === 0) {
-        return `No location found matching: ${location}`
-      }
-
-      const loc = locations[0]
-
-      // Get current weather
-      const url = new URL(this.weatherUrl)
-      url.searchParams.set('latitude', loc.latitude.toString())
-      url.searchParams.set('longitude', loc.longitude.toString())
-      url.searchParams.set(
-        'current',
-        'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m',
-      )
-      url.searchParams.set('timezone', 'auto')
-
-      const response = await fetch(url.toString())
-
-      if (!response.ok) {
-        throw new Error(`Weather API error: ${response.status}`)
-      }
-
-      const data = (await response.json()) as {
-        current: {
-          temperature_2m: number
-          relative_humidity_2m: number
-          apparent_temperature: number
-          weather_code: number
-          wind_speed_10m: number
-          wind_direction_10m: number
-          time: string
-        }
-        current_units: Record<string, string>
-      }
-
-      const current = data.current
-      const units = data.current_units
-
-      // Format the weather data
-      const locationStr = [loc.name, loc.admin1, loc.country].filter(Boolean).join(', ')
-
-      const result = [
-        `Current weather for ${locationStr}:`,
-        `Temperature: ${current.temperature_2m}${units.temperature_2m}`,
-        `Feels like: ${current.apparent_temperature}${units.apparent_temperature}`,
-        `Humidity: ${current.relative_humidity_2m}${units.relative_humidity_2m}`,
-        `Wind: ${current.wind_speed_10m}${units.wind_speed_10m} at ${current.wind_direction_10m}°`,
-        `Conditions: ${this.getWeatherDescription(current.weather_code)} (Code ${current.weather_code})`,
-        `Last updated: ${current.time}`,
-      ]
-
-      return result.join('\n')
-    } catch (error) {
-      throw error
+  async getCurrentWeather(
+    location: string,
+    region: string | null,
+    country: string | null,
+    ctx: SimpleContext,
+  ): Promise<string> {
+    // First, search for the location
+    const locations = await this.searchLocations(location, region, country, ctx)
+    if (locations.length === 0) {
+      return `No location found matching: ${location}`
     }
+
+    const loc = locations[0]
+
+    // Get current weather
+    const url = new URL(this.weatherUrl)
+    url.searchParams.set('latitude', loc.latitude.toString())
+    url.searchParams.set('longitude', loc.longitude.toString())
+    url.searchParams.set(
+      'current',
+      'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m',
+    )
+    url.searchParams.set('timezone', 'auto')
+
+    const response = await fetch(url.toString())
+
+    if (!response.ok) {
+      throw new Error(`Weather API error: ${response.status}`)
+    }
+
+    const data = (await response.json()) as {
+      current: {
+        temperature_2m: number
+        relative_humidity_2m: number
+        apparent_temperature: number
+        weather_code: number
+        wind_speed_10m: number
+        wind_direction_10m: number
+        time: string
+      }
+      current_units: Record<string, string>
+    }
+
+    const current = data.current
+    const units = data.current_units
+
+    // Format the weather data
+    const locationStr = [loc.name, loc.admin1, loc.country].filter(Boolean).join(', ')
+
+    const result = [
+      `Current weather for ${locationStr}:`,
+      `Temperature: ${current.temperature_2m}${units.temperature_2m}`,
+      `Feels like: ${current.apparent_temperature}${units.apparent_temperature}`,
+      `Humidity: ${current.relative_humidity_2m}${units.relative_humidity_2m}`,
+      `Wind: ${current.wind_speed_10m}${units.wind_speed_10m} at ${current.wind_direction_10m}°`,
+      `Conditions: ${this.getWeatherDescription(current.weather_code)} (Code ${current.weather_code})`,
+      `Last updated: ${current.time}`,
+    ]
+
+    return result.join('\n')
   }
 
   /**
    * Get weather forecast for a location
    */
-  async getWeatherForecast(location: string, days: number, ctx: SimpleContext): Promise<WeatherForecastData> {
+  async getWeatherForecast(
+    location: string,
+    region: string | null,
+    country: string | null,
+    days: number,
+    ctx: SimpleContext,
+  ): Promise<WeatherForecastData> {
     try {
       // First, search for the location
-      const locations = await this.searchLocations(location, ctx)
+      const locations = await this.searchLocations(location, region, country, ctx)
       if (locations.length === 0) {
         const errorMsg = `Could not find coordinates for location '${location}'`
         throw new Error(errorMsg)

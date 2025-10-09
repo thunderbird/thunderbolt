@@ -1,5 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getEmailMessageById, getEmailMessageByImapId } from '@/lib/dal'
+import { getEmailMessage, getEmailMessageByImapId } from '@/lib/dal'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
 import type { EmailMessageWithAddresses } from '@/types'
@@ -20,7 +20,7 @@ export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProp
     queryKey: ['messages', messageId, imapId],
     queryFn: async () => {
       if (messageId) {
-        return await getEmailMessageById(messageId)
+        return await getEmailMessage(messageId)
       } else if (imapId) {
         return await getEmailMessageByImapId(imapId)
       }

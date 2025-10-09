@@ -23,6 +23,8 @@ export const fetchContentSchema = z
 export const searchLocationSchema = z
   .object({
     query: z.string().describe('The location name to search for'),
+    region: z.string().describe("The location's state or region."),
+    country: z.string().describe("The location's country."),
   })
   .strict()
 
@@ -31,6 +33,8 @@ export const weatherSchema = z
     location: z
       .string()
       .describe('The location name to get weather for. Only include the city name, not the state or country.'),
+    region: z.string().describe("The location's state or region."),
+    country: z.string().describe("The location's country."),
     days: z.number().describe('Number of days to forecast (1-16)'),
   })
   .strict()
@@ -109,6 +113,8 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
       .post(`${cloudUrl}/pro/weather/current`, {
         json: {
           location: params.location,
+          region: params.region,
+          country: params.country,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()
@@ -134,6 +140,8 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
       .post(`${cloudUrl}/pro/weather/forecast`, {
         json: {
           location: params.location,
+          region: params.region,
+          country: params.country,
           days: params.days || 3,
         },
       })
@@ -161,6 +169,8 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
       .post(`${cloudUrl}/pro/locations/search`, {
         json: {
           query: params.query,
+          region: params.region,
+          country: params.country,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()
@@ -198,6 +208,8 @@ export const configs: ToolConfig[] = [
     name: 'get_current_weather',
     description: `Return the current weather (today only) as text.
 - Use this tool when the user asks about the weather "now" or "today".
+- Provide the structured parameters (location, region, country).
+- - if you are not sure about the state/region and/or country ask the user to confirm this information.
 - Provide a concise one-day summary (temperature, condition, highs/lows).
 - Do not render a component.`,
     verb: 'Write current weather for {location}',
@@ -212,6 +224,8 @@ This tool is a **fallback** when, for some reason, rendering a component is not 
 (e.g. the user explicitly asks for a text forecast).
 
 - Output a clear day-by-day breakdown (one line per day with condition + high/low).
+- Provide the structured parameters (location, region, country).
+- - if you are not sure about the state/region and/or country ask the user to confirm this information.
 - Optionally add a brief overall summary and friendly suggestions after the breakdown.
 - If the user did not explicitly request a text-only format, prefer 'display-weather_forecast' instead.`,
     verb: 'Write 7-day text forecast for {location}',
@@ -227,7 +241,8 @@ This tool is a **fallback** when, for some reason, rendering a component is not 
 
 Use this tool whenever the user asks for a forecast that spans more than one day.
 - This is the **preferred tool** for multi-day forecasts (2–7 days).
-- Provide the structured parameters (location, days, forecast details).
+- Provide the structured parameters (location, region, country, days, forecast details).
+- - if you are not sure about the state/region and/or country ask the user to confirm this information.
 - Do NOT include a day-by-day breakdown in text when this tool is used.
 - You may still write a short overview (2–4 sentences) and friendly suggestions (bulleted).`,
     verb: 'Display 7-day forecast for {location}',

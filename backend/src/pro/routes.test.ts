@@ -59,7 +59,7 @@ describe('Pro Tools Routes', () => {
       new Request('http://localhost/pro/weather/current', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location: 'London' }),
+        body: JSON.stringify({ location: 'London', region: 'England', country: 'United Kingdom' }),
       }),
     )
     expect(response.status).toBe(200)
@@ -74,7 +74,7 @@ describe('Pro Tools Routes', () => {
       new Request('http://localhost/pro/weather/forecast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location: 'London', days: 3 }),
+        body: JSON.stringify({ location: 'London', region: 'England', country: 'United Kingdom', days: 3 }),
       }),
     )
     expect(response.status).toBe(200)
@@ -89,7 +89,7 @@ describe('Pro Tools Routes', () => {
       new Request('http://localhost/pro/locations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'London' }),
+        body: JSON.stringify({ query: 'London', region: 'England', country: 'United Kingdom' }),
       }),
     )
     expect(response.status).toBe(200)

@@ -21,7 +21,6 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/analytics'
-import { getOrCreateChatThread } from '@/lib/dal'
 import { seedAccounts, seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
 import { ThemeProvider } from '@/lib/theme-provider'
 import AccountsSettingsPage from '@/settings/accounts'
@@ -71,7 +70,7 @@ function AppContent({ initData }: { initData: InitData }) {
   )
 }
 
-function AppRoutes({ initData }: { initData: InitData }) {
+function AppRoutes(_: { initData: InitData }) {
   usePageTracking()
 
   const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
@@ -81,7 +80,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
       <Route path="/" element={<Layout />}>
         {/* Home routes with HomeLayout */}
         <Route element={<ChatLayout />}>
-          <Route index element={<Navigate to={`/chats/${initData.initialThreadId}`} replace />} />
+          <Route index element={<Navigate to="/chats/new" replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
           {isTasksEnabled && <Route path="tasks" element={<TasksPage />} />}
           <Route path="automations" element={<AutomationsPage />} />
@@ -165,14 +164,11 @@ const init = async (): Promise<InitData> => {
     }
   }
 
-  const initialThreadId = await getOrCreateChatThread()
-
   return {
     imap,
     imapSync,
     sideviewType,
     sideviewId,
-    initialThreadId,
     ...tray,
   }
 }

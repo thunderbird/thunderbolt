@@ -1,5 +1,5 @@
 import {
-  getEmailThreadByIdWithMessages,
+  getEmailThreadWithMessages,
   getEmailThreadByMessageIdWithMessages,
   getEmailThreadByMessageImapIdWithMessages,
 } from '@/lib/dal'
@@ -23,7 +23,7 @@ export function Sideview() {
         case 'imap':
           return await getEmailThreadByMessageImapIdWithMessages(sideviewId)
         case 'thread':
-          return await getEmailThreadByIdWithMessages(sideviewId)
+          return await getEmailThreadWithMessages(sideviewId)
         default:
           return null
       }

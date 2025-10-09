@@ -30,7 +30,6 @@ export type InitData = {
   window: Window | undefined
   sideviewType: SideviewType | null
   sideviewId: string | null
-  initialThreadId: string
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>

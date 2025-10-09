@@ -1,5 +1,5 @@
 import { type ComponentProps } from 'react'
-import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@/components/ui/sidebar'
+import { Sidebar, SidebarContent, SidebarHeader, SidebarRail, useSidebar } from '@/components/ui/sidebar'
 import { Button } from '../ui/button'
 import { useObjectView } from './object-view-provider'
 import { X } from 'lucide-react'
@@ -16,6 +16,7 @@ const getOutput = (part: any) => {
 
 export function ObjectSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
   const { objectContent, closeObjectSidebar } = useObjectView()
+  const { open } = useSidebar()
 
   const [, toolName] = splitPartType(objectContent?.type ?? '')
   const metadata = getToolMetadataSync(toolName, objectContent?.input)
@@ -31,7 +32,7 @@ export function ObjectSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
       <SidebarContent className="p-4 overflow-x-hidden">
         <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(objectContent)}</p>
       </SidebarContent>
-      <SidebarRail enableDrag direction="left" maxResizeWidth="52rem" />
+      {open && <SidebarRail enableDrag direction="left" maxResizeWidth="52rem" />}
     </Sidebar>
   )
 }

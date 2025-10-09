@@ -115,6 +115,19 @@ jobs:
           build-tools: 36.0.0
           ndk-version: 26.1.10909125
 
+      - name: Export Android SDK/NDK environment
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          if [ ! -d "$NDK_PATH" ]; then
+            NDK_PATH=$(ls -d "$ANDROID_SDK_ROOT/ndk/"* | head -1)
+          fi
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "Using ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "Using NDK at $NDK_PATH"
+
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
         with:

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-
+import { createElement } from 'react'
 /**
  * Creates a test wrapper with React Query client
  * Useful for testing hooks that use React Query
@@ -25,7 +25,7 @@ export const createQueryTestWrapper = (options?: {
   })
 
   return ({ children }: { children: React.ReactNode }) => {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children)
+    return createElement(QueryClientProvider, { client: queryClient }, children)
   }
 }
 

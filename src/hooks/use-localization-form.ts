@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -59,29 +59,32 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
   })
 
   const saveLocalizationMutation = useMutation({
-    mutationFn: async (values: LocalizationFormData) => {
-      const settingsToSave = [
-        { key: 'temperature_unit', value: values.temperatureUnit },
-        { key: 'wind_speed_unit', value: values.windSpeedUnit },
-        { key: 'precipitation_unit', value: values.precipitationUnit },
-        { key: 'time_format', value: values.timeFormat },
-        { key: 'distance_unit', value: values.distanceUnit },
-      ]
+    mutationFn: useCallback(
+      async (values: LocalizationFormData) => {
+        const settingsToSave = [
+          { key: 'temperature_unit', value: values.temperatureUnit },
+          { key: 'wind_speed_unit', value: values.windSpeedUnit },
+          { key: 'precipitation_unit', value: values.precipitationUnit },
+          { key: 'time_format', value: values.timeFormat },
+          { key: 'distance_unit', value: values.distanceUnit },
+        ]
 
-      for (const { key, value } of settingsToSave) {
-        await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value },
-        })
-      }
-    },
-    onSuccess: () => {
+        for (const { key, value } of settingsToSave) {
+          await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
+            target: settingsTable.key,
+            set: { value },
+          })
+        }
+      },
+      [db],
+    ),
+    onSuccess: useCallback(() => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       trackEvent('settings_localization_update')
-    },
-    onError: (error) => {
+    }, [queryClient]),
+    onError: useCallback((error: Error) => {
       console.error('Localization settings save failed:', error)
-    },
+    }, []),
   })
 
   useEffect(() => {

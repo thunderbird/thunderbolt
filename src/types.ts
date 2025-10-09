@@ -188,3 +188,17 @@ export type UnitsData = {
     timeFormat: TimeFormatUnit[]
   }
 }
+
+export type PreferencesSettings = {
+  locationName: string
+  locationLat: string
+  locationLng: string
+  preferredName: string
+  dataCollection: boolean
+  experimentalFeatureTasks: boolean
+  temperatureUnit: string
+  windSpeedUnit: string
+  precipitationUnit: string
+  timeFormat: string
+  distanceUnit: string
+}

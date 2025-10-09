@@ -4,9 +4,10 @@ import { cn, snakeCased } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import { useUnits } from '@/hooks/use-units'
-import { detectUnitSystem, getDefaultUnits, DEFAULT_IMPERIAL_UNITS } from '@/lib/unit-detection'
+import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
+import { useLocalizationForm } from '@/hooks/use-localization-form'
 import { getCloudUrl } from '@/lib/config'
 
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
@@ -113,14 +114,6 @@ const locationFormSchema = z.object({
   locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
 })
 
-const localizationFormSchema = z.object({
-  temperatureUnit: z.string(),
-  windSpeedUnit: z.string(),
-  precipitationUnit: z.string(),
-  timeFormat: z.string(),
-  distanceUnit: z.string(),
-})
-
 export default function PreferencesSettingsPage() {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
@@ -129,11 +122,18 @@ export default function PreferencesSettingsPage() {
   const { open, searchQuery, locations, isSearching, isResetting } = state
 
   // Localization dropdown states
-  const [temperatureDropdownOpen, setTemperatureDropdownOpen] = useState(false)
-  const [windSpeedDropdownOpen, setWindSpeedDropdownOpen] = useState(false)
-  const [precipitationDropdownOpen, setPrecipitationDropdownOpen] = useState(false)
-  const [timeFormatDropdownOpen, setTimeFormatDropdownOpen] = useState(false)
-  const [distanceDropdownOpen, setDistanceDropdownOpen] = useState(false)
+  const {
+    temperatureDropdownOpen,
+    windSpeedDropdownOpen,
+    precipitationDropdownOpen,
+    timeFormatDropdownOpen,
+    distanceDropdownOpen,
+    setTemperatureDropdownOpen,
+    setWindSpeedDropdownOpen,
+    setPrecipitationDropdownOpen,
+    setTimeFormatDropdownOpen,
+    setDistanceDropdownOpen,
+  } = useLocalizationDropdowns()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -162,6 +162,13 @@ export default function PreferencesSettingsPage() {
   })
 
   const { data: unitsData, isLoading: unitsLoading } = useUnits()
+
+  // Localization form logic
+  const { localizationForm, handleLocalizationChange } = useLocalizationForm({
+    settings,
+    unitsData,
+    unitsLoading,
+  })
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -193,17 +200,6 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  const localizationForm = useForm<z.infer<typeof localizationFormSchema>>({
-    resolver: zodResolver(localizationFormSchema),
-    defaultValues: {
-      temperatureUnit: '',
-      windSpeedUnit: '',
-      precipitationUnit: '',
-      timeFormat: '',
-      distanceUnit: '',
-    },
-  })
-
   // Update forms when data is loaded
   useEffect(() => {
     if (settings) {
@@ -228,27 +224,6 @@ export default function PreferencesSettingsPage() {
       })
     }
   }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
-
-  // Separate effect for localization form to wait for units data
-  useEffect(() => {
-    if (settings && unitsData && !unitsLoading) {
-      // Get the current form values to avoid unnecessary resets
-      const currentValues = localizationForm.getValues()
-
-      // Only reset if we don't have any values set yet
-      const hasAnyValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
-
-      if (!hasAnyValues) {
-        localizationForm.reset({
-          temperatureUnit: settings.temperatureUnit || DEFAULT_IMPERIAL_UNITS.temperature,
-          windSpeedUnit: settings.windSpeedUnit || DEFAULT_IMPERIAL_UNITS.speed,
-          precipitationUnit: settings.precipitationUnit || DEFAULT_IMPERIAL_UNITS.precipitation,
-          timeFormat: settings.timeFormat || DEFAULT_IMPERIAL_UNITS.timeFormat,
-          distanceUnit: settings.distanceUnit || DEFAULT_IMPERIAL_UNITS.distance,
-        })
-      }
-    }
-  }, [settings, unitsData, unitsLoading, localizationForm])
 
   // Sync preview features when telemetry is disabled
   useEffect(() => {
@@ -422,115 +397,9 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  // Save localization mutation
-  const saveLocalizationMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof localizationFormSchema>) => {
-      try {
-        await db
-          .insert(settingsTable)
-          .values({ key: 'temperature_unit', value: values.temperatureUnit })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.temperatureUnit },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'wind_speed_unit', value: values.windSpeedUnit })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.windSpeedUnit },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'precipitation_unit', value: values.precipitationUnit })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.precipitationUnit },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'time_format', value: values.timeFormat })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.timeFormat },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'distance_unit', value: values.distanceUnit })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.distanceUnit },
-          })
-      } catch (error) {
-        console.error('Error saving localization settings:', error)
-        throw error
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-      trackEvent('settings_localization_update')
-    },
-  })
-
-  // Auto-detect and set default units if no settings exist
-  useEffect(() => {
-    const autoDetectUnits = async () => {
-      if (!settings || !unitsData || unitsLoading) return
-
-      // Check if any localization settings are missing
-      const hasAnyLocalizationSettings =
-        settings.temperatureUnit ||
-        settings.windSpeedUnit ||
-        settings.precipitationUnit ||
-        settings.timeFormat ||
-        settings.distanceUnit
-
-      if (!hasAnyLocalizationSettings) {
-        try {
-          const unitSystem = await detectUnitSystem()
-          const defaultUnits = getDefaultUnits(unitSystem)
-
-          // Set the detected units in the form
-          localizationForm.reset({
-            temperatureUnit: defaultUnits.temperature,
-            windSpeedUnit: defaultUnits.speed,
-            precipitationUnit: defaultUnits.precipitation,
-            timeFormat: defaultUnits.timeFormat,
-            distanceUnit: defaultUnits.distance,
-          })
-
-          // Save the detected units to database
-          await saveLocalizationMutation.mutateAsync({
-            temperatureUnit: defaultUnits.temperature,
-            windSpeedUnit: defaultUnits.speed,
-            precipitationUnit: defaultUnits.precipitation,
-            timeFormat: defaultUnits.timeFormat,
-            distanceUnit: defaultUnits.distance,
-          })
-        } catch (error) {
-          console.warn('Failed to auto-detect units:', error)
-        }
-      }
-    }
-
-    autoDetectUnits()
-  }, [settings, unitsData, unitsLoading, localizationForm, saveLocalizationMutation])
-
   const handleNameBlur = async (value: string) => {
     // Save the value directly
     await saveNameMutation.mutateAsync({ preferredName: value })
-  }
-
-  const handleLocalizationChange = async (fieldName: keyof z.infer<typeof localizationFormSchema>, value: string) => {
-    const currentValues = localizationForm.getValues()
-    await saveLocalizationMutation.mutateAsync({
-      ...currentValues,
-      [fieldName]: value,
-    })
   }
 
   const handleDataCollectionToggle = async (value: boolean) => {

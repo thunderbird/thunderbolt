@@ -186,19 +186,6 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Build Tauri Android App
-        env:
-          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
-          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
-          RUSTC_WRAPPER: ''
-          SCCACHE_DISABLE: '1'
-          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          NODE_OPTIONS: '--max-old-space-size=8192'
-        run: |
-          bun install
-          bun tauri android build
-
       - name: Setup Android Signing Configuration
         env:
           ANDROID_UPLOAD_KEY: ${{ secrets.ANDROID_UPLOAD_KEY }}
@@ -215,6 +202,19 @@ jobs:
 
           # Copy keystore to Android project directory
           cp ~/.android/upload-keystore.jks src-tauri/gen/android/upload-keystore.jks
+
+      - name: Build Tauri Android App
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+          RUSTC_WRAPPER: ''
+          SCCACHE_DISABLE: '1'
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: |
+          bun install
+          bun tauri android build
 
       - name: Find AAB file
         id: find_aab

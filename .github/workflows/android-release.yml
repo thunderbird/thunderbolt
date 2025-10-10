@@ -216,24 +216,12 @@ jobs:
           bun install
           bun tauri android build
 
-      - name: Find AAB file
-        id: find_aab
-        run: |
-          AAB_PATH=$(find src-tauri/gen/android -name "*.aab" -type f | head -1)
-          if [ -f "$AAB_PATH" ]; then
-            echo "📱 Found AAB file: $AAB_PATH"
-            echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
-          else
-            echo "❌ No AAB file found in Android build directory"
-            exit 1
-          fi
-
       - name: Upload to Google Play Store
-        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb
+        uses: google-github-actions/upload-google-play@v1.0.0
         with:
           serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: 'net.thunderbird.thunderbolt'
-          releaseFiles: ${{ steps.find_aab.outputs.aab_path }}
+          releaseFiles: src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab
           track: 'internal'
           status: 'draft'
 

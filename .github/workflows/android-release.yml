@@ -217,7 +217,7 @@ jobs:
           bun tauri android build
 
       - name: Upload to Google Play Store
-        uses: google-github-actions/upload-google-play@v1.0.0
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb
         with:
           serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: 'net.thunderbird.thunderbolt'

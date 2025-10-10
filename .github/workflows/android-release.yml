@@ -234,8 +234,16 @@ jobs:
             exit 1
           fi
 
+      - name: Check Google Play secret
+        run: |
+          if [ -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "HAS_PLAY_SERVICE_ACCOUNT=true" >> $GITHUB_ENV
+          else
+            echo "HAS_PLAY_SERVICE_ACCOUNT=false" >> $GITHUB_ENV
+          fi
+
       - name: Upload to Google Play Store
-        if: secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        if: ${{ env.HAS_PLAY_SERVICE_ACCOUNT == 'true' }}
         uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb
         with:
           serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}

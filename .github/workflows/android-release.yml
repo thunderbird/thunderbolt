@@ -28,11 +28,6 @@ on:
           - patch
           - minor
           - major
-      skip_build:
-        description: 'Skip building and deploying (run version bump only)'
-        required: false
-        default: false
-        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
@@ -45,7 +40,6 @@ concurrency:
 
 jobs:
   build_and_deploy_android:
-    if: ${{ !inputs.skip_build }}
     runs-on: ubuntu-latest
     environment: thunderbolt_release
     outputs:

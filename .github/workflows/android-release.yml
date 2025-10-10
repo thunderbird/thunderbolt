@@ -28,11 +28,6 @@ on:
           - patch
           - minor
           - major
-      skip_version_bump:
-        description: 'Skip version bumping and use existing version'
-        required: false
-        default: false
-        type: boolean
       skip_build:
         description: 'Skip building and deploying (run version bump only)'
         required: false
@@ -210,94 +205,44 @@ jobs:
           bun install
           bun tauri android build
 
-      - name: Setup Google Play Console API
+      - name: Setup Android Signing Configuration
         env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          ANDROID_UPLOAD_KEY: ${{ secrets.ANDROID_UPLOAD_KEY }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
         run: |
-          if [ -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > ~/google-play-service-account.json
-            chmod 600 ~/google-play-service-account.json
-            echo "GOOGLE_PLAY_SERVICE_ACCOUNT_PATH=~/google-play-service-account.json" >> $GITHUB_ENV
-          else
-            echo "⚠️ Google Play service account not configured, skipping Play Store upload"
-          fi
-
-      - name: Upload to Google Play Store
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_PATH != ''
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_PATH: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_PATH }}
-        run: |
-          # Find the built AAB file
-          AAB_PATH=$(find src-tauri/gen/android -name "*.aab" -type f | head -1)
-
-          if [ -f "$AAB_PATH" ]; then
-            echo "📱 Found AAB file: $AAB_PATH"
-            
-            # Install Google Play Console API tools
-            pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-
-            # Create upload script
-            cat > upload_to_play.py << 'EOF'
-          import json
-          import os
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-
-          # Load service account credentials
-          service_account_path = os.path.expanduser(os.environ['GOOGLE_PLAY_SERVICE_ACCOUNT_PATH'])
-          credentials = service_account.Credentials.from_service_account_file(
-              service_account_path,
-              scopes=['https://www.googleapis.com/auth/androidpublisher']
-          )
-
-          # Build the service
-          service = build('androidpublisher', 'v3', credentials=credentials)
-
-          # Get the package name from the AAB file (you may need to extract this differently)
-          package_name = 'net.thunderbird.thunderbolt'
-
-          # Create a new edit
-          edit_request = service.edits().insert(body={}, packageName=package_name)
-          edit_result = edit_request.execute()
-          edit_id = edit_result['id']
-
-          try:
-              # Upload the AAB file
-              aab_path = os.environ['AAB_PATH']
-              media = MediaFileUpload(aab_path, mimetype='application/octet-stream')
-              upload_request = service.edits().bundles().upload(
-                  packageName=package_name,
-                  editId=edit_id,
-                  media_body=media
-              )
-              upload_result = upload_request.execute()
-              print(f"✅ Upload successful: {upload_result}")
-
-              # Commit the edit
-              commit_request = service.edits().commit(
-                  packageName=package_name,
-                  editId=edit_id
-              )
-              commit_result = commit_request.execute()
-              print(f"✅ Edit committed: {commit_result}")
-
-          except Exception as e:
-              print(f"❌ Upload failed: {e}")
-              # Abandon the edit on failure
-              service.edits().delete(packageName=package_name, editId=edit_id).execute()
-              raise
+          # Create signing.properties file for Android build
+          cat > src-tauri/gen/android/signing.properties << EOF
+          storeFile=../upload-keystore.jks
+          storePassword=$ANDROID_UPLOAD_KEY_PASSWORD
+          keyAlias=$ANDROID_UPLOAD_KEY_ALIAS
+          keyPassword=$ANDROID_UPLOAD_KEY_PASSWORD
           EOF
 
-            # Run the upload script
-            AAB_PATH="$AAB_PATH" python upload_to_play.py
-            
-            # Clean up
-            rm -f upload_to_play.py
+          # Copy keystore to Android project directory
+          cp ~/.android/upload-keystore.jks src-tauri/gen/android/upload-keystore.jks
+
+      - name: Find AAB file
+        id: find_aab
+        run: |
+          AAB_PATH=$(find src-tauri/gen/android -name "*.aab" -type f | head -1)
+          if [ -f "$AAB_PATH" ]; then
+            echo "📱 Found AAB file: $AAB_PATH"
+            echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
           else
             echo "❌ No AAB file found in Android build directory"
             exit 1
           fi
+
+      - name: Upload to Google Play Store
+        if: secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb
+        with:
+          serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: 'net.thunderbird.thunderbolt'
+          releaseFiles: ${{ steps.find_aab.outputs.aab_path }}
+          track: 'internal'
+          status: 'draft'
 
       - name: Upload build artifacts (if build fails)
         if: failure()
@@ -314,13 +259,3 @@ jobs:
         run: |
           rm -f ~/.android/upload-keystore.jks
           rm -f ~/google-play-service-account.json
-
-  version_bump:
-    if: ${{ !inputs.skip_version_bump && (inputs.skip_build || needs.build_and_deploy_android.result == 'success') }}
-    needs: [build_and_deploy_android]
-    uses: ./.github/workflows/version-bump.yml
-    with:
-      platform: android
-      version: ${{ needs.build_and_deploy_android.outputs.build_version }}
-      version_type: ${{ inputs.version_type }}
-    secrets: inherit

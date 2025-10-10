@@ -76,7 +76,7 @@ export const LinkPreviewContainer = ({ url }: LinkPreviewContainerProps) => {
     return null
   }
 
-  return <LinkPreview {...content} image={`${cloudUrl}/pro/proxy/${content?.image}`} />
+  return <LinkPreview {...content} image={content?.image ? `${cloudUrl}/pro/proxy/${content?.image}` : null} />
 }
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {

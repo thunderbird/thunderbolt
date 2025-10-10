@@ -245,8 +245,9 @@ jobs:
           from googleapiclient.http import MediaFileUpload
 
           # Load service account credentials
+          service_account_path = os.path.expanduser(os.environ['GOOGLE_PLAY_SERVICE_ACCOUNT_PATH'])
           credentials = service_account.Credentials.from_service_account_file(
-              os.environ['GOOGLE_PLAY_SERVICE_ACCOUNT_PATH'],
+              service_account_path,
               scopes=['https://www.googleapis.com/auth/androidpublisher']
           )
 
@@ -263,7 +264,8 @@ jobs:
 
           try:
               # Upload the AAB file
-              media = MediaFileUpload('$AAB_PATH', mimetype='application/octet-stream')
+              aab_path = os.environ['AAB_PATH']
+              media = MediaFileUpload(aab_path, mimetype='application/octet-stream')
               upload_request = service.edits().bundles().upload(
                   packageName=package_name,
                   editId=edit_id,
@@ -288,7 +290,7 @@ jobs:
           EOF
 
             # Run the upload script
-            python upload_to_play.py
+            AAB_PATH="$AAB_PATH" python upload_to_play.py
             
             # Clean up
             rm -f upload_to_play.py

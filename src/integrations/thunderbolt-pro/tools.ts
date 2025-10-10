@@ -42,10 +42,17 @@ export const weatherSchema = z
   })
   .strict()
 
+export const linkPreviewSchema = z
+  .object({
+    url: z.string().describe('Relevant URL to render a link preview'),
+  })
+  .strict()
+
 export type SearchParams = z.infer<typeof searchSchema>
 export type FetchContentParams = z.infer<typeof fetchContentSchema>
 export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
+export type LinkPreviewParams = z.infer<typeof linkPreviewSchema>
 
 export type FetchContentData = {
   url: string
@@ -280,5 +287,13 @@ Use this tool whenever the user asks for a forecast that spans more than one day
       const forecastData = await getWeatherForecast(params)
       return forecastData
     },
+  },
+  {
+    name: 'display-link_preview',
+    description: `Render the custom link preview component in the UI for one or more relevant webpages.
+Use this tool to visually display the title, description, and image for selected URLs after their content has been fetched.`,
+    verb: 'Display link preview for {url}',
+    parameters: linkPreviewSchema,
+    execute: async (params: LinkPreviewParams) => params,
   },
 ]

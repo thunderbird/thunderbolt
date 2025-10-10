@@ -4,7 +4,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useObjectView } from './object-view-provider'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
-import { LinkPreview } from './link-preview'
 
 type UseToolGroupStateParams = {
   tools: ToolUIPart[]
@@ -49,44 +48,41 @@ export const ToolGroup = ({ tools, isStreaming, isLastPartInMessage, hasTextInMe
   })
 
   return (
-    <>
-      <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
-        {tools.map((tool, index) => (
-          <ToolItem
-            key={tool.toolCallId ?? `${tool.type}-${index}`}
-            tool={tool}
-            index={index}
-            onOpenDetails={openObjectSidebar}
-          />
-        ))}
-        {showLoadingNext && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{
-                  scale: 1,
-                }}
-              >
-                <ToolIcon
-                  toolName="processing"
-                  toolOutput={undefined}
-                  Icon={null}
-                  initials="..."
-                  isLoading={true}
-                  isError={false}
-                  tooltipKey="next-action-loading"
-                  onClick={() => {}}
-                />
-              </motion.div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="font-medium">Thinking...</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <LinkPreview tools={tools} />
-    </>
+    <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
+      {tools.map((tool, index) => (
+        <ToolItem
+          key={tool.toolCallId ?? `${tool.type}-${index}`}
+          tool={tool}
+          index={index}
+          onOpenDetails={openObjectSidebar}
+        />
+      ))}
+      {showLoadingNext && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{
+                scale: 1,
+              }}
+            >
+              <ToolIcon
+                toolName="processing"
+                toolOutput={undefined}
+                Icon={null}
+                initials="..."
+                isLoading={true}
+                isError={false}
+                tooltipKey="next-action-loading"
+                onClick={() => {}}
+              />
+            </motion.div>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="font-medium">Thinking...</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   )
 }

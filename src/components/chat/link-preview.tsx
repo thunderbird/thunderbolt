@@ -1,80 +1,105 @@
-import { useEffect, useState } from 'react'
 import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
-import { type ToolUIPart } from 'ai'
-import { type FetchContentData } from '@/integrations/thunderbolt-pro/tools'
+import { Skeleton } from '../ui/skeleton'
 import { useCloudUrl } from '@/hooks/use-cloud-url'
-import { motion } from 'framer-motion'
+import { fetchContent } from '@/integrations/thunderbolt-pro/tools'
 import { markdownToText } from '@/lib/utils'
+import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 
 type LinkPreviewProps = {
-  tools: ToolUIPart[]
-}
-
-type Link = {
   url: string
-  title: string
-  description: string
-  image: string
+  title: string | null
+  description: string | null
+  image: string | null
 }
 
-const useLinkPreview = (tools: ToolUIPart[]) => {
-  const [links, setLinks] = useState<Link[]>([])
-
-  useEffect(() => {
-    setLinks(
-      tools
-        .filter((tool) => tool.type === 'tool-fetch_content')
-        .map((tool) => {
-          const output = tool.output as FetchContentData
-          return {
-            title: output?.title ?? '',
-            description: markdownToText(output?.text || ''),
-            url: output?.url ?? '',
-            image: output?.image ?? '',
-          }
-        }),
-    )
-  }, [tools])
-
-  return { links }
+type LinkPreviewContainerProps = {
+  url: string
 }
 
-export const LinkPreview = ({ tools }: LinkPreviewProps) => {
-  const { links } = useLinkPreview(tools)
+const useFetchLinkPreviewContent = (url: string) => {
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewProps>()
+  const [isLoading, setIsLoading] = useState(true)
   const cloudUrl = useCloudUrl()
 
-  if (!links.length) {
+  useEffect(() => {
+    if (url) {
+      fetchContent({ url })
+        .then((content) =>
+          setLinkPreview({
+            description: markdownToText(content?.text ?? ''),
+            image: content?.image ? `${cloudUrl}/pro/proxy/${content?.image}` : '',
+            title: content?.title ?? '',
+            url,
+          }),
+        )
+        .finally(() => setIsLoading(false))
+    }
+  }, [cloudUrl, url])
+
+  return { isLoading, content: linkPreview }
+}
+
+export const LinkPreviewSkeleton = () => {
+  return (
+    <motion.div
+      className="my-4"
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{
+        scale: 1,
+        opacity: 1,
+      }}
+      exit={{
+        opacity: 0,
+      }}
+    >
+      <Card className="flex-row py-0 flex p-1 pr-2 gap-0">
+        <Skeleton className="rounded-lg h-20 w-20" />
+        <CardHeader className="flex-1 flex flex-col pl-4 my-2">
+          <Skeleton className="h-5 w-3/4 mb-2" />
+          <Skeleton className="h-2 w-full" />
+          <Skeleton className="h-2 w-2/3 mt-1" />
+        </CardHeader>
+      </Card>
+    </motion.div>
+  )
+}
+
+export const LinkPreviewContainer = ({ url }: LinkPreviewContainerProps) => {
+  const { content, isLoading } = useFetchLinkPreviewContent(url)
+
+  if (isLoading) {
+    return <LinkPreviewSkeleton />
+  }
+
+  if (!content) {
     return null
   }
 
+  return <LinkPreview {...content} />
+}
+
+export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {links.map((link) => {
-        return (
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{
-              scale: 1,
-            }}
-          >
-            <a href={link.url} target="_blank">
-              <Card className="cursor-pointer flex-row py-0 flex gap-4 p-1 pr-2 hover:bg-border">
-                {!!link.image && !!cloudUrl && (
-                  <img
-                    src={`${cloudUrl}/pro/proxy/${link.image}`}
-                    alt={link.title}
-                    className="rounded-lg h-20 w-20 object-cover"
-                  />
-                )}
-                <CardHeader className="flex-1 flex flex-col pl-0 my-2">
-                  <CardTitle className="line-clamp-1">{link.title}</CardTitle>
-                  {!!link.description && <CardDescription className="line-clamp-2">{link.description}</CardDescription>}
-                </CardHeader>
-              </Card>
-            </a>
-          </motion.div>
-        )
-      })}
-    </div>
+    <motion.div
+      className="my-4"
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{
+        scale: 1,
+        opacity: 1,
+      }}
+    >
+      <a href={url} target="_blank">
+        <Card className="cursor-pointer flex-row py-0 flex p-1 pr-2 hover:bg-border gap-0">
+          {!!image && (
+            <img src={image} alt={title ?? description ?? url} className="rounded-lg h-20 w-20 object-cover" />
+          )}
+          <CardHeader className="flex-1 flex flex-col pl-4 my-2">
+            <CardTitle className="line-clamp-1">{title}</CardTitle>
+            {!!description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
+          </CardHeader>
+        </Card>
+      </a>
+    </motion.div>
   )
 }

@@ -61,6 +61,7 @@ export const createPrompt = ({ preferredName, location, localization }: PromptPa
     // —— Style guide ——
     `Respond in Markdown (no XML) that is pleasant, concise, and helpful. Use subheaders, bullet points, and bold / italics to help structure the response. Use emojis where appropriate.`,
     `Never invent information unless the user explicitly requests creative fiction.`,
+    `You MUST call the display-link_preview tool after completing all search or deep search operations, once you have identified one or more relevant URLs. Use it to render link previews for the most relevant webpages you’ve found.`,
   ]
 
   return prompt.filter(Boolean).join('\n')

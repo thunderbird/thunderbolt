@@ -20,7 +20,6 @@ type LinkPreviewContainerProps = {
 const useFetchLinkPreviewContent = (url: string) => {
   const [linkPreview, setLinkPreview] = useState<LinkPreviewProps>()
   const [isLoading, setIsLoading] = useState(true)
-  const cloudUrl = useCloudUrl()
 
   useEffect(() => {
     if (url) {
@@ -28,14 +27,14 @@ const useFetchLinkPreviewContent = (url: string) => {
         .then((content) =>
           setLinkPreview({
             description: markdownToText(content?.text ?? ''),
-            image: content?.image ? `${cloudUrl}/pro/proxy/${content?.image}` : '',
+            image: content?.image ?? '',
             title: content?.title ?? '',
             url,
           }),
         )
         .finally(() => setIsLoading(false))
     }
-  }, [cloudUrl, url])
+  }, [url])
 
   return { isLoading, content: linkPreview }
 }
@@ -67,6 +66,7 @@ export const LinkPreviewSkeleton = () => {
 
 export const LinkPreviewContainer = ({ url }: LinkPreviewContainerProps) => {
   const { content, isLoading } = useFetchLinkPreviewContent(url)
+  const cloudUrl = useCloudUrl()
 
   if (isLoading) {
     return <LinkPreviewSkeleton />
@@ -76,7 +76,7 @@ export const LinkPreviewContainer = ({ url }: LinkPreviewContainerProps) => {
     return null
   }
 
-  return <LinkPreview {...content} />
+  return <LinkPreview {...content} image={`${cloudUrl}/pro/proxy/${content?.image}`} />
 }
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
@@ -89,7 +89,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
         opacity: 1,
       }}
     >
-      <a href={url} target="_blank">
+      <a href={url} target="_blank" rel="noopener noreferrer">
         <Card className="cursor-pointer flex-row py-0 flex p-1 pr-2 hover:bg-border gap-0">
           {!!image && (
             <img src={image} alt={title ?? description ?? url} className="rounded-lg h-20 w-20 object-cover" />

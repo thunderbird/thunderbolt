@@ -2,7 +2,6 @@ import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Skeleton } from '../ui/skeleton'
 import { useCloudUrl } from '@/hooks/use-cloud-url'
 import { fetchContent } from '@/integrations/thunderbolt-pro/tools'
-import { markdownToText } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 
@@ -22,18 +21,25 @@ const useFetchLinkPreviewContent = (url: string) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (url) {
-      fetchContent({ url })
-        .then((content) =>
-          setLinkPreview({
-            description: content?.summary ?? '',
-            image: content?.image ?? '',
-            title: content?.title ?? '',
-            url,
-          }),
-        )
-        .finally(() => setIsLoading(false))
+    if (!url) {
+      setIsLoading(false)
+      return
     }
+
+    fetchContent({ url })
+      .then((content) =>
+        setLinkPreview({
+          description: content?.summary ?? '',
+          image: content?.image ?? '',
+          title: content?.title ?? '',
+          url,
+        }),
+      )
+      .catch(() => {
+        // Handle fetch errors gracefully
+        setLinkPreview(undefined)
+      })
+      .finally(() => setIsLoading(false))
   }, [url])
 
   return { isLoading, content: linkPreview }

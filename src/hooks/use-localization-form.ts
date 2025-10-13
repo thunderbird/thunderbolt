@@ -6,55 +6,55 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { settingsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent } from '@/lib/analytics'
-import { detectUnitSystem, getDefaultUnits, DEFAULT_IMPERIAL_UNITS } from '@/lib/unit-detection'
-import type { UnitsData, PreferencesSettings } from '@/types'
+import type { CountryUnitsData, PreferencesSettings } from '@/types'
 
 export const localizationFormSchema = z.object({
-  temperatureUnit: z.string(),
-  windSpeedUnit: z.string(),
-  precipitationUnit: z.string(),
-  timeFormat: z.string(),
   distanceUnit: z.string(),
+  temperatureUnit: z.string(),
+  dateFormat: z.string(),
+  timeFormat: z.string(),
+  currency: z.string(),
 })
 
 type LocalizationFormData = z.infer<typeof localizationFormSchema>
 
 type UseLocalizationFormProps = {
   settings: PreferencesSettings | undefined
-  unitsData: UnitsData | undefined
-  unitsLoading: boolean
+  countryUnitsData: CountryUnitsData | undefined
+  countryUnitsLoading: boolean
 }
 
 /**
- * Creates form values object from settings or default units
+ * Creates form values object from settings or country units data
+ * Defaults to US units if no country data is available
  */
 const createFormValues = (
   settings: PreferencesSettings | undefined,
-  defaultUnits: ReturnType<typeof getDefaultUnits>,
+  countryUnitsData: CountryUnitsData | undefined,
 ) => ({
-  temperatureUnit: settings?.temperatureUnit || defaultUnits.temperature,
-  windSpeedUnit: settings?.windSpeedUnit || defaultUnits.speed,
-  precipitationUnit: settings?.precipitationUnit || defaultUnits.precipitation,
-  timeFormat: settings?.timeFormat || defaultUnits.timeFormat,
-  distanceUnit: settings?.distanceUnit || defaultUnits.distance,
+  distanceUnit: settings?.distanceUnit || countryUnitsData?.units || 'metric',
+  temperatureUnit: settings?.temperatureUnit || countryUnitsData?.temperature || 'F',
+  dateFormat: settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
+  timeFormat: settings?.timeFormat || countryUnitsData?.timeFormat || '12',
+  currency: settings?.currency || countryUnitsData?.currency?.code || 'USD',
 })
 
 /**
  * Manages localization form state and auto-detection logic
  * Extracted from preferences component for better separation of concerns
  */
-export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLocalizationFormProps) => {
+export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLoading }: UseLocalizationFormProps) => {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const localizationForm = useForm<LocalizationFormData>({
     resolver: zodResolver(localizationFormSchema),
     defaultValues: {
-      temperatureUnit: '',
-      windSpeedUnit: '',
-      precipitationUnit: '',
-      timeFormat: '',
       distanceUnit: '',
+      temperatureUnit: '',
+      dateFormat: '',
+      timeFormat: '',
+      currency: '',
     },
   })
 
@@ -62,11 +62,11 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
     mutationFn: useCallback(
       async (values: LocalizationFormData) => {
         const settingsToSave = [
-          { key: 'temperature_unit', value: values.temperatureUnit },
-          { key: 'wind_speed_unit', value: values.windSpeedUnit },
-          { key: 'precipitation_unit', value: values.precipitationUnit },
-          { key: 'time_format', value: values.timeFormat },
           { key: 'distance_unit', value: values.distanceUnit },
+          { key: 'temperature_unit', value: values.temperatureUnit },
+          { key: 'date_format', value: values.dateFormat },
+          { key: 'time_format', value: values.timeFormat },
+          { key: 'currency', value: values.currency },
         ]
 
         for (const { key, value } of settingsToSave) {
@@ -89,7 +89,7 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
 
   useEffect(() => {
     const initializeForm = async () => {
-      if (!settings || !unitsData || unitsLoading) return
+      if (!settings || countryUnitsLoading) return
 
       const currentValues = localizationForm.getValues()
       const hasFormValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
@@ -97,33 +97,25 @@ export const useLocalizationForm = ({ settings, unitsData, unitsLoading }: UseLo
       if (hasFormValues) return
 
       const hasAnyLocalizationSettings =
+        settings.distanceUnit ||
         settings.temperatureUnit ||
-        settings.windSpeedUnit ||
-        settings.precipitationUnit ||
+        settings.dateFormat ||
         settings.timeFormat ||
-        settings.distanceUnit
+        settings.currency
 
       if (hasAnyLocalizationSettings) {
-        const formValues = createFormValues(settings, DEFAULT_IMPERIAL_UNITS)
+        const formValues = createFormValues(settings, countryUnitsData)
         localizationForm.reset(formValues)
       } else {
-        try {
-          const unitSystem = await detectUnitSystem()
-          const defaultUnits = getDefaultUnits(unitSystem)
-
-          const formValues = createFormValues(undefined, defaultUnits)
-          localizationForm.reset(formValues)
-          await saveLocalizationMutation.mutateAsync(formValues)
-        } catch (error) {
-          console.warn('Failed to auto-detect units, using imperial defaults:', error)
-          const formValues = createFormValues(undefined, DEFAULT_IMPERIAL_UNITS)
-          localizationForm.reset(formValues)
-        }
+        // If no country data is available (no location set), use US defaults
+        const formValues = createFormValues(undefined, countryUnitsData)
+        localizationForm.reset(formValues)
+        await saveLocalizationMutation.mutateAsync(formValues)
       }
     }
 
     initializeForm()
-  }, [settings, unitsData, unitsLoading, localizationForm, saveLocalizationMutation])
+  }, [settings, countryUnitsData, countryUnitsLoading, localizationForm, saveLocalizationMutation])
 
   const handleLocalizationChange = async (fieldName: keyof LocalizationFormData, value: string) => {
     const currentValues = localizationForm.getValues()

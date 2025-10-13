@@ -71,7 +71,6 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
     },
   })
 
-  // Store form reference to avoid dependency issues
   formRef.current = localizationForm
 
   const saveLocalizationMutation = useMutation({
@@ -109,7 +108,6 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
     }
   }, [])
 
-  // Initialize form with settings on first load
   useEffect(() => {
     if (!settings || countryUnitsLoading) return
 
@@ -128,19 +126,14 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
       settings.dateFormat ||
       settings.timeFormat ||
       settings.currency
-
-    // Only initialize if we haven't done so yet
     if (!hasInitialized.current) {
       if (hasAnyLocalizationSettings) {
-        // Use existing settings
         const formValues = createFormValues(settings, countryUnitsData, false)
         resetForm(formValues)
       } else {
-        // Use country data or US defaults
         const formValues = createFormValues(undefined, countryUnitsData)
         resetForm(formValues)
 
-        // Auto-save if form was empty
         if (!hasFormValues) {
           saveLocalizationMutation.mutateAsync(formValues).catch((error) => {
             console.error('Auto-save localization settings failed:', error)

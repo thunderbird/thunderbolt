@@ -1,5 +1,5 @@
-import { useEffect, useCallback } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useCallback, useRef } from 'react'
+import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,15 +28,26 @@ type UseLocalizationFormProps = {
  * Creates form values object from settings or country units data
  * Defaults to US units if no country data is available
  */
-const createFormValues = (
+export const createFormValues = (
   settings: PreferencesSettings | undefined,
   countryUnitsData: CountryUnitsData | undefined,
+  prioritizeCountryData: boolean = false,
 ) => ({
-  distanceUnit: settings?.distanceUnit || countryUnitsData?.units || 'metric',
-  temperatureUnit: settings?.temperatureUnit || countryUnitsData?.temperature || 'F',
-  dateFormat: settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
-  timeFormat: settings?.timeFormat || countryUnitsData?.timeFormat || '12',
-  currency: settings?.currency || countryUnitsData?.currency?.code || 'USD',
+  distanceUnit: prioritizeCountryData
+    ? countryUnitsData?.units || settings?.distanceUnit || 'imperial'
+    : settings?.distanceUnit || countryUnitsData?.units || 'imperial',
+  temperatureUnit: prioritizeCountryData
+    ? countryUnitsData?.temperature || settings?.temperatureUnit || 'F'
+    : settings?.temperatureUnit || countryUnitsData?.temperature || 'F',
+  dateFormat: prioritizeCountryData
+    ? countryUnitsData?.dateFormatExample || settings?.dateFormat || 'MM/DD/YYYY'
+    : settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
+  timeFormat: prioritizeCountryData
+    ? countryUnitsData?.timeFormat || settings?.timeFormat || '12'
+    : settings?.timeFormat || countryUnitsData?.timeFormat || '12',
+  currency: prioritizeCountryData
+    ? countryUnitsData?.currency?.code || settings?.currency || 'USD'
+    : settings?.currency || countryUnitsData?.currency?.code || 'USD',
 })
 
 /**
@@ -46,6 +57,8 @@ const createFormValues = (
 export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLoading }: UseLocalizationFormProps) => {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
+  const hasInitialized = useRef(false)
+  const formRef = useRef<UseFormReturn<LocalizationFormData> | null>(null)
 
   const localizationForm = useForm<LocalizationFormData>({
     resolver: zodResolver(localizationFormSchema),
@@ -57,6 +70,9 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
       currency: '',
     },
   })
+
+  // Store form reference to avoid dependency issues
+  formRef.current = localizationForm
 
   const saveLocalizationMutation = useMutation({
     mutationFn: useCallback(
@@ -87,35 +103,64 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
     }, []),
   })
 
-  useEffect(() => {
-    const initializeForm = async () => {
-      if (!settings || countryUnitsLoading) return
-
-      const currentValues = localizationForm.getValues()
-      const hasFormValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
-
-      if (hasFormValues) return
-
-      const hasAnyLocalizationSettings =
-        settings.distanceUnit ||
-        settings.temperatureUnit ||
-        settings.dateFormat ||
-        settings.timeFormat ||
-        settings.currency
-
-      if (hasAnyLocalizationSettings) {
-        const formValues = createFormValues(settings, countryUnitsData)
-        localizationForm.reset(formValues)
-      } else {
-        // If no country data is available (no location set), use US defaults
-        const formValues = createFormValues(undefined, countryUnitsData)
-        localizationForm.reset(formValues)
-        await saveLocalizationMutation.mutateAsync(formValues)
-      }
+  const resetForm = useCallback((formValues: LocalizationFormData) => {
+    if (formRef.current) {
+      formRef.current.reset(formValues)
     }
+  }, [])
 
-    initializeForm()
-  }, [settings, countryUnitsData, countryUnitsLoading, localizationForm, saveLocalizationMutation])
+  // Initialize form with settings on first load
+  useEffect(() => {
+    if (!settings || countryUnitsLoading) return
+
+    const currentValues = formRef.current?.getValues() || {
+      distanceUnit: '',
+      temperatureUnit: '',
+      dateFormat: '',
+      timeFormat: '',
+      currency: '',
+    }
+    const hasFormValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
+
+    const hasAnyLocalizationSettings =
+      settings.distanceUnit ||
+      settings.temperatureUnit ||
+      settings.dateFormat ||
+      settings.timeFormat ||
+      settings.currency
+
+    // Only initialize if we haven't done so yet
+    if (!hasInitialized.current) {
+      if (hasAnyLocalizationSettings) {
+        // Use existing settings
+        const formValues = createFormValues(settings, countryUnitsData, false)
+        resetForm(formValues)
+      } else {
+        // Use country data or US defaults
+        const formValues = createFormValues(undefined, countryUnitsData)
+        resetForm(formValues)
+
+        // Auto-save if form was empty
+        if (!hasFormValues) {
+          saveLocalizationMutation.mutateAsync(formValues)
+        }
+      }
+      hasInitialized.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, countryUnitsLoading])
+
+  // Update form when country data changes (after initial load)
+  useEffect(() => {
+    if (!settings || countryUnitsLoading || !hasInitialized.current) return
+
+    // Only update if country data is available and we want to prioritize it
+    if (countryUnitsData) {
+      const formValues = createFormValues(settings, countryUnitsData, true)
+      resetForm(formValues)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryUnitsData])
 
   const handleLocalizationChange = async (fieldName: keyof LocalizationFormData, value: string) => {
     const currentValues = localizationForm.getValues()

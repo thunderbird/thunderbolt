@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { localizationFormSchema } from './use-localization-form'
+import { localizationFormSchema, createFormValues } from './use-localization-form'
 import type { PreferencesSettings } from '@/types'
 
 // Test the schema directly since it contains the core validation logic
@@ -157,14 +157,6 @@ describe('useLocalizationForm', () => {
   })
 
   describe('createFormValues helper function', () => {
-    const createFormValues = (settings: PreferencesSettings | undefined, countryUnitsData: any) => ({
-      distanceUnit: settings?.distanceUnit || countryUnitsData?.units || 'metric',
-      temperatureUnit: settings?.temperatureUnit || countryUnitsData?.temperature || 'F',
-      dateFormat: settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
-      timeFormat: settings?.timeFormat || countryUnitsData?.timeFormat || '12',
-      currency: settings?.currency || countryUnitsData?.currency?.code || 'USD',
-    })
-
     const mockCountryUnitsData = {
       units: 'metric',
       temperature: 'C',
@@ -249,6 +241,38 @@ describe('useLocalizationForm', () => {
       expect(result.dateFormat).toBe('MM/DD/YYYY')
       expect(result.timeFormat).toBe('24')
       expect(result.currency).toBe('USD')
+    })
+
+    it('should use US defaults when no country data is available', () => {
+      const result = createFormValues(undefined, undefined)
+      expect(result.distanceUnit).toBe('imperial')
+      expect(result.temperatureUnit).toBe('F')
+      expect(result.dateFormat).toBe('MM/DD/YYYY')
+      expect(result.timeFormat).toBe('12')
+      expect(result.currency).toBe('USD')
+    })
+
+    it('should prioritize country data when prioritizeCountryData is true', () => {
+      const settings: PreferencesSettings = {
+        locationName: 'Test',
+        locationLat: '0',
+        locationLng: '0',
+        preferredName: 'Test',
+        dataCollection: true,
+        experimentalFeatureTasks: false,
+        distanceUnit: 'imperial',
+        temperatureUnit: 'F',
+        dateFormat: 'MM/DD/YYYY',
+        timeFormat: '12',
+        currency: 'USD',
+      }
+
+      const result = createFormValues(settings, mockCountryUnitsData, true)
+      expect(result.distanceUnit).toBe('metric')
+      expect(result.temperatureUnit).toBe('C')
+      expect(result.dateFormat).toBe('DD/MM/YYYY')
+      expect(result.timeFormat).toBe('24')
+      expect(result.currency).toBe('BRL')
     })
   })
 })

@@ -157,36 +157,8 @@ export type AuthProviderBackendConfig = {
   client_id: string
 }
 
-// Unit types based on backend units.json structure
-export type Unit = {
-  id: string
-  name: string
-  symbol: string
-  type: string
-  conversionFactorToBase?: number
-  usage?: string
-  example?: string
-}
-
-export type TimeFormatUnit = {
-  id: string
-  name: string
-  pattern: string
-  example: string
-  regions: string[]
-  type: string
-}
-
-export type UnitsData = {
-  units: {
-    distance: Unit[]
-    mass: Unit[]
-    temperature: Unit[]
-    speed: Unit[]
-    precipitation: Unit[]
-    timeFormat: TimeFormatUnit[]
-  }
-}
+// Re-export types from schemas to maintain backward compatibility
+export type { DateFormat, Currency, TemperatureUnit, UnitsOptionsData, CountryUnitsData } from './schemas/api'
 
 export type PreferencesSettings = {
   locationName: string
@@ -195,9 +167,9 @@ export type PreferencesSettings = {
   preferredName: string
   dataCollection: boolean
   experimentalFeatureTasks: boolean
-  temperatureUnit: string
-  windSpeedUnit: string
-  precipitationUnit: string
-  timeFormat: string
   distanceUnit: string
+  temperatureUnit: string
+  dateFormat: string
+  timeFormat: string
+  currency: string
 }

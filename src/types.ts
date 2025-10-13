@@ -172,4 +172,5 @@ export type PreferencesSettings = {
   dateFormat: string
   timeFormat: string
   currency: string
+  countryName: string | null
 }

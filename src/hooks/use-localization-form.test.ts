@@ -160,7 +160,7 @@ describe('useLocalizationForm', () => {
     const mockCountryUnitsData = {
       units: 'metric',
       temperature: 'C',
-      timeFormat: '24',
+      timeFormat: '24h',
       dateFormatExample: 'DD/MM/YYYY',
       currency: { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
     }
@@ -193,7 +193,7 @@ describe('useLocalizationForm', () => {
       expect(result.distanceUnit).toBe('metric')
       expect(result.temperatureUnit).toBe('C')
       expect(result.dateFormat).toBe('DD/MM/YYYY')
-      expect(result.timeFormat).toBe('24')
+      expect(result.timeFormat).toBe('24h')
       expect(result.currency).toBe('BRL')
     })
 
@@ -216,7 +216,7 @@ describe('useLocalizationForm', () => {
       expect(result.distanceUnit).toBe('metric')
       expect(result.temperatureUnit).toBe('C')
       expect(result.dateFormat).toBe('DD/MM/YYYY')
-      expect(result.timeFormat).toBe('24')
+      expect(result.timeFormat).toBe('24h')
       expect(result.currency).toBe('BRL')
     })
 
@@ -239,7 +239,7 @@ describe('useLocalizationForm', () => {
       expect(result.distanceUnit).toBe('imperial')
       expect(result.temperatureUnit).toBe('C')
       expect(result.dateFormat).toBe('MM/DD/YYYY')
-      expect(result.timeFormat).toBe('24')
+      expect(result.timeFormat).toBe('24h')
       expect(result.currency).toBe('USD')
     })
 
@@ -248,7 +248,7 @@ describe('useLocalizationForm', () => {
       expect(result.distanceUnit).toBe('imperial')
       expect(result.temperatureUnit).toBe('F')
       expect(result.dateFormat).toBe('MM/DD/YYYY')
-      expect(result.timeFormat).toBe('12')
+      expect(result.timeFormat).toBe('12h')
       expect(result.currency).toBe('USD')
     })
 
@@ -263,7 +263,7 @@ describe('useLocalizationForm', () => {
         distanceUnit: 'imperial',
         temperatureUnit: 'F',
         dateFormat: 'MM/DD/YYYY',
-        timeFormat: '12',
+        timeFormat: '12h',
         currency: 'USD',
       }
 
@@ -271,8 +271,63 @@ describe('useLocalizationForm', () => {
       expect(result.distanceUnit).toBe('metric')
       expect(result.temperatureUnit).toBe('C')
       expect(result.dateFormat).toBe('DD/MM/YYYY')
-      expect(result.timeFormat).toBe('24')
+      expect(result.timeFormat).toBe('24h')
       expect(result.currency).toBe('BRL')
+    })
+
+    it('should respect user settings when user has set localization preferences', () => {
+      const settings: PreferencesSettings = {
+        locationName: 'Miami, FL, US',
+        locationLat: '25.7617',
+        locationLng: '-80.1918',
+        preferredName: 'John',
+        dataCollection: true,
+        experimentalFeatureTasks: false,
+        distanceUnit: 'metric', // User chose metric despite being in US
+        temperatureUnit: 'C', // User chose Celsius despite being in US
+        dateFormat: 'DD/MM/YYYY', // User chose European format
+        timeFormat: '24h', // User chose 24h format
+        currency: 'EUR', // User chose Euro
+      }
+
+      const result = createFormValues(settings, mockCountryUnitsData, false)
+      expect(result.distanceUnit).toBe('metric') // User's choice, not country default
+      expect(result.temperatureUnit).toBe('C') // User's choice, not country default
+      expect(result.dateFormat).toBe('DD/MM/YYYY') // User's choice
+      expect(result.timeFormat).toBe('24h') // User's choice
+      expect(result.currency).toBe('EUR') // User's choice
+    })
+
+    it('should update to new country defaults when location changes', () => {
+      const settingsUS: PreferencesSettings = {
+        locationName: 'Miami, FL, US',
+        locationLat: '25.7617',
+        locationLng: '-80.1918',
+        preferredName: 'John',
+        dataCollection: true,
+        experimentalFeatureTasks: false,
+        distanceUnit: 'imperial',
+        temperatureUnit: 'F',
+        dateFormat: 'MM/DD/YYYY',
+        timeFormat: '12h',
+        currency: 'USD',
+      }
+
+      const colombiaCountryData = {
+        units: 'metric',
+        temperature: 'C',
+        timeFormat: '12h',
+        dateFormatExample: 'DD/MM/YYYY',
+        currency: { code: 'COP', symbol: 'COP', name: 'Colombian Peso' },
+      }
+
+      // When user changes location to Colombia, it should use Colombia's defaults
+      const result = createFormValues(settingsUS, colombiaCountryData, true)
+      expect(result.distanceUnit).toBe('metric')
+      expect(result.temperatureUnit).toBe('C')
+      expect(result.dateFormat).toBe('DD/MM/YYYY')
+      expect(result.timeFormat).toBe('12h')
+      expect(result.currency).toBe('COP')
     })
   })
 })

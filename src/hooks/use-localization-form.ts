@@ -3,8 +3,7 @@ import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { settingsTable } from '@/db/tables'
-import { DatabaseSingleton } from '@/db/singleton'
+import { setSettings } from '@/lib/dal'
 import { trackEvent } from '@/lib/analytics'
 import type { CountryUnitsData, PreferencesSettings } from '@/types'
 
@@ -43,8 +42,8 @@ export const createFormValues = (
     ? countryUnitsData?.dateFormatExample || settings?.dateFormat || 'MM/DD/YYYY'
     : settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
   timeFormat: prioritizeCountryData
-    ? countryUnitsData?.timeFormat || settings?.timeFormat || '12'
-    : settings?.timeFormat || countryUnitsData?.timeFormat || '12',
+    ? countryUnitsData?.timeFormat || settings?.timeFormat || '12h'
+    : settings?.timeFormat || countryUnitsData?.timeFormat || '12h',
   currency: prioritizeCountryData
     ? countryUnitsData?.currency?.code || settings?.currency || 'USD'
     : settings?.currency || countryUnitsData?.currency?.code || 'USD',
@@ -55,7 +54,6 @@ export const createFormValues = (
  * Extracted from preferences component for better separation of concerns
  */
 export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLoading }: UseLocalizationFormProps) => {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const hasInitialized = useRef(false)
   const formRef = useRef<UseFormReturn<LocalizationFormData> | null>(null)
@@ -74,27 +72,19 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
   formRef.current = localizationForm
 
   const saveLocalizationMutation = useMutation({
-    mutationFn: useCallback(
-      async (values: LocalizationFormData) => {
-        const settingsToSave = [
-          { key: 'distance_unit', value: values.distanceUnit },
-          { key: 'temperature_unit', value: values.temperatureUnit },
-          { key: 'date_format', value: values.dateFormat },
-          { key: 'time_format', value: values.timeFormat },
-          { key: 'currency', value: values.currency },
-        ]
+    mutationFn: useCallback(async (values: LocalizationFormData) => {
+      const settingsToSave = {
+        distance_unit: values.distanceUnit,
+        temperature_unit: values.temperatureUnit,
+        date_format: values.dateFormat,
+        time_format: values.timeFormat,
+        currency: values.currency,
+      }
 
-        for (const { key, value } of settingsToSave) {
-          await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value },
-          })
-        }
-      },
-      [db],
-    ),
+      await setSettings(settingsToSave)
+    }, []),
     onSuccess: useCallback(() => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
       trackEvent('settings_localization_update')
     }, [queryClient]),
     onError: useCallback((error: Error) => {
@@ -109,56 +99,49 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
   }, [])
 
   useEffect(() => {
-    if (!settings || countryUnitsLoading) return
+    if (!settings || countryUnitsLoading || hasInitialized.current) return
 
-    const currentValues = formRef.current?.getValues() || {
-      distanceUnit: '',
-      temperatureUnit: '',
-      dateFormat: '',
-      timeFormat: '',
-      currency: '',
-    }
-    const hasFormValues = Object.values(currentValues).some((value) => value && value.trim() !== '')
-
-    const hasAnyLocalizationSettings =
+    const hasPreferencesLocalizationSettings =
       settings.distanceUnit ||
       settings.temperatureUnit ||
       settings.dateFormat ||
       settings.timeFormat ||
       settings.currency
-    if (!hasInitialized.current) {
-      if (hasAnyLocalizationSettings) {
-        const formValues = createFormValues(settings, countryUnitsData, false)
-        resetForm(formValues)
-      } else {
-        const formValues = createFormValues(undefined, countryUnitsData)
-        resetForm(formValues)
 
-        if (!hasFormValues) {
-          saveLocalizationMutation.mutateAsync(formValues).catch((error) => {
-            console.error('Auto-save localization settings failed:', error)
-          })
-        }
-      }
-      hasInitialized.current = true
+    if (hasPreferencesLocalizationSettings) {
+      const formValues = createFormValues(settings, countryUnitsData, false)
+      resetForm(formValues)
+    } else {
+      const formValues = createFormValues(undefined, countryUnitsData)
+      resetForm(formValues)
+
+      saveLocalizationMutation.mutateAsync(formValues).catch((error) => {
+        console.error('Auto-save localization settings failed:', error)
+      })
     }
+
+    hasInitialized.current = true
   }, [settings, countryUnitsLoading, countryUnitsData, resetForm, saveLocalizationMutation])
 
   useEffect(() => {
-    if (!settings || countryUnitsLoading || !hasInitialized.current) return
+    if (!hasInitialized.current || !countryUnitsData || countryUnitsLoading) return
 
-    if (countryUnitsData) {
-      const formValues = createFormValues(settings, countryUnitsData, true)
-      resetForm(formValues)
-    }
-  }, [settings, countryUnitsLoading, countryUnitsData, resetForm])
+    const formValues = createFormValues(settings, countryUnitsData, true)
+    resetForm(formValues)
+  }, [countryUnitsData, countryUnitsLoading, settings, resetForm])
 
   const handleLocalizationChange = async (fieldName: keyof LocalizationFormData, value: string) => {
     const currentValues = localizationForm.getValues()
-    await saveLocalizationMutation.mutateAsync({
+    const valuesToSave = {
       ...currentValues,
       [fieldName]: value,
-    })
+    }
+
+    try {
+      await saveLocalizationMutation.mutateAsync(valuesToSave)
+    } catch (error) {
+      console.error('Failed to save localization settings:', error)
+    }
   }
 
   return {

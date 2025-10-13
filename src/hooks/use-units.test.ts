@@ -31,7 +31,7 @@ const mockUnitsOptionsData = {
 const mockCountryUnitsData = {
   units: 'metric',
   temperature: 'C',
-  timeFormat: '24',
+  timeFormat: '24h',
   dateFormatExample: 'DD/MM/YYYY',
   currency: {
     code: 'BRL',

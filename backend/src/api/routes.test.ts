@@ -107,7 +107,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         units: 'metric',
         temperature: 'C',
-        timeFormat: '24',
+        timeFormat: '24h',
         dateFormatExample: 'DD/MM/YYYY',
         currency: {
           code: 'BRL',
@@ -125,7 +125,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         units: 'metric',
         temperature: 'C',
-        timeFormat: '24',
+        timeFormat: '24h',
         dateFormatExample: 'DD/MM/YYYY',
         currency: {
           code: 'BRL',
@@ -143,7 +143,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         units: 'imperial',
         temperature: 'F',
-        timeFormat: '12',
+        timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',
@@ -161,7 +161,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         units: 'imperial',
         temperature: 'F',
-        timeFormat: '12',
+        timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',
@@ -179,7 +179,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         units: 'imperial',
         temperature: 'F',
-        timeFormat: '12',
+        timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',

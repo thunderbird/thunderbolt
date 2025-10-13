@@ -68,7 +68,7 @@ export type SearchResponseData = {
 /**
  * Search the web and return formatted results
  */
-export const search = async (params: SearchParams): Promise<string> => {
+export const search = async (params: SearchParams): Promise<SearchResponseData> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky

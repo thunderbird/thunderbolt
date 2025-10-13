@@ -86,6 +86,8 @@ export const LinkPreviewContainer = ({ url }: LinkPreviewContainerProps) => {
 }
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
+  const [imageError, setImageError] = useState(false)
+
   return (
     <motion.div
       className="my-4"
@@ -97,8 +99,13 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
     >
       <a href={url} target="_blank" rel="noopener noreferrer">
         <Card className="cursor-pointer flex-row py-0 flex p-1 pr-2 hover:bg-border gap-0">
-          {!!image && (
-            <img src={image} alt={title ?? description ?? url} className="rounded-lg h-20 w-20 object-cover" />
+          {!!image && !imageError && (
+            <img
+              src={image}
+              alt={title ?? description ?? url}
+              className="rounded-lg h-20 w-20 object-cover"
+              onError={() => setImageError(true)}
+            />
           )}
           <CardHeader className="flex-1 flex flex-col pl-4 my-2">
             <CardTitle className="line-clamp-1">{title}</CardTitle>

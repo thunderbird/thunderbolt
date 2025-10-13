@@ -7,11 +7,11 @@ describe('useLocalizationForm', () => {
   describe('localizationFormSchema', () => {
     it('should validate valid localization data', () => {
       const validData = {
+        distanceUnit: 'metric',
         temperatureUnit: 'C',
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
+        dateFormat: 'DD/MM/YYYY',
         timeFormat: '24h',
-        distanceUnit: 'km',
+        currency: 'BRL',
       }
 
       const result = localizationFormSchema.safeParse(validData)
@@ -23,11 +23,11 @@ describe('useLocalizationForm', () => {
 
     it('should validate with different unit values', () => {
       const validData = {
+        distanceUnit: 'imperial',
         temperatureUnit: 'F',
-        windSpeedUnit: 'mph',
-        precipitationUnit: 'in',
+        dateFormat: 'MM/DD/YYYY',
         timeFormat: '12h',
-        distanceUnit: 'mi',
+        currency: 'USD',
       }
 
       const result = localizationFormSchema.safeParse(validData)
@@ -36,8 +36,8 @@ describe('useLocalizationForm', () => {
 
     it('should reject missing required fields', () => {
       const invalidData = {
+        distanceUnit: 'metric',
         temperatureUnit: 'C',
-        windSpeedUnit: 'km/h',
       }
 
       const result = localizationFormSchema.safeParse(invalidData)
@@ -46,11 +46,11 @@ describe('useLocalizationForm', () => {
 
     it('should reject non-string values', () => {
       const invalidData = {
-        temperatureUnit: 123,
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
+        distanceUnit: 123,
+        temperatureUnit: 'C',
+        dateFormat: 'DD/MM/YYYY',
         timeFormat: '24h',
-        distanceUnit: 'km',
+        currency: 'BRL',
       }
 
       const result = localizationFormSchema.safeParse(invalidData)
@@ -59,11 +59,11 @@ describe('useLocalizationForm', () => {
 
     it('should accept empty strings (validation happens at form level)', () => {
       const validData = {
-        temperatureUnit: '',
-        windSpeedUnit: '',
-        precipitationUnit: '',
-        timeFormat: '',
         distanceUnit: '',
+        temperatureUnit: '',
+        dateFormat: '',
+        timeFormat: '',
+        currency: '',
       }
 
       const result = localizationFormSchema.safeParse(validData)
@@ -73,25 +73,25 @@ describe('useLocalizationForm', () => {
     it('should validate with all possible unit combinations', () => {
       const testCases = [
         {
+          distanceUnit: 'metric',
           temperatureUnit: 'C',
-          windSpeedUnit: 'km/h',
-          precipitationUnit: 'mm',
+          dateFormat: 'DD/MM/YYYY',
           timeFormat: '24h',
-          distanceUnit: 'km',
+          currency: 'BRL',
         },
         {
+          distanceUnit: 'imperial',
           temperatureUnit: 'F',
-          windSpeedUnit: 'mph',
-          precipitationUnit: 'in',
+          dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h',
-          distanceUnit: 'mi',
+          currency: 'USD',
         },
         {
-          temperatureUnit: 'K',
-          windSpeedUnit: 'm/s',
-          precipitationUnit: 'mm/h',
-          timeFormat: 'iso8601',
-          distanceUnit: 'm',
+          distanceUnit: 'metric',
+          temperatureUnit: 'C',
+          dateFormat: 'YYYY-MM-DD',
+          timeFormat: '24h',
+          currency: 'EUR',
         },
       ]
 
@@ -103,7 +103,7 @@ describe('useLocalizationForm', () => {
 
     it('should reject partial data', () => {
       const partialData = {
-        temperatureUnit: 'C',
+        distanceUnit: 'metric',
       }
 
       const result = localizationFormSchema.safeParse(partialData)
@@ -112,11 +112,11 @@ describe('useLocalizationForm', () => {
 
     it('should allow extra fields (Zod default behavior)', () => {
       const dataWithExtra = {
+        distanceUnit: 'metric',
         temperatureUnit: 'C',
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
+        dateFormat: 'DD/MM/YYYY',
         timeFormat: '24h',
-        distanceUnit: 'km',
+        currency: 'BRL',
         extraField: 'should not be here',
       }
 
@@ -125,30 +125,30 @@ describe('useLocalizationForm', () => {
       if (result.success) {
         expect(result.data).not.toHaveProperty('extraField')
         expect(result.data).toEqual({
+          distanceUnit: 'metric',
           temperatureUnit: 'C',
-          windSpeedUnit: 'km/h',
-          precipitationUnit: 'mm',
+          dateFormat: 'DD/MM/YYYY',
           timeFormat: '24h',
-          distanceUnit: 'km',
+          currency: 'BRL',
         })
       }
     })
 
     it('should handle null and undefined values', () => {
       const nullData = {
+        distanceUnit: 'metric',
         temperatureUnit: null,
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
+        dateFormat: 'DD/MM/YYYY',
         timeFormat: '24h',
-        distanceUnit: 'km',
+        currency: 'BRL',
       }
 
       const undefinedData = {
+        distanceUnit: 'metric',
         temperatureUnit: undefined,
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
+        dateFormat: 'DD/MM/YYYY',
         timeFormat: '24h',
-        distanceUnit: 'km',
+        currency: 'BRL',
       }
 
       expect(localizationFormSchema.safeParse(nullData).success).toBe(false)
@@ -157,20 +157,20 @@ describe('useLocalizationForm', () => {
   })
 
   describe('createFormValues helper function', () => {
-    const createFormValues = (settings: PreferencesSettings | undefined, defaultUnits: any) => ({
-      temperatureUnit: settings?.temperatureUnit || defaultUnits.temperature,
-      windSpeedUnit: settings?.windSpeedUnit || defaultUnits.speed,
-      precipitationUnit: settings?.precipitationUnit || defaultUnits.precipitation,
-      timeFormat: settings?.timeFormat || defaultUnits.timeFormat,
-      distanceUnit: settings?.distanceUnit || defaultUnits.distance,
+    const createFormValues = (settings: PreferencesSettings | undefined, countryUnitsData: any) => ({
+      distanceUnit: settings?.distanceUnit || countryUnitsData?.units || 'metric',
+      temperatureUnit: settings?.temperatureUnit || countryUnitsData?.temperature || 'F',
+      dateFormat: settings?.dateFormat || countryUnitsData?.dateFormatExample || 'MM/DD/YYYY',
+      timeFormat: settings?.timeFormat || countryUnitsData?.timeFormat || '12',
+      currency: settings?.currency || countryUnitsData?.currency?.code || 'USD',
     })
 
-    const mockDefaultUnits = {
-      temperature: 'F',
-      speed: 'mph',
-      distance: 'mi',
-      precipitation: 'in',
-      timeFormat: '12h',
+    const mockCountryUnitsData = {
+      units: 'metric',
+      temperature: 'C',
+      timeFormat: '24',
+      dateFormatExample: 'DD/MM/YYYY',
+      currency: { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
     }
 
     it('should use settings values when available', () => {
@@ -181,31 +181,31 @@ describe('useLocalizationForm', () => {
         preferredName: 'Test',
         dataCollection: true,
         experimentalFeatureTasks: false,
-        temperatureUnit: 'C',
-        windSpeedUnit: 'km/h',
-        precipitationUnit: 'mm',
-        timeFormat: '24h',
-        distanceUnit: 'km',
+        distanceUnit: 'imperial',
+        temperatureUnit: 'F',
+        dateFormat: 'MM/DD/YYYY',
+        timeFormat: '12h',
+        currency: 'USD',
       }
 
-      const result = createFormValues(settings, mockDefaultUnits)
-      expect(result.temperatureUnit).toBe('C')
-      expect(result.windSpeedUnit).toBe('km/h')
-      expect(result.precipitationUnit).toBe('mm')
-      expect(result.timeFormat).toBe('24h')
-      expect(result.distanceUnit).toBe('km')
-    })
-
-    it('should use default units when settings are undefined', () => {
-      const result = createFormValues(undefined, mockDefaultUnits)
+      const result = createFormValues(settings, mockCountryUnitsData)
+      expect(result.distanceUnit).toBe('imperial')
       expect(result.temperatureUnit).toBe('F')
-      expect(result.windSpeedUnit).toBe('mph')
-      expect(result.precipitationUnit).toBe('in')
+      expect(result.dateFormat).toBe('MM/DD/YYYY')
       expect(result.timeFormat).toBe('12h')
-      expect(result.distanceUnit).toBe('mi')
+      expect(result.currency).toBe('USD')
     })
 
-    it('should use default units when settings have empty values', () => {
+    it('should use country units data when settings are undefined', () => {
+      const result = createFormValues(undefined, mockCountryUnitsData)
+      expect(result.distanceUnit).toBe('metric')
+      expect(result.temperatureUnit).toBe('C')
+      expect(result.dateFormat).toBe('DD/MM/YYYY')
+      expect(result.timeFormat).toBe('24')
+      expect(result.currency).toBe('BRL')
+    })
+
+    it('should use country units data when settings have empty values', () => {
       const settings: PreferencesSettings = {
         locationName: 'Test',
         locationLat: '0',
@@ -213,22 +213,22 @@ describe('useLocalizationForm', () => {
         preferredName: 'Test',
         dataCollection: true,
         experimentalFeatureTasks: false,
-        temperatureUnit: '',
-        windSpeedUnit: '',
-        precipitationUnit: '',
-        timeFormat: '',
         distanceUnit: '',
+        temperatureUnit: '',
+        dateFormat: '',
+        timeFormat: '',
+        currency: '',
       }
 
-      const result = createFormValues(settings, mockDefaultUnits)
-      expect(result.temperatureUnit).toBe('F')
-      expect(result.windSpeedUnit).toBe('mph')
-      expect(result.precipitationUnit).toBe('in')
-      expect(result.timeFormat).toBe('12h')
-      expect(result.distanceUnit).toBe('mi')
+      const result = createFormValues(settings, mockCountryUnitsData)
+      expect(result.distanceUnit).toBe('metric')
+      expect(result.temperatureUnit).toBe('C')
+      expect(result.dateFormat).toBe('DD/MM/YYYY')
+      expect(result.timeFormat).toBe('24')
+      expect(result.currency).toBe('BRL')
     })
 
-    it('should mix settings and defaults appropriately', () => {
+    it('should mix settings and country units data appropriately', () => {
       const settings: PreferencesSettings = {
         locationName: 'Test',
         locationLat: '0',
@@ -236,19 +236,19 @@ describe('useLocalizationForm', () => {
         preferredName: 'Test',
         dataCollection: true,
         experimentalFeatureTasks: false,
-        temperatureUnit: 'C', // Has value
-        windSpeedUnit: '', // Empty
-        precipitationUnit: 'mm', // Has value
-        timeFormat: '', // Empty
-        distanceUnit: 'km', // Has value
+        distanceUnit: 'imperial',
+        temperatureUnit: '',
+        dateFormat: 'MM/DD/YYYY',
+        timeFormat: '',
+        currency: 'USD',
       }
 
-      const result = createFormValues(settings, mockDefaultUnits)
+      const result = createFormValues(settings, mockCountryUnitsData)
+      expect(result.distanceUnit).toBe('imperial')
       expect(result.temperatureUnit).toBe('C')
-      expect(result.windSpeedUnit).toBe('mph')
-      expect(result.precipitationUnit).toBe('mm')
-      expect(result.timeFormat).toBe('12h')
-      expect(result.distanceUnit).toBe('km')
+      expect(result.dateFormat).toBe('MM/DD/YYYY')
+      expect(result.timeFormat).toBe('24')
+      expect(result.currency).toBe('USD')
     })
   })
 })

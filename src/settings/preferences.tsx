@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef } from 'react'
-import { useUnits } from '@/hooks/use-units'
+import { useUnitsOptions } from '@/hooks/use-units-options'
+import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useLocalizationForm } from '@/hooks/use-localization-form'
 import { getCloudUrl } from '@/lib/config'
@@ -44,6 +45,7 @@ import { z } from 'zod'
 interface LocationData {
   name: string
   city: string
+  country: string
   coordinates: {
     lat: number
     lng: number
@@ -123,16 +125,16 @@ export default function PreferencesSettingsPage() {
 
   // Localization dropdown states
   const {
-    temperatureDropdownOpen,
-    windSpeedDropdownOpen,
-    precipitationDropdownOpen,
-    timeFormatDropdownOpen,
     distanceDropdownOpen,
-    setTemperatureDropdownOpen,
-    setWindSpeedDropdownOpen,
-    setPrecipitationDropdownOpen,
-    setTimeFormatDropdownOpen,
+    temperatureDropdownOpen,
+    dateFormatDropdownOpen,
+    timeFormatDropdownOpen,
+    currencyDropdownOpen,
     setDistanceDropdownOpen,
+    setTemperatureDropdownOpen,
+    setDateFormatDropdownOpen,
+    setTimeFormatDropdownOpen,
+    setCurrencyDropdownOpen,
   } = useLocalizationDropdowns()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
@@ -161,13 +163,17 @@ export default function PreferencesSettingsPage() {
     queryFn: getPreferencesSettings,
   })
 
-  const { data: unitsData, isLoading: unitsLoading } = useUnits()
+  const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
+
+  // Extract country name from location (last part after comma)
+  const countryName = settings?.locationName ? settings.locationName.split(',').pop()?.trim() || null : null
+  const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits(countryName)
 
   // Localization form logic
   const { localizationForm, handleLocalizationChange } = useLocalizationForm({
     settings,
-    unitsData,
-    unitsLoading,
+    countryUnitsData,
+    countryUnitsLoading,
   })
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
@@ -266,6 +272,7 @@ export default function PreferencesSettingsPage() {
         const transformedLocations: LocationData[] = data.map((location) => ({
           name: `${location.name}, ${location.region}, ${location.country}`,
           city: location.name,
+          country: location.country,
           coordinates: {
             lat: location.lat,
             lng: location.lon,
@@ -620,11 +627,63 @@ export default function PreferencesSettingsPage() {
           <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
             <FormField
               control={localizationForm.control}
+              name="distanceUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Distance</FormLabel>
+                    <FormDescription>Choose your preferred distance unit.</FormDescription>
+                  </div>
+                  <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsOptionsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsOptionsLoading
+                            ? 'Loading...'
+                            : unitsOptionsData?.units?.find((unit) => unit === field.value) || 'Select...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsOptionsData?.units?.map((unit) => (
+                              <CommandItem
+                                key={unit}
+                                value={unit}
+                                onSelect={() => {
+                                  field.onChange(unit)
+                                  handleLocalizationChange('distanceUnit', unit)
+                                  setDistanceDropdownOpen(false)
+                                }}
+                              >
+                                {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
               name="temperatureUnit"
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
-                    <FormLabel>Temperature Unit</FormLabel>
+                    <FormLabel>Temperature</FormLabel>
                     <FormDescription>Choose your preferred temperature unit.</FormDescription>
                   </div>
                   <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
@@ -633,13 +692,14 @@ export default function PreferencesSettingsPage() {
                         <Button
                           variant="outline"
                           role="combobox"
-                          disabled={unitsLoading}
+                          disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsLoading
+                          {unitsOptionsLoading
                             ? 'Loading...'
-                            : unitsData?.units?.temperature?.find((unit) => unit.id === field.value)?.name ||
-                              'Loading...'}
+                            : unitsOptionsData?.temperature?.find((temp) => temp.symbol === field.value)?.name ||
+                              field.value ||
+                              'Select...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -648,17 +708,17 @@ export default function PreferencesSettingsPage() {
                       <Command>
                         <CommandList>
                           <CommandGroup>
-                            {unitsData?.units?.temperature?.map((unit) => (
+                            {unitsOptionsData?.temperature?.map((temp) => (
                               <CommandItem
-                                key={unit.id}
-                                value={unit.id}
+                                key={temp.symbol}
+                                value={temp.symbol}
                                 onSelect={() => {
-                                  field.onChange(unit.id)
-                                  handleLocalizationChange('temperatureUnit', unit.id)
+                                  field.onChange(temp.symbol)
+                                  handleLocalizationChange('temperatureUnit', temp.symbol)
                                   setTemperatureDropdownOpen(false)
                                 }}
                               >
-                                {unit.name} {unit.symbol}
+                                {temp.name}
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -673,25 +733,23 @@ export default function PreferencesSettingsPage() {
 
             <FormField
               control={localizationForm.control}
-              name="windSpeedUnit"
+              name="dateFormat"
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
-                    <FormLabel>Wind Speed Unit</FormLabel>
-                    <FormDescription>Choose your preferred wind speed unit.</FormDescription>
+                    <FormLabel>Date Format</FormLabel>
+                    <FormDescription>Choose your preferred date format.</FormDescription>
                   </div>
-                  <Popover open={windSpeedDropdownOpen} onOpenChange={setWindSpeedDropdownOpen}>
+                  <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
                           variant="outline"
                           role="combobox"
-                          disabled={unitsLoading}
+                          disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsLoading
-                            ? 'Loading...'
-                            : unitsData?.units?.speed?.find((unit) => unit.id === field.value)?.name || 'Loading...'}
+                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Select...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -700,70 +758,17 @@ export default function PreferencesSettingsPage() {
                       <Command>
                         <CommandList>
                           <CommandGroup>
-                            {unitsData?.units?.speed?.map((unit) => (
+                            {unitsOptionsData?.dateFormats?.map((format) => (
                               <CommandItem
-                                key={unit.id}
-                                value={unit.id}
+                                key={format.format}
+                                value={format.format}
                                 onSelect={() => {
-                                  field.onChange(unit.id)
-                                  handleLocalizationChange('windSpeedUnit', unit.id)
-                                  setWindSpeedDropdownOpen(false)
+                                  field.onChange(format.format)
+                                  handleLocalizationChange('dateFormat', format.format)
+                                  setDateFormatDropdownOpen(false)
                                 }}
                               >
-                                {unit.name} ({unit.symbol})
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={localizationForm.control}
-              name="precipitationUnit"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Precipitation Unit</FormLabel>
-                    <FormDescription>Choose your preferred precipitation unit.</FormDescription>
-                  </div>
-                  <Popover open={precipitationDropdownOpen} onOpenChange={setPrecipitationDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
-                        >
-                          {unitsLoading
-                            ? 'Loading...'
-                            : unitsData?.units?.precipitation?.find((unit) => unit.id === field.value)?.name ||
-                              'Loading...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[200px]">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsData?.units?.precipitation?.map((unit) => (
-                              <CommandItem
-                                key={unit.id}
-                                value={unit.id}
-                                onSelect={() => {
-                                  field.onChange(unit.id)
-                                  handleLocalizationChange('precipitationUnit', unit.id)
-                                  setPrecipitationDropdownOpen(false)
-                                }}
-                              >
-                                {unit.name} ({unit.symbol})
+                                {format.format} ({format.example})
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -791,32 +796,29 @@ export default function PreferencesSettingsPage() {
                         <Button
                           variant="outline"
                           role="combobox"
-                          disabled={unitsLoading}
+                          disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsLoading
-                            ? 'Loading...'
-                            : unitsData?.units?.timeFormat?.find((unit) => unit.id === field.value)?.name ||
-                              'Loading...'}
+                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Select...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[200px]">
+                    <PopoverContent className="p-0 w-auto">
                       <Command>
                         <CommandList>
                           <CommandGroup>
-                            {unitsData?.units?.timeFormat?.map((unit) => (
+                            {unitsOptionsData?.timeFormat?.map((format) => (
                               <CommandItem
-                                key={unit.id}
-                                value={unit.id}
+                                key={format}
+                                value={format}
                                 onSelect={() => {
-                                  field.onChange(unit.id)
-                                  handleLocalizationChange('timeFormat', unit.id)
+                                  field.onChange(format)
+                                  handleLocalizationChange('timeFormat', format)
                                   setTimeFormatDropdownOpen(false)
                                 }}
                               >
-                                {unit.name} ({unit.example})
+                                {format}
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -831,44 +833,46 @@ export default function PreferencesSettingsPage() {
 
             <FormField
               control={localizationForm.control}
-              name="distanceUnit"
+              name="currency"
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
-                    <FormLabel>Distance Unit</FormLabel>
-                    <FormDescription>Choose your preferred distance unit.</FormDescription>
+                    <FormLabel>Currency</FormLabel>
+                    <FormDescription>Choose your preferred currency.</FormDescription>
                   </div>
-                  <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+                  <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
                           variant="outline"
                           role="combobox"
-                          disabled={unitsLoading}
+                          disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsLoading
+                          {unitsOptionsLoading
                             ? 'Loading...'
-                            : unitsData?.units?.distance?.find((unit) => unit.id === field.value)?.name || 'Loading...'}
+                            : unitsOptionsData?.currencies?.find((currency) => currency.code === field.value)?.name ||
+                              'Select...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0 w-auto">
+                    <PopoverContent className="p-0 w-[300px]">
                       <Command>
+                        <CommandInput placeholder="Search currency by code, symbol, or name..." />
                         <CommandList>
                           <CommandGroup>
-                            {unitsData?.units?.distance?.map((unit) => (
+                            {unitsOptionsData?.currencies?.map((currency) => (
                               <CommandItem
-                                key={unit.id}
-                                value={unit.id}
+                                key={currency.code}
+                                value={`${currency.code} ${currency.symbol} ${currency.name}`}
                                 onSelect={() => {
-                                  field.onChange(unit.id)
-                                  handleLocalizationChange('distanceUnit', unit.id)
-                                  setDistanceDropdownOpen(false)
+                                  field.onChange(currency.code)
+                                  handleLocalizationChange('currency', currency.code)
+                                  setCurrencyDropdownOpen(false)
                                 }}
                               >
-                                {unit.name} ({unit.symbol})
+                                {currency.name} ({currency.symbol})
                               </CommandItem>
                             ))}
                           </CommandGroup>

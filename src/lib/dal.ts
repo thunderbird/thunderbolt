@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { DEFAULT_IMPERIAL_UNITS } from './unit-detection'
 import {
@@ -134,30 +134,35 @@ export const getAllSettings = async () => {
  * Gets preferences settings with specific structure
  */
 export const getPreferencesSettings = async () => {
-  const locationName = await getSetting('location_name', '')
-  const locationLat = await getSetting('location_lat', '')
-  const locationLng = await getSetting('location_lng', '')
-  const preferredName = await getSetting('preferred_name', '')
+  // Get all string settings in a single query
+  const settings = await getSettings([
+    'location_name',
+    'location_lat',
+    'location_lng',
+    'preferred_name',
+    'temperature_unit',
+    'time_format',
+    'distance_unit',
+    'date_format',
+    'currency',
+  ])
+
+  // Get boolean settings separately (they need special handling)
   const dataCollection = await getBooleanSetting('data_collection', true)
   const experimentalFeatureTasks = await getBooleanSetting('experimental_feature_tasks', false)
-  const temperatureUnit = await getSetting('temperature_unit', DEFAULT_IMPERIAL_UNITS.temperature)
-  const windSpeedUnit = await getSetting('wind_speed_unit', DEFAULT_IMPERIAL_UNITS.speed)
-  const precipitationUnit = await getSetting('precipitation_unit', DEFAULT_IMPERIAL_UNITS.precipitation)
-  const timeFormat = await getSetting('time_format', DEFAULT_IMPERIAL_UNITS.timeFormat)
-  const distanceUnit = await getSetting('distance_unit', DEFAULT_IMPERIAL_UNITS.distance)
 
   return {
-    locationName,
-    locationLat,
-    locationLng,
-    preferredName,
+    locationName: settings.location_name || '',
+    locationLat: settings.location_lat || '',
+    locationLng: settings.location_lng || '',
+    preferredName: settings.preferred_name || '',
     dataCollection,
     experimentalFeatureTasks,
-    temperatureUnit,
-    windSpeedUnit,
-    precipitationUnit,
-    timeFormat,
-    distanceUnit,
+    temperatureUnit: settings.temperature_unit || DEFAULT_IMPERIAL_UNITS.temperature,
+    timeFormat: settings.time_format || DEFAULT_IMPERIAL_UNITS.timeFormat,
+    distanceUnit: settings.distance_unit || DEFAULT_IMPERIAL_UNITS.distance,
+    dateFormat: settings.date_format || 'MM/DD/YYYY',
+    currency: settings.currency || 'USD',
   }
 }
 
@@ -227,6 +232,51 @@ export const updateSetting = async (key: string, value: string | null): Promise<
     target: settingsTable.key,
     set: { value },
   })
+}
+
+/**
+ * Get multiple settings in a single query
+ * @param keys - Array of setting keys to fetch
+ * @returns Object with key-value pairs for the requested settings
+ */
+export const getSettings = async (keys: string[]): Promise<Record<string, string | null>> => {
+  if (keys.length === 0) return {}
+
+  const db = DatabaseSingleton.instance.db
+  const results = await db.select().from(settingsTable).where(inArray(settingsTable.key, keys))
+
+  const settingsMap: Record<string, string | null> = {}
+
+  // Initialize all requested keys with null
+  keys.forEach((key) => {
+    settingsMap[key] = null
+  })
+
+  // Fill in the actual values from the database
+  results.forEach((result) => {
+    settingsMap[result.key] = result.value
+  })
+
+  return settingsMap
+}
+
+/**
+ * Set multiple settings in a single query
+ * @param settings - Object with key-value pairs to set
+ */
+export const setSettings = async (settings: Record<string, string | null>): Promise<void> => {
+  if (Object.keys(settings).length === 0) return
+
+  const db = DatabaseSingleton.instance.db
+  const settingsArray = Object.entries(settings).map(([key, value]) => ({ key, value }))
+
+  await db
+    .insert(settingsTable)
+    .values(settingsArray)
+    .onConflictDoUpdate({
+      target: settingsTable.key,
+      set: { value: sql`excluded.value` },
+    })
 }
 
 export const updateBooleanSetting = async (key: string, value: boolean): Promise<void> => {

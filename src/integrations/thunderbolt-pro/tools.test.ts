@@ -60,7 +60,7 @@ describe('Thunderbolt Pro Tools', () => {
     mockGetCloudUrl.mockClear()
 
     // Setup default mocks
-    mockGetCloudUrl.mockResolvedValue('https://api.thunderbolt.com')
+    mockGetCloudUrl.mockResolvedValue('https://example.com')
     mockPost.mockReturnValue({ json: mockJson })
   })
 
@@ -82,7 +82,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toBe('Search results for artificial intelligence...')
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/search',
+        'https://example.com/pro/search',
         expect.objectContaining({
           timeout: 5000,
           json: {
@@ -109,7 +109,7 @@ describe('Thunderbolt Pro Tools', () => {
       await search(params)
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/search',
+        'https://example.com/pro/search',
         expect.objectContaining({
           json: {
             query: 'test query',
@@ -198,7 +198,7 @@ describe('Thunderbolt Pro Tools', () => {
       })
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/fetch-content',
+        'https://example.com/pro/fetch-content',
         expect.objectContaining({
           timeout: 5000,
           json: {
@@ -291,7 +291,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toBe('Current weather in New York: 22°C, Partly cloudy')
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/weather/current',
+        'https://example.com/pro/weather/current',
         expect.objectContaining({
           timeout: 5000,
           json: {
@@ -359,7 +359,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toEqual(mockWeatherForecastData)
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/weather/forecast',
+        'https://example.com/pro/weather/forecast',
         expect.objectContaining({
           timeout: 5000,
           json: {
@@ -390,7 +390,7 @@ describe('Thunderbolt Pro Tools', () => {
       await getWeatherForecast(params)
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/weather/forecast',
+        'https://example.com/pro/weather/forecast',
         expect.objectContaining({
           json: {
             location: 'New York',
@@ -477,7 +477,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toBe('Found locations: New York, NY, US')
       expect(mockPost).toHaveBeenCalledWith(
-        'https://api.thunderbolt.com/pro/locations/search',
+        'https://example.com/pro/locations/search',
         expect.objectContaining({
           timeout: 5000,
           json: {

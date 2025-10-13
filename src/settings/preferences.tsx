@@ -645,7 +645,12 @@ export default function PreferencesSettingsPage() {
                         >
                           {unitsOptionsLoading
                             ? 'Loading...'
-                            : unitsOptionsData?.units?.find((unit) => unit === field.value) || 'Select...'}
+                            : field.value
+                              ? (() => {
+                                  const unit = unitsOptionsData?.units?.find((unit) => unit === field.value)
+                                  return unit ? unit.charAt(0).toUpperCase() + unit.slice(1) : 'Select...'
+                                })()
+                              : 'Select...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>

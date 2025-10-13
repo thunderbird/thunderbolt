@@ -142,25 +142,23 @@ export const useLocalizationForm = ({ settings, countryUnitsData, countryUnitsLo
 
         // Auto-save if form was empty
         if (!hasFormValues) {
-          saveLocalizationMutation.mutateAsync(formValues)
+          saveLocalizationMutation.mutateAsync(formValues).catch((error) => {
+            console.error('Auto-save localization settings failed:', error)
+          })
         }
       }
       hasInitialized.current = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, countryUnitsLoading])
+  }, [settings, countryUnitsLoading, countryUnitsData, resetForm, saveLocalizationMutation])
 
-  // Update form when country data changes (after initial load)
   useEffect(() => {
     if (!settings || countryUnitsLoading || !hasInitialized.current) return
 
-    // Only update if country data is available and we want to prioritize it
     if (countryUnitsData) {
       const formValues = createFormValues(settings, countryUnitsData, true)
       resetForm(formValues)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countryUnitsData])
+  }, [settings, countryUnitsLoading, countryUnitsData, resetForm])
 
   const handleLocalizationChange = async (fieldName: keyof LocalizationFormData, value: string) => {
     const currentValues = localizationForm.getValues()

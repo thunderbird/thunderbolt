@@ -29,6 +29,8 @@ import {
   getModel,
   getSelectedModel,
   getSetting,
+  getSettings,
+  setSettings,
   hasSetting,
   updateBooleanSetting,
   updateSetting,
@@ -313,6 +315,167 @@ describe('Settings DAL', () => {
       const bridgeSettings = await getBridgeSettings()
       expect(bridgeSettings).toEqual({
         enabled: false,
+      })
+    })
+  })
+
+  describe('getSettings (bulk)', () => {
+    it('should return empty object for empty keys array', async () => {
+      const result = await getSettings([])
+      expect(result).toEqual({})
+    })
+
+    it('should return null values for non-existent keys', async () => {
+      const result = await getSettings(['non_existent_key'])
+      expect(result).toEqual({ non_existent_key: null })
+    })
+
+    it('should return multiple settings in a single query', async () => {
+      // Set up test data
+      await updateSetting('test_key_1', 'value_1')
+      await updateSetting('test_key_2', 'value_2')
+      await updateSetting('test_key_3', 'value_3')
+
+      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+
+      expect(result).toEqual({
+        test_key_1: 'value_1',
+        test_key_2: 'value_2',
+        test_key_3: 'value_3',
+      })
+    })
+
+    it('should handle mix of existing and non-existent keys', async () => {
+      // Set up test data
+      await updateSetting('test_key_1', 'value_1')
+      await updateSetting('test_key_2', 'value_2')
+
+      const result = await getSettings(['test_key_1', 'non_existent', 'test_key_2'])
+
+      expect(result).toEqual({
+        test_key_1: 'value_1',
+        non_existent: null,
+        test_key_2: 'value_2',
+      })
+    })
+
+    it('should handle duplicate keys in request', async () => {
+      await updateSetting('test_key_1', 'value_1')
+
+      const result = await getSettings(['test_key_1', 'test_key_1'])
+
+      expect(result).toEqual({
+        test_key_1: 'value_1',
+      })
+    })
+  })
+
+  describe('setSettings (bulk)', () => {
+    it('should handle empty settings object', async () => {
+      await setSettings({})
+      // Should complete without error
+    })
+
+    it('should set multiple settings in a single query', async () => {
+      const settings = {
+        test_key_1: 'value_1',
+        test_key_2: 'value_2',
+        test_key_3: 'value_3',
+      }
+
+      await setSettings(settings)
+
+      // Verify all settings were set
+      expect(await getSetting('test_key_1', '')).toBe('value_1')
+      expect(await getSetting('test_key_2', '')).toBe('value_2')
+      expect(await getSetting('test_key_3', '')).toBe('value_3')
+    })
+
+    it('should update existing settings', async () => {
+      // Set initial values
+      await setSettings({
+        test_key_1: 'initial_value_1',
+        test_key_2: 'initial_value_2',
+      })
+
+      // Update them
+      await setSettings({
+        test_key_1: 'updated_value_1',
+        test_key_2: 'updated_value_2',
+      })
+
+      // Verify updates
+      expect(await getSetting('test_key_1', '')).toBe('updated_value_1')
+      expect(await getSetting('test_key_2', '')).toBe('updated_value_2')
+    })
+
+    it('should handle null values', async () => {
+      await setSettings({
+        test_key_1: 'value_1',
+        test_key_2: null,
+        test_key_3: 'value_3',
+      })
+
+      expect(await getSetting('test_key_1', '')).toBe('value_1')
+      expect(await getSetting('test_key_2', null)).toBe(null)
+      expect(await getSetting('test_key_3', '')).toBe('value_3')
+    })
+
+    it('should handle mixed new and existing settings', async () => {
+      // Set one existing setting
+      await updateSetting('test_key_1', 'existing_value')
+
+      // Set mix of new and existing
+      await setSettings({
+        test_key_1: 'updated_value',
+        test_key_2: 'new_value',
+      })
+
+      expect(await getSetting('test_key_1', '')).toBe('updated_value')
+      expect(await getSetting('test_key_2', '')).toBe('new_value')
+    })
+  })
+
+  describe('integration between getSettings and setSettings', () => {
+    it('should work together for bulk operations', async () => {
+      // Set multiple settings
+      await setSettings({
+        test_key_1: 'value_1',
+        test_key_2: 'value_2',
+        test_key_3: 'value_3',
+      })
+
+      // Get them back
+      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+
+      expect(result).toEqual({
+        test_key_1: 'value_1',
+        test_key_2: 'value_2',
+        test_key_3: 'value_3',
+      })
+    })
+
+    it('should handle partial updates', async () => {
+      // Set initial settings
+      await setSettings({
+        test_key_1: 'value_1',
+        test_key_2: 'value_2',
+        test_key_3: 'value_3',
+      })
+
+      // Update only some of them
+      await setSettings({
+        test_key_1: 'updated_value_1',
+        test_key_3: 'updated_value_3',
+      })
+
+      // Get all settings
+      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+
+      expect(result).toEqual({
+        test_key_1: 'updated_value_1',
+        test_key_2: 'value_2', // unchanged
+        test_key_3: 'updated_value_3',
       })
     })
   })
@@ -891,9 +1054,7 @@ describe('Chat Threads DAL', () => {
       expect(threads.map((t) => t.id)).toContain(threadId2)
     })
   })
-})
-
-// ============================================================================
+}) // ============================================================================
 // CHAT MESSAGES TESTS
 // ============================================================================
 
@@ -1784,7 +1945,6 @@ describe('Email DAL', () => {
     })
   })
 })
-
 // ============================================================================
 // CONTEXT SIZE TESTS
 // ============================================================================

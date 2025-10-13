@@ -1,41 +1,41 @@
 import { useReducer } from 'react'
 
 type DropdownState = {
-  temperature: boolean
-  windSpeed: boolean
-  precipitation: boolean
-  timeFormat: boolean
   distance: boolean
+  temperature: boolean
+  dateFormat: boolean
+  timeFormat: boolean
+  currency: boolean
 }
 
 type DropdownAction =
-  | { type: 'TOGGLE_TEMPERATURE' }
-  | { type: 'TOGGLE_WIND_SPEED' }
-  | { type: 'TOGGLE_PRECIPITATION' }
-  | { type: 'TOGGLE_TIME_FORMAT' }
   | { type: 'TOGGLE_DISTANCE' }
+  | { type: 'TOGGLE_TEMPERATURE' }
+  | { type: 'TOGGLE_DATE_FORMAT' }
+  | { type: 'TOGGLE_TIME_FORMAT' }
+  | { type: 'TOGGLE_CURRENCY' }
   | { type: 'SET_DROPDOWN'; payload: { dropdown: keyof DropdownState; open: boolean } }
 
 export const initialState: DropdownState = {
-  temperature: false,
-  windSpeed: false,
-  precipitation: false,
-  timeFormat: false,
   distance: false,
+  temperature: false,
+  dateFormat: false,
+  timeFormat: false,
+  currency: false,
 }
 
 export const dropdownReducer = (state: DropdownState, action: DropdownAction): DropdownState => {
   switch (action.type) {
-    case 'TOGGLE_TEMPERATURE':
-      return { ...state, temperature: !state.temperature }
-    case 'TOGGLE_WIND_SPEED':
-      return { ...state, windSpeed: !state.windSpeed }
-    case 'TOGGLE_PRECIPITATION':
-      return { ...state, precipitation: !state.precipitation }
-    case 'TOGGLE_TIME_FORMAT':
-      return { ...state, timeFormat: !state.timeFormat }
     case 'TOGGLE_DISTANCE':
       return { ...state, distance: !state.distance }
+    case 'TOGGLE_TEMPERATURE':
+      return { ...state, temperature: !state.temperature }
+    case 'TOGGLE_DATE_FORMAT':
+      return { ...state, dateFormat: !state.dateFormat }
+    case 'TOGGLE_TIME_FORMAT':
+      return { ...state, timeFormat: !state.timeFormat }
+    case 'TOGGLE_CURRENCY':
+      return { ...state, currency: !state.currency }
     case 'SET_DROPDOWN':
       return { ...state, [action.payload.dropdown]: action.payload.open }
     default:
@@ -51,21 +51,21 @@ export const useLocalizationDropdowns = () => {
   const [state, dispatch] = useReducer(dropdownReducer, initialState)
 
   return {
-    temperatureDropdownOpen: state.temperature,
-    windSpeedDropdownOpen: state.windSpeed,
-    precipitationDropdownOpen: state.precipitation,
-    timeFormatDropdownOpen: state.timeFormat,
     distanceDropdownOpen: state.distance,
+    temperatureDropdownOpen: state.temperature,
+    dateFormatDropdownOpen: state.dateFormat,
+    timeFormatDropdownOpen: state.timeFormat,
+    currencyDropdownOpen: state.currency,
 
-    setTemperatureDropdownOpen: (open: boolean) =>
-      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'temperature', open } }),
-    setWindSpeedDropdownOpen: (open: boolean) =>
-      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'windSpeed', open } }),
-    setPrecipitationDropdownOpen: (open: boolean) =>
-      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'precipitation', open } }),
-    setTimeFormatDropdownOpen: (open: boolean) =>
-      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'timeFormat', open } }),
     setDistanceDropdownOpen: (open: boolean) =>
       dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'distance', open } }),
+    setTemperatureDropdownOpen: (open: boolean) =>
+      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'temperature', open } }),
+    setDateFormatDropdownOpen: (open: boolean) =>
+      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'dateFormat', open } }),
+    setTimeFormatDropdownOpen: (open: boolean) =>
+      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'timeFormat', open } }),
+    setCurrencyDropdownOpen: (open: boolean) =>
+      dispatch({ type: 'SET_DROPDOWN', payload: { dropdown: 'currency', open } }),
   }
 }

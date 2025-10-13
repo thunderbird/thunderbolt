@@ -6,42 +6,42 @@ describe('useLocalizationDropdowns', () => {
   describe('dropdownReducer', () => {
     it('should initialize with all dropdowns closed', () => {
       expect(initialState).toEqual({
-        temperature: false,
-        windSpeed: false,
-        precipitation: false,
-        timeFormat: false,
         distance: false,
+        temperature: false,
+        dateFormat: false,
+        timeFormat: false,
+        currency: false,
       })
+    })
+
+    it('should toggle distance dropdown', () => {
+      const state = dropdownReducer(initialState, { type: 'TOGGLE_DISTANCE' })
+      expect(state.distance).toBe(true)
+      expect(state.temperature).toBe(false)
+      expect(state.dateFormat).toBe(false)
+      expect(state.timeFormat).toBe(false)
+      expect(state.currency).toBe(false)
+
+      const newState = dropdownReducer(state, { type: 'TOGGLE_DISTANCE' })
+      expect(newState.distance).toBe(false)
     })
 
     it('should toggle temperature dropdown', () => {
       const state = dropdownReducer(initialState, { type: 'TOGGLE_TEMPERATURE' })
       expect(state.temperature).toBe(true)
-      expect(state.windSpeed).toBe(false)
-      expect(state.precipitation).toBe(false)
-      expect(state.timeFormat).toBe(false)
       expect(state.distance).toBe(false)
 
       const newState = dropdownReducer(state, { type: 'TOGGLE_TEMPERATURE' })
       expect(newState.temperature).toBe(false)
     })
 
-    it('should toggle wind speed dropdown', () => {
-      const state = dropdownReducer(initialState, { type: 'TOGGLE_WIND_SPEED' })
-      expect(state.windSpeed).toBe(true)
+    it('should toggle date format dropdown', () => {
+      const state = dropdownReducer(initialState, { type: 'TOGGLE_DATE_FORMAT' })
+      expect(state.dateFormat).toBe(true)
       expect(state.temperature).toBe(false)
 
-      const newState = dropdownReducer(state, { type: 'TOGGLE_WIND_SPEED' })
-      expect(newState.windSpeed).toBe(false)
-    })
-
-    it('should toggle precipitation dropdown', () => {
-      const state = dropdownReducer(initialState, { type: 'TOGGLE_PRECIPITATION' })
-      expect(state.precipitation).toBe(true)
-      expect(state.temperature).toBe(false)
-
-      const newState = dropdownReducer(state, { type: 'TOGGLE_PRECIPITATION' })
-      expect(newState.precipitation).toBe(false)
+      const newState = dropdownReducer(state, { type: 'TOGGLE_DATE_FORMAT' })
+      expect(newState.dateFormat).toBe(false)
     })
 
     it('should toggle time format dropdown', () => {
@@ -53,13 +53,13 @@ describe('useLocalizationDropdowns', () => {
       expect(newState.timeFormat).toBe(false)
     })
 
-    it('should toggle distance dropdown', () => {
-      const state = dropdownReducer(initialState, { type: 'TOGGLE_DISTANCE' })
-      expect(state.distance).toBe(true)
+    it('should toggle currency dropdown', () => {
+      const state = dropdownReducer(initialState, { type: 'TOGGLE_CURRENCY' })
+      expect(state.currency).toBe(true)
       expect(state.temperature).toBe(false)
 
-      const newState = dropdownReducer(state, { type: 'TOGGLE_DISTANCE' })
-      expect(newState.distance).toBe(false)
+      const newState = dropdownReducer(state, { type: 'TOGGLE_CURRENCY' })
+      expect(newState.currency).toBe(false)
     })
 
     it('should set dropdown state with SET_DROPDOWN action', () => {
@@ -68,7 +68,7 @@ describe('useLocalizationDropdowns', () => {
         payload: { dropdown: 'temperature', open: true },
       })
       expect(state.temperature).toBe(true)
-      expect(state.windSpeed).toBe(false)
+      expect(state.distance).toBe(false)
 
       const newState = dropdownReducer(state, {
         type: 'SET_DROPDOWN',
@@ -78,7 +78,7 @@ describe('useLocalizationDropdowns', () => {
     })
 
     it('should handle SET_DROPDOWN for all dropdown types', () => {
-      const dropdowns = ['temperature', 'windSpeed', 'precipitation', 'timeFormat', 'distance'] as const
+      const dropdowns = ['distance', 'temperature', 'dateFormat', 'timeFormat', 'currency'] as const
 
       dropdowns.forEach((dropdown) => {
         const state = dropdownReducer(initialState, {
@@ -96,14 +96,14 @@ describe('useLocalizationDropdowns', () => {
     })
 
     it('should maintain independent state for each dropdown', () => {
-      let state = dropdownReducer(initialState, { type: 'TOGGLE_TEMPERATURE' })
-      state = dropdownReducer(state, { type: 'TOGGLE_WIND_SPEED' })
+      let state = dropdownReducer(initialState, { type: 'TOGGLE_DISTANCE' })
+      state = dropdownReducer(state, { type: 'TOGGLE_TEMPERATURE' })
 
+      expect(state.distance).toBe(true)
       expect(state.temperature).toBe(true)
-      expect(state.windSpeed).toBe(true)
-      expect(state.precipitation).toBe(false)
+      expect(state.dateFormat).toBe(false)
       expect(state.timeFormat).toBe(false)
-      expect(state.distance).toBe(false)
+      expect(state.currency).toBe(false)
     })
 
     it('should handle rapid state changes', () => {
@@ -122,16 +122,16 @@ describe('useLocalizationDropdowns', () => {
     })
 
     it('should preserve other dropdown states when toggling one', () => {
-      let state = dropdownReducer(initialState, { type: 'TOGGLE_TEMPERATURE' })
-      state = dropdownReducer(state, { type: 'TOGGLE_WIND_SPEED' })
+      let state = dropdownReducer(initialState, { type: 'TOGGLE_DISTANCE' })
+      state = dropdownReducer(state, { type: 'TOGGLE_TEMPERATURE' })
 
-      state = dropdownReducer(state, { type: 'TOGGLE_PRECIPITATION' })
+      state = dropdownReducer(state, { type: 'TOGGLE_DATE_FORMAT' })
 
+      expect(state.distance).toBe(true)
       expect(state.temperature).toBe(true)
-      expect(state.windSpeed).toBe(true)
-      expect(state.precipitation).toBe(true)
+      expect(state.dateFormat).toBe(true)
       expect(state.timeFormat).toBe(false)
-      expect(state.distance).toBe(false)
+      expect(state.currency).toBe(false)
     })
   })
 })

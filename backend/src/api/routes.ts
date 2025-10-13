@@ -1,5 +1,7 @@
 import { Elysia, t } from 'elysia'
-import unitsData from '../data/units.json'
+import unitsByCountryData from '../data/localization/units-by-country.json'
+import unitsOptionsData from '../data/localization/units-options.json'
+import { resolveCountryCode } from '../utils/country'
 
 export interface LocationResult {
   name: string
@@ -18,8 +20,40 @@ export const createMainRoutes = () => {
       status: 'ok',
     }))
 
-    .get('/units', () => {
-      return unitsData
+    .get(
+      '/units',
+      (ctx) => {
+        const { query, set } = ctx
+        const country = query.country
+
+        if (!country) {
+          set.status = 400
+          throw new Error('Country parameter is required')
+        }
+
+        const countryCode = resolveCountryCode(country)
+        
+        if (!countryCode) {
+          return unitsByCountryData.US
+        }
+
+        const countryData = unitsByCountryData[countryCode as keyof typeof unitsByCountryData]
+        
+        if (!countryData) {
+          return unitsByCountryData.US
+        }
+
+        return countryData
+      },
+      {
+        query: t.Object({
+          country: t.String(),
+        }),
+      },
+    )
+
+    .get('/units-options', () => {
+      return unitsOptionsData
     })
 
     .get(

@@ -9,13 +9,13 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from '../ai-elements/chain-of-thought'
-import { GlobeIcon, SearchIcon } from 'lucide-react'
 import { type ComponentType, useEffect, useState } from 'react'
 import { getCloudUrl } from '@/lib/config'
 import type { FetchContentData, SearchResponseData } from '@/integrations/thunderbolt-pro/tools'
 import { markdownToText } from '@/lib/utils'
 import { Loader } from '../ai-elements/loader'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useToolMetadata } from '@/hooks/use-tool-metadata'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
@@ -70,13 +70,9 @@ const useToolRender = () => {
     const status = tool.state === 'output-available' ? 'complete' : 'pending'
     const onClick = () => openObjectSidebar(tool)
 
-    const ToolComponent = toolsRenderMapper[tool.type]
+    const ToolComponent = toolsRenderMapper[tool.type] ? toolsRenderMapper[tool.type] : toolsRenderMapper['default']
 
-    if (ToolComponent) {
-      return <ToolComponent cloudUrl={cloudUrl} onClick={onClick} status={status} tool={tool} />
-    }
-
-    return null
+    return <ToolComponent cloudUrl={cloudUrl} onClick={onClick} status={status} tool={tool} />
   }
 
   useEffect(() => {
@@ -99,17 +95,39 @@ const ToolLoader = ({ label, toolId }: ToolLoaderProps) => {
   )
 }
 
-const SearchToolRender = ({ cloudUrl, onClick, status, tool }: ToolRenderProps) => {
+const DefaultToolRender = ({ onClick, status, tool }: ToolRenderProps) => {
+  const metadata = useToolMetadata(tool.type)
+
   if (status === 'pending') {
-    return <ToolLoader label="Searching..." toolId={tool.toolCallId} />
+    return <ToolLoader label={metadata?.loadingMessage ?? ''} toolId={tool.toolCallId} />
   }
 
   return (
     <motion.div key={`${tool.toolCallId}_complete`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <ChainOfThoughtStep
         className="cursor-pointer"
-        icon={SearchIcon}
-        label={'Search'}
+        icon={metadata?.icon ?? undefined}
+        label={metadata?.displayName ?? ''}
+        status={status}
+        onClick={onClick}
+      />
+    </motion.div>
+  )
+}
+
+const SearchToolRender = ({ cloudUrl, onClick, status, tool }: ToolRenderProps) => {
+  const metadata = useToolMetadata(tool.type)
+
+  if (status === 'pending') {
+    return <ToolLoader label={metadata?.loadingMessage ?? ''} toolId={tool.toolCallId} />
+  }
+
+  return (
+    <motion.div key={`${tool.toolCallId}_complete`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <ChainOfThoughtStep
+        className="cursor-pointer"
+        icon={metadata?.icon || undefined}
+        label={metadata?.displayName ?? ''}
         status={status}
         onClick={onClick}
       >
@@ -138,15 +156,17 @@ const SearchToolRender = ({ cloudUrl, onClick, status, tool }: ToolRenderProps) 
 }
 
 const FetchContentToolRender = ({ cloudUrl, onClick, status, tool }: ToolRenderProps) => {
+  const metadata = useToolMetadata(tool.type)
+
   if (status === 'pending') {
-    return <ToolLoader label="Fetching content..." toolId={tool.toolCallId} />
+    return <ToolLoader label={metadata?.loadingMessage ?? ''} toolId={tool.toolCallId} />
   }
 
   return (
     <motion.div key={`${tool.toolCallId}_complete`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <ChainOfThoughtStep
         className="cursor-pointer"
-        icon={GlobeIcon}
+        icon={metadata?.icon || undefined}
         label={(tool.output as FetchContentData)?.title ?? ''}
         status={status}
         onClick={onClick}
@@ -173,6 +193,7 @@ const FetchContentToolRender = ({ cloudUrl, onClick, status, tool }: ToolRenderP
 }
 
 const toolsRenderMapper: Record<string, ComponentType<ToolRenderProps>> = {
+  default: DefaultToolRender,
   'tool-search': SearchToolRender,
   'tool-fetch_content': FetchContentToolRender,
 }

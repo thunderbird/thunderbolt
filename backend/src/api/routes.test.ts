@@ -141,7 +141,7 @@ describe('Main Routes', () => {
 
       const data = await response.json()
       expect(data).toEqual({
-        units: 'metric',
+        units: 'imperial',
         temperature: 'F',
         timeFormat: '12',
         dateFormatExample: 'MM/DD/YYYY',
@@ -159,7 +159,7 @@ describe('Main Routes', () => {
 
       const data = await response.json()
       expect(data).toEqual({
-        units: 'metric',
+        units: 'imperial',
         temperature: 'F',
         timeFormat: '12',
         dateFormatExample: 'MM/DD/YYYY',
@@ -177,7 +177,7 @@ describe('Main Routes', () => {
 
       const data = await response.json()
       expect(data).toEqual({
-        units: 'metric',
+        units: 'imperial',
         temperature: 'F',
         timeFormat: '12',
         dateFormatExample: 'MM/DD/YYYY',

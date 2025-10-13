@@ -1492,10 +1492,10 @@
       }
     },
     "LR": {
-      "units": "metric",
-      "temperature": "C",
+      "units": "imperial",
+      "temperature": "F",
       "timeFormat": "12",
-      "dateFormatExample": "DD/MM/YYYY",
+      "dateFormatExample": "MM/DD/YYYY",
       "currency": {
         "code": "LRD",
         "symbol": "LRD",
@@ -1657,10 +1657,10 @@
       }
     },
     "MM": {
-      "units": "metric",
-      "temperature": "C",
-      "timeFormat": "24",
-      "dateFormatExample": "DD/MM/YYYY",
+      "units": "imperial",
+      "temperature": "F",
+      "timeFormat": "12",
+      "dateFormatExample": "MM/DD/YYYY",
       "currency": {
         "code": "MMK",
         "symbol": "MMK",
@@ -2625,7 +2625,7 @@
       }
     },
     "US": {
-      "units": "metric",
+      "units": "imperial",
       "temperature": "F",
       "timeFormat": "12",
       "dateFormatExample": "MM/DD/YYYY",

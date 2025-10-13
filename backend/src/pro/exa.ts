@@ -55,6 +55,8 @@ export const exaPlugin = new Elysia({ name: 'exa' })
 
       const response = await store.exaClient.getContents([body.url], {
         livecrawlTimeout: 5_000,
+        text: true,
+        summary: true,
       })
 
       return {

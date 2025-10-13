@@ -26,7 +26,7 @@ const useFetchLinkPreviewContent = (url: string) => {
       fetchContent({ url })
         .then((content) =>
           setLinkPreview({
-            description: markdownToText(content?.text ?? ''),
+            description: content?.summary ?? '',
             image: content?.image ?? '',
             title: content?.title ?? '',
             url,

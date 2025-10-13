@@ -58,6 +58,7 @@ export type FetchContentData = {
   url: string
   title: string | null
   text: string
+  summary: string
   favicon: string | null
   image: string | null
   author: string | null

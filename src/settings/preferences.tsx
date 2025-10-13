@@ -1,7 +1,7 @@
 import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, snakeCased } from '@/lib/utils'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef } from 'react'
@@ -9,7 +9,9 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useLocalizationForm } from '@/hooks/use-localization-form'
+import { usePreferencesSettings } from '@/hooks/use-preferences-settings'
 import { getCloudUrl } from '@/lib/config'
+import { setSettings } from '@/lib/dal'
 
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
@@ -35,7 +37,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
-import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
+import { updateBooleanSetting } from '@/lib/dal'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
@@ -157,24 +159,10 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  // Get any existing settings from the database
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: getPreferencesSettings,
-  })
+  const { data: settings } = usePreferencesSettings()
 
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
-
-  // Extract country name from location (last part after comma)
-  const countryName = settings?.locationName ? settings.locationName.split(',').pop()?.trim() || null : null
-  const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits(countryName)
-
-  // Localization form logic
-  const { localizationForm, handleLocalizationChange } = useLocalizationForm({
-    settings,
-    countryUnitsData,
-    countryUnitsLoading,
-  })
+  const { data: countryUnitsData, isLoading: countryUnitsLoading, refetch: refetchCountryUnits } = useCountryUnits()
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -200,13 +188,18 @@ export default function PreferencesSettingsPage() {
   const locationForm = useForm<z.infer<typeof locationFormSchema>>({
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
-      locationName: '',
-      locationLat: '',
-      locationLng: '',
+      locationName: settings?.locationName,
+      locationLat: settings?.locationLat,
+      locationLng: settings?.locationLng,
     },
   })
 
-  // Update forms when data is loaded
+  const { localizationForm, handleLocalizationChange } = useLocalizationForm({
+    settings,
+    countryUnitsData,
+    countryUnitsLoading,
+  })
+
   useEffect(() => {
     if (settings) {
       nameForm.reset({
@@ -222,11 +215,9 @@ export default function PreferencesSettingsPage() {
       })
 
       locationForm.reset({
-        locationName: settings.locationName as string,
-        locationLat:
-          typeof settings.locationLat === 'string' ? settings.locationLat : String(settings.locationLat || ''),
-        locationLng:
-          typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
+        locationName: settings.locationName,
+        locationLat: settings.locationLat,
+        locationLng: settings.locationLng,
       })
     }
   }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
@@ -303,7 +294,7 @@ export default function PreferencesSettingsPage() {
         })
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
 
       if (values.preferredName?.trim()) {
         if (settings?.preferredName) {
@@ -324,7 +315,7 @@ export default function PreferencesSettingsPage() {
       await updateBooleanSetting('data_collection', values.dataCollection)
     },
     onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
 
       if (values.dataCollection) {
         postHog.opt_in_capturing()
@@ -343,7 +334,7 @@ export default function PreferencesSettingsPage() {
       await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
     },
   })
 
@@ -389,8 +380,24 @@ export default function PreferencesSettingsPage() {
         throw error
       }
     },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    onSuccess: async (_, values) => {
+      // Invalidate and refetch settings first
+      await queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
+      await queryClient.refetchQueries({ queryKey: ['preferences-settings'] })
+
+      const countryUnitsResult = await refetchCountryUnits()
+      if (countryUnitsResult.data) {
+        const countryDefaults = {
+          distance_unit: countryUnitsResult.data.units,
+          temperature_unit: countryUnitsResult.data.temperature,
+          date_format: countryUnitsResult.data.dateFormatExample,
+          time_format: countryUnitsResult.data.timeFormat,
+          currency: countryUnitsResult.data.currency.code,
+        }
+
+        await setSettings(countryDefaults)
+        queryClient.invalidateQueries({ queryKey: ['preferences-settings'] })
+      }
 
       if (settings?.locationName) {
         trackEvent('settings_location_update', {
@@ -632,7 +639,6 @@ export default function PreferencesSettingsPage() {
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
                     <FormLabel>Distance</FormLabel>
-                    <FormDescription>Choose your preferred distance unit.</FormDescription>
                   </div>
                   <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
                     <PopoverTrigger asChild>
@@ -648,9 +654,9 @@ export default function PreferencesSettingsPage() {
                             : field.value
                               ? (() => {
                                   const unit = unitsOptionsData?.units?.find((unit) => unit === field.value)
-                                  return unit ? unit.charAt(0).toUpperCase() + unit.slice(1) : 'Select...'
+                                  return unit ? unit.charAt(0).toUpperCase() + unit.slice(1) : 'Loading...'
                                 })()
-                              : 'Select...'}
+                              : 'Loading...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -689,7 +695,6 @@ export default function PreferencesSettingsPage() {
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
                     <FormLabel>Temperature</FormLabel>
-                    <FormDescription>Choose your preferred temperature unit.</FormDescription>
                   </div>
                   <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
                     <PopoverTrigger asChild>
@@ -704,7 +709,7 @@ export default function PreferencesSettingsPage() {
                             ? 'Loading...'
                             : unitsOptionsData?.temperature?.find((temp) => temp.symbol === field.value)?.name ||
                               field.value ||
-                              'Select...'}
+                              'Loading...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -743,7 +748,6 @@ export default function PreferencesSettingsPage() {
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
                     <FormLabel>Date Format</FormLabel>
-                    <FormDescription>Choose your preferred date format.</FormDescription>
                   </div>
                   <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
                     <PopoverTrigger asChild>
@@ -754,7 +758,12 @@ export default function PreferencesSettingsPage() {
                           disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Select...'}
+                          {unitsOptionsLoading
+                            ? 'Loading...'
+                            : field.value
+                              ? unitsOptionsData?.dateFormats?.find((f) => f.format === field.value)?.example ||
+                                field.value
+                              : 'Loading...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -766,14 +775,14 @@ export default function PreferencesSettingsPage() {
                             {unitsOptionsData?.dateFormats?.map((format) => (
                               <CommandItem
                                 key={format.format}
-                                value={format.format}
+                                value={format.example}
                                 onSelect={() => {
                                   field.onChange(format.format)
                                   handleLocalizationChange('dateFormat', format.format)
                                   setDateFormatDropdownOpen(false)
                                 }}
                               >
-                                {format.format} ({format.example})
+                                {format.example}
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -793,7 +802,6 @@ export default function PreferencesSettingsPage() {
                 <FormItem className="flex flex-row items-center gap-4">
                   <div className="flex-1">
                     <FormLabel>Time Format</FormLabel>
-                    <FormDescription>Choose your preferred time format.</FormDescription>
                   </div>
                   <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
                     <PopoverTrigger asChild>
@@ -804,7 +812,7 @@ export default function PreferencesSettingsPage() {
                           disabled={unitsOptionsLoading}
                           className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
                         >
-                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Select...'}
+                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Loading...'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </FormControl>
@@ -839,55 +847,58 @@ export default function PreferencesSettingsPage() {
             <FormField
               control={localizationForm.control}
               name="currency"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Currency</FormLabel>
-                    <FormDescription>Choose your preferred currency.</FormDescription>
-                  </div>
-                  <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsOptionsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
-                        >
-                          {unitsOptionsLoading
-                            ? 'Loading...'
-                            : unitsOptionsData?.currencies?.find((currency) => currency.code === field.value)?.name ||
-                              'Select...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[300px]">
-                      <Command>
-                        <CommandInput placeholder="Search currency by code, symbol, or name..." />
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsOptionsData?.currencies?.map((currency) => (
-                              <CommandItem
-                                key={currency.code}
-                                value={`${currency.code} ${currency.symbol} ${currency.name}`}
-                                onSelect={() => {
-                                  field.onChange(currency.code)
-                                  handleLocalizationChange('currency', currency.code)
-                                  setCurrencyDropdownOpen(false)
-                                }}
-                              >
-                                {currency.name} ({currency.symbol})
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === field.value)
+                const displayText = selectedCurrency
+                  ? `${selectedCurrency.name} (${selectedCurrency.symbol})`
+                  : 'Loading...'
+
+                return (
+                  <FormItem className="flex flex-row items-center gap-4">
+                    <div className="flex-1">
+                      <FormLabel>Currency</FormLabel>
+                    </div>
+                    <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            disabled={unitsOptionsLoading}
+                            className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                          >
+                            {unitsOptionsLoading ? 'Loading...' : displayText}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-[300px]">
+                        <Command>
+                          <CommandInput placeholder="Search currency by code, symbol, or name..." />
+                          <CommandList>
+                            <CommandGroup>
+                              {unitsOptionsData?.currencies?.map((currency) => (
+                                <CommandItem
+                                  key={currency.code}
+                                  value={`${currency.code} ${currency.symbol} ${currency.name}`}
+                                  onSelect={() => {
+                                    field.onChange(currency.code)
+                                    handleLocalizationChange('currency', currency.code)
+                                    setCurrencyDropdownOpen(false)
+                                  }}
+                                >
+                                  {currency.name} ({currency.symbol})
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
           </form>
         </Form>

@@ -9,13 +9,13 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from '../ai-elements/chain-of-thought'
-import { type ComponentType, useEffect, useState } from 'react'
-import { getCloudUrl } from '@/lib/config'
+import { type ComponentType } from 'react'
 import type { FetchContentData, SearchResponseData } from '@/integrations/thunderbolt-pro/tools'
 import { markdownToText } from '@/lib/utils'
 import { Loader } from '../ai-elements/loader'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useToolMetadata } from '@/hooks/use-tool-metadata'
+import { useCloudUrl } from '@/hooks/use-cloud-url'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
@@ -64,7 +64,7 @@ export const useToolGroupState = ({
 const useToolRender = () => {
   const { openObjectSidebar } = useObjectView()
 
-  const [cloudUrl, setCloudUrl] = useState<string>('')
+  const cloudUrl = useCloudUrl()
 
   const renderToolComponent = (tool: ToolUIPart) => {
     const status = tool.state === 'output-available' ? 'complete' : 'pending'
@@ -74,10 +74,6 @@ const useToolRender = () => {
 
     return <ToolComponent cloudUrl={cloudUrl} onClick={onClick} status={status} tool={tool} />
   }
-
-  useEffect(() => {
-    getCloudUrl().then(setCloudUrl)
-  }, [])
 
   return { renderToolComponent }
 }

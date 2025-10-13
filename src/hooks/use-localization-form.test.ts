@@ -178,6 +178,7 @@ describe('useLocalizationForm', () => {
         dateFormat: 'MM/DD/YYYY',
         timeFormat: '12h',
         currency: 'USD',
+        countryName: 'Test',
       }
 
       const result = createFormValues(settings, mockCountryUnitsData)
@@ -210,6 +211,7 @@ describe('useLocalizationForm', () => {
         dateFormat: '',
         timeFormat: '',
         currency: '',
+        countryName: 'Test',
       }
 
       const result = createFormValues(settings, mockCountryUnitsData)
@@ -233,6 +235,7 @@ describe('useLocalizationForm', () => {
         dateFormat: 'MM/DD/YYYY',
         timeFormat: '',
         currency: 'USD',
+        countryName: 'Test',
       }
 
       const result = createFormValues(settings, mockCountryUnitsData)
@@ -265,6 +268,7 @@ describe('useLocalizationForm', () => {
         dateFormat: 'MM/DD/YYYY',
         timeFormat: '12h',
         currency: 'USD',
+        countryName: 'Test',
       }
 
       const result = createFormValues(settings, mockCountryUnitsData, true)
@@ -288,6 +292,7 @@ describe('useLocalizationForm', () => {
         dateFormat: 'DD/MM/YYYY', // User chose European format
         timeFormat: '24h', // User chose 24h format
         currency: 'EUR', // User chose Euro
+        countryName: 'US',
       }
 
       const result = createFormValues(settings, mockCountryUnitsData, false)
@@ -311,6 +316,7 @@ describe('useLocalizationForm', () => {
         dateFormat: 'MM/DD/YYYY',
         timeFormat: '12h',
         currency: 'USD',
+        countryName: 'US',
       }
 
       const colombiaCountryData = {

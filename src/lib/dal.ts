@@ -1,6 +1,5 @@
-import { and, asc, desc, eq, inArray, isNotNull, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
-import { DEFAULT_IMPERIAL_UNITS } from './unit-detection'
 import {
   accountsTable,
   chatMessagesTable,
@@ -131,42 +130,6 @@ export const getAllSettings = async () => {
 }
 
 /**
- * Gets preferences settings with specific structure
- */
-export const getPreferencesSettings = async () => {
-  // Get all string settings in a single query
-  const settings = await getSettings([
-    'location_name',
-    'location_lat',
-    'location_lng',
-    'preferred_name',
-    'temperature_unit',
-    'time_format',
-    'distance_unit',
-    'date_format',
-    'currency',
-  ])
-
-  // Get boolean settings separately (they need special handling)
-  const dataCollection = await getBooleanSetting('data_collection', true)
-  const experimentalFeatureTasks = await getBooleanSetting('experimental_feature_tasks', false)
-
-  return {
-    locationName: settings.location_name || '',
-    locationLat: settings.location_lat || '',
-    locationLng: settings.location_lng || '',
-    preferredName: settings.preferred_name || '',
-    dataCollection,
-    experimentalFeatureTasks,
-    temperatureUnit: settings.temperature_unit || DEFAULT_IMPERIAL_UNITS.temperature,
-    timeFormat: settings.time_format || DEFAULT_IMPERIAL_UNITS.timeFormat,
-    distanceUnit: settings.distance_unit || 'imperial',
-    dateFormat: settings.date_format || 'MM/DD/YYYY',
-    currency: settings.currency || 'USD',
-  }
-}
-
-/**
  * Gets theme setting with proper typing
  */
 export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
@@ -235,29 +198,29 @@ export const updateSetting = async (key: string, value: string | null): Promise<
 }
 
 /**
- * Get multiple settings in a single query
- * @param keys - Array of setting keys to fetch
- * @returns Object with key-value pairs for the requested settings
+ * Get multiple settings in a single query with auto-detection of types
+ * @param config - Object with setting keys and their default values
+ * @returns Object with key-value pairs for the requested settings, properly typed
  */
-export const getSettings = async (keys: string[]): Promise<Record<string, string | null>> => {
-  if (keys.length === 0) return {}
+export const getSettings = async <T extends Record<string, string | number | boolean>>(config: T): Promise<T> => {
+  if (Object.keys(config).length === 0) return {} as T
 
-  const db = DatabaseSingleton.instance.db
-  const results = await db.select().from(settingsTable).where(inArray(settingsTable.key, keys))
+  const result: Record<string, string | number | boolean> = {}
 
-  const settingsMap: Record<string, string | null> = {}
+  for (const [key, defaultValue] of Object.entries(config)) {
+    if (typeof defaultValue === 'boolean') {
+      const setting = await getSetting(key, defaultValue.toString())
+      result[key] = setting === 'true'
+    } else if (typeof defaultValue === 'number') {
+      const setting = await getSetting(key, defaultValue.toString())
+      result[key] = setting ? parseFloat(setting) : defaultValue
+    } else {
+      const setting = await getSetting(key, defaultValue)
+      result[key] = setting || defaultValue
+    }
+  }
 
-  // Initialize all requested keys with null
-  keys.forEach((key) => {
-    settingsMap[key] = null
-  })
-
-  // Fill in the actual values from the database
-  results.forEach((result) => {
-    settingsMap[result.key] = result.value
-  })
-
-  return settingsMap
+  return result as T
 }
 
 /**

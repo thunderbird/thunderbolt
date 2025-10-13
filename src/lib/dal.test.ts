@@ -319,15 +319,86 @@ describe('Settings DAL', () => {
     })
   })
 
+  describe('getSettings with type-safe auto-detection', () => {
+    it('should auto-detect string settings', async () => {
+      await updateSetting('test_string', 'stored_value')
+
+      const result = await getSettings({
+        test_string: 'default_value',
+        non_existent_string: 'default_value',
+      })
+
+      expect(result).toEqual({
+        test_string: 'stored_value',
+        non_existent_string: 'default_value',
+      })
+    })
+
+    it('should auto-detect boolean settings', async () => {
+      await updateSetting('test_boolean_true', 'true')
+      await updateSetting('test_boolean_false', 'false')
+
+      const result = await getSettings({
+        test_boolean_true: false as boolean,
+        test_boolean_false: true as boolean,
+        non_existent_boolean: true as boolean,
+      })
+
+      expect(result).toEqual({
+        test_boolean_true: true,
+        test_boolean_false: false,
+        non_existent_boolean: true,
+      })
+    })
+
+    it('should auto-detect number settings', async () => {
+      await updateSetting('test_number', '42.5')
+
+      const result = await getSettings({
+        test_number: 0,
+        non_existent_number: 100,
+      })
+
+      expect(result).toEqual({
+        test_number: 42.5,
+        non_existent_number: 100,
+      })
+    })
+
+    it('should handle mixed types', async () => {
+      await updateSetting('mixed_string', 'stored_string')
+      await updateSetting('mixed_boolean', 'true')
+      await updateSetting('mixed_number', '99')
+
+      const result = await getSettings({
+        mixed_string: 'default_string',
+        mixed_boolean: false as boolean,
+        mixed_number: 0,
+        non_existent_string: 'default',
+        non_existent_boolean: false as boolean,
+        non_existent_number: 1,
+      })
+
+      expect(result).toEqual({
+        mixed_string: 'stored_string',
+        mixed_boolean: true,
+        mixed_number: 99,
+        non_existent_string: 'default',
+        non_existent_boolean: false,
+        non_existent_number: 1,
+      })
+    })
+  })
+
   describe('getSettings (bulk)', () => {
-    it('should return empty object for empty keys array', async () => {
-      const result = await getSettings([])
+    it('should return empty object for empty config', async () => {
+      const result = await getSettings({})
       expect(result).toEqual({})
     })
 
-    it('should return null values for non-existent keys', async () => {
-      const result = await getSettings(['non_existent_key'])
-      expect(result).toEqual({ non_existent_key: null })
+    it('should return default values for non-existent keys', async () => {
+      const result = await getSettings({ non_existent_key: 'default_value' })
+      expect(result).toEqual({ non_existent_key: 'default_value' })
     })
 
     it('should return multiple settings in a single query', async () => {
@@ -336,7 +407,11 @@ describe('Settings DAL', () => {
       await updateSetting('test_key_2', 'value_2')
       await updateSetting('test_key_3', 'value_3')
 
-      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+      const result = await getSettings({
+        test_key_1: 'default_1',
+        test_key_2: 'default_2',
+        test_key_3: 'default_3',
+      })
 
       expect(result).toEqual({
         test_key_1: 'value_1',
@@ -350,11 +425,15 @@ describe('Settings DAL', () => {
       await updateSetting('test_key_1', 'value_1')
       await updateSetting('test_key_2', 'value_2')
 
-      const result = await getSettings(['test_key_1', 'non_existent', 'test_key_2'])
+      const result = await getSettings({
+        test_key_1: 'default_1',
+        non_existent: 'default_value',
+        test_key_2: 'default_2',
+      })
 
       expect(result).toEqual({
         test_key_1: 'value_1',
-        non_existent: null,
+        non_existent: 'default_value',
         test_key_2: 'value_2',
       })
     })
@@ -362,7 +441,9 @@ describe('Settings DAL', () => {
     it('should handle duplicate keys in request', async () => {
       await updateSetting('test_key_1', 'value_1')
 
-      const result = await getSettings(['test_key_1', 'test_key_1'])
+      const result = await getSettings({
+        test_key_1: 'default_value',
+      })
 
       expect(result).toEqual({
         test_key_1: 'value_1',
@@ -446,7 +527,11 @@ describe('Settings DAL', () => {
       })
 
       // Get them back
-      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+      const result = await getSettings({
+        test_key_1: 'default_1',
+        test_key_2: 'default_2',
+        test_key_3: 'default_3',
+      })
 
       expect(result).toEqual({
         test_key_1: 'value_1',
@@ -470,7 +555,11 @@ describe('Settings DAL', () => {
       })
 
       // Get all settings
-      const result = await getSettings(['test_key_1', 'test_key_2', 'test_key_3'])
+      const result = await getSettings({
+        test_key_1: 'default_1',
+        test_key_2: 'default_2',
+        test_key_3: 'default_3',
+      })
 
       expect(result).toEqual({
         test_key_1: 'updated_value_1',

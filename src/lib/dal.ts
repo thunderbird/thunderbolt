@@ -160,7 +160,7 @@ export const getPreferencesSettings = async () => {
     experimentalFeatureTasks,
     temperatureUnit: settings.temperature_unit || DEFAULT_IMPERIAL_UNITS.temperature,
     timeFormat: settings.time_format || DEFAULT_IMPERIAL_UNITS.timeFormat,
-    distanceUnit: settings.distance_unit || DEFAULT_IMPERIAL_UNITS.distance,
+    distanceUnit: settings.distance_unit || 'imperial',
     dateFormat: settings.date_format || 'MM/DD/YYYY',
     currency: settings.currency || 'USD',
   }

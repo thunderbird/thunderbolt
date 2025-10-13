@@ -3,32 +3,34 @@ import ky from 'ky'
 import type { CountryUnitsData } from '@/types'
 import { countryUnitsResponseSchema } from '@/schemas/api'
 import { getCloudUrl } from '@/lib/config'
+import { usePreferencesSettings } from './use-preferences-settings'
 
 /**
  * Fetches country-specific units data from the backend API
- * @param countryCode - ISO country code (e.g., 'BR', 'US')
+ * Depends on the preferences settings to get location data. Falls back to US if no country name is found.
  */
-export const useCountryUnits = (countryCode: string | null) => {
+export const useCountryUnits = () => {
+  const { data: preferencesSettings } = usePreferencesSettings()
+
   return useQuery({
-    queryKey: ['country-units', countryCode],
+    queryKey: ['country-units', preferencesSettings?.countryName || 'US'],
     queryFn: async (): Promise<CountryUnitsData> => {
-      if (!countryCode) {
-        throw new Error('Country code is required')
-      }
+      const countryName = preferencesSettings?.countryName || 'US'
 
       const cloudUrl = await getCloudUrl()
       const response = await ky
         .get(`${cloudUrl}/units`, {
-          searchParams: { country: countryCode },
+          searchParams: { country: countryName },
         })
         .json()
 
       const validatedData = countryUnitsResponseSchema.parse(response)
       return validatedData
     },
-    enabled: !!countryCode,
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours
-    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    enabled: false,
+    refetchOnMount: false,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
     retry: 2,
     retryDelay: 1000,
   })

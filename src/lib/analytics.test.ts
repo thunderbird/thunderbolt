@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { initPosthog, sanitizeUrl } from './analytics'
 
 const mockKyGet = mock()
+const mockKyPost = mock()
 const mockKyJson = mock()
 const mockPosthogInit = mock()
 let capturedOptions: any = null
@@ -9,6 +10,7 @@ let capturedOptions: any = null
 mock.module('ky', () => ({
   default: {
     get: mockKyGet,
+    post: mockKyPost,
   },
 }))
 
@@ -52,9 +54,12 @@ describe('analytics before_send sanitization', () => {
   beforeEach(() => {
     capturedOptions = null
     mockKyGet.mockReset()
+    mockKyPost.mockReset()
     mockKyJson.mockReset()
     mockPosthogInit.mockReset()
     mockKyGet.mockReturnValue({ json: mockKyJson })
+    // Ensure a stable ky.post shape for any accidental use during this file's run
+    mockKyPost.mockReturnValue({ json: mockKyJson })
     mockKyJson.mockResolvedValue({ posthog_api_key: 'test-key' })
   })
 

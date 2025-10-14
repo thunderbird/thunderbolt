@@ -7,12 +7,6 @@ import type { z } from 'zod'
 import type {
   chatMessagesTable,
   chatThreadsTable,
-  contactsTable,
-  emailAddressesTable,
-  emailMessagesTable,
-  emailMessagesToAddressesTable,
-  emailThreadsTable,
-  embeddingsTable,
   mcpServersTable,
   modelsTable,
   promptsTable,
@@ -35,14 +29,8 @@ export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: Th
 export type ChatMessage = InferSelectModel<typeof chatMessagesTable>
 export type ChatThread = InferSelectModel<typeof chatThreadsTable>
 export type Setting = InferSelectModel<typeof settingsTable>
-export type EmailMessage = InferSelectModel<typeof emailMessagesTable>
-export type EmailThread = InferSelectModel<typeof emailThreadsTable>
-export type EmailAddress = InferSelectModel<typeof emailAddressesTable>
-export type EmailMessageToAddress = InferSelectModel<typeof emailMessagesToAddressesTable>
-export type Embedding = InferSelectModel<typeof embeddingsTable>
 export type Model = InferSelectModel<typeof modelsTable>
 export type Task = InferSelectModel<typeof tasksTable>
-export type Contact = InferSelectModel<typeof contactsTable>
 export type McpServer = InferSelectModel<typeof mcpServersTable>
 export type Prompt = InferSelectModel<typeof promptsTable>
 export type Trigger = InferSelectModel<typeof triggersTable>
@@ -56,53 +44,6 @@ export type AutomationRun = {
 export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
-}
-
-export type EmailMessageWithAddresses = EmailMessage & {
-  sender: EmailAddress
-  recipients: (EmailMessageToAddress & {
-    address: EmailAddress
-  })[]
-}
-
-export type EmailThreadWithMessagesAndAddresses = EmailThread & {
-  messages: EmailMessageWithAddresses[]
-}
-
-export type ParsedEmail = {
-  attachments: unknown[]
-  clean_text: string
-  html_body: string
-  text_body: string
-  parts: ParsedEmailPart[]
-}
-
-export type ParsedEmailPart = {
-  body: {
-    Html?: string
-    Text?: string
-  }
-  headers: ParsedEmailHeader[]
-}
-
-export type ParsedEmailHeader = {
-  name:
-    | string
-    | {
-        other: string
-      }
-  value: {
-    Text?: string
-    TextList?: string[]
-    ContentType?: {
-      c_type: string
-      c_subtype: string
-      attributes: string[][]
-    }
-  }
-  offset_start: number
-  offset_end: number
-  offset_field: number
 }
 
 export type SideviewType = 'message' | 'thread' | 'imap'

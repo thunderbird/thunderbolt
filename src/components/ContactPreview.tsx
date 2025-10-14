@@ -1,9 +1,9 @@
 'use client'
 
-import type { EmailAddress } from '@/types'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
-export function EmailAddressPreview({ emailAddress }: { emailAddress: EmailAddress }) {
+// @todo re-implement types
+export function EmailAddressPreview({ emailAddress }: { emailAddress: any }) {
   if (!emailAddress.name) {
     return <span className="text-sm">{emailAddress.address}</span>
   }

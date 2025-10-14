@@ -1,7 +1,6 @@
-import type { ParsedEmail } from '@/types'
 import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'
-import { customType, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { customType, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const float32Array = customType<{
   data: number[]
@@ -46,53 +45,9 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
   modelId: text('model_id').references(() => modelsTable.id),
 })
 
-export const contactsTable = sqliteTable('contacts', {
-  id: text('id').primaryKey().notNull().unique(),
-  name: text('name').notNull(),
-  firstSeenAt: integer('first_seen_at').notNull(),
-  lastSeenAt: integer('last_seen_at').notNull(),
-})
-
-export const emailAddressesTable = sqliteTable('email_addresses', {
-  address: text().primaryKey().notNull(),
-  name: text('name'),
-  contactId: text('contact_id').references(() => contactsTable.id, { onDelete: 'set null', onUpdate: 'cascade' }),
-  firstSeenAt: integer('first_seen_at').notNull(),
-  lastSeenAt: integer('last_seen_at').notNull(),
-})
-
-export const emailThreadsTable = sqliteTable('email_threads', {
-  id: text('id').primaryKey().notNull().unique(),
-  subject: text('subject').notNull(),
-  rootImapId: text('root_imap_id'),
-  firstMessageAt: integer('first_message_at').notNull(),
-  lastMessageAt: integer('last_message_at').notNull(),
-})
-
-export const emailMessagesTable = sqliteTable('email_messages', {
-  id: text('id').primaryKey().notNull().unique(),
-  imapId: text('imap_id').notNull().unique(),
-  htmlBody: text('html_body').notNull(),
-  textBody: text('text_body').notNull(),
-  parts: text('parts', { mode: 'json' }).$type<ParsedEmail>(),
-  subject: text('subject'),
-  sentAt: integer('sent_at').notNull(),
-  fromAddress: text('from_address')
-    .notNull()
-    .references(() => emailAddressesTable.address, { onDelete: 'restrict', onUpdate: 'cascade' }),
-  emailThreadId: text('email_thread_id')
-    .notNull()
-    .references(() => emailThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  mailbox: text('mailbox').notNull(),
-  references: text('references', { mode: 'json' }).$type<string[]>(),
-})
-
 export const tasksTable = sqliteTable('tasks', {
   id: text('id').primaryKey().notNull().unique(),
   item: text('item').notNull(),
-  emailMessageId: text('email_message_id')
-    .unique()
-    .references(() => emailMessagesTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   order: integer('order').notNull().default(0),
   isComplete: integer('is_complete').notNull().default(0),
 })
@@ -112,41 +67,6 @@ export const modelsTable = sqliteTable('models', {
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
   contextWindow: integer('context_window'),
-})
-
-export const embeddingsTable = sqliteTable('embeddings', {
-  id: text('id').primaryKey().notNull().unique(),
-  emailMessageId: text('email_message_id')
-    .unique()
-    .references(() => emailMessagesTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  emailThreadId: text('email_thread_id')
-    .unique()
-    .references(() => emailThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  embedding: float32Array('embedding', { dimensions: 384 }),
-  asText: text('as_text'),
-})
-
-export const emailMessagesToAddressesTable = sqliteTable(
-  'email_messages_to_addresses',
-  {
-    emailMessageId: text('email_message_id')
-      .notNull()
-      .references(() => emailMessagesTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    emailAddressId: text('email_address_id')
-      .notNull()
-      .references(() => emailAddressesTable.address, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    type: text('type', { enum: ['to', 'cc', 'bcc'] }).notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.emailMessageId, table.emailAddressId] })],
-)
-
-export const accountsTable = sqliteTable('accounts', {
-  id: text('id').primaryKey().notNull().unique(),
-  type: text('type', { enum: ['imap'] }).notNull(),
-  imapHostname: text('imap_hostname'),
-  imapPort: integer('imap_port'),
-  imapUsername: text('imap_username'),
-  imapPassword: text('imap_password'),
 })
 
 export const mcpServersTable = sqliteTable('mcp_servers', {

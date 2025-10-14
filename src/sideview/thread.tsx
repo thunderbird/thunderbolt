@@ -60,7 +60,7 @@ export function EmailThreadView() {
   return (
     <div className="flex flex-col gap-4 px-4">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold truncate px-2">{thread.subject}</h2>
+        <h2 className="text-lg font-semibold truncate px-2">Email Thread Title</h2>
         <div className="flex gap-1">
           <Button variant="ghost" size="icon" onClick={() => setExpandAll(expandAll === null ? true : !expandAll)}>
             {!expandAll ? <ChevronsUpDown /> : <ChevronsDownUp />}

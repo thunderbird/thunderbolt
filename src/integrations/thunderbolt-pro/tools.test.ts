@@ -298,6 +298,8 @@ describe('Thunderbolt Pro Tools', () => {
             location: 'New York',
             region: 'NY',
             country: 'US',
+            distanceUnit: 'imperial',
+            temperatureUnit: 'F',
           },
         }),
       )
@@ -367,6 +369,8 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             days: 3,
+            distanceUnit: 'imperial',
+            temperatureUnit: 'F',
           },
         }),
       )
@@ -397,6 +401,8 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             days: 5,
+            distanceUnit: 'imperial',
+            temperatureUnit: 'F',
           },
         }),
       )
@@ -484,6 +490,8 @@ describe('Thunderbolt Pro Tools', () => {
             query: 'New York',
             region: 'NY',
             country: 'US',
+            distanceUnit: 'imperial',
+            temperatureUnit: 'F',
           },
         }),
       )

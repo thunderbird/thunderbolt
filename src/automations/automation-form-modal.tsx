@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
 import { useBooleanSetting } from '@/hooks/use-setting'
+import { trackEvent } from '@/lib/analytics'
 import { getAvailableModels, getSelectedModel } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'
@@ -23,7 +24,6 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
-import { trackEvent } from '@/lib/analytics'
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -149,6 +149,7 @@ export default function AutomationFormModal({
         title: generatedTitle,
         prompt: values.prompt,
         modelId: values.modelId,
+        defaultHash: null, // User-created, not based on a default
       })
 
       // Create trigger if specified and not manual

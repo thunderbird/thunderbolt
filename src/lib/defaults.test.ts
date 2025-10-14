@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { defaultAutomations, defaultModels } from './defaults'
-import { getDefaultById, hasUserModifications, isDefault } from './defaults-diff'
+import type { Model } from '@/types'
+import { defaultAutomations, hashPrompt } from './defaults/automations'
+import { defaultModels, hashModel } from './defaults/models'
 
 describe('defaults', () => {
   test('defaultModels has expected structure', () => {
@@ -11,6 +12,9 @@ describe('defaults', () => {
       expect(model.provider).toBeDefined()
       expect(model.model).toBeDefined()
       expect(model.deletedAt).toBeNull()
+      expect(model.defaultHash).toBeNull()
+      expect(model.apiKey).toBeNull()
+      expect(model.url).toBeNull()
     }
   })
 
@@ -21,59 +25,119 @@ describe('defaults', () => {
       expect(automation.title).toBeDefined()
       expect(automation.prompt).toBeDefined()
       expect(automation.deletedAt).toBeNull()
+      expect(automation.defaultHash).toBeNull()
+      expect(automation.modelId).toBeDefined()
     }
   })
 })
 
-describe('defaults-diff', () => {
-  test('isDefault returns true for default items', () => {
-    const defaultId = defaultModels[0].id
-    expect(isDefault(defaultId, defaultModels)).toBe(true)
+describe('defaults-hash', () => {
+  test('hashModel produces consistent hashes', () => {
+    const model = defaultModels[0]
+    const hash1 = hashModel(model)
+    const hash2 = hashModel(model)
+    expect(hash1).toBe(hash2)
   })
 
-  test('isDefault returns false for non-default items', () => {
-    expect(isDefault('non-existent-id', defaultModels)).toBe(false)
+  test('hashModel detects changes in any field', () => {
+    const model = defaultModels[0]
+    const originalHash = hashModel(model)
+
+    // Test various field changes
+    const nameChange = hashModel({ ...model, name: 'Different' })
+    const enabledChange = hashModel({ ...model, enabled: model.enabled === 1 ? 0 : 1 })
+    const providerChange = hashModel({ ...model, provider: 'custom' })
+
+    expect(originalHash).not.toBe(nameChange)
+    expect(originalHash).not.toBe(enabledChange)
+    expect(originalHash).not.toBe(providerChange)
+    expect(nameChange).not.toBe(enabledChange)
   })
 
-  test('hasUserModifications returns false for unchanged items', () => {
-    const defaultModel = defaultModels[0]
-    expect(hasUserModifications(defaultModel, defaultModels)).toBe(false)
-  })
-
-  test('hasUserModifications returns true for modified items', () => {
-    const defaultModel = defaultModels[0]
-    const modifiedModel = { ...defaultModel, name: 'Modified Name' }
-    expect(hasUserModifications(modifiedModel, defaultModels)).toBe(true)
-  })
-
-  test('hasUserModifications returns false for user-created items', () => {
-    const userModel: (typeof defaultModels)[number] = {
-      id: 'user-created-id',
-      name: 'User Model',
-      provider: 'custom',
-      model: 'custom-model',
-      isSystem: 0,
-      enabled: 1,
-      isConfidential: 0,
-      contextWindow: 4096,
-      toolUsage: 1,
-      startWithReasoning: 0,
-      deletedAt: null,
-      apiKey: null,
-      url: null,
+  test('hashModel ignores order of object creation', () => {
+    const model = defaultModels[0]
+    // Create model with same values but different property order
+    const reorderedModel: Model = {
+      contextWindow: model.contextWindow,
+      name: model.name,
+      enabled: model.enabled,
+      provider: model.provider,
+      model: model.model,
+      url: model.url,
+      apiKey: model.apiKey,
+      isSystem: model.isSystem,
+      toolUsage: model.toolUsage,
+      isConfidential: model.isConfidential,
+      startWithReasoning: model.startWithReasoning,
+      id: model.id,
+      deletedAt: model.deletedAt,
+      defaultHash: model.defaultHash,
     }
-    expect(hasUserModifications(userModel, defaultModels)).toBe(false)
+    expect(hashModel(model)).toBe(hashModel(reorderedModel))
   })
 
-  test('getDefaultById returns the correct default', () => {
-    const defaultId = defaultModels[0].id
-    const result = getDefaultById(defaultId, defaultModels)
-    expect(result).toBeDefined()
-    expect(result?.id).toBe(defaultId)
+  test('hashPrompt produces consistent hashes', () => {
+    const prompt = defaultAutomations[0]
+    const hash1 = hashPrompt(prompt)
+    const hash2 = hashPrompt(prompt)
+    expect(hash1).toBe(hash2)
   })
 
-  test('getDefaultById returns undefined for non-existent id', () => {
-    const result = getDefaultById('non-existent-id', defaultModels)
-    expect(result).toBeUndefined()
+  test('hashPrompt detects changes in any field', () => {
+    const prompt = defaultAutomations[0]
+    const originalHash = hashPrompt(prompt)
+
+    const titleChange = hashPrompt({ ...prompt, title: 'Different Title' })
+    const promptChange = hashPrompt({ ...prompt, prompt: 'Different content' })
+    const modelIdChange = hashPrompt({ ...prompt, modelId: 'different-id' })
+
+    expect(originalHash).not.toBe(titleChange)
+    expect(originalHash).not.toBe(promptChange)
+    expect(originalHash).not.toBe(modelIdChange)
+  })
+
+  test('hashPrompt handles null title', () => {
+    const prompt = defaultAutomations[0]
+    const withNull = { ...prompt, title: null }
+    const withString = { ...prompt, title: 'Some Title' }
+
+    const hash1 = hashPrompt(withNull)
+    const hash2 = hashPrompt(withString)
+
+    expect(hash1).not.toBe(hash2)
+  })
+
+  test('hash computation is deterministic for models', () => {
+    for (const model of defaultModels) {
+      const hash1 = hashModel(model)
+      const hash2 = hashModel(model)
+      expect(hash1).toBe(hash2)
+      expect(hash1).toBeDefined()
+    }
+  })
+
+  test('hash computation is deterministic for automations', () => {
+    for (const automation of defaultAutomations) {
+      const hash1 = hashPrompt(automation)
+      const hash2 = hashPrompt(automation)
+      expect(hash1).toBe(hash2)
+      expect(hash1).toBeDefined()
+    }
+  })
+
+  test('hash detects round-trip modification', () => {
+    // Simulate: Original → Modified → Back to Original
+    const model = defaultModels[0]
+    const originalHash = hashModel(model)
+
+    // Modify
+    const modified = { ...model, name: 'Modified' }
+    const modifiedHash = hashModel(modified)
+    expect(modifiedHash).not.toBe(originalHash)
+
+    // Change back
+    const restored = { ...modified, name: model.name }
+    const restoredHash = hashModel(restored)
+    expect(restoredHash).toBe(originalHash)
   })
 })

@@ -93,6 +93,7 @@ export default function NewModelPage() {
       startWithReasoning: 0,
       contextWindow: null,
       deletedAt: null,
+      defaultHash: null, // User-created, not based on a default
     })
   }
 

@@ -1,5 +1,13 @@
 import type { Prompt } from '@/types'
+import { hashValues } from '../utils'
 import { defaultModelQwen3Flower } from './models'
+
+/**
+ * Compute hash of user-editable fields for a prompt
+ */
+export const hashPrompt = (prompt: Prompt): string => {
+  return hashValues([prompt.title, prompt.prompt, prompt.modelId])
+}
 
 /**
  * Default automations (prompts) shipped with the application
@@ -9,6 +17,7 @@ export const defaultAutomationDailyBrief: Prompt = {
   id: '0198ecc5-cc2b-735b-b478-9ff7f5b047d3',
   title: 'Daily Brief',
   deletedAt: null,
+  defaultHash: null,
   modelId: defaultModelQwen3Flower.id,
   prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
@@ -51,6 +60,7 @@ export const defaultAutomationDeepResearch: Prompt = {
   id: '0198ecc5-cc2b-735b-b478-a17c00778369',
   title: 'Deep Research',
   deletedAt: null,
+  defaultHash: null,
   modelId: defaultModelQwen3Flower.id,
   prompt: `You are **Deep Research**, an expert analyst who can iteratively SEARCH the web and FETCH full documents.
 
@@ -137,6 +147,7 @@ export const defaultAutomationImportantEmails: Prompt = {
   id: '0198ecc5-cc2b-735b-b478-a61c73ab50d6',
   title: 'Important Emails',
   deletedAt: null,
+  defaultHash: null,
   modelId: defaultModelQwen3Flower.id,
   prompt: `Review my inbox and summarize the 5 most important emails that need my attention today. Include sender, subject, and why each is important.`,
 }

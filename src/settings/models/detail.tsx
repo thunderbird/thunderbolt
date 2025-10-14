@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
 import { z } from 'zod'
@@ -20,11 +20,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { modelsTable } from '@/db/tables'
+import { getModel } from '@/lib/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
-import { getModel } from '@/lib/dal'
 
 const formSchema = z
   .object({
@@ -78,6 +78,7 @@ export default function ModelDetailPage() {
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {
       await db.update(modelsTable).set(model).where(eq(modelsTable.id, model.id))
+      // Don't touch defaultHash - it stores the original default's hash
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })

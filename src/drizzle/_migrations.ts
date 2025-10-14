@@ -49,4 +49,9 @@ export const migrations: Migration[] = [
     name: '0007_salty_spyke.sql',
     sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;',
   },
+  {
+    hash: '0009_burly_union_jack',
+    name: '0009_burly_union_jack.sql',
+    sql: 'ALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;',
+  },
 ]

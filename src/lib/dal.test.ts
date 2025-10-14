@@ -9,7 +9,7 @@ import {
   settingsTable,
   tasksTable,
 } from '@/src/db/tables'
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -40,9 +40,14 @@ import {
   getThemeSetting,
   getTriggerPromptForThread,
   hasSetting,
+  resetAutomationToDefault,
+  resetModelToDefault,
   updateBooleanSetting,
   updateSetting,
 } from './dal'
+import { defaultAutomations, hashPrompt } from './defaults/automations'
+import { defaultModels, hashModel } from './defaults/models'
+import { seedModels, seedPrompts } from './seed'
 
 beforeAll(async () => {
   // Use in-memory database for testing
@@ -1517,5 +1522,129 @@ describe('Context Size DAL', () => {
       const contextSize = await getContextSizeForThread(threadId)
       expect(contextSize).toBe(1500)
     })
+  })
+})
+
+// ============================================================================
+// DEFAULTS MANAGEMENT
+// ============================================================================
+
+describe('resetModelToDefault', () => {
+  beforeEach(async () => {
+    const db = DatabaseSingleton.instance.db
+    await db.delete(modelsTable)
+    await seedModels()
+  })
+
+  it('resets modified model to default state', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultModel = defaultModels[0]
+
+    // User modifies the model
+    await db.update(modelsTable).set({ name: 'User Modified', enabled: 0 }).where(eq(modelsTable.id, defaultModel.id))
+
+    // Verify it's modified
+    let model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
+    expect(model?.name).toBe('User Modified')
+    expect(model?.enabled).toBe(0)
+
+    // Reset to default
+    await resetModelToDefault(defaultModel.id, defaultModel)
+
+    // Verify it's reset
+    model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
+    expect(model?.name).toBe(defaultModel.name)
+    expect(model?.enabled).toBe(defaultModel.enabled)
+    // Hash should be computed from the default
+    expect(model?.defaultHash).toBe(hashModel(defaultModel))
+  })
+
+  it('clears deletedAt when resetting', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultModel = defaultModels[0]
+
+    // Soft delete
+    await db
+      .update(modelsTable)
+      .set({ deletedAt: Math.floor(Date.now() / 1000) })
+      .where(eq(modelsTable.id, defaultModel.id))
+
+    // Reset to default
+    await resetModelToDefault(defaultModel.id, defaultModel)
+
+    // Verify deletedAt is cleared
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
+    expect(model?.deletedAt).toBeNull()
+  })
+})
+
+describe('resetAutomationToDefault', () => {
+  beforeEach(async () => {
+    const db = DatabaseSingleton.instance.db
+    await db.delete(modelsTable)
+    await db.delete(promptsTable)
+    await seedModels()
+    await seedPrompts()
+  })
+
+  it('resets modified automation to default state', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultAutomation = defaultAutomations[0]
+
+    // User modifies the automation
+    await db
+      .update(promptsTable)
+      .set({ title: 'Modified Title', prompt: 'Modified content' })
+      .where(eq(promptsTable.id, defaultAutomation.id))
+
+    // Verify it's modified
+    let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+    expect(automation?.title).toBe('Modified Title')
+    expect(automation?.prompt).toBe('Modified content')
+
+    // Reset to default
+    await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
+
+    // Verify it's reset
+    automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+    expect(automation?.title).toBe(defaultAutomation.title)
+    expect(automation?.prompt).toBe(defaultAutomation.prompt)
+    // Hash should be computed from the default
+    expect(automation?.defaultHash).toBe(hashPrompt(defaultAutomation))
+
+    // Verify hash now matches
+    if (automation) {
+      const currentHash = hashPrompt(automation)
+      expect(automation.defaultHash).toBeDefined()
+      expect(currentHash).toBe(automation.defaultHash!)
+    }
+  })
+
+  it('after reset, modification detection works correctly', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultAutomation = defaultAutomations[0]
+
+    // Modify
+    await db.update(promptsTable).set({ title: 'Modified' }).where(eq(promptsTable.id, defaultAutomation.id))
+
+    // Verify detected as modified
+    let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+    expect(automation).toBeDefined()
+    if (automation) {
+      let currentHash = hashPrompt(automation)
+      expect(currentHash).not.toBe(automation.defaultHash)
+    }
+
+    // Reset
+    await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
+
+    // Verify no longer detected as modified
+    automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+    expect(automation).toBeDefined()
+    if (automation) {
+      const currentHash = hashPrompt(automation)
+      expect(automation.defaultHash).toBeDefined()
+      expect(currentHash).toBe(automation.defaultHash!)
+    }
   })
 })

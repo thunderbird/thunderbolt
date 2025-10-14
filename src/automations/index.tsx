@@ -19,10 +19,8 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
 import { useBooleanSetting } from '@/hooks/use-setting'
 import { trackEvent } from '@/lib/analytics'
-import { getAllPrompts } from '@/lib/dal'
-import { defaultAutomations } from '@/lib/defaults'
-import { getDefaultById, hasUserModifications, isDefault } from '@/lib/defaults-diff'
-import { resetAutomationToDefault } from '@/lib/defaults-reset'
+import { getAllPrompts, resetAutomationToDefault } from '@/lib/dal'
+import { defaultAutomations, hashPrompt } from '@/lib/defaults/automations'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -92,7 +90,7 @@ export default function AutomationsPage() {
   }
 
   const handleResetPrompt = async (promptId: string) => {
-    const defaultAutomation = getDefaultById(promptId, defaultAutomations)
+    const defaultAutomation = defaultAutomations.find((d) => d.id === promptId)
     if (defaultAutomation) {
       await resetAutomationToDefault(promptId, defaultAutomation)
       // TODO: Add 'automation_reset_to_default' to EventType
@@ -306,10 +304,12 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
 
   const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
 
-  // Determine modification status
-  const isDefaultAutomation = isDefault(prompt.id, defaultAutomations)
-  const hasModifications = hasUserModifications(prompt, defaultAutomations)
-  const showResetIndicator = isDefaultAutomation && hasModifications
+  // Determine modification status using hash
+  const defaultAutomation = defaultAutomations.find((d) => d.id === prompt.id)
+  const isDefaultAutomation = !!defaultAutomation
+  // Compare current content hash vs stored default hash
+  const currentHash = isDefaultAutomation ? hashPrompt(prompt) : null
+  const hasModifications = isDefaultAutomation && currentHash !== prompt.defaultHash
 
   return (
     <Card className="h-full flex flex-col pb-0">
@@ -318,7 +318,7 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
         <div className="flex items-center justify-between mb-8">
           {/* Left: Title with reset indicator */}
           <div className="flex items-center gap-2 flex-1 min-w-0 mr-6">
-            {showResetIndicator && (
+            {hasModifications && (
               <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
                 <PopoverTrigger asChild>
                   <button

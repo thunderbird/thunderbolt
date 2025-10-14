@@ -250,6 +250,7 @@ export default function ModelsPage() {
         .update(modelsTable)
         .set({ enabled: enabled ? 1 : 0 })
         .where(eq(modelsTable.id, id))
+      // Don't touch defaultHash - it stores the original default's hash
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })
@@ -359,6 +360,7 @@ export default function ModelsPage() {
         contextWindow: null,
         tokenizer: null,
         deletedAt: null,
+        defaultHash: null, // User-created, not based on a default
       }
       const model = await createModel(modelConfigWithDefaults)
 

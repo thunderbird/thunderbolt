@@ -1,4 +1,24 @@
 import type { Model } from '@/types'
+import { hashValues } from '../utils'
+
+/**
+ * Compute hash of user-editable fields for a model
+ */
+export const hashModel = (model: Model): string => {
+  return hashValues([
+    model.name,
+    model.provider,
+    model.model,
+    model.url,
+    model.apiKey,
+    model.isSystem,
+    model.enabled,
+    model.toolUsage,
+    model.isConfidential,
+    model.startWithReasoning,
+    model.contextWindow,
+  ])
+}
 
 /**
  * Default system models shipped with the application
@@ -20,6 +40,7 @@ export const defaultModelQwen3Flower: Model = {
   deletedAt: null,
   apiKey: null,
   url: null,
+  defaultHash: null,
 }
 
 export const defaultModelQwen3Instruct: Model = {
@@ -36,6 +57,7 @@ export const defaultModelQwen3Instruct: Model = {
   deletedAt: null,
   apiKey: null,
   url: null,
+  defaultHash: null,
 }
 
 export const defaultModelQwen3Thinking: Model = {
@@ -52,6 +74,7 @@ export const defaultModelQwen3Thinking: Model = {
   deletedAt: null,
   apiKey: null,
   url: null,
+  defaultHash: null,
 }
 
 /**

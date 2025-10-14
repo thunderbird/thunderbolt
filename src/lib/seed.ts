@@ -1,15 +1,52 @@
 import { createSetting, deleteSetting, getSetting } from '@/lib/dal'
+import { eq } from 'drizzle-orm'
+import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, tasksTable } from '../db/tables'
-import { defaultAutomations, defaultModels } from './defaults'
+import { defaultAutomations, hashPrompt } from './defaults/automations'
+import { defaultModels, hashModel } from './defaults/models'
 
-export const seedModels = async () => {
+/**
+ * Generic function to seed defaults into a table
+ * Inserts new defaults and updates unmodified existing ones
+ */
+const seedDefaults = async <T extends { id: string; defaultHash: string | null }>(
+  table: SQLiteTableWithColumns<any>,
+  defaults: readonly T[],
+  hashFn: (item: any) => string,
+) => {
   const db = DatabaseSingleton.instance.db
 
-  for (const defaultModel of defaultModels) {
-    await db.insert(modelsTable).values(defaultModel).onConflictDoNothing()
+  for (const defaultItem of defaults) {
+    const existing = await db.select().from(table).where(eq(table.id, defaultItem.id)).get()
+
+    if (!existing) {
+      // New default - insert with computed hash
+      await db.insert(table).values({
+        ...defaultItem,
+        defaultHash: hashFn(defaultItem),
+      })
+    } else {
+      // Exists - check if user modified by comparing hashes
+      const currentHash = hashFn(existing)
+      if (currentHash === existing.defaultHash) {
+        // Unmodified - safe to update to new default
+        await db
+          .update(table)
+          .set({
+            ...defaultItem,
+            defaultHash: hashFn(defaultItem),
+          })
+          .where(eq(table.id, defaultItem.id))
+      }
+      // If hashes don't match, user has modified - skip update
+    }
   }
+}
+
+export const seedModels = async () => {
+  await seedDefaults(modelsTable, defaultModels, hashModel)
 }
 
 /**
@@ -77,9 +114,5 @@ export const seedTasks = async () => {
 }
 
 export const seedPrompts = async () => {
-  const db = DatabaseSingleton.instance.db
-
-  for (const defaultAutomation of defaultAutomations) {
-    await db.insert(promptsTable).values(defaultAutomation).onConflictDoNothing()
-  }
+  await seedDefaults(promptsTable, defaultAutomations, hashPrompt)
 }

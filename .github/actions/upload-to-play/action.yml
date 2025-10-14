@@ -18,15 +18,14 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
       with:
-        node-version: 'lts/*'
-        cache: 'npm'
+        bun-version: latest
 
     - name: Install dependencies
       shell: bash
-      run: npm install googleapis
+      run: bun add googleapis
 
     - name: Upload to Google Play Store
       shell: bash

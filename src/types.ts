@@ -20,12 +20,8 @@ import type {
   tasksTable,
   triggersTable,
 } from './db/tables'
-import type ImapClient from './imap/imap'
-import type { ImapSyncClient } from './sync'
 
 export type InitData = {
-  imap: ImapClient
-  imapSync: ImapSyncClient
   tray: TrayIcon | undefined
   window: Window | undefined
   sideviewType: SideviewType | null
@@ -35,23 +31,6 @@ export type InitData = {
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
-
-export type AccountsSettings = {
-  hostname: string
-  port: number
-  username: string
-  password: string
-}
-
-export type ModelsSettings = {
-  openai_api_key: string
-}
-
-export type Settings = {
-  account?: AccountsSettings
-  models?: ModelsSettings
-  last_generated_tasks_from_inbox?: string
-}
 
 export type ChatMessage = InferSelectModel<typeof chatMessagesTable>
 export type ChatThread = InferSelectModel<typeof chatThreadsTable>
@@ -127,23 +106,6 @@ export type ParsedEmailHeader = {
 }
 
 export type SideviewType = 'message' | 'thread' | 'imap'
-
-export type ImapEmailAddress = {
-  name: string
-  address: string
-}
-
-export type ImapEmailMessage = {
-  id: string
-  imapId: string
-  htmlBody: string
-  textBody: string
-  subject: string
-  sentAt: number
-  toAddresses: ImapEmailAddress[]
-  fromAddress: ImapEmailAddress
-  references: string[]
-}
 
 export type ToolConfig = {
   name: string

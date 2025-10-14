@@ -2,7 +2,7 @@ import { createPrompt } from '@/ai/prompt'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
-import { getBooleanSetting, getSetting } from '@/lib/dal'
+import { getBooleanSetting, getSettings } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -134,10 +134,17 @@ export const aiFetchStreamingResponse = async ({
 
   const db = DatabaseSingleton.instance.db
 
-  const locationName = await getSetting<string>('location_name')
-  const locationLat = await getSetting<string>('location_lat')
-  const locationLng = await getSetting<string>('location_lng')
-  const preferredName = await getSetting<string>('preferred_name')
+  const settings = await getSettings({
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    preferred_name: '',
+    distance_unit: 'imperial',
+    temperature_unit: 'fahrenheit',
+    date_format: 'MM/DD/YYYY',
+    time_format: '12h',
+    currency: 'USD',
+  })
 
   const model = await db.query.modelsTable.findFirst({
     where: eq(modelsTable.id, modelId),
@@ -161,11 +168,18 @@ export const aiFetchStreamingResponse = async ({
   }
 
   const systemPrompt = createPrompt({
-    preferredName: preferredName as string,
+    preferredName: settings.preferred_name,
     location: {
-      name: locationName as string,
-      lat: locationLat ? parseFloat(locationLat as string) : undefined,
-      lng: locationLng ? parseFloat(locationLng as string) : undefined,
+      name: settings.location_name,
+      lat: settings.location_lat ? parseFloat(settings.location_lat) : undefined,
+      lng: settings.location_lng ? parseFloat(settings.location_lng) : undefined,
+    },
+    localization: {
+      distanceUnit: settings.distance_unit,
+      temperatureUnit: settings.temperature_unit,
+      dateFormat: settings.date_format,
+      timeFormat: settings.time_format,
+      currency: settings.currency,
     },
   })
 

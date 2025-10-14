@@ -7,13 +7,13 @@ const path = require('path')
 async function uploadToPlayStore() {
   try {
     // Get environment variables
-    const serviceAccountJson = process.env.SERVICE_ACCOUNT_JSON
+    const serviceAccountFile = process.env.SERVICE_ACCOUNT_FILE
     const packageName = process.env.PACKAGE_NAME
     const aabPath = process.env.AAB_PATH
     const track = process.env.TRACK || 'internal'
 
-    if (!serviceAccountJson || !packageName || !aabPath) {
-      throw new Error('Missing required environment variables: SERVICE_ACCOUNT_JSON, PACKAGE_NAME, AAB_PATH')
+    if (!serviceAccountFile || !packageName || !aabPath) {
+      throw new Error('Missing required environment variables: SERVICE_ACCOUNT_FILE, PACKAGE_NAME, AAB_PATH')
     }
 
     // Validate AAB file exists
@@ -21,9 +21,15 @@ async function uploadToPlayStore() {
       throw new Error(`AAB file not found: ${aabPath}`)
     }
 
+    // Validate service account file exists
+    if (!fs.existsSync(serviceAccountFile)) {
+      throw new Error(`Service account file not found: ${serviceAccountFile}`)
+    }
+
     console.log(`📱 Uploading ${aabPath} to ${packageName} on ${track} track`)
 
-    // Load service account credentials
+    // Load service account credentials from file
+    const serviceAccountJson = fs.readFileSync(serviceAccountFile, 'utf8')
     const credentials = JSON.parse(serviceAccountJson)
     const auth = new google.auth.GoogleAuth({
       credentials,

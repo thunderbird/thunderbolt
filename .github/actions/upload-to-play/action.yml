@@ -30,8 +30,17 @@ runs:
     - name: Upload to Google Play Store
       shell: bash
       run: |
-        SERVICE_ACCOUNT_JSON="${{ inputs.serviceAccountJson }}" \
-        PACKAGE_NAME="${{ inputs.packageName }}" \
-        AAB_PATH="${{ inputs.aabPath }}" \
-        TRACK="${{ inputs.track }}" \
+        # Write service account JSON to file to avoid shell escaping issues
+        echo '${{ inputs.serviceAccountJson }}' > /tmp/service-account.json
+
+        # Set environment variables
+        export PACKAGE_NAME="${{ inputs.packageName }}"
+        export AAB_PATH="${{ inputs.aabPath }}"
+        export TRACK="${{ inputs.track }}"
+        export SERVICE_ACCOUNT_FILE="/tmp/service-account.json"
+
+        # Run the script
         node ${{ github.workspace }}/scripts/upload-to-play.js
+
+        # Clean up
+        rm -f /tmp/service-account.json

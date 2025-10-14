@@ -1,7 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
 import { getSettings } from '@/lib/dal'
-import { DEFAULT_IMPERIAL_UNITS } from '@/lib/unit-detection'
 import type { PreferencesSettings } from '@/types'
+
+/**
+ * Default units for imperial system (US fallback)
+ */
+export const DEFAULT_IMPERIAL_UNITS = {
+  temperature: 'F',
+  speed: 'mph',
+  distance: 'mi',
+  precipitation: 'in',
+  timeFormat: '12h',
+} as const
+
+/**
+ * Default units for metric system
+ */
+export const DEFAULT_METRIC_UNITS = {
+  temperature: 'C',
+  speed: 'km/h',
+  distance: 'km',
+  precipitation: 'mm',
+  timeFormat: '24h',
+} as const
 
 /**
  * Fetches all user preferences settings from the database

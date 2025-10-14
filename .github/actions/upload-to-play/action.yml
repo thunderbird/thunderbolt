@@ -25,6 +25,7 @@ runs:
         cache: 'npm'
 
     - name: Install dependencies
+      shell: bash
       run: npm install googleapis
 
     - name: Upload to Google Play Store
@@ -34,4 +35,4 @@ runs:
         PACKAGE_NAME="${{ inputs.packageName }}" \
         AAB_PATH="${{ inputs.aabPath }}" \
         TRACK="${{ inputs.track }}" \
-        node scripts/upload-to-play.js
+        node ${{ github.workspace }}/scripts/upload-to-play.js

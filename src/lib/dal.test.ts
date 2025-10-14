@@ -388,6 +388,54 @@ describe('Settings DAL', () => {
         non_existent_number: 1,
       })
     })
+
+    it('should preserve 0 values instead of replacing with default', async () => {
+      await updateSetting('zero_number', '0')
+
+      const result = await getSettings({
+        zero_number: 42,
+      })
+
+      expect(result).toEqual({
+        zero_number: 0,
+      })
+    })
+
+    it('should preserve empty strings instead of replacing with default', async () => {
+      await updateSetting('empty_string', '')
+
+      const result = await getSettings({
+        empty_string: 'default_value',
+      })
+
+      expect(result).toEqual({
+        empty_string: '',
+      })
+    })
+
+    it('should handle invalid number strings by returning default', async () => {
+      await updateSetting('invalid_number', 'not-a-number')
+
+      const result = await getSettings({
+        invalid_number: 42,
+      })
+
+      expect(result).toEqual({
+        invalid_number: 42,
+      })
+    })
+
+    it('should handle NaN values by returning default', async () => {
+      await updateSetting('nan_number', 'NaN')
+
+      const result = await getSettings({
+        nan_number: 100,
+      })
+
+      expect(result).toEqual({
+        nan_number: 100,
+      })
+    })
   })
 
   describe('getSettings (bulk)', () => {

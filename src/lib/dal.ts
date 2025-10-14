@@ -213,10 +213,15 @@ export const getSettings = async <T extends Record<string, string | number | boo
       result[key] = setting === 'true'
     } else if (typeof defaultValue === 'number') {
       const setting = await getSetting(key, defaultValue.toString())
-      result[key] = setting ? parseFloat(setting) : defaultValue
+      if (setting !== null && setting !== undefined) {
+        const parsed = parseFloat(setting)
+        result[key] = isNaN(parsed) ? defaultValue : parsed
+      } else {
+        result[key] = defaultValue
+      }
     } else {
       const setting = await getSetting(key, defaultValue)
-      result[key] = setting || defaultValue
+      result[key] = setting !== null && setting !== undefined ? setting : defaultValue
     }
   }
 

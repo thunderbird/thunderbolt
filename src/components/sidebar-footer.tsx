@@ -1,6 +1,6 @@
 'use client'
 
-import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Palette, Sparkles, Terminal } from 'lucide-react'
+import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles, Terminal } from 'lucide-react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -94,39 +94,9 @@ export function SidebarFooter() {
                   </NavLink>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <NavLink to="/devtools">
-                    <Terminal className="mr-2 size-4" />
-                    Dev Tools
-                  </NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
                   <NavLink to="/message-simulator">
                     <Terminal className="mr-2 size-4" />
                     Message Simulator
-                  </NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/ui-kit">
-                    <Palette className="mr-2 size-4" />
-                    UI Kit
-                  </NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/">
-                    <Palette className="mr-2 size-4" />
-                    Welcome Screen
-                  </NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/settings/accounts">
-                    <BadgeCheck className="mr-2 size-4" />
-                    Accounts
-                  </NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/settings/thunderbolt-bridge">
-                    <Terminal className="mr-2 size-4" />
-                    Thunderbolt Bridge
                   </NavLink>
                 </DropdownMenuItem>
               </DropdownMenuGroup>

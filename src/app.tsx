@@ -47,7 +47,6 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import { SideviewProvider } from './sideview/provider'
 import type { InitData, SideviewType } from './types'
-import UiKitPage from './ui-kit'
 
 const queryClient = new QueryClient()
 
@@ -89,8 +88,6 @@ function AppRoutes(_: { initData: InitData }) {
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="dev-settings" element={<DevSettingsPage />} />
         </Route>
-
-        <Route path="ui-kit" element={<UiKitPage />} />
       </Route>
 
       {/* OAuth callback route */}

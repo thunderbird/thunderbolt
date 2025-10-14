@@ -1,28 +1,28 @@
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getEmailThreadWithMessages, getEmailThreadByMessageIdWithMessages } from '@/lib/dal'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
-import { EmailMessageView } from './message'
 import { useSideview } from './provider'
 
 export function EmailThreadView() {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
-  const { sideviewId, sideviewType, setSideview } = useSideview()
+  const { sideviewId, sideviewType: _, setSideview } = useSideview()
 
   const { data: thread, isLoading } = useQuery({
     queryKey: ['thread', sideviewId],
     queryFn: async () => {
       if (!sideviewId) return null
 
-      if (sideviewType === 'thread') {
-        return await getEmailThreadWithMessages(sideviewId)
-      }
+      // @todo re-implement this
 
-      if (sideviewType === 'message') {
-        return await getEmailThreadByMessageIdWithMessages(sideviewId)
-      }
+      // if (sideviewType === 'thread') {
+      //   return await getEmailThreadWithMessages(sideviewId)
+      // }
+
+      // if (sideviewType === 'message') {
+      //   return await getEmailThreadByMessageIdWithMessages(sideviewId)
+      // }
 
       return null
     },
@@ -70,9 +70,10 @@ export function EmailThreadView() {
           </Button>
         </div>
       </div>
-      {thread.messages.map((message) => (
+      {/* @todo re-implement this */}
+      {/* {thread.messages.map((message) => (
         <EmailMessageView key={message.id} message={message} isOpen={expandAll === true} />
-      ))}
+      ))} */}
     </div>
   )
 }

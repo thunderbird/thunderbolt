@@ -1,26 +1,15 @@
 import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import {
-  accountsTable,
   chatMessagesTable,
   chatThreadsTable,
-  emailMessagesTable,
-  emailThreadsTable,
   mcpServersTable,
   modelsTable,
   promptsTable,
   settingsTable,
   tasksTable,
 } from '../db/tables'
-import type {
-  AutomationRun,
-  EmailThreadWithMessagesAndAddresses,
-  Model,
-  Prompt,
-  Task,
-  ThunderboltUIMessage,
-  UIMessageMetadata,
-} from '../types'
+import type { AutomationRun, Model, Prompt, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================
@@ -351,18 +340,6 @@ export const getIncompleteTasksCount = async (): Promise<number> => {
 }
 
 // ============================================================================
-// ACCOUNTS
-// ============================================================================
-
-/**
- * Gets all accounts from the database
- */
-export const getAllAccounts = async () => {
-  const db = DatabaseSingleton.instance.db
-  return await db.select().from(accountsTable)
-}
-
-// ============================================================================
 // MCP SERVERS
 // ============================================================================
 
@@ -443,133 +420,6 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
     wasTriggeredByAutomation,
     isAutomationDeleted,
   }
-}
-
-// ============================================================================
-// EMAIL THREADS
-// ============================================================================
-
-export const getEmailThreadWithMessages = async (
-  emailThreadId: string,
-): Promise<EmailThreadWithMessagesAndAddresses | null> => {
-  const db = DatabaseSingleton.instance.db
-  const thread = await db.select().from(emailThreadsTable).where(eq(emailThreadsTable.id, emailThreadId)).get()
-
-  if (!thread) return null
-
-  const messages = await db.query.emailMessagesTable.findMany({
-    where: eq(emailMessagesTable.emailThreadId, emailThreadId),
-    with: {
-      sender: true,
-      recipients: {
-        with: {
-          address: true,
-        },
-      },
-    },
-    orderBy: (messages, { asc }) => [asc(messages.sentAt)],
-  })
-  return { ...thread, messages }
-}
-
-export const getEmailThreadByMessageImapIdWithMessages = async (
-  imapId: string,
-): Promise<EmailThreadWithMessagesAndAddresses | null> => {
-  const db = DatabaseSingleton.instance.db
-  const message = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.imapId, imapId)).get()
-
-  if (!message || !message.emailThreadId) return null
-
-  const thread = await db.select().from(emailThreadsTable).where(eq(emailThreadsTable.id, message.emailThreadId)).get()
-
-  if (!thread) return null
-
-  const messages = await db.query.emailMessagesTable.findMany({
-    where: eq(emailMessagesTable.emailThreadId, thread.id),
-    with: {
-      sender: true,
-      recipients: {
-        with: {
-          address: true,
-        },
-      },
-    },
-    orderBy: (messages, { asc }) => [asc(messages.sentAt)],
-  })
-
-  return { ...thread, messages }
-}
-
-export const getEmailThreadByMessageIdWithMessages = async (
-  emailMessageId: string,
-): Promise<EmailThreadWithMessagesAndAddresses | null> => {
-  const db = DatabaseSingleton.instance.db
-  const message = await db.select().from(emailMessagesTable).where(eq(emailMessagesTable.id, emailMessageId)).get()
-
-  if (!message || !message.emailThreadId) return null
-
-  const thread = await db.select().from(emailThreadsTable).where(eq(emailThreadsTable.id, message.emailThreadId)).get()
-
-  if (!thread) return null
-
-  const messages = await db.query.emailMessagesTable.findMany({
-    where: eq(emailMessagesTable.emailThreadId, thread.id),
-    with: {
-      sender: true,
-      recipients: {
-        with: {
-          address: true,
-        },
-      },
-    },
-    orderBy: (messages, { asc }) => [asc(messages.sentAt)],
-  })
-
-  return { ...thread, messages }
-}
-
-// ============================================================================
-// EMAIL MESSAGES
-// ============================================================================
-
-/**
- * Gets an email message by ID with sender and recipients
- */
-export const getEmailMessage = async (messageId: string) => {
-  const db = DatabaseSingleton.instance.db
-  const message = await db.query.emailMessagesTable.findFirst({
-    where: eq(emailMessagesTable.id, messageId),
-    with: {
-      sender: true,
-      recipients: {
-        with: {
-          address: true,
-        },
-      },
-    },
-  })
-  if (!message) throw new Error('Message not found')
-  return message
-}
-
-/**
- * Gets an email message by IMAP ID with sender and recipients
- */
-export const getEmailMessageByImapId = async (imapId: string) => {
-  const db = DatabaseSingleton.instance.db
-  const message = await db.query.emailMessagesTable.findFirst({
-    where: eq(emailMessagesTable.imapId, imapId),
-    with: {
-      sender: true,
-      recipients: {
-        with: {
-          address: true,
-        },
-      },
-    },
-  })
-  if (!message) throw new Error('Message not found')
-  return message
 }
 
 /**

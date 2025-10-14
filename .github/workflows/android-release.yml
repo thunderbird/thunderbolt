@@ -100,9 +100,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
-          api-level: 36
-          build-tools: 36.0.0
-          ndk-version: 26.1.10909125
+          packages: |
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;26.1.10909125
 
       - name: Export Android SDK/NDK environment
         run: |

@@ -1631,7 +1631,7 @@ describe('resetAutomationToDefault', () => {
     let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
     expect(automation).toBeDefined()
     if (automation) {
-      let currentHash = hashPrompt(automation)
+      const currentHash = hashPrompt(automation)
       expect(currentHash).not.toBe(automation.defaultHash)
     }
 

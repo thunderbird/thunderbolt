@@ -103,7 +103,11 @@
       "temperature": "C",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
-      "currency": null
+      "currency": {
+        "code": "USD",
+        "symbol": "$",
+        "name": "US Dollar"
+      }
     },
     "AR": {
       "units": "metric",
@@ -2827,6 +2831,10 @@
       "temperature": "C",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
-      "currency": null
+      "currency": {
+        "code": "USD",
+        "symbol": "$",
+        "name": "US Dollar"
+      }
     }
   }

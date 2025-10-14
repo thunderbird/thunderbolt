@@ -1,4 +1,5 @@
 import countryMappingData from '../data/localization/country-mapping.json'
+import unitsByCountryData from '../data/localization/units-by-country.json'
 
 /**
  * Resolves a country name or code to a 2-letter ISO country code
@@ -15,6 +16,10 @@ export const resolveCountryCode = (countryInput: string): string | null => {
   if (trimmedInput.length === 2 && /^[A-Z]{2}$/.test(trimmedInput)) {
     const exists = Object.values(countryMappingData).includes(trimmedInput)
     if (exists) {
+      return trimmedInput
+    }
+    
+    if (unitsByCountryData[trimmedInput as keyof typeof unitsByCountryData]) {
       return trimmedInput
     }
   }

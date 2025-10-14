@@ -1,6 +1,7 @@
 import { createModel } from '@/ai/fetch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
@@ -17,10 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { modelsTable } from '@/db/tables'
+import { getAllModels } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { cn } from '@/lib/utils'
+import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { generateText } from 'ai'
@@ -31,9 +34,6 @@ import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'reac
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
-import { getAllModels } from '@/lib/dal'
-import type { Model } from '@/types'
-import { Checkbox } from '@/components/ui/checkbox'
 
 interface AvailableModel {
   id: string
@@ -358,6 +358,7 @@ export default function ModelsPage() {
         startWithReasoning: 0,
         contextWindow: null,
         tokenizer: null,
+        deletedAt: null,
       }
       const model = await createModel(modelConfigWithDefaults)
 

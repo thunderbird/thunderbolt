@@ -2,7 +2,6 @@ import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, snakeCased } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef } from 'react'
@@ -31,6 +30,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
+import { getCloudUrl } from '@/lib/config'
 import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -220,9 +220,7 @@ export default function PreferencesSettingsPage() {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        // Get cloud_url from database settings
-        const cloudUrlData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
-        const cloudUrl = cloudUrlData[0]?.value
+        const cloudUrl = await getCloudUrl()
 
         if (!cloudUrl) {
           console.error('Cloud URL not configured')

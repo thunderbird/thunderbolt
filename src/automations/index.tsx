@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,11 +20,14 @@ import { promptsTable, triggersTable } from '@/db/tables'
 import { useBooleanSetting } from '@/hooks/use-setting'
 import { trackEvent } from '@/lib/analytics'
 import { getAllPrompts } from '@/lib/dal'
+import { defaultAutomations } from '@/lib/defaults'
+import { getDefaultById, hasUserModifications, isDefault } from '@/lib/defaults-diff'
+import { resetAutomationToDefault } from '@/lib/defaults-reset'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
+import { Pen, Play, Plus, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
@@ -85,6 +89,16 @@ export default function AutomationsPage() {
   const handleDeletePrompt = (promptId: string) => {
     setDeletingPromptId(promptId)
     trackEvent('automation_delete_clicked', { automation_id: promptId })
+  }
+
+  const handleResetPrompt = async (promptId: string) => {
+    const defaultAutomation = getDefaultById(promptId, defaultAutomations)
+    if (defaultAutomation) {
+      await resetAutomationToDefault(promptId, defaultAutomation)
+      // TODO: Add 'automation_reset_to_default' to EventType
+      // trackEvent('automation_reset_to_default', { automation_id: promptId })
+      queryClient.invalidateQueries({ queryKey: ['prompts'] })
+    }
   }
 
   return (
@@ -162,6 +176,7 @@ export default function AutomationsPage() {
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}
+                    onReset={handleResetPrompt}
                   />
                 ))}
               </div>
@@ -222,9 +237,10 @@ interface PromptCardProps {
   onRun: (promptId: string) => void
   onEdit: (prompt: Prompt) => void
   onDelete: (promptId: string) => void
+  onReset: (promptId: string) => void
 }
 
-const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: PromptCardProps) => {
+const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onReset }: PromptCardProps) => {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
@@ -268,14 +284,22 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: P
 
   const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
 
+  // Determine badge status
+  const isDefaultAutomation = isDefault(prompt.id, defaultAutomations)
+  const hasModifications = hasUserModifications(prompt, defaultAutomations)
+  const showBadge = isDefaultAutomation
+  const badgeText = hasModifications ? 'Modified' : 'Default'
+  const badgeVariant = hasModifications ? 'secondary' : 'outline'
+
   return (
     <Card className="h-full flex flex-col pb-0">
       <CardContent className="p-4 flex flex-col flex-1">
         {/* Header with title and toggle */}
         <div className="flex items-center justify-between mb-8">
-          {/* Left: Title */}
-          <div className="flex items-center flex-1 min-w-0 mr-6">
+          {/* Left: Title and Badge */}
+          <div className="flex items-center gap-2 flex-1 min-w-0 mr-6">
             <h3 className="text-lg font-semibold text-foreground truncate">{prompt.title || 'Untitled Automation'}</h3>
+            {showBadge && <Badge variant={badgeVariant}>{badgeText}</Badge>}
           </div>
 
           {/* Right: Toggle - only show if triggers are enabled */}
@@ -349,6 +373,19 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: P
                 <TooltipContent>Edit Automation</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            {isDefaultAutomation && hasModifications && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ButtonGroupItem variant="outline" onClick={() => onReset(prompt.id)}>
+                      <RotateCcw className="h-3 w-3" />
+                    </ButtonGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Reset to Default</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
             <TooltipProvider>
               <Tooltip>

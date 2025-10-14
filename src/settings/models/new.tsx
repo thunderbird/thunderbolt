@@ -10,8 +10,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { modelsTable } from '@/db/tables'
 import type { Model } from '@/types'
 
 const formSchema = z
@@ -92,6 +92,7 @@ export default function NewModelPage() {
       isConfidential: 0,
       startWithReasoning: 0,
       contextWindow: null,
+      deletedAt: null,
     })
   }
 

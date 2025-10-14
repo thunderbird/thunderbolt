@@ -44,4 +44,9 @@ export const migrations: Migration[] = [
     name: '0006_thick_donald_blake.sql',
     sql: 'PRAGMA foreign_keys=OFF;--> statement-breakpoint\nDROP TABLE `accounts`;--> statement-breakpoint\nDROP TABLE `contacts`;--> statement-breakpoint\nDROP TABLE `email_addresses`;--> statement-breakpoint\nDROP TABLE `email_messages`;--> statement-breakpoint\nDROP TABLE `email_messages_to_addresses`;--> statement-breakpoint\nDROP TABLE `email_threads`;--> statement-breakpoint\nDROP TABLE `embeddings`;--> statement-breakpoint\nCREATE TABLE `__new_tasks` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`item` text NOT NULL,\n\t`order` integer DEFAULT 0 NOT NULL,\n\t`is_complete` integer DEFAULT 0 NOT NULL\n);\n--> statement-breakpoint\nINSERT INTO `__new_tasks`("id", "item", "order", "is_complete") SELECT "id", "item", "order", "is_complete" FROM `tasks`;--> statement-breakpoint\nDROP TABLE `tasks`;--> statement-breakpoint\nALTER TABLE `__new_tasks` RENAME TO `tasks`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE UNIQUE INDEX `tasks_id_unique` ON `tasks` (`id`);',
   },
+  {
+    hash: '0007_salty_spyke',
+    name: '0007_salty_spyke.sql',
+    sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;',
+  },
 ]

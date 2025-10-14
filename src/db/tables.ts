@@ -67,6 +67,7 @@ export const modelsTable = sqliteTable('models', {
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
   contextWindow: integer('context_window'),
+  deletedAt: integer('deleted_at'),
 })
 
 export const mcpServersTable = sqliteTable('mcp_servers', {
@@ -90,6 +91,7 @@ export const promptsTable = sqliteTable('prompts', {
   modelId: text('model_id')
     .notNull()
     .references(() => modelsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  deletedAt: integer('deleted_at'),
 })
 
 export const triggersTable = sqliteTable('triggers', {

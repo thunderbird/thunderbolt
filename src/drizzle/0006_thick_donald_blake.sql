@@ -1,3 +1,4 @@
+PRAGMA foreign_keys=OFF;--> statement-breakpoint
 DROP TABLE `accounts`;--> statement-breakpoint
 DROP TABLE `contacts`;--> statement-breakpoint
 DROP TABLE `email_addresses`;--> statement-breakpoint
@@ -5,7 +6,6 @@ DROP TABLE `email_messages`;--> statement-breakpoint
 DROP TABLE `email_messages_to_addresses`;--> statement-breakpoint
 DROP TABLE `email_threads`;--> statement-breakpoint
 DROP TABLE `embeddings`;--> statement-breakpoint
-PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_tasks` (
 	`id` text PRIMARY KEY NOT NULL,
 	`item` text NOT NULL,

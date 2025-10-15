@@ -21,7 +21,7 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { initPosthog, PostHogProvider } from '@/lib/analytics'
-import { seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
 import { default as Settings } from '@/settings/index'
@@ -109,11 +109,7 @@ const init = async (): Promise<InitData> => {
   })
 
   await migrate(db)
-
-  await seedModels()
-  await seedSettings()
-  await seedTasks()
-  await seedPrompts()
+  await reconcileDefaults()
 
   const tray = await TrayManager.initIfSupported()
 

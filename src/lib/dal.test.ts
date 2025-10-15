@@ -48,7 +48,8 @@ import {
   saveMessagesWithContextUpdate,
   updateSetting,
 } from './dal'
-import { seedModels, seedPrompts } from './seed'
+import { reconcileDefaultsForTable } from './reconcile-defaults'
+import { defaultModels, hashModel } from '../defaults/models'
 
 beforeAll(async () => {
   // Use in-memory database for testing
@@ -1820,8 +1821,8 @@ describe('resetAutomationToDefault', () => {
     const db = DatabaseSingleton.instance.db
     await db.delete(modelsTable)
     await db.delete(promptsTable)
-    await seedModels()
-    await seedPrompts()
+    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
   })
 
   it('resets modified automation to default state', async () => {

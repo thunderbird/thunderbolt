@@ -1,4 +1,4 @@
-import { createSetting, deleteSetting, getSetting } from '@/lib/dal'
+import { createSetting } from '@/lib/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
@@ -10,14 +10,14 @@ import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultTasks, hashTask } from '../defaults/tasks'
 
 /**
- * Generic function to seed defaults into a table
+ * Generic function to reconcile defaults into a table
  * Inserts new defaults and updates unmodified existing ones
- * @param table - The database table to seed
- * @param defaults - Array of default items to seed
+ * @param table - The database table to reconcile
+ * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item
  * @param keyField - Name of the primary key field (defaults to 'id')
  */
-export const seedDefaults = async <T extends { defaultHash: string | null }>(
+export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
@@ -58,43 +58,19 @@ export const seedDefaults = async <T extends { defaultHash: string | null }>(
   }
 }
 
-export const seedModels = async () => {
-  await seedDefaults(modelsTable, defaultModels, hashModel)
-}
+export const reconcileDefaults = async () => {
+  // AI models
+  await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
 
-/**
- * Clean up old default settings that should now use code defaults
- * Deletes cloud_url if it matches old default patterns so users get the new /v1 endpoint
- * Also removes other settings that were previously seeded with defaults
- */
-export const cleanupOldDefaultSettings = async () => {
-  const cloudUrl = await getSetting<string>('cloud_url', null)
+  // Tasks
+  await reconcileDefaultsForTable(tasksTable, defaultTasks, hashTask)
 
-  if (cloudUrl) {
-    const shouldDelete =
-      cloudUrl.startsWith('https://thunderbolt-hooc.onrender.com') || cloudUrl.startsWith('http://localhost:8000')
+  // Automations (Prompts)
+  await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
 
-    if (shouldDelete) {
-      await deleteSetting('cloud_url')
-    }
-  }
-}
+  // Settings
+  await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
 
-export const seedSettings = async () => {
-  await cleanupOldDefaultSettings()
-
-  // Seed default settings using the same pattern as models and automations
-  await seedDefaults(settingsTable, defaultSettings, hashSetting, 'key')
-
-  // Only set anonymous_id if it doesn't exist (unique per user)
-  // @todo this should really be cryptographically secure
+  // Initialize anonymous ID for analytics (unique per user)
   await createSetting('anonymous_id', uuidv7())
-}
-
-export const seedTasks = async () => {
-  await seedDefaults(tasksTable, defaultTasks, hashTask)
-}
-
-export const seedPrompts = async () => {
-  await seedDefaults(promptsTable, defaultAutomations, hashPrompt)
 }

@@ -91,13 +91,6 @@ export default function ChatDetailPage() {
     [addMessagesMutation.mutateAsync],
   )
 
-  useEffect(() => {
-    console.log('DEBUG: ChatDetailPage -> mounting')
-    return () => {
-      console.log('DEBUG: ChatDetailPage -> unmounting')
-    }
-  }, [])
-
   return (
     <div className="h-full w-full">
       <Chat id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />

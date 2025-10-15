@@ -118,7 +118,7 @@ export function useSettings<T extends readonly string[]>(
 
   // Transform the entities result into a clean destructurable object
   return useMemo(() => {
-    const result = {} as any
+    const result = {} as Record<string, SettingHook>
 
     for (const key of keys) {
       const setting = entities.byId[key]
@@ -138,7 +138,7 @@ export function useSettings<T extends readonly string[]>(
       }
     }
 
-    return result
+    return result as UseSettingsResult<T, typeof camelCase extends true ? true : false>
   }, [entities, keys, camelCase])
 }
 
@@ -221,19 +221,19 @@ export function useBooleanSettings<T extends readonly string[]>(
 ): UseBooleanSettingsResult<T, false>
 export function useBooleanSettings<T extends readonly string[]>(
   keys: T,
-  options: { camelCase?: boolean } = {},
+  options?: { camelCase?: boolean },
 ): UseBooleanSettingsResult<T, boolean> {
-  const settings = useSettings(keys, options as any)
-
-  const { camelCase = true } = options
+  // Call useSettings with the same camelCase option (or default to true)
+  const camelCase = options?.camelCase ?? true
+  const settings = camelCase ? useSettings(keys, { camelCase: true }) : useSettings(keys, { camelCase: false })
 
   return useMemo(() => {
-    const result = {} as any
+    const result = {} as Record<string, BooleanSettingHook>
 
     for (const key of keys) {
       const resultKey = camelCase ? camelCased(key) : key
       // Access the setting by the same key transformation used in settings
-      const setting = (settings as any)[resultKey] as SettingHook
+      const setting = (settings as Record<string, SettingHook>)[resultKey]
 
       result[resultKey] = {
         value: setting.value === 'true',
@@ -248,6 +248,6 @@ export function useBooleanSettings<T extends readonly string[]>(
       }
     }
 
-    return result
+    return result as UseBooleanSettingsResult<T, typeof camelCase extends true ? true : false>
   }, [settings, keys, camelCase])
 }

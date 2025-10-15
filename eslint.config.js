@@ -4,9 +4,9 @@ import storybook from 'eslint-plugin-storybook'
 import js from '@eslint/js'
 import typescript from '@typescript-eslint/eslint-plugin'
 import typescriptParser from '@typescript-eslint/parser'
+import prettier from 'eslint-config-prettier'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
-import prettier from 'eslint-config-prettier'
 import globals from 'globals'
 
 export default [
@@ -46,8 +46,9 @@ export default [
     },
     rules: {
       // TypeScript rules
-      // turn off the base rule to avoid duplicate reports
+      // Turn off base rules that conflict with TypeScript equivalents
       'no-unused-vars': 'off',
+      'no-redeclare': 'off', // Turn off base rule for TypeScript overloads
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -59,6 +60,7 @@ export default [
           ignoreRestSiblings: true, // const { used, ..._rest } = obj
         },
       ],
+      '@typescript-eslint/no-redeclare': 'error', // Use TypeScript-aware version
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-non-null-assertion': 'off',
 

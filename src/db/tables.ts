@@ -23,6 +23,7 @@ export const settingsTable = sqliteTable('settings', {
   key: text('key').primaryKey(),
   value: text('value'),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+  defaultHash: text('default_hash'),
 })
 
 export const chatThreadsTable = sqliteTable('chat_threads', {

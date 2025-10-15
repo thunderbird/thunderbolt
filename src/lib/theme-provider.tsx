@@ -1,9 +1,9 @@
-import { settingsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { settingsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { getThemeSetting } from '@/lib/dal'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 type Theme = 'dark' | 'light' | 'system'
 
@@ -58,6 +58,7 @@ export function ThemeProvider({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', storageKey] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 

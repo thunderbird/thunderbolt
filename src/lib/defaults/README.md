@@ -2,7 +2,7 @@
 
 ## Overview
 
-This system provides a unified pattern for managing application defaults (models, automations) with user override tracking and restore capabilities.
+This system provides a unified pattern for managing application defaults (models, automations, settings) with user override tracking and restore capabilities.
 
 ## Architecture
 
@@ -75,10 +75,18 @@ update(default) // includes original defaultHash
 - References models directly: `modelId: defaultModelQwen3Flower.id`
 - Each automation includes pre-computed `defaultHash`
 
-### `/defaults-hash.ts`
+### `/defaults/settings.ts`
+
+- Individual exports: `defaultSettingDataCollection`, etc.
+- Array export: `defaultSettings`
+- Each setting includes pre-computed `defaultHash`
+- Note: User-specific settings (like `anonymous_id`, `preferred_name`, integration credentials) are NOT included as defaults
+
+### Hash Functions
 
 - `hashModel(model)` - Hashes user-editable model fields
 - `hashPrompt(prompt)` - Hashes user-editable prompt fields
+- `hashSetting(setting)` - Hashes user-editable setting fields
 - Uses simple hash algorithm (not cryptographic)
 
 ### `/defaults-reset.ts`
@@ -88,8 +96,11 @@ update(default) // includes original defaultHash
 
 ### `/seed.ts`
 
-- `seedModels()` - Conditional insert/update based on hash
-- `seedPrompts()` - Conditional insert/update based on hash
+- `seedDefaults(table, defaults, hashFn, keyField)` - Generic function for conditional insert/update based on hash
+  - `keyField` parameter defaults to `'id'` but can be set to `'key'` for settings table
+- `seedModels()` - Calls `seedDefaults` with models table
+- `seedPrompts()` - Calls `seedDefaults` with prompts table
+- `seedSettings()` - Calls `seedDefaults` with settings table using `keyField='key'`
 
 ## Schema
 
@@ -105,6 +116,15 @@ deleted_at INTEGER -- Soft delete timestamp
 ```sql
 default_hash TEXT -- Hash of default content, null for user-created
 deleted_at INTEGER -- Soft delete timestamp
+```
+
+### settings table
+
+```sql
+key TEXT PRIMARY KEY -- Setting key (e.g., 'data_collection')
+value TEXT -- Setting value
+updated_at INTEGER -- Last update timestamp
+default_hash TEXT -- Hash of default content, null for user-created
 ```
 
 ## Adding a New Default
@@ -149,6 +169,21 @@ export const defaultAutomationNew: Prompt = {
 
 // Add to array
 export const defaultAutomations = [..., defaultAutomationNew]
+```
+
+### New Setting:
+
+```typescript
+// In defaults/settings.ts
+export const defaultSettingNewFeature: Setting = {
+  key: 'new_feature_enabled',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+}
+
+// Add to array
+export const defaultSettings = [..., defaultSettingNewFeature]
 ```
 
 ## Updating a Default

@@ -54,4 +54,9 @@ export const migrations: Migration[] = [
     name: '0009_burly_union_jack.sql',
     sql: 'ALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;',
   },
+  {
+    hash: '0010_petite_blade',
+    name: '0010_petite_blade.sql',
+    sql: 'ALTER TABLE `settings` ADD `default_hash` text;',
+  },
 ]

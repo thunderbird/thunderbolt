@@ -23,7 +23,6 @@ import {
   getAllSettings,
   getAvailableModels,
   getBooleanSetting,
-  getBridgeSettings,
   getChatMessages,
   getChatThread,
   getContextSizeForThread,
@@ -42,11 +41,14 @@ import {
   hasSetting,
   resetAutomationToDefault,
   resetModelToDefault,
+  resetSettingToDefault,
   updateBooleanSetting,
   updateSetting,
 } from './dal'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
+import { defaultSettings, hashSetting } from './defaults/settings'
+import { isSettingModified } from './defaults/utils'
 import { seedModels, seedPrompts } from './seed'
 
 beforeAll(async () => {
@@ -299,15 +301,6 @@ describe('Settings DAL', () => {
       await updateSetting('theme', 'dark')
       const theme = await getThemeSetting('theme', 'light')
       expect(theme).toBe('dark')
-    })
-  })
-
-  describe('getBridgeSettings', () => {
-    it('should return default bridge settings when no setting exists', async () => {
-      const bridgeSettings = await getBridgeSettings()
-      expect(bridgeSettings).toEqual({
-        enabled: false,
-      })
     })
   })
 })
@@ -1646,5 +1639,71 @@ describe('resetAutomationToDefault', () => {
       expect(automation.defaultHash).toBeDefined()
       expect(currentHash).toBe(automation.defaultHash!)
     }
+  })
+})
+
+describe('resetSettingToDefault', () => {
+  beforeEach(async () => {
+    const db = DatabaseSingleton.instance.db
+    // Clean up settings table
+    await db.delete(settingsTable)
+  })
+
+  it('resets modified setting to default state', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultSetting = defaultSettings[0]
+
+    // Insert a setting with the default value
+    await db.insert(settingsTable).values({
+      key: defaultSetting.key,
+      value: defaultSetting.value,
+      updatedAt: null,
+      defaultHash: hashSetting(defaultSetting),
+    })
+
+    // User modifies it
+    await updateSetting(defaultSetting.key, 'user_modified_value')
+
+    // Verify it's modified
+    const modified = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
+    expect(modified?.value).toBe('user_modified_value')
+    expect(isSettingModified(modified!)).toBe(true)
+
+    // Reset to default
+    await resetSettingToDefault(defaultSetting.key, defaultSetting)
+
+    // Verify it's back to default
+    const reset = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
+    expect(reset?.value).toBe(defaultSetting.value)
+    expect(isSettingModified(reset!)).toBe(false)
+  })
+
+  it('after reset, modification detection works correctly', async () => {
+    const db = DatabaseSingleton.instance.db
+    const defaultSetting = defaultSettings[0]
+
+    // Insert and modify
+    await db.insert(settingsTable).values({
+      key: defaultSetting.key,
+      value: defaultSetting.value,
+      updatedAt: null,
+      defaultHash: hashSetting(defaultSetting),
+    })
+    await updateSetting(defaultSetting.key, 'modified')
+
+    // Reset
+    await resetSettingToDefault(defaultSetting.key, defaultSetting)
+
+    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
+
+    // Should be detected as unmodified
+    expect(isSettingModified(setting!)).toBe(false)
+
+    // Modify again
+    await updateSetting(defaultSetting.key, 'modified_again')
+    const modifiedAgain = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
+
+    // Should be detected as modified
+    expect(isSettingModified(modifiedAgain!)).toBe(true)
   })
 })

@@ -9,7 +9,7 @@ import {
   settingsTable,
   tasksTable,
 } from '../db/tables'
-import type { AutomationRun, Model, Prompt, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================
@@ -145,16 +145,6 @@ export const getPreferencesSettings = async () => {
 export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
   const result = await getSetting(storageKey, defaultTheme)
   return result
-}
-
-/**
- * Gets bridge settings with specific structure
- */
-export const getBridgeSettings = async () => {
-  const enabled = await getBooleanSetting('bridge_enabled', false)
-  return {
-    enabled,
-  }
 }
 
 /**
@@ -504,4 +494,13 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultAutomation
   await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
+}
+
+/**
+ * Reset a setting to its default state
+ */
+export const resetSettingToDefault = async (key: string, defaultSetting: Setting) => {
+  const db = DatabaseSingleton.instance.db
+  const { defaultHash, ...defaultFields } = defaultSetting
+  await db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
 }

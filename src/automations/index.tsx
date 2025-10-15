@@ -1,3 +1,4 @@
+import { ModificationIndicator } from '@/components/modification-indicator'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -254,10 +254,6 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
   const primaryTrigger = triggers[0]
   const [isEnabled, setIsEnabled] = useState(primaryTrigger?.isEnabled === 1 || !primaryTrigger)
 
-  // State for reset popover
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false)
-  const [showConfirmation, setShowConfirmation] = useState(false)
-
   // Update local state when trigger data changes
   useEffect(() => {
     setIsEnabled(primaryTrigger?.isEnabled === 1 || !primaryTrigger)
@@ -284,24 +280,6 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
     }
   }
 
-  const handleResetClick = () => {
-    setShowConfirmation(true)
-  }
-
-  const handleResetConfirm = () => {
-    onReset(prompt.id)
-    setIsPopoverOpen(false)
-    setShowConfirmation(false)
-  }
-
-  const handlePopoverChange = (open: boolean) => {
-    setIsPopoverOpen(open)
-    if (!open) {
-      // Reset confirmation state when popover closes
-      setShowConfirmation(false)
-    }
-  }
-
   const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
 
   // Determine modification status using hash
@@ -318,40 +296,12 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
         <div className="flex items-center justify-between mb-8">
           {/* Left: Title with reset indicator */}
           <div className="flex items-center gap-2 flex-1 min-w-0 mr-6">
-            {hasModifications && (
-              <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
-                <PopoverTrigger asChild>
-                  <button
-                    className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 hover:bg-blue-600 transition-colors cursor-pointer"
-                    aria-label="Modified automation"
-                  />
-                </PopoverTrigger>
-                <PopoverContent align="start" side="bottom" className="w-[240px] p-0">
-                  <div className="flex flex-col">
-                    {/* Body */}
-                    <div className="p-3 pb-2">
-                      <p className="text-sm text-muted-foreground">
-                        {!showConfirmation
-                          ? "You've customized this automation."
-                          : 'Are you sure? You will lose any changes that you made.'}
-                      </p>
-                    </div>
-                    {/* Footer */}
-                    <div className="p-3 pt-2">
-                      {!showConfirmation ? (
-                        <Button size="sm" variant="outline" onClick={handleResetClick} className="w-full">
-                          Reset to Original
-                        </Button>
-                      ) : (
-                        <Button size="sm" onClick={handleResetConfirm} className="w-full">
-                          Confirm
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
+            <ModificationIndicator
+              hasModifications={hasModifications}
+              onReset={() => onReset(prompt.id)}
+              customMessage="You've customized this automation."
+              ariaLabel="Modified automation"
+            />
             <h3 className="text-lg font-semibold text-foreground truncate">{prompt.title || 'Untitled Automation'}</h3>
           </div>
 

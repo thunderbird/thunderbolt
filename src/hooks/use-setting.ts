@@ -39,6 +39,7 @@ export const useSetting = <T = string, V = T | null>(
     mutationFn: (newValue: V) => updateSetting(key, newValue ? newValue.toString() : null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 
@@ -95,6 +96,7 @@ export const useBooleanSetting = (
     mutationFn: (newValue: boolean) => updateSetting(key, newValue.toString()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 

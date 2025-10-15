@@ -2,10 +2,11 @@ import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { migrate } from '../db/migrate'
 import { DatabaseSingleton } from '../db/singleton'
-import { modelsTable, promptsTable } from '../db/tables'
+import { modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
-import { seedModels, seedPrompts } from './seed'
+import { defaultSettings, hashSetting } from './defaults/settings'
+import { seedModels, seedPrompts, seedSettings } from './seed'
 
 beforeAll(async () => {
   await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
@@ -172,5 +173,96 @@ describe('seedPrompts', () => {
     expect(prompt?.title).toBe('User Modified Title')
     // Hash should still be the original default's hash
     expect(prompt?.defaultHash).toBe(hashPrompt(defaultPrompt))
+  })
+})
+
+describe('seedSettings', () => {
+  beforeEach(async () => {
+    const db = DatabaseSingleton.instance.db
+    // Clean up settings table
+    await db.delete(settingsTable)
+  })
+
+  test('inserts new defaults on first run', async () => {
+    const db = DatabaseSingleton.instance.db
+    await seedSettings()
+
+    const settings = await db.select().from(settingsTable)
+    // Should have all default settings plus anonymous_id
+    expect(settings.length).toBeGreaterThanOrEqual(defaultSettings.length)
+
+    for (const defaultSetting of defaultSettings) {
+      const inserted = settings.find((s) => s.key === defaultSetting.key)
+      expect(inserted).toBeDefined()
+      // Verify hash was computed during seed
+      expect(inserted?.defaultHash).toBeDefined()
+      expect(inserted?.defaultHash).toBe(hashSetting(inserted!))
+    }
+  })
+
+  test('updates unmodified settings on re-seed', async () => {
+    const db = DatabaseSingleton.instance.db
+    await seedSettings()
+
+    // Get an unmodified setting
+    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSettings[0].key)).get()
+    expect(setting).toBeDefined()
+
+    // Seed again - should be idempotent
+    await seedSettings()
+
+    // Setting should still match default
+    const settingAfterReseed = await db
+      .select()
+      .from(settingsTable)
+      .where(eq(settingsTable.key, defaultSettings[0].key))
+      .get()
+    expect(settingAfterReseed?.value).toBe(defaultSettings[0].value)
+    // Hash should still be computed correctly
+    expect(settingAfterReseed?.defaultHash).toBe(hashSetting(defaultSettings[0]))
+  })
+
+  test('preserves user modifications', async () => {
+    const db = DatabaseSingleton.instance.db
+    await seedSettings()
+
+    // User modifies a setting
+    const defaultSetting = defaultSettings[0]
+    await db
+      .update(settingsTable)
+      .set({ value: 'user_modified_value' })
+      .where(eq(settingsTable.key, defaultSetting.key))
+
+    // Seed again
+    await seedSettings()
+
+    // Should NOT be overwritten
+    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
+    expect(setting?.value).toBe('user_modified_value')
+    // Hash should still be the original default's hash
+    expect(setting?.defaultHash).toBe(hashSetting(defaultSetting))
+  })
+
+  test('handles mixed scenarios correctly', async () => {
+    const db = DatabaseSingleton.instance.db
+    await seedSettings()
+
+    // Scenario 1: User modifies setting 0
+    await db.update(settingsTable).set({ value: 'modified' }).where(eq(settingsTable.key, defaultSettings[0].key))
+
+    // Scenario 2: Setting 1 stays unmodified
+
+    // Seed again
+    await seedSettings()
+
+    const settings = await db.select().from(settingsTable)
+
+    // Setting 0 should keep user modification
+    const setting0 = settings.find((s) => s.key === defaultSettings[0].key)
+    expect(setting0?.value).toBe('modified')
+
+    // Setting 1 should be updated to latest default
+    const setting1 = settings.find((s) => s.key === defaultSettings[1].key)
+    expect(setting1?.value).toBe(defaultSettings[1].value)
   })
 })

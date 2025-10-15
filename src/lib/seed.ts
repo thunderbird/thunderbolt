@@ -3,23 +3,30 @@ import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
-import { modelsTable, promptsTable, tasksTable } from '../db/tables'
+import { modelsTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
+import { defaultSettings, hashSetting } from './defaults/settings'
 
 /**
  * Generic function to seed defaults into a table
  * Inserts new defaults and updates unmodified existing ones
+ * @param table - The database table to seed
+ * @param defaults - Array of default items to seed
+ * @param hashFn - Function to compute hash of an item
+ * @param keyField - Name of the primary key field (defaults to 'id')
  */
-const seedDefaults = async <T extends { id: string; defaultHash: string | null }>(
+const seedDefaults = async <T extends { defaultHash: string | null }>(
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
+  keyField: string = 'id',
 ) => {
   const db = DatabaseSingleton.instance.db
 
   for (const defaultItem of defaults) {
-    const existing = await db.select().from(table).where(eq(table.id, defaultItem.id)).get()
+    const keyValue = (defaultItem as any)[keyField]
+    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
 
     if (!existing) {
       // New default - insert with computed hash
@@ -38,7 +45,7 @@ const seedDefaults = async <T extends { id: string; defaultHash: string | null }
             ...defaultItem,
             defaultHash: hashFn(defaultItem),
           })
-          .where(eq(table.id, defaultItem.id))
+          .where(eq(table[keyField], keyValue))
       }
       // If hashes don't match, user has modified - skip update
     }
@@ -69,6 +76,9 @@ export const cleanupOldDefaultSettings = async () => {
 
 export const seedSettings = async () => {
   await cleanupOldDefaultSettings()
+
+  // Seed default settings using the same pattern as models and automations
+  await seedDefaults(settingsTable, defaultSettings, hashSetting, 'key')
 
   // Only set anonymous_id if it doesn't exist (unique per user)
   // @todo this should really be cryptographically secure

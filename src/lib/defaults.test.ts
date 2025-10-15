@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'bun:test'
 import type { Model } from '@/types'
+import { describe, expect, test } from 'bun:test'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
+import { defaultSettings, hashSetting } from './defaults/settings'
 
 describe('defaults', () => {
   test('defaultModels has expected structure', () => {
@@ -27,6 +28,15 @@ describe('defaults', () => {
       expect(automation.deletedAt).toBeNull()
       expect(automation.defaultHash).toBeNull()
       expect(automation.modelId).toBeDefined()
+    }
+  })
+
+  test('defaultSettings has expected structure', () => {
+    expect(defaultSettings.length).toBeGreaterThan(0)
+    for (const setting of defaultSettings) {
+      expect(setting.key).toBeDefined()
+      expect(setting.value).toBeDefined()
+      expect(setting.defaultHash).toBeNull()
     }
   })
 })
@@ -139,5 +149,30 @@ describe('defaults-hash', () => {
     const restored = { ...modified, name: model.name }
     const restoredHash = hashModel(restored)
     expect(restoredHash).toBe(originalHash)
+  })
+
+  test('hashSetting produces consistent hashes', () => {
+    const setting = defaultSettings[0]
+    const hash1 = hashSetting(setting)
+    const hash2 = hashSetting(setting)
+    expect(hash1).toBe(hash2)
+  })
+
+  test('hashSetting detects changes in value', () => {
+    const setting = defaultSettings[0]
+    const originalHash = hashSetting(setting)
+
+    const valueChange = hashSetting({ ...setting, value: 'different_value' })
+
+    expect(originalHash).not.toBe(valueChange)
+  })
+
+  test('hash computation is deterministic for settings', () => {
+    for (const setting of defaultSettings) {
+      const hash1 = hashSetting(setting)
+      const hash2 = hashSetting(setting)
+      expect(hash1).toBe(hash2)
+      expect(hash1).toBeDefined()
+    }
   })
 })

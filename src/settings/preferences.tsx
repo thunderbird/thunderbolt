@@ -6,6 +6,7 @@ import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef } from 'react'
 
+import { ModificationIndicator } from '@/components/modification-indicator'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -31,7 +32,9 @@ import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
-import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
+import { getPreferencesSettings, resetSettingToDefault, updateBooleanSetting } from '@/lib/dal'
+import { defaultSettings } from '@/lib/defaults/settings'
+import { isSettingModified } from '@/lib/defaults/utils'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
@@ -143,6 +146,35 @@ export default function PreferencesSettingsPage() {
     queryKey: ['settings'],
     queryFn: getPreferencesSettings,
   })
+
+  // Query settings from DB to check for modifications
+  const { data: dbSettings } = useQuery({
+    queryKey: ['db-settings'],
+    queryFn: async () => {
+      const settings = await db.select().from(settingsTable)
+      return settings.reduce(
+        (acc, setting) => {
+          acc[setting.key] = setting
+          return acc
+        },
+        {} as Record<string, (typeof settings)[0]>,
+      )
+    },
+  })
+
+  // Check if each setting has been modified
+  const isThemeModified = dbSettings?.['ui-theme'] ? isSettingModified(dbSettings['ui-theme']) : false
+  const isDataCollectionModified = dbSettings?.data_collection ? isSettingModified(dbSettings.data_collection) : false
+  const isExperimentalTasksModified = dbSettings?.experimental_feature_tasks
+    ? isSettingModified(dbSettings.experimental_feature_tasks)
+    : false
+  const isPreferredNameModified = dbSettings?.preferred_name ? isSettingModified(dbSettings.preferred_name) : false
+  const isLocationModified =
+    dbSettings?.location_name && dbSettings?.location_lat && dbSettings?.location_lng
+      ? isSettingModified(dbSettings.location_name) ||
+        isSettingModified(dbSettings.location_lat) ||
+        isSettingModified(dbSettings.location_lng)
+      : false
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -276,6 +308,7 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
       if (values.preferredName?.trim()) {
         if (settings?.preferredName) {
@@ -297,6 +330,7 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
       if (values.dataCollection) {
         postHog.opt_in_capturing()
@@ -316,6 +350,7 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 
@@ -363,6 +398,7 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
       if (settings?.locationName) {
         trackEvent('settings_location_update', {
@@ -465,13 +501,34 @@ export default function PreferencesSettingsPage() {
     }
   }
 
+  // Reset mutation for settings
+  const resetMutation = useMutation({
+    mutationFn: async ({ key, defaultSetting }: { key: string; defaultSetting: (typeof defaultSettings)[0] }) => {
+      await resetSettingToDefault(key, defaultSetting)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
+    },
+  })
+
+  const handleResetSetting = (key: string) => {
+    const defaultSetting = defaultSettings.find((s) => s.key === key)
+    if (defaultSetting) {
+      resetMutation.mutate({ key, defaultSetting })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Preferences</h1>
 
       <SectionCard title="Appearance">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium">Theme</label>
+          <div className="flex items-center gap-1 -ml-[19px]">
+            <ModificationIndicator hasModifications={isThemeModified} onReset={() => handleResetSetting('ui-theme')} />
+            <label className="text-sm font-medium">Theme</label>
+          </div>
           <ThemeToggle />
           <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
         </div>
@@ -487,7 +544,13 @@ export default function PreferencesSettingsPage() {
               name="preferredName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Preferred Name</FormLabel>
+                  <div className="flex items-center gap-1 -ml-[19px] mb-2">
+                    <ModificationIndicator
+                      hasModifications={isPreferredNameModified}
+                      onReset={() => handleResetSetting('preferred_name')}
+                    />
+                    <FormLabel className="mb-0">Preferred Name</FormLabel>
+                  </div>
                   <FormControl>
                     <Input
                       placeholder="Your name"
@@ -517,7 +580,17 @@ export default function PreferencesSettingsPage() {
               name="locationName"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Location</FormLabel>
+                  <div className="flex items-center gap-1 -ml-[19px] mb-2">
+                    <ModificationIndicator
+                      hasModifications={isLocationModified}
+                      onReset={() => {
+                        handleResetSetting('location_name')
+                        handleResetSetting('location_lat')
+                        handleResetSetting('location_lng')
+                      }}
+                    />
+                    <FormLabel className="mb-0">Location</FormLabel>
+                  </div>
                   <Popover
                     open={open}
                     onOpenChange={(newOpen) => {
@@ -604,7 +677,11 @@ export default function PreferencesSettingsPage() {
               name="experimentalFeatureTasks"
               render={({ field }) => (
                 <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
+                  <div className="flex-1 flex items-center gap-1 -ml-[19px]">
+                    <ModificationIndicator
+                      hasModifications={isExperimentalTasksModified}
+                      onReset={() => handleResetSetting('experimental_feature_tasks')}
+                    />
                     <label className="text-sm font-medium">Tasks</label>
                   </div>
                   <Switch
@@ -631,7 +708,13 @@ export default function PreferencesSettingsPage() {
               render={({ field }) => (
                 <div className="flex-row flex items-center gap-4">
                   <div>
-                    <label className="text-sm font-medium">Data Collection</label>
+                    <div className="flex items-center gap-1 mb-1 -ml-[19px]">
+                      <ModificationIndicator
+                        hasModifications={isDataCollectionModified}
+                        onReset={() => handleResetSetting('data_collection')}
+                      />
+                      <label className="text-sm font-medium">Data Collection</label>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
                       No personal data is collected or stored. Read more about our{' '}

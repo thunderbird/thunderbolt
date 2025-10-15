@@ -71,6 +71,13 @@
       "when": 1760482534069,
       "tag": "0009_burly_union_jack",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1760485924066,
+      "tag": "0010_petite_blade",
+      "breakpoints": true
     }
   ]
 }

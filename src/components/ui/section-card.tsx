@@ -12,7 +12,7 @@ export function SectionCard({ title, children, className }: SectionCardProps) {
     <>
       <h3 className="text-lg font-semibold -mb-2">{title}</h3>
       <Card className={className}>
-        <CardContent className="pt-6">{children}</CardContent>
+        <CardContent className="pt-6 px-8">{children}</CardContent>
       </Card>
     </>
   )

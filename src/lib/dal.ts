@@ -504,15 +504,6 @@ export const updateModel = async (id: string, updates: Partial<Model>) => {
 }
 
 /**
- * Reset a model to its default state
- */
-export const resetModelToDefault = async (id: string, defaultModel: Model) => {
-  const db = DatabaseSingleton.instance.db
-  const { defaultHash, ...defaultFields } = defaultModel
-  await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
-}
-
-/**
  * Update an automation/prompt (preserves defaultHash for modification tracking)
  */
 export const updateAutomation = async (id: string, updates: Partial<Prompt>) => {
@@ -548,13 +539,4 @@ export const updateTask = async (id: string, updates: Partial<Task>) => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }
   await db.update(tasksTable).set(updateFields).where(eq(tasksTable.id, id))
-}
-
-/**
- * Reset a task to its default state
- */
-export const resetTaskToDefault = async (id: string, defaultTask: Task) => {
-  const db = DatabaseSingleton.instance.db
-  const { defaultHash, ...defaultFields } = defaultTask
-  await db.update(tasksTable).set(defaultFields).where(eq(tasksTable.id, id))
 }

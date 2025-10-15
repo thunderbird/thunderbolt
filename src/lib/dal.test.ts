@@ -41,13 +41,11 @@ import {
   getTriggerPromptForThread,
   hasSetting,
   resetAutomationToDefault,
-  resetModelToDefault,
   resetSettingToDefault,
   saveMessagesWithContextUpdate,
   updateSetting,
 } from './dal'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
-import { defaultModels, hashModel } from './defaults/models'
 import { defaultSettings, hashSetting } from './defaults/settings'
 import { isSettingModified } from './defaults/utils'
 import { seedModels, seedPrompts } from './seed'
@@ -1816,55 +1814,6 @@ describe('Context Size DAL', () => {
 // ============================================================================
 // DEFAULTS MANAGEMENT
 // ============================================================================
-
-describe('resetModelToDefault', () => {
-  beforeEach(async () => {
-    const db = DatabaseSingleton.instance.db
-    await db.delete(modelsTable)
-    await seedModels()
-  })
-
-  it('resets modified model to default state', async () => {
-    const db = DatabaseSingleton.instance.db
-    const defaultModel = defaultModels[0]
-
-    // User modifies the model
-    await db.update(modelsTable).set({ name: 'User Modified', enabled: 0 }).where(eq(modelsTable.id, defaultModel.id))
-
-    // Verify it's modified
-    let model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
-    expect(model?.name).toBe('User Modified')
-    expect(model?.enabled).toBe(0)
-
-    // Reset to default
-    await resetModelToDefault(defaultModel.id, defaultModel)
-
-    // Verify it's reset
-    model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
-    expect(model?.name).toBe(defaultModel.name)
-    expect(model?.enabled).toBe(defaultModel.enabled)
-    // Hash should be computed from the default
-    expect(model?.defaultHash).toBe(hashModel(defaultModel))
-  })
-
-  it('clears deletedAt when resetting', async () => {
-    const db = DatabaseSingleton.instance.db
-    const defaultModel = defaultModels[0]
-
-    // Soft delete
-    await db
-      .update(modelsTable)
-      .set({ deletedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(modelsTable.id, defaultModel.id))
-
-    // Reset to default
-    await resetModelToDefault(defaultModel.id, defaultModel)
-
-    // Verify deletedAt is cleared
-    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
-    expect(model?.deletedAt).toBeNull()
-  })
-})
 
 describe('resetAutomationToDefault', () => {
   beforeEach(async () => {

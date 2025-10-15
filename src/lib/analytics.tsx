@@ -4,7 +4,7 @@ import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 
@@ -86,16 +86,8 @@ export const initPosthog = async (): Promise<PostHog | null> => {
 /**
  * PostHog Provider component for React
  */
-export const PostHogProvider = ({ children }: { children: ReactNode }) => {
-  const [client, setClient] = useState<PostHog | null>(null)
-
-  useEffect(() => {
-    initPosthog().then(setClient)
-  }, [])
-
-  if (!client) return <>{children}</>
-
-  return <PostHogReactProvider client={client}>{children}</PostHogReactProvider>
+export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => {
+  return client ? <PostHogReactProvider client={client}>{children}</PostHogReactProvider> : children
 }
 
 export type EventType =

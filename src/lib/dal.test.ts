@@ -42,7 +42,6 @@ import {
   resetAutomationToDefault,
   resetModelToDefault,
   resetSettingToDefault,
-  updateBooleanSetting,
   updateSetting,
 } from './dal'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
@@ -138,12 +137,7 @@ describe('Settings DAL', () => {
       expect(value).toBe(false)
     })
 
-    it.skip('should return custom default when setting does not exist', async () => {
-      const value = await getBooleanSetting('nonexistent_key', true)
-      expect(value).toBe(true)
-    })
-
-    it.skip('should return true when value is "true"', async () => {
+    it('should return true when value is "true"', async () => {
       await createSetting('bool_key', 'true')
       const value = await getBooleanSetting('bool_key')
       expect(value).toBe(true)
@@ -219,32 +213,32 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('updateBooleanSetting', () => {
-    it.skip('should create a boolean setting with true value', async () => {
-      await updateBooleanSetting('bool_key', true)
+  describe('updateSetting with boolean values', () => {
+    it('should create a boolean setting with true value', async () => {
+      await updateSetting('bool_key', true)
       const value = await getBooleanSetting('bool_key')
       expect(value).toBe(true)
     })
 
     it('should create a boolean setting with false value', async () => {
-      await updateBooleanSetting('bool_key', false)
+      await updateSetting('bool_key', false)
       const value = await getBooleanSetting('bool_key')
       expect(value).toBe(false)
     })
 
-    it.skip('should update existing boolean setting', async () => {
-      await updateBooleanSetting('bool_key', false)
-      await updateBooleanSetting('bool_key', true)
+    it('should update existing boolean setting', async () => {
+      await updateSetting('bool_key', false)
+      await updateSetting('bool_key', true)
       const value = await getBooleanSetting('bool_key')
       expect(value).toBe(true)
     })
 
     it('should store as "true" and "false" strings', async () => {
-      await updateBooleanSetting('bool_key', true)
+      await updateSetting('bool_key', true)
       const trueValue = await getSetting('bool_key')
       expect(trueValue).toBe('true')
 
-      await updateBooleanSetting('bool_key', false)
+      await updateSetting('bool_key', false)
       const falseValue = await getSetting('bool_key')
       expect(falseValue).toBe('false')
     })

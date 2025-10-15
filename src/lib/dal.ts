@@ -197,23 +197,17 @@ export const createSetting = async (key: string, value: string | null): Promise<
 
 /**
  * Update or create a setting in the settings table
+ * Accepts string, null, or boolean values. Booleans are stored as 'true'/'false' strings.
  */
-export const updateSetting = async (key: string, value: string | null): Promise<void> => {
+export const updateSetting = async (key: string, value: string | null | boolean): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
-    target: settingsTable.key,
-    set: { value },
-  })
-}
-
-export const updateBooleanSetting = async (key: string, value: boolean): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+  const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : value
   await db
     .insert(settingsTable)
-    .values({ key, value: value ? 'true' : 'false' })
+    .values({ key, value: stringValue })
     .onConflictDoUpdate({
       target: settingsTable.key,
-      set: { value: value ? 'true' : 'false' },
+      set: { value: stringValue },
     })
 }
 

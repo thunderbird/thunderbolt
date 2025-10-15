@@ -12,7 +12,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
 import { getAvailableModels, getSelectedModel } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
@@ -61,7 +61,9 @@ export default function AutomationFormModal({
     queryFn: getSelectedModel,
   })
 
-  const { value: isTriggersEnabled } = useBooleanSetting('is_triggers_enabled', false)
+  const { isTriggersEnabled } = useSettings({
+    is_triggers_enabled: Boolean,
+  })
 
   const [promptText, setPromptText] = useState('')
   const [modelId, setModelId] = useState<string | null>(null)
@@ -319,7 +321,7 @@ export default function AutomationFormModal({
               </CardHeader>
 
               {/* Trigger Section - Direct Below Prompt */}
-              {isTriggersEnabled && (
+              {isTriggersEnabled.value && (
                 <CardContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Inline trigger configuration */}

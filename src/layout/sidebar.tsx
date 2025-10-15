@@ -21,7 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
 import { getAllChatThreads } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -65,7 +65,9 @@ export default function ChatSidebar() {
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const { value: isTasksEnabled } = useBooleanSetting('experimental_feature_tasks')
+  const { experimentalFeatureTasks } = useSettings({
+    experimental_feature_tasks: Boolean,
+  })
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -268,7 +270,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {isTasksEnabled && (
+              {experimentalFeatureTasks.value && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">

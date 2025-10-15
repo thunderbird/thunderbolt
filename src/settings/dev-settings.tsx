@@ -3,20 +3,18 @@ import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useBooleanSettings, useSettings } from '@/hooks/use-settings'
+import { useSettings } from '@/hooks/use-settings'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  const { cloudUrl } = useSettings(['cloud_url'] as const)
+  const { cloudUrl, isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useSettings({
+    cloud_url: String,
+    is_native_fetch_enabled: Boolean,
+    disable_flower_encryption: Boolean,
+    debug_posthog: Boolean,
+  })
 
-  const { isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useBooleanSettings([
-    'is_native_fetch_enabled',
-    'disable_flower_encryption',
-    'debug_posthog',
-  ] as const)
-
-  // Runtime capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
     queryFn: getCapabilities,
@@ -41,7 +39,7 @@ export default function DevSettingsPage() {
             </ModificationIndicator>
             <Input
               type="url"
-              value={cloudUrl.value || ''}
+              value={(cloudUrl.value as string) || ''}
               onChange={(e) => cloudUrl.setValue(e.target.value || null)}
               placeholder="http://localhost:8000"
             />
@@ -67,7 +65,7 @@ export default function DevSettingsPage() {
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={isNativeFetchEnabled.value}
+                    checked={isNativeFetchEnabled.value as boolean}
                     onCheckedChange={isNativeFetchEnabled.setValue}
                     disabled={!capabilities?.native_fetch}
                   />
@@ -97,7 +95,10 @@ export default function DevSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
-            <Switch checked={disableFlowerEncryption.value} onCheckedChange={disableFlowerEncryption.setValue} />
+            <Switch
+              checked={disableFlowerEncryption.value as boolean}
+              onCheckedChange={disableFlowerEncryption.setValue}
+            />
           </div>
 
           {/* Divider between settings */}
@@ -115,7 +116,7 @@ export default function DevSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
-            <Switch checked={debugPosthog.value} onCheckedChange={debugPosthog.setValue} />
+            <Switch checked={debugPosthog.value as boolean} onCheckedChange={debugPosthog.setValue} />
           </div>
         </div>
       </SectionCard>

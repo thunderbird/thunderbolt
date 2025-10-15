@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
 import { getAllPrompts, resetAutomationToDefault } from '@/lib/dal'
 import { defaultAutomations } from '@/lib/defaults/automations'
@@ -49,7 +49,9 @@ export default function AutomationsPage() {
     placeholderData: (previousData) => previousData,
   })
 
-  const { value: triggersEnabled } = useBooleanSetting('is_triggers_enabled', false)
+  const { isTriggersEnabled } = useSettings({
+    is_triggers_enabled: Boolean,
+  })
 
   const deletePromptMutation = useMutation({
     mutationFn: async (promptId: string) => {
@@ -171,7 +173,7 @@ export default function AutomationsPage() {
                   <PromptCard
                     key={prompt.id}
                     prompt={prompt}
-                    triggersEnabled={triggersEnabled}
+                    triggersEnabled={isTriggersEnabled.value as boolean}
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}

@@ -1,5 +1,5 @@
 import { useDebounce } from '@/hooks/use-debounce'
-import { useBooleanSettings, useSettings } from '@/hooks/use-settings'
+import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
@@ -110,17 +110,15 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  const { preferredName, locationName, locationLat, locationLng } = useSettings([
-    'preferred_name',
-    'location_name',
-    'location_lat',
-    'location_lng',
-  ] as const)
-
-  const { dataCollection, experimentalFeatureTasks } = useBooleanSettings([
-    'data_collection',
-    'experimental_feature_tasks',
-  ] as const)
+  const { preferredName, locationName, locationLat, locationLng, dataCollection, experimentalFeatureTasks } =
+    useSettings({
+      preferred_name: String,
+      location_name: String,
+      location_lat: String,
+      location_lng: String,
+      data_collection: Boolean,
+      experimental_feature_tasks: Boolean,
+    })
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
@@ -145,23 +143,23 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
       locationName: '',
-      locationLat: '',
-      locationLng: '',
+      locationLat: '' as string | number,
+      locationLng: '' as string | number,
     },
   })
 
   // Update forms when data is loaded
   useEffect(() => {
     nameForm.reset({
-      preferredName: preferredName.value ?? '',
+      preferredName: (preferredName.value as string) ?? '',
     })
   }, [preferredName.value, nameForm])
 
   useEffect(() => {
     locationForm.reset({
-      locationName: locationName.value ?? '',
-      locationLat: locationLat.value ?? '',
-      locationLng: locationLng.value ?? '',
+      locationName: (locationName.value as string) ?? '',
+      locationLat: (locationLat.value as string) ?? '',
+      locationLng: (locationLng.value as string) ?? '',
     })
   }, [locationName.value, locationLat.value, locationLng.value, locationForm])
 
@@ -238,7 +236,7 @@ export default function PreferencesSettingsPage() {
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
-    if (!value && experimentalFeatureTasks.value) {
+    if (!value && (experimentalFeatureTasks.value as boolean)) {
       telemetryWarningModalRef.current?.open()
       return
     }
@@ -258,7 +256,7 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleExperimentalFeaturesToggle = async (value: boolean) => {
-    if (value && !dataCollection.value) {
+    if (value && !(dataCollection.value as boolean)) {
       telemetryRequiredModalRef.current?.open('experimentalFeatureTasks')
       return
     }
@@ -484,7 +482,10 @@ export default function PreferencesSettingsPage() {
               Tasks
             </ModificationIndicator>
           </div>
-          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+          <Switch
+            checked={experimentalFeatureTasks.value as boolean}
+            onCheckedChange={handleExperimentalFeaturesToggle}
+          />
         </div>
       </SectionCard>
 
@@ -516,7 +517,7 @@ export default function PreferencesSettingsPage() {
               .
             </p>
           </div>
-          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+          <Switch checked={(dataCollection.value as boolean) || false} onCheckedChange={handleDataCollectionToggle} />
         </div>
       </SectionCard>
 

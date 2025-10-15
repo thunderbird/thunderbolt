@@ -3,16 +3,18 @@ import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useBooleanSetting, useSetting } from '@/hooks/use-setting'
+import { useBooleanSettings, useSettings } from '@/hooks/use-settings'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  // Use the new hooks for each setting
-  const cloudUrl = useSetting('cloud_url', '')
-  const tauriFetchEnabled = useBooleanSetting('is_native_fetch_enabled', false)
-  const disableEncryption = useBooleanSetting('disable_flower_encryption', false)
-  const debugPosthog = useBooleanSetting('debug_posthog', false)
+  const { cloudUrl } = useSettings(['cloud_url'] as const)
+
+  const { isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useBooleanSettings([
+    'is_native_fetch_enabled',
+    'disable_flower_encryption',
+    'debug_posthog',
+  ] as const)
 
   // Runtime capabilities
   const { data: capabilities } = useQuery({
@@ -54,8 +56,8 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={tauriFetchEnabled.isModified}
-                onReset={tauriFetchEnabled.reset}
+                hasModifications={isNativeFetchEnabled.isModified}
+                onReset={isNativeFetchEnabled.reset}
               >
                 Use Native Fetch
               </ModificationIndicator>
@@ -65,8 +67,8 @@ export default function DevSettingsPage() {
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={tauriFetchEnabled.value}
-                    onCheckedChange={tauriFetchEnabled.setValue}
+                    checked={isNativeFetchEnabled.value}
+                    onCheckedChange={isNativeFetchEnabled.setValue}
                     disabled={!capabilities?.native_fetch}
                   />
                 </span>
@@ -88,14 +90,14 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={disableEncryption.isModified}
-                onReset={disableEncryption.reset}
+                hasModifications={disableFlowerEncryption.isModified}
+                onReset={disableFlowerEncryption.reset}
               >
                 Disable Encryption
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
-            <Switch checked={disableEncryption.value} onCheckedChange={disableEncryption.setValue} />
+            <Switch checked={disableFlowerEncryption.value} onCheckedChange={disableFlowerEncryption.setValue} />
           </div>
 
           {/* Divider between settings */}

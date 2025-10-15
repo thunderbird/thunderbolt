@@ -65,7 +65,7 @@ export default function ChatSidebar() {
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const isTasksEnabled = useBooleanSetting('experimental_feature_tasks')
+  const { value: isTasksEnabled } = useBooleanSetting('experimental_feature_tasks')
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -268,7 +268,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {isTasksEnabled.value && (
+              {isTasksEnabled && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">

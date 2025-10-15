@@ -61,7 +61,7 @@ export default function AutomationFormModal({
     queryFn: getSelectedModel,
   })
 
-  const isTriggersEnabled = useBooleanSetting('is_triggers_enabled', false)
+  const { value: isTriggersEnabled } = useBooleanSetting('is_triggers_enabled', false)
 
   const [promptText, setPromptText] = useState('')
   const [modelId, setModelId] = useState<string | null>(null)
@@ -319,7 +319,7 @@ export default function AutomationFormModal({
               </CardHeader>
 
               {/* Trigger Section - Direct Below Prompt */}
-              {isTriggersEnabled.value && (
+              {isTriggersEnabled && (
                 <CardContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Inline trigger configuration */}

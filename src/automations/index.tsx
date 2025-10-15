@@ -49,7 +49,7 @@ export default function AutomationsPage() {
     placeholderData: (previousData) => previousData,
   })
 
-  const triggersEnabled = useBooleanSetting('is_triggers_enabled', false)
+  const { value: triggersEnabled } = useBooleanSetting('is_triggers_enabled', false)
 
   const deletePromptMutation = useMutation({
     mutationFn: async (promptId: string) => {
@@ -171,7 +171,7 @@ export default function AutomationsPage() {
                   <PromptCard
                     key={prompt.id}
                     prompt={prompt}
-                    triggersEnabled={triggersEnabled.value}
+                    triggersEnabled={triggersEnabled}
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}

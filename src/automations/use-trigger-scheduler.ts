@@ -6,14 +6,14 @@ import { useEffect, useRef } from 'react'
 import { runAutomation } from './runner'
 
 export const useTriggerScheduler = () => {
-  const isTriggersEnabled = useBooleanSetting('is_triggers_enabled', false)
+  const { value: isTriggersEnabled } = useBooleanSetting('is_triggers_enabled', false)
   const timers = useRef<number[]>([])
 
   useEffect(() => {
     const db = DatabaseSingleton.instance.db
 
     const plan = async () => {
-      if (!isTriggersEnabled.value) {
+      if (!isTriggersEnabled) {
         return
       }
 
@@ -36,7 +36,7 @@ export const useTriggerScheduler = () => {
       })
     }
 
-    if (!isTriggersEnabled.value) {
+    if (!isTriggersEnabled) {
       return
     }
 
@@ -48,5 +48,5 @@ export const useTriggerScheduler = () => {
       clearInterval(id)
       timers.current.forEach(clearTimeout)
     }
-  }, [isTriggersEnabled.value])
+  }, [isTriggersEnabled])
 }

@@ -25,20 +25,20 @@ export type SettingHook = {
 }
 
 /**
+ * Helper type to convert snake_case to camelCase
+ */
+type CamelCaseKey<S extends string> = S extends `${infer P1}_${infer P2}` ? `${P1}${Capitalize<CamelCaseKey<P2>>}` : S
+
+/**
  * Result type for useSettings - returns an object with each setting as a property
  */
 export type UseSettingsResult<T extends readonly string[], CamelCase extends boolean = true> = CamelCase extends true
   ? {
-      [K in T[number] as K extends string ? Uncapitalize<CamelCaseKey<K>> : K]: SettingHook
+      [K in T[number] as K extends string ? CamelCaseKey<K> : K]: SettingHook
     }
   : {
       [K in T[number]]: SettingHook
     }
-
-/**
- * Helper type to convert snake_case to camelCase
- */
-type CamelCaseKey<S extends string> = S extends `${infer P1}_${infer P2}` ? `${P1}${Capitalize<CamelCaseKey<P2>>}` : S
 
 /**
  * Hook for managing multiple settings with modification tracking and reset capability
@@ -168,7 +168,7 @@ export type UseBooleanSettingsResult<
   CamelCase extends boolean = true,
 > = CamelCase extends true
   ? {
-      [K in T[number] as K extends string ? Uncapitalize<CamelCaseKey<K>> : K]: BooleanSettingHook
+      [K in T[number] as K extends string ? CamelCaseKey<K> : K]: BooleanSettingHook
     }
   : {
       [K in T[number]]: BooleanSettingHook

@@ -50,6 +50,13 @@
       "when": 1760467870850,
       "tag": "0006_thick_donald_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1760542615522,
+      "tag": "0007_mighty_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

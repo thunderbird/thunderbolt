@@ -454,8 +454,17 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
     throw new Error('Thread not found')
   }
 
-  // Convert UI messages to DB messages
-  const dbChatMessages = messages.map((message) => convertUIMessageToDbChatMessage(message, threadId))
+  // Get the last message in the thread to use as parent for new messages
+  const lastMessage = await getLastMessage(threadId)
+  const parentId = lastMessage?.id ?? null
+
+  // Convert UI messages to DB messages with parent relationship
+  const dbChatMessages = messages.map((message, index) => {
+    // For the first message in this batch, use the last message in the thread as parent
+    // For subsequent messages in the batch, use the previous message in the batch
+    const messageParentId = index === 0 ? parentId : messages[index - 1].id
+    return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
+  })
 
   // Insert messages
   await db
@@ -467,6 +476,7 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
         content: sql`excluded.content`,
         parts: sql`excluded.parts`,
         role: sql`excluded.role`,
+        parentId: sql`excluded.parent_id`,
       },
     })
 

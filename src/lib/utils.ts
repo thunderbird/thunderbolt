@@ -27,7 +27,11 @@ export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage
   }
 }
 
-export function convertUIMessageToDbChatMessage(message: UIMessage, chatThreadId: string): ChatMessage {
+export function convertUIMessageToDbChatMessage(
+  message: UIMessage,
+  chatThreadId: string,
+  parentId?: string | null,
+): ChatMessage {
   const metadata = message.metadata as UIMessageMetadata | undefined
 
   return {
@@ -37,6 +41,7 @@ export function convertUIMessageToDbChatMessage(message: UIMessage, chatThreadId
     content: message.parts.map((part) => (part.type === 'text' ? part.text : '')).join(''),
     chatThreadId,
     modelId: metadata?.modelId ?? null,
+    parentId: parentId ?? null,
   }
 }
 

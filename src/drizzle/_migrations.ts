@@ -44,4 +44,9 @@ export const migrations: Migration[] = [
     name: '0006_thick_donald_blake.sql',
     sql: 'PRAGMA foreign_keys=OFF;--> statement-breakpoint\nDROP TABLE `accounts`;--> statement-breakpoint\nDROP TABLE `contacts`;--> statement-breakpoint\nDROP TABLE `email_addresses`;--> statement-breakpoint\nDROP TABLE `email_messages`;--> statement-breakpoint\nDROP TABLE `email_messages_to_addresses`;--> statement-breakpoint\nDROP TABLE `email_threads`;--> statement-breakpoint\nDROP TABLE `embeddings`;--> statement-breakpoint\nCREATE TABLE `__new_tasks` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`item` text NOT NULL,\n\t`order` integer DEFAULT 0 NOT NULL,\n\t`is_complete` integer DEFAULT 0 NOT NULL\n);\n--> statement-breakpoint\nINSERT INTO `__new_tasks`("id", "item", "order", "is_complete") SELECT "id", "item", "order", "is_complete" FROM `tasks`;--> statement-breakpoint\nDROP TABLE `tasks`;--> statement-breakpoint\nALTER TABLE `__new_tasks` RENAME TO `tasks`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE UNIQUE INDEX `tasks_id_unique` ON `tasks` (`id`);',
   },
+  {
+    hash: '0007_mighty_hannibal_king',
+    name: '0007_mighty_hannibal_king.sql',
+    sql: 'ALTER TABLE `chat_messages` ADD `parent_id` text REFERENCES chat_messages(id) ON DELETE CASCADE;--> statement-breakpoint\n\n-- Set parent_id for existing messages based on chronological order within each thread\n-- This creates a linear chain of messages within each thread\nUPDATE chat_messages\nSET parent_id = (\n  SELECT id \n  FROM chat_messages AS prev_msg\n  WHERE prev_msg.chat_thread_id = chat_messages.chat_thread_id\n    AND prev_msg.id < chat_messages.id\n  ORDER BY prev_msg.id DESC\n  LIMIT 1\n);',
+  },
 ]

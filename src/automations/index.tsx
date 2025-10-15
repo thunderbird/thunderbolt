@@ -295,14 +295,17 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
         {/* Header with title and toggle */}
         <div className="flex items-center justify-between mb-8">
           {/* Left: Title with reset indicator */}
-          <div className="flex items-center gap-2 flex-1 min-w-0 mr-6">
+          <div className="flex-1 min-w-0 mr-6">
             <ModificationIndicator
+              as="h3"
+              className="text-lg font-semibold text-foreground truncate"
               hasModifications={hasModifications}
               onReset={() => onReset(prompt.id)}
               customMessage="You've customized this automation."
               ariaLabel="Modified automation"
-            />
-            <h3 className="text-lg font-semibold text-foreground truncate">{prompt.title || 'Untitled Automation'}</h3>
+            >
+              {prompt.title || 'Untitled Automation'}
+            </ModificationIndicator>
           </div>
 
           {/* Right: Toggle - only show if triggers are enabled */}

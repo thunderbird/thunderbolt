@@ -163,7 +163,6 @@ export default function PreferencesSettingsPage() {
   })
 
   // Check if each setting has been modified
-  const isThemeModified = dbSettings?.['ui-theme'] ? isSettingModified(dbSettings['ui-theme']) : false
   const isDataCollectionModified = dbSettings?.data_collection ? isSettingModified(dbSettings.data_collection) : false
   const isExperimentalTasksModified = dbSettings?.experimental_feature_tasks
     ? isSettingModified(dbSettings.experimental_feature_tasks)
@@ -525,10 +524,7 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="Appearance">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-1 -ml-[19px]">
-            <ModificationIndicator hasModifications={isThemeModified} onReset={() => handleResetSetting('ui-theme')} />
-            <label className="text-sm font-medium">Theme</label>
-          </div>
+          <label className="text-sm font-medium">Theme</label>
           <ThemeToggle />
           <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
         </div>
@@ -544,13 +540,14 @@ export default function PreferencesSettingsPage() {
               name="preferredName"
               render={({ field }) => (
                 <FormItem>
-                  <div className="flex items-center gap-1 -ml-[19px] mb-2">
-                    <ModificationIndicator
-                      hasModifications={isPreferredNameModified}
-                      onReset={() => handleResetSetting('preferred_name')}
-                    />
-                    <FormLabel className="mb-0">Preferred Name</FormLabel>
-                  </div>
+                  <ModificationIndicator
+                    as={FormLabel}
+                    className="mb-2"
+                    hasModifications={isPreferredNameModified}
+                    onReset={() => handleResetSetting('preferred_name')}
+                  >
+                    Preferred Name
+                  </ModificationIndicator>
                   <FormControl>
                     <Input
                       placeholder="Your name"
@@ -580,17 +577,18 @@ export default function PreferencesSettingsPage() {
               name="locationName"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <div className="flex items-center gap-1 -ml-[19px] mb-2">
-                    <ModificationIndicator
-                      hasModifications={isLocationModified}
-                      onReset={() => {
-                        handleResetSetting('location_name')
-                        handleResetSetting('location_lat')
-                        handleResetSetting('location_lng')
-                      }}
-                    />
-                    <FormLabel className="mb-0">Location</FormLabel>
-                  </div>
+                  <ModificationIndicator
+                    as={FormLabel}
+                    className="mb-2"
+                    hasModifications={isLocationModified}
+                    onReset={() => {
+                      handleResetSetting('location_name')
+                      handleResetSetting('location_lat')
+                      handleResetSetting('location_lng')
+                    }}
+                  >
+                    Location
+                  </ModificationIndicator>
                   <Popover
                     open={open}
                     onOpenChange={(newOpen) => {
@@ -677,12 +675,15 @@ export default function PreferencesSettingsPage() {
               name="experimentalFeatureTasks"
               render={({ field }) => (
                 <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1 flex items-center gap-1 -ml-[19px]">
+                  <div className="flex-1">
                     <ModificationIndicator
+                      as="label"
+                      className="text-sm font-medium"
                       hasModifications={isExperimentalTasksModified}
                       onReset={() => handleResetSetting('experimental_feature_tasks')}
-                    />
-                    <label className="text-sm font-medium">Tasks</label>
+                    >
+                      Tasks
+                    </ModificationIndicator>
                   </div>
                   <Switch
                     checked={field.value}
@@ -708,12 +709,15 @@ export default function PreferencesSettingsPage() {
               render={({ field }) => (
                 <div className="flex-row flex items-center gap-4">
                   <div>
-                    <div className="flex items-center gap-1 mb-1 -ml-[19px]">
+                    <div className="mb-2">
                       <ModificationIndicator
+                        as="label"
+                        className="text-sm font-medium"
                         hasModifications={isDataCollectionModified}
                         onReset={() => handleResetSetting('data_collection')}
-                      />
-                      <label className="text-sm font-medium">Data Collection</label>
+                      >
+                        Data Collection
+                      </ModificationIndicator>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.

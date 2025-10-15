@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useState } from 'react'
+import { cn } from '@/lib/utils'
+import { type ElementType, type ReactNode, useState } from 'react'
 
 interface ModificationIndicatorProps {
   /**
@@ -11,6 +12,19 @@ interface ModificationIndicatorProps {
    * Callback when user confirms reset
    */
   onReset: () => void
+  /**
+   * The label/text to display with the underline indicator
+   */
+  children: ReactNode
+  /**
+   * The HTML element or component to render as
+   * @default "span"
+   */
+  as?: ElementType
+  /**
+   * Additional CSS classes to apply
+   */
+  className?: string
   /**
    * Optional custom message for the popover body
    * @default "You've customized this setting."
@@ -29,14 +43,17 @@ interface ModificationIndicatorProps {
 }
 
 /**
- * Reusable component that shows a persistent dot indicator
- * - Light grey when unmodified (default state)
- * - Blue when modified with reset popover
+ * Reusable component that shows an underline indicator on text
+ * - Transparent underline when unmodified (maintains consistent text position)
+ * - Blue underline when modified with reset popover on click
  * Used across automations, settings, and other default-based content
  */
 export const ModificationIndicator = ({
   hasModifications,
   onReset,
+  children,
+  as: Component = 'span',
+  className = '',
   customMessage = "You've customized this setting.",
   confirmMessage = 'Are you sure? You will lose any changes that you made.',
   ariaLabel = 'Modified item',
@@ -62,25 +79,31 @@ export const ModificationIndicator = ({
     }
   }
 
+  // Base classes for the underline indicator wrapper
+  // leading-none ensures consistent line-height across different parent elements
+  // pb-1 creates consistent spacing between text and underline
+  const underlineClasses = 'border-b-2 inline-block pb-1 leading-none'
+
   if (!hasModifications) {
-    // Show grey dot for unmodified state (non-interactive, same color as secondary button)
-    // Fixed width container ensures consistent spacing
+    // Show transparent underline for unmodified state (non-interactive)
+    // Maintains consistent vertical text position
     return (
-      <span className="inline-flex items-center justify-center w-[18px]" aria-label="Default setting">
-        <div className="w-2 h-2 rounded-full bg-secondary" />
-      </span>
+      <Component className={className} aria-label="Default setting">
+        <span className={cn(underlineClasses, 'border-transparent')}>{children}</span>
+      </Component>
     )
   }
 
   return (
     <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
       <PopoverTrigger asChild>
-        <span className="inline-flex items-center justify-center w-[18px]">
-          <button
-            className="w-2 h-2 rounded-full bg-blue-500 hover:bg-blue-600 transition-colors cursor-pointer"
-            aria-label={ariaLabel}
-          />
-        </span>
+        <Component className={className} aria-label={ariaLabel} htmlFor={undefined}>
+          <span
+            className={cn(underlineClasses, 'border-blue-500 hover:border-blue-600 transition-colors cursor-pointer')}
+          >
+            {children}
+          </span>
+        </Component>
       </PopoverTrigger>
       <PopoverContent align="start" side="bottom" className="w-[240px] p-0">
         <div className="flex flex-col">

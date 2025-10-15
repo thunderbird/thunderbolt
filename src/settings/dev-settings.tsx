@@ -86,13 +86,14 @@ export default function DevSettingsPage() {
         <div className="flex flex-col gap-8">
           {/* Cloud URL Setting */}
           <div className="space-y-2">
-            <div className="flex items-center gap-1 -ml-[19px]">
-              <ModificationIndicator
-                hasModifications={isCloudUrlModified}
-                onReset={() => handleResetSetting('cloud_url')}
-              />
-              <label className="block text-sm font-medium">Cloud URL</label>
-            </div>
+            <ModificationIndicator
+              as="label"
+              className="block text-sm font-medium"
+              hasModifications={isCloudUrlModified}
+              onReset={() => handleResetSetting('cloud_url')}
+            >
+              Cloud URL
+            </ModificationIndicator>
             <Input
               type="url"
               value={cloudUrl || ''}
@@ -107,13 +108,14 @@ export default function DevSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 -ml-[19px]">
-                <ModificationIndicator
-                  hasModifications={isNativeFetchModified}
-                  onReset={() => handleResetSetting('is_native_fetch_enabled')}
-                />
-                <label className="text-sm font-medium">Use Native Fetch</label>
-              </div>
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={isNativeFetchModified}
+                onReset={() => handleResetSetting('is_native_fetch_enabled')}
+              >
+                Use Native Fetch
+              </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Proxy HTTP requests through Tauri to bypass CORS</p>
             </div>
             <Tooltip>
@@ -140,13 +142,14 @@ export default function DevSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 -ml-[19px]">
-                <ModificationIndicator
-                  hasModifications={isDisableEncryptionModified}
-                  onReset={() => handleResetSetting('disable_flower_encryption')}
-                />
-                <label className="text-sm font-medium">Disable Encryption</label>
-              </div>
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={isDisableEncryptionModified}
+                onReset={() => handleResetSetting('disable_flower_encryption')}
+              >
+                Disable Encryption
+              </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
             <Switch checked={disableEncryption} onCheckedChange={setDisableEncryption} />
@@ -157,13 +160,14 @@ export default function DevSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 -ml-[19px]">
-                <ModificationIndicator
-                  hasModifications={isDebugPosthogModified}
-                  onReset={() => handleResetSetting('debug_posthog')}
-                />
-                <label className="text-sm font-medium">Debug PostHog</label>
-              </div>
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={isDebugPosthogModified}
+                onReset={() => handleResetSetting('debug_posthog')}
+              >
+                Debug PostHog
+              </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
             <Switch checked={debugPosthog} onCheckedChange={setDebugPosthog} />

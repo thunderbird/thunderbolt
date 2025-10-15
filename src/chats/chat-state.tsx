@@ -46,7 +46,7 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
   const { getEnabledClients } = useMCP()
 
   const { selectedModel } = useSettings({
-    selected_model: String,
+    selected_model: '',
   })
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)

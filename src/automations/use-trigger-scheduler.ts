@@ -7,7 +7,7 @@ import { runAutomation } from './runner'
 
 export const useTriggerScheduler = () => {
   const { isTriggersEnabled } = useSettings({
-    is_triggers_enabled: Boolean,
+    is_triggers_enabled: false,
   })
   const timers = useRef<number[]>([])
 

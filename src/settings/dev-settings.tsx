@@ -9,10 +9,10 @@ import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
   const { cloudUrl, isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useSettings({
-    cloud_url: String,
-    is_native_fetch_enabled: Boolean,
-    disable_flower_encryption: Boolean,
-    debug_posthog: Boolean,
+    cloud_url: '',
+    is_native_fetch_enabled: false,
+    disable_flower_encryption: false,
+    debug_posthog: false,
   })
 
   const { data: capabilities } = useQuery({
@@ -39,7 +39,7 @@ export default function DevSettingsPage() {
             </ModificationIndicator>
             <Input
               type="url"
-              value={cloudUrl.value || ''}
+              value={cloudUrl.value}
               onChange={(e) => cloudUrl.setValue(e.target.value || null)}
               placeholder="http://localhost:8000"
             />

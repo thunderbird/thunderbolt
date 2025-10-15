@@ -10,17 +10,17 @@ import { useMemo } from 'react'
 /**
  * Generic setting hook interface
  */
-type SettingHook<T> = {
+type SettingHook<TValue, TInput = TValue> = {
   /** The raw setting object with metadata */
   data: Setting | null
   /** The raw setting object with metadata (alias for consistency) */
   rawSetting: Setting | null
   /** The setting's value */
-  value: T
+  value: TValue
   /** Whether the setting has been modified from its default */
   isModified: boolean
-  /** Update the setting's value */
-  setValue: (value: T) => Promise<void>
+  /** Update the setting's value (can pass null to clear) */
+  setValue: (value: TInput) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
   /** Whether the query is loading */
@@ -34,12 +34,27 @@ type SettingHook<T> = {
 /**
  * String setting hook - for String type settings
  */
-export type StringSettingHook = SettingHook<string | null>
+export type StringSettingHook = SettingHook<string | null, string | null>
 
 /**
  * Boolean setting hook - for Boolean type settings
  */
-export type BooleanSettingHook = SettingHook<boolean>
+export type BooleanSettingHook = SettingHook<boolean, boolean>
+
+/**
+ * String setting with default - value is never null, but setValue accepts null to clear
+ */
+export type StringSettingWithDefaultHook = SettingHook<string, string | null>
+
+/**
+ * Number setting hook
+ */
+export type NumberSettingHook = SettingHook<number | null, number | null>
+
+/**
+ * Number setting with default - value is never null, but setValue accepts null to clear
+ */
+export type NumberSettingWithDefaultHook = SettingHook<number, number | null>
 
 /**
  * Helper type to convert snake_case to camelCase
@@ -47,18 +62,35 @@ export type BooleanSettingHook = SettingHook<boolean>
 type CamelCaseKey<S extends string> = S extends `${infer P1}_${infer P2}` ? `${P1}${Capitalize<CamelCaseKey<P2>>}` : S
 
 /**
- * Type schema for settings - maps keys to their value types
+ * Type schema for settings - maps keys to their value types or default values
  */
-type SettingSchema = Record<string, StringConstructor | BooleanConstructor>
+type SettingSchema = Record<
+  string,
+  string | number | boolean | null | StringConstructor | BooleanConstructor | NumberConstructor
+>
 
 /**
- * Extract the hook type based on the constructor type
+ * Extract the hook type based on the schema value
+ * - Constructors → nullable value types
+ * - Primitive defaults → non-nullable value types (setValue still accepts null to clear)
  */
-type HookForType<T> = T extends BooleanConstructor
-  ? BooleanSettingHook
-  : T extends StringConstructor
-    ? StringSettingHook
-    : never
+type HookForType<T> = T extends StringConstructor
+  ? StringSettingHook
+  : T extends BooleanConstructor
+    ? BooleanSettingHook
+    : T extends NumberConstructor
+      ? NumberSettingHook
+      : T extends true | false
+        ? BooleanSettingHook
+        : T extends boolean
+          ? BooleanSettingHook
+          : T extends number
+            ? NumberSettingWithDefaultHook
+            : T extends string
+              ? StringSettingWithDefaultHook
+              : T extends null
+                ? SettingHook<null, null>
+                : never
 
 /**
  * Result type for useSettings with schema - returns an object with typed settings
@@ -72,60 +104,42 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
     }
 
 /**
- * Result type for useSettings - returns an object with each setting as a property
- */
-export type UseSettingsResult<T extends readonly string[], CamelCase extends boolean = true> = CamelCase extends true
-  ? {
-      [K in T[number] as K extends string ? CamelCaseKey<K> : K]: StringSettingHook
-    }
-  : {
-      [K in T[number]]: StringSettingHook
-    }
-
-/**
  * Hook for managing multiple settings with modification tracking and reset capability
  *
  * Returns an object where each key is a setting, allowing clean destructuring.
  * All settings are fetched in a single efficient query.
  *
- * @param keys - Array of setting keys to fetch, or an object schema mapping keys to types
+ * @param schema - Object mapping setting keys to either:
+ *   - Type constructors (String, Boolean, Number) for settings without defaults
+ *   - Primitive values (strings, numbers, booleans, null) as default values
  * @param options - Optional configuration
  * @param options.camelCase - If true (default), converts snake_case keys to camelCase in the result
  *
  * @example
  * ```tsx
- * // With type schema (automatically handles strings and booleans)
- * const { cloudUrl, dataCollection, experimentalFeatureTasks } = useSettings({
+ * // With type constructors (no defaults)
+ * const { cloudUrl, dataCollection } = useSettings({
  *   cloud_url: String,
  *   data_collection: Boolean,
- *   experimental_feature_tasks: Boolean,
  * })
+ * // cloudUrl.value = string | null
+ * // dataCollection.value = boolean (false if not set)
  *
- * // With camelCase conversion (default)
- * const { cloudUrl, dataCollection, preferredName } = useSettings([
- *   'cloud_url',
- *   'data_collection',
- *   'preferred_name'
- * ] as const)
+ * // With default values (infers type from value)
+ * const { maxRetries, apiUrl, isEnabled } = useSettings({
+ *   max_retries: 3,
+ *   api_url: 'https://api.example.com',
+ *   is_enabled: true,
+ * })
+ * // maxRetries.value = number (defaults to 3)
+ * // apiUrl.value = string (defaults to 'https://api.example.com')
+ * // isEnabled.value = boolean (defaults to true)
  *
- * // With snake_case keys (opt-out)
- * const { cloud_url, data_collection, preferred_name } = useSettings([
- *   'cloud_url',
- *   'data_collection',
- *   'preferred_name'
- * ] as const, { camelCase: false })
- *
- * return (
- *   <>
- *     <Input
- *       value={cloudUrl.value ?? ''}
- *       onChange={(e) => cloudUrl.setValue(e.target.value)}
- *     />
- *     {cloudUrl.isModified && (
- *       <Button onClick={cloudUrl.reset}>Reset</Button>
- *     )}
- *   </>
- * )
+ * // Mixed usage
+ * const { theme, debugMode } = useSettings({
+ *   theme: String,        // No default
+ *   debug_mode: false,    // Defaults to false
+ * })
  * ```
  */
 export function useSettings<T extends SettingSchema>(schema: T): UseSettingsSchemaResult<T, true>
@@ -137,28 +151,14 @@ export function useSettings<T extends SettingSchema>(
   schema: T,
   options: { camelCase: false },
 ): UseSettingsSchemaResult<T, false>
-export function useSettings<T extends readonly string[]>(keys: T): UseSettingsResult<T, true>
-export function useSettings<T extends readonly string[]>(
-  keys: T,
-  options: { camelCase: true },
-): UseSettingsResult<T, true>
-export function useSettings<T extends readonly string[]>(
-  keys: T,
-  options: { camelCase: false },
-): UseSettingsResult<T, false>
-export function useSettings<T extends readonly string[] | SettingSchema>(
-  keysOrSchema: T,
+export function useSettings<T extends SettingSchema>(
+  schema: T,
   options: { camelCase?: boolean } = {},
-):
-  | UseSettingsResult<T extends readonly string[] ? T : never, boolean>
-  | UseSettingsSchemaResult<T extends SettingSchema ? T : never, boolean> {
+): UseSettingsSchemaResult<T, boolean> {
   const queryClient = useQueryClient()
   const { camelCase = true } = options
 
-  // Check if we received a schema object or an array
-  const isSchema = !Array.isArray(keysOrSchema)
-  const keys = isSchema ? Object.keys(keysOrSchema) : keysOrSchema
-  const schema = isSchema ? (keysOrSchema as SettingSchema) : null
+  const keys = Object.keys(schema)
 
   const query = useQuery({
     queryKey: ['settings', ...keys],
@@ -210,7 +210,17 @@ export function useSettings<T extends readonly string[] | SettingSchema>(
     for (const key of keys) {
       const setting = byKey[key]
       const resultKey = camelCase ? camelCased(key) : key
-      const value = deserializeValue(setting?.value)
+      const schemaValue = schema[key]
+
+      // Determine if this is a constructor or a default value
+      const isConstructor = typeof schemaValue === 'function'
+      const defaultValue = isConstructor ? (schemaValue === Boolean ? false : null) : schemaValue
+
+      // Deserialize the stored value
+      const deserializedValue = deserializeValue(setting?.value)
+
+      // Apply default if value is null/undefined
+      const value = deserializedValue ?? defaultValue
 
       result[resultKey] = {
         data: setting ?? null,

@@ -112,12 +112,12 @@ export default function PreferencesSettingsPage() {
 
   const { preferredName, locationName, locationLat, locationLng, dataCollection, experimentalFeatureTasks } =
     useSettings({
-      preferred_name: String,
-      location_name: String,
-      location_lat: String,
-      location_lng: String,
-      data_collection: Boolean,
-      experimental_feature_tasks: Boolean,
+      preferred_name: '',
+      location_name: '',
+      location_lat: '',
+      location_lng: '',
+      data_collection: true,
+      experimental_feature_tasks: false,
     })
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
@@ -143,23 +143,23 @@ export default function PreferencesSettingsPage() {
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
       locationName: '',
-      locationLat: '' as string | number,
-      locationLng: '' as string | number,
+      locationLat: '',
+      locationLng: '',
     },
   })
 
   // Update forms when data is loaded
   useEffect(() => {
     nameForm.reset({
-      preferredName: preferredName.value ?? '',
+      preferredName: preferredName.value,
     })
   }, [preferredName.value, nameForm])
 
   useEffect(() => {
     locationForm.reset({
-      locationName: locationName.value ?? '',
-      locationLat: locationLat.value ?? '',
-      locationLng: locationLng.value ?? '',
+      locationName: locationName.value,
+      locationLat: locationLat.value,
+      locationLng: locationLng.value,
     })
   }, [locationName.value, locationLat.value, locationLng.value, locationForm])
 

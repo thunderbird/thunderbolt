@@ -323,7 +323,8 @@ export async function getSettings<T extends SettingSchema>(
  */
 export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
   const settings = await getSettings({ [storageKey]: defaultTheme })
-  return settings[storageKey]
+  const camelKey = camelCased(storageKey)
+  return settings[camelKey]
 }
 
 /**
@@ -344,7 +345,8 @@ export const hasSetting = async (key: string): Promise<boolean> => {
  */
 export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
   const settings = await getSettings({ [key]: defaultValue })
-  return settings[key]
+  const camelKey = camelCased(key)
+  return settings[camelKey]
 }
 
 /**

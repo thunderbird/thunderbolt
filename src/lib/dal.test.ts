@@ -39,7 +39,7 @@ import {
   getModel,
   getOrCreateChatThread,
   getSelectedModel,
-  getSetting,
+  getSettings,
   getSystemModel,
   getThemeSetting,
   getTriggerPromptForThread,
@@ -90,45 +90,45 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('getSetting', () => {
+  describe('getSettings', () => {
     it('should return null when setting does not exist and no default provided', async () => {
-      const value = await getSetting('nonexistent_key')
-      expect(value).toBe(null)
+      const settings = await getSettings({ nonexistent_key: String })
+      expect(settings.nonexistentKey).toBe(null)
     })
 
     it('should return default value when setting does not exist', async () => {
-      const value = await getSetting('nonexistent_key', 'default_value')
-      expect(value).toBe('default_value')
+      const settings = await getSettings({ nonexistent_key: 'default_value' })
+      expect(settings.nonexistentKey).toBe('default_value')
     })
 
     it('should return stored value when setting exists', async () => {
       await createSetting('test_key', 'stored_value')
-      const value = await getSetting('test_key')
-      expect(value).toBe('stored_value')
+      const settings = await getSettings({ test_key: String })
+      expect(settings.testKey).toBe('stored_value')
     })
 
     it('should return empty string instead of default when empty string is stored', async () => {
       await createSetting('empty_key', '')
-      const value = await getSetting('empty_key', 'default')
-      expect(value).toBe('')
+      const settings = await getSettings({ empty_key: 'default' })
+      expect(settings.emptyKey).toBe('')
     })
 
     it('should return stored value "0" instead of default', async () => {
       await createSetting('zero_key', '0')
-      const value = await getSetting('zero_key', 'default')
-      expect(value).toBe('0')
+      const settings = await getSettings({ zero_key: 'default' })
+      expect(settings.zeroKey).toBe('0')
     })
 
     it('should return stored value "false" instead of default', async () => {
       await createSetting('false_key', 'false')
-      const value = await getSetting('false_key', 'default')
-      expect(value).toBe('false')
+      const settings = await getSettings({ false_key: 'default' })
+      expect(settings.falseKey).toBe('false')
     })
 
     it('should return default when value is null', async () => {
       await createSetting('null_key', null)
-      const value = await getSetting('null_key', 'default')
-      expect(value).toBe('default')
+      const settings = await getSettings({ null_key: 'default' })
+      expect(settings.nullKey).toBe('default')
     })
   })
 
@@ -165,52 +165,52 @@ describe('Settings DAL', () => {
   describe('createSetting', () => {
     it('should create a new setting', async () => {
       await createSetting('new_key', 'new_value')
-      const value = await getSetting('new_key')
-      expect(value).toBe('new_value')
+      const settings = await getSettings({ new_key: String })
+      expect(settings.newKey).toBe('new_value')
     })
 
     it('should not overwrite existing setting (onConflictDoNothing)', async () => {
       await createSetting('existing_key', 'original_value')
       await createSetting('existing_key', 'new_value')
-      const value = await getSetting('existing_key')
-      expect(value).toBe('original_value')
+      const settings = await getSettings({ existing_key: String })
+      expect(settings.existingKey).toBe('original_value')
     })
 
     it('should create setting with null value', async () => {
       await createSetting('null_key', null)
       const exists = await hasSetting('null_key')
       expect(exists).toBe(true)
-      const value = await getSetting('null_key', 'default')
-      expect(value).toBe('default')
+      const settings = await getSettings({ null_key: 'default' })
+      expect(settings.nullKey).toBe('default')
     })
   })
 
   describe('updateSetting', () => {
     it('should create a new setting if it does not exist', async () => {
       await updateSetting('new_key', 'new_value')
-      const value = await getSetting('new_key')
-      expect(value).toBe('new_value')
+      const settings = await getSettings({ new_key: String })
+      expect(settings.newKey).toBe('new_value')
     })
 
     it('should update existing setting', async () => {
       await createSetting('update_key', 'old_value')
       await updateSetting('update_key', 'new_value')
-      const value = await getSetting('update_key')
-      expect(value).toBe('new_value')
+      const settings = await getSettings({ update_key: String })
+      expect(settings.updateKey).toBe('new_value')
     })
 
     it('should update to null value', async () => {
       await createSetting('nullable_key', 'original_value')
       await updateSetting('nullable_key', null)
-      const value = await getSetting('nullable_key', 'default')
-      expect(value).toBe('default')
+      const settings = await getSettings({ nullable_key: 'default' })
+      expect(settings.nullableKey).toBe('default')
     })
 
     it('should update to empty string', async () => {
       await createSetting('empty_key', 'original_value')
       await updateSetting('empty_key', '')
-      const value = await getSetting('empty_key', 'default')
-      expect(value).toBe('')
+      const settings = await getSettings({ empty_key: 'default' })
+      expect(settings.emptyKey).toBe('')
     })
   })
 
@@ -236,12 +236,12 @@ describe('Settings DAL', () => {
 
     it('should store as "true" and "false" strings', async () => {
       await updateSetting('bool_key', true)
-      const trueValue = await getSetting('bool_key')
-      expect(trueValue).toBe('true')
+      const trueSettings = await getSettings({ bool_key: String })
+      expect(trueSettings.boolKey).toBe('true')
 
       await updateSetting('bool_key', false)
-      const falseValue = await getSetting('bool_key')
-      expect(falseValue).toBe('false')
+      const falseSettings = await getSettings({ bool_key: String })
+      expect(falseSettings.boolKey).toBe('false')
     })
   })
 
@@ -260,10 +260,12 @@ describe('Settings DAL', () => {
 
     it('should make setting fall back to default after deletion', async () => {
       await createSetting('fallback_key', 'custom_value')
-      expect(await getSetting('fallback_key', 'default')).toBe('custom_value')
+      const beforeDelete = await getSettings({ fallback_key: 'default' })
+      expect(beforeDelete.fallbackKey).toBe('custom_value')
 
       await deleteSetting('fallback_key')
-      expect(await getSetting('fallback_key', 'default')).toBe('default')
+      const afterDelete = await getSettings({ fallback_key: 'default' })
+      expect(afterDelete.fallbackKey).toBe('default')
     })
   })
 

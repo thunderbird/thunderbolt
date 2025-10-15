@@ -63,13 +63,6 @@ function AppContent({ initData }: { initData: InitData }) {
   useTriggerScheduler()
   useKeyboardInset()
 
-  useEffect(() => {
-    console.log('DEBUG: AppContent -> mounting')
-    return () => {
-      console.log('DEBUG: AppContent -> unmounting')
-    }
-  }, [])
-
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
@@ -81,13 +74,6 @@ function AppRoutes(_: { initData: InitData }) {
   usePageTracking()
 
   const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
-
-  useEffect(() => {
-    console.log('DEBUG: AppRoutes -> mounting')
-    return () => {
-      console.log('DEBUG: AppRoutes -> unmounting')
-    }
-  }, [])
 
   return (
     <Routes>
@@ -212,13 +198,6 @@ export const App = () => {
       setIsClearingDatabase(false)
     }
   }
-
-  useEffect(() => {
-    console.log('DEBUG: App -> mounting')
-    return () => {
-      console.log('DEBUG: App -> unmounting')
-    }
-  }, [])
 
   if (initError) {
     return (

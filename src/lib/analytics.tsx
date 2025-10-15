@@ -93,6 +93,13 @@ export const PostHogProvider = ({ children }: { children: ReactNode }) => {
     initPosthog().then(setClient)
   }, [])
 
+  useEffect(() => {
+    console.log('DEBUG: PostHogProvider -> mounting')
+    return () => {
+      console.log('DEBUG: PostHogProvider -> unmounting')
+    }
+  }, [])
+
   if (!client) return <>{children}</>
 
   return <PostHogReactProvider client={client}>{children}</PostHogReactProvider>

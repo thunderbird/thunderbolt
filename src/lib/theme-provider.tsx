@@ -101,6 +101,13 @@ export function ThemeProvider({
     },
   }
 
+  useEffect(() => {
+    console.log('DEBUG: ThemeProvider -> mounting')
+    return () => {
+      console.log('DEBUG: ThemeProvider -> unmounting')
+    }
+  }, [])
+
   return (
     <ThemeProviderContext.Provider {...props} value={value}>
       {children}

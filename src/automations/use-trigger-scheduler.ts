@@ -1,9 +1,9 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { triggersTable } from '@/db/tables'
 import { useSettings } from '@/hooks/use-settings'
+import { runAutomation } from '@/lib/dal'
 import { eq } from 'drizzle-orm'
 import { useEffect, useRef } from 'react'
-import { runAutomation } from './runner'
 
 export const useTriggerScheduler = () => {
   const { isTriggersEnabled } = useSettings({

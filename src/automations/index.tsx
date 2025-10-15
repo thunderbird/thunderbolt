@@ -16,10 +16,10 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatabaseSingleton } from '@/db/singleton'
-import { promptsTable, triggersTable } from '@/db/tables'
+import { triggersTable } from '@/db/tables'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
-import { getAllPrompts, resetAutomationToDefault } from '@/lib/dal'
+import { deleteAutomation, getAllPrompts, resetAutomationToDefault, runAutomation } from '@/lib/dal'
 import { defaultAutomations } from '@/lib/defaults/automations'
 import { isAutomationModified } from '@/lib/defaults/utils'
 import { cn } from '@/lib/utils'
@@ -30,11 +30,8 @@ import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
-import { runAutomation } from './runner'
 
 export default function AutomationsPage() {
-  const db = DatabaseSingleton.instance.db
-
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -54,12 +51,7 @@ export default function AutomationsPage() {
   })
 
   const deletePromptMutation = useMutation({
-    mutationFn: async (promptId: string) => {
-      // Delete triggers first (due to foreign key)
-      await db.delete(triggersTable).where(eq(triggersTable.promptId, promptId))
-      // Use soft delete - set deletedAt timestamp instead of hard delete
-      await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, promptId))
-    },
+    mutationFn: deleteAutomation,
     onSuccess: () => {
       trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
@@ -71,7 +63,8 @@ export default function AutomationsPage() {
     try {
       const prompt = prompts.find((p) => p.id === promptId)
 
-      await runAutomation(promptId, navigate)
+      const threadId = await runAutomation(promptId)
+      navigate(`/chats/${threadId}`)
       trackEvent('automation_run', {
         automation_id: promptId,
         model: prompt?.modelId,

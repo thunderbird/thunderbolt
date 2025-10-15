@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNotNull, isNull, like, sql } from 'drizzle-orm'
+import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import {
   chatMessagesTable,
@@ -8,6 +9,7 @@ import {
   promptsTable,
   settingsTable,
   tasksTable,
+  triggersTable,
 } from '../db/tables'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { serializeValue } from './serialization'
@@ -520,6 +522,59 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultAutomation
   await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
+}
+
+/**
+ * Delete an automation (soft delete) and its associated triggers
+ */
+export const deleteAutomation = async (id: string) => {
+  const db = DatabaseSingleton.instance.db
+  // Delete triggers first (due to foreign key)
+  await db.delete(triggersTable).where(eq(triggersTable.promptId, id))
+  // Use soft delete - set deletedAt timestamp instead of hard delete
+  await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, id))
+}
+
+/**
+ * Runs an automation by creating a new chat thread and seeding it with the prompt
+ * @returns The threadId of the newly created chat thread
+ */
+export const runAutomation = async (promptId: string): Promise<string> => {
+  const db = DatabaseSingleton.instance.db
+
+  const prompt = await db
+    .select()
+    .from(promptsTable)
+    .where(and(eq(promptsTable.id, promptId), isNull(promptsTable.deletedAt)))
+    .get()
+  if (!prompt) throw new Error('Prompt not found')
+
+  const model = await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, prompt.modelId), isNull(modelsTable.deletedAt)))
+    .get()
+  if (!model) throw new Error('Model not found')
+
+  const threadId = uuidv7()
+
+  await db.insert(chatThreadsTable).values({
+    id: threadId,
+    title: prompt.title ?? 'Automation',
+    triggeredBy: prompt.id,
+    wasTriggeredByAutomation: 1,
+  })
+
+  const userMessage = {
+    id: uuidv7(),
+    role: 'user' as const,
+    metadata: { modelId: model.id },
+    parts: [{ type: 'text' as const, text: prompt.prompt }],
+  }
+
+  await db.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId, null))
+
+  return threadId
 }
 
 /**

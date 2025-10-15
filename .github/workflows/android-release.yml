@@ -78,12 +78,18 @@ jobs:
       - name: Export build version env
         run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
 
-      - name: Set Android versionName for build
+      # TODO: Revisit it when we have the auto increment version release to tauri CLI https://github.com/tauri-apps/tauri/pull/14194
+      - name: Set Android version for build
         run: |
           VERSION="$BUILD_VERSION"
-          echo "🔧 Applying Android versionName $VERSION in tauri.properties"
+          BASE=1000
+          VERSION_CODE=$(( BASE + GITHUB_RUN_NUMBER ))
+          echo "🔧 Applying Android versionName=$VERSION, versionCode=$VERSION_CODE"
           mkdir -p src-tauri/gen/android/app
-          echo "tauri.android.versionName=$VERSION" >> src-tauri/gen/android/app/tauri.properties
+          cat > src-tauri/gen/android/app/tauri.properties << EOF
+          tauri.android.versionName=$VERSION
+          tauri.android.versionCode=$VERSION_CODE
+          EOF
 
       - name: Set build version locally for Android
         run: |

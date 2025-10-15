@@ -10,7 +10,7 @@ import {
   tasksTable,
 } from '../db/tables'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { serializeValue } from './setting-types'
+import { serializeValue } from './serialization'
 import { convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================

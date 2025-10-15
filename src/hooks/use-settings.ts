@@ -1,7 +1,7 @@
 import { getRawSettings, resetSettingToDefault, updateSetting } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
-import { deserializeValue } from '@/lib/setting-types'
+import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -205,7 +205,14 @@ export function useSettings<T extends SettingSchema>(
 
   // Transform into a clean destructurable object
   return useMemo(() => {
-    const result = {} as Record<string, StringSettingHook | BooleanSettingHook>
+    const result = {} as Record<
+      string,
+      | StringSettingHook
+      | BooleanSettingHook
+      | NumberSettingHook
+      | StringSettingWithDefaultHook
+      | NumberSettingWithDefaultHook
+    >
 
     for (const key of keys) {
       const setting = byKey[key]
@@ -216,18 +223,22 @@ export function useSettings<T extends SettingSchema>(
       const isConstructor = typeof schemaValue === 'function'
       const defaultValue = isConstructor ? (schemaValue === Boolean ? false : null) : schemaValue
 
-      // Deserialize the stored value
-      const deserializedValue = deserializeValue(setting?.value)
+      // Infer the type hint from the schema value
+      const typeHint = inferTypeFromSchema(schemaValue)
+
+      // Deserialize the stored value with type hint for accurate parsing
+      const deserializedValue = deserializeValue(setting?.value, typeHint)
 
       // Apply default if value is null/undefined
-      const value = deserializedValue ?? defaultValue
+      // For Boolean settings with false default, this guarantees value is never null
+      const value = (deserializedValue ?? defaultValue) as string | number | boolean | null
 
       result[resultKey] = {
         data: setting ?? null,
         rawSetting: setting ?? null,
         value,
         isModified: isSettingModified(setting),
-        setValue: async (value: any) => {
+        setValue: async (value: string | number | boolean | null) => {
           await updateMutation.mutateAsync({ key, value })
         },
         reset: async () => {
@@ -239,6 +250,10 @@ export function useSettings<T extends SettingSchema>(
       }
     }
 
-    return result as any
+    // Type assertion is safe here because:
+    // 1. Boolean settings always have false as default, so value is never null
+    // 2. The schema type system enforces correct types for each key
+    // 3. deserializeValue + defaultValue ensures proper typing at runtime
+    return result as UseSettingsSchemaResult<T, typeof camelCase>
   }, [byKey, keys, camelCase, schema, updateMutation, resetMutation, isSaving, isLoading, query])
 }

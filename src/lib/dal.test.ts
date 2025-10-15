@@ -14,6 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { isSettingModified } from '../defaults/utils'
 import {
@@ -49,7 +50,6 @@ import {
   updateSetting,
 } from './dal'
 import { reconcileDefaultsForTable } from './reconcile-defaults'
-import { defaultModels, hashModel } from '../defaults/models'
 
 beforeAll(async () => {
   // Use in-memory database for testing

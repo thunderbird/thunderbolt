@@ -8,7 +8,7 @@ import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 
 import { ModificationIndicator } from '@/components/modification-indicator'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
@@ -27,16 +27,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
 
 interface LocationData {
   name: string
@@ -94,24 +90,6 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
   }
 }
 
-const nameFormSchema = z.object({
-  preferredName: z.string().optional(),
-})
-
-const locationFormSchema = z.object({
-  locationName: z.string().min(1, { message: 'Location is required.' }),
-  locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
-  locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
-})
-
-const localizationFormSchema = z.object({
-  distanceUnit: z.string(),
-  temperatureUnit: z.string(),
-  dateFormat: z.string(),
-  timeFormat: z.string(),
-  currency: z.string(),
-})
-
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting } = state
@@ -134,6 +112,9 @@ export default function PreferencesSettingsPage() {
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
   const postHog = usePostHog()
+
+  // Local state for name input (only save on blur to avoid DB writes on every keystroke)
+  const [nameInput, setNameInput] = useState('')
 
   // Use our useSettings hook for all settings
   const {
@@ -178,56 +159,10 @@ export default function PreferencesSettingsPage() {
     await experimentalFeatureTasks.setValue(false)
   }
 
-  const nameForm = useForm<z.infer<typeof nameFormSchema>>({
-    resolver: zodResolver(nameFormSchema),
-    defaultValues: {
-      preferredName: '',
-    },
-  })
-
-  const locationForm = useForm<z.infer<typeof locationFormSchema>>({
-    resolver: zodResolver(locationFormSchema),
-    defaultValues: {
-      locationName: '',
-      locationLat: '',
-      locationLng: '',
-    },
-  })
-
-  const localizationForm = useForm<z.infer<typeof localizationFormSchema>>({
-    resolver: zodResolver(localizationFormSchema),
-    defaultValues: {
-      distanceUnit: 'imperial',
-      temperatureUnit: 'F',
-      dateFormat: 'MM/DD/YYYY',
-      timeFormat: '12h',
-      currency: 'USD',
-    },
-  })
-
+  // Sync local name input with settings value
   useEffect(() => {
-    nameForm.reset({
-      preferredName: preferredName.value,
-    })
-  }, [preferredName.value, nameForm])
-
-  useEffect(() => {
-    locationForm.reset({
-      locationName: locationName.value,
-      locationLat: locationLat.value,
-      locationLng: locationLng.value,
-    })
-  }, [locationName.value, locationLat.value, locationLng.value, locationForm])
-
-  useEffect(() => {
-    localizationForm.reset({
-      distanceUnit: distanceUnit.value,
-      temperatureUnit: temperatureUnit.value,
-      dateFormat: dateFormat.value,
-      timeFormat: timeFormat.value,
-      currency: currency.value,
-    })
-  }, [distanceUnit.value, temperatureUnit.value, dateFormat.value, timeFormat.value, currency.value, localizationForm])
+    setNameInput(preferredName.value || '')
+  }, [preferredName.value])
 
   // Auto-populate localization settings from country data if not set
   useEffect(() => {
@@ -303,21 +238,6 @@ export default function PreferencesSettingsPage() {
     searchLocations()
   }, [debouncedSearchQuery])
 
-  const handleNameBlur = async (value: string) => {
-    const wasSet = !!preferredName.value
-    await preferredName.setValue(value || null)
-
-    if (value.trim()) {
-      if (wasSet) {
-        trackEvent('settings_name_update')
-      } else {
-        trackEvent('settings_name_set')
-      }
-    } else {
-      trackEvent('settings_name_clear')
-    }
-  }
-
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
     if (!value && experimentalFeatureTasks.value) {
@@ -349,20 +269,7 @@ export default function PreferencesSettingsPage() {
     trackEvent(value ? 'settings_experimental_feature_tasks_enabled' : 'settings_experimental_feature_tasks_disabled')
   }
 
-  const handleLocationSave = async (location: LocationData) => {
-    // Validate the data before saving
-    if (!location.name || location.name.trim() === '') {
-      return
-    }
-
-    if (typeof location.coordinates.lat !== 'number' || isNaN(location.coordinates.lat)) {
-      return
-    }
-
-    if (typeof location.coordinates.lng !== 'number' || isNaN(location.coordinates.lng)) {
-      return
-    }
-
+  const handleSelectLocation = async (location: LocationData) => {
     const wasSet = !!locationName.value
 
     await Promise.all([
@@ -370,6 +277,8 @@ export default function PreferencesSettingsPage() {
       locationLat.setValue(String(location.coordinates.lat)),
       locationLng.setValue(String(location.coordinates.lng)),
     ])
+
+    dispatch({ type: 'SET_OPEN', payload: false })
 
     // Refetch country units to update localization settings
     const countryUnitsResult = await refetchCountryUnits()
@@ -383,25 +292,9 @@ export default function PreferencesSettingsPage() {
       ])
     }
 
-    if (wasSet) {
-      trackEvent('settings_location_update', {
-        location_name: location.name,
-      })
-    } else {
-      trackEvent('settings_location_set', {
-        location_name: location.name,
-      })
-    }
-  }
-
-  const handleSelectLocation = (location: LocationData) => {
-    locationForm.setValue('locationName', location.name)
-    locationForm.setValue('locationLat', String(location.coordinates.lat))
-    locationForm.setValue('locationLng', String(location.coordinates.lng))
-    dispatch({ type: 'SET_OPEN', payload: false })
-
-    // Save immediately after selection, passing the location data directly
-    handleLocationSave(location)
+    trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
+      location_name: location.name,
+    })
   }
 
   const handleResetDatabase = async () => {
@@ -421,28 +314,6 @@ export default function PreferencesSettingsPage() {
     await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
   }
 
-  const handleLocalizationChange = async (fieldName: string, value: string) => {
-    trackEvent('settings_localization_update')
-
-    switch (fieldName) {
-      case 'distanceUnit':
-        await distanceUnit.setValue(value)
-        break
-      case 'temperatureUnit':
-        await temperatureUnit.setValue(value)
-        break
-      case 'dateFormat':
-        await dateFormat.setValue(value)
-        break
-      case 'timeFormat':
-        await timeFormat.setValue(value)
-        break
-      case 'currency':
-        await currency.setValue(value)
-        break
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Preferences</h1>
@@ -458,407 +329,377 @@ export default function PreferencesSettingsPage() {
       <div className="h-6" />
 
       <SectionCard title="Personal Information">
-        <Form {...nameForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={nameForm.control}
-              name="preferredName"
-              render={({ field }) => (
-                <FormItem>
-                  <ModificationIndicator
-                    as={FormLabel}
-                    className="mb-2"
-                    hasModifications={preferredName.isModified}
-                    onReset={preferredName.reset}
-                  >
-                    Preferred Name
-                  </ModificationIndicator>
-                  <FormControl>
-                    <Input
-                      placeholder="Your name"
-                      {...field}
-                      onBlur={(e) => {
-                        field.onBlur()
-                        handleNameBlur(e.target.value)
-                      }}
-                    />
-                  </FormControl>
-                  <FormDescription>Your assistant will use this name to address you.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={preferredName.isModified}
+              onReset={async () => {
+                await preferredName.reset()
+                setNameInput('')
+              }}
+            >
+              Preferred Name
+            </ModificationIndicator>
+            <Input
+              placeholder="Your name"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onBlur={async (e) => {
+                const value = e.target.value
+                const wasSet = !!preferredName.value
+                await preferredName.setValue(value || null)
+                if (value.trim()) {
+                  trackEvent(wasSet ? 'settings_name_update' : 'settings_name_set')
+                } else {
+                  trackEvent('settings_name_clear')
+                }
+              }}
             />
-          </form>
-        </Form>
+            <p className="text-sm text-muted-foreground">Your assistant will use this name to address you.</p>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Location">
-        <Form {...locationForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={locationForm.control}
-              name="locationName"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <ModificationIndicator
-                    as={FormLabel}
-                    className="mb-2"
-                    hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
-                    onReset={handleResetLocation}
-                  >
-                    Location
-                  </ModificationIndicator>
-                  <Popover
-                    open={open}
-                    onOpenChange={(newOpen) => {
-                      dispatch({ type: 'SET_OPEN', payload: newOpen })
-                      if (!newOpen) {
-                        // Clear search when closing
-                        dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
-                      }
-                    }}
-                  >
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={open}
-                          className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
-                        >
-                          {field.value || 'Select location...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="p-0 w-[--radix-popover-trigger-width]"
-                      side="bottom"
-                      align="start"
-                      sideOffset={4}
-                    >
-                      <Command>
-                        <CommandInput
-                          placeholder="Search for locations..."
-                          value={searchQuery}
-                          onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
-                        />
-                        <CommandList>
-                          {searchQuery.trim().length > 0 && isSearching && (
-                            <div className="py-6 text-center text-sm">
-                              <div className="inline-flex items-center gap-2">
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                                Searching...
-                              </div>
-                            </div>
-                          )}
-                          {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
-                            <CommandEmpty>No locations found.</CommandEmpty>
-                          )}
-                          {!isSearching && locations.length > 0 && (
-                            <CommandGroup>
-                              {locations.map((location) => (
-                                <CommandItem
-                                  key={`${location.coordinates.lat}-${location.coordinates.lng}`}
-                                  value={location.name}
-                                  onSelect={() => handleSelectLocation(location)}
-                                  className="pl-2"
-                                >
-                                  {location.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormDescription>Select your location to enable location-based features.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
+              onReset={handleResetLocation}
+            >
+              Location
+            </ModificationIndicator>
+            <Popover
+              open={open}
+              onOpenChange={(newOpen) => {
+                dispatch({ type: 'SET_OPEN', payload: newOpen })
+                if (!newOpen) {
+                  dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={open}
+                  className={cn('w-full justify-between', !locationName.value && 'text-muted-foreground')}
+                >
+                  {locationName.value || 'Select location...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="p-0 w-[--radix-popover-trigger-width]"
+                side="bottom"
+                align="start"
+                sideOffset={4}
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Search for locations..."
+                    value={searchQuery}
+                    onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
+                  />
+                  <CommandList>
+                    {searchQuery.trim().length > 0 && isSearching && (
+                      <div className="py-6 text-center text-sm">
+                        <div className="inline-flex items-center gap-2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                          Searching...
+                        </div>
+                      </div>
+                    )}
+                    {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
+                      <CommandEmpty>No locations found.</CommandEmpty>
+                    )}
+                    {!isSearching && locations.length > 0 && (
+                      <CommandGroup>
+                        {locations.map((location) => (
+                          <CommandItem
+                            key={`${location.coordinates.lat}-${location.coordinates.lng}`}
+                            value={location.name}
+                            onSelect={() => handleSelectLocation(location)}
+                            className="pl-2"
+                          >
+                            {location.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-sm text-muted-foreground">Select your location to enable location-based features.</p>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Localization">
-        <Form {...localizationForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={localizationForm.control}
-              name="distanceUnit"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Distance</FormLabel>
-                  </div>
-                  <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsOptionsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={distanceUnit.isModified}
+                onReset={distanceUnit.reset}
+              >
+                Distance
+              </ModificationIndicator>
+            </div>
+            <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !distanceUnit.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : distanceUnit.value
+                      ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1)
+                      : 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.units?.map((unit) => (
+                        <CommandItem
+                          key={unit}
+                          value={unit}
+                          onSelect={async () => {
+                            await distanceUnit.setValue(unit)
+                            trackEvent('settings_localization_update')
+                            setDistanceDropdownOpen(false)
+                          }}
                         >
-                          {unitsOptionsLoading
-                            ? 'Loading...'
-                            : field.value
-                              ? (() => {
-                                  const unit = unitsOptionsData?.units?.find((unit) => unit === field.value)
-                                  return unit ? unit.charAt(0).toUpperCase() + unit.slice(1) : 'Loading...'
-                                })()
-                              : 'Loading...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-auto">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsOptionsData?.units?.map((unit) => (
-                              <CommandItem
-                                key={unit}
-                                value={unit}
-                                onSelect={() => {
-                                  field.onChange(unit)
-                                  handleLocalizationChange('distanceUnit', unit)
-                                  setDistanceDropdownOpen(false)
-                                }}
-                              >
-                                {unit.charAt(0).toUpperCase() + unit.slice(1)}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                          {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <FormField
-              control={localizationForm.control}
-              name="temperatureUnit"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Temperature</FormLabel>
-                  </div>
-                  <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsOptionsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={temperatureUnit.isModified}
+                onReset={temperatureUnit.reset}
+              >
+                Temperature
+              </ModificationIndicator>
+            </div>
+            <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !temperatureUnit.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : unitsOptionsData?.temperature?.find((temp) => temp.symbol === temperatureUnit.value)?.name ||
+                      temperatureUnit.value ||
+                      'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.temperature?.map((temp) => (
+                        <CommandItem
+                          key={temp.symbol}
+                          value={temp.symbol}
+                          onSelect={async () => {
+                            await temperatureUnit.setValue(temp.symbol)
+                            trackEvent('settings_localization_update')
+                            setTemperatureDropdownOpen(false)
+                          }}
                         >
-                          {unitsOptionsLoading
-                            ? 'Loading...'
-                            : unitsOptionsData?.temperature?.find((temp) => temp.symbol === field.value)?.name ||
-                              field.value ||
-                              'Loading...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-auto">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsOptionsData?.temperature?.map((temp) => (
-                              <CommandItem
-                                key={temp.symbol}
-                                value={temp.symbol}
-                                onSelect={() => {
-                                  field.onChange(temp.symbol)
-                                  handleLocalizationChange('temperatureUnit', temp.symbol)
-                                  setTemperatureDropdownOpen(false)
-                                }}
-                              >
-                                {temp.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                          {temp.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <FormField
-              control={localizationForm.control}
-              name="dateFormat"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Date Format</FormLabel>
-                  </div>
-                  <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsOptionsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={dateFormat.isModified}
+                onReset={dateFormat.reset}
+              >
+                Date Format
+              </ModificationIndicator>
+            </div>
+            <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !dateFormat.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : dateFormat.value
+                      ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example ||
+                        dateFormat.value
+                      : 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.dateFormats?.map((format) => (
+                        <CommandItem
+                          key={format.format}
+                          value={format.example}
+                          onSelect={async () => {
+                            await dateFormat.setValue(format.format)
+                            trackEvent('settings_localization_update')
+                            setDateFormatDropdownOpen(false)
+                          }}
                         >
-                          {unitsOptionsLoading
-                            ? 'Loading...'
-                            : field.value
-                              ? unitsOptionsData?.dateFormats?.find((f) => f.format === field.value)?.example ||
-                                field.value
-                              : 'Loading...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-auto">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsOptionsData?.dateFormats?.map((format) => (
-                              <CommandItem
-                                key={format.format}
-                                value={format.example}
-                                onSelect={() => {
-                                  field.onChange(format.format)
-                                  handleLocalizationChange('dateFormat', format.format)
-                                  setDateFormatDropdownOpen(false)
-                                }}
-                              >
-                                {format.example}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                          {format.example}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <FormField
-              control={localizationForm.control}
-              name="timeFormat"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-4">
-                  <div className="flex-1">
-                    <FormLabel>Time Format</FormLabel>
-                  </div>
-                  <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={unitsOptionsLoading}
-                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={timeFormat.isModified}
+                onReset={timeFormat.reset}
+              >
+                Time Format
+              </ModificationIndicator>
+            </div>
+            <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !timeFormat.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading ? 'Loading...' : timeFormat.value || 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.timeFormat?.map((format) => (
+                        <CommandItem
+                          key={format}
+                          value={format}
+                          onSelect={async () => {
+                            await timeFormat.setValue(format)
+                            trackEvent('settings_localization_update')
+                            setTimeFormatDropdownOpen(false)
+                          }}
                         >
-                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Loading...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-auto">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {unitsOptionsData?.timeFormat?.map((format) => (
-                              <CommandItem
-                                key={format}
-                                value={format}
-                                onSelect={() => {
-                                  field.onChange(format)
-                                  handleLocalizationChange('timeFormat', format)
-                                  setTimeFormatDropdownOpen(false)
-                                }}
-                              >
-                                {format}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                          {format}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <FormField
-              control={localizationForm.control}
-              name="currency"
-              render={({ field }) => {
-                const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === field.value)
-                const displayText = selectedCurrency
-                  ? `${selectedCurrency.name} (${selectedCurrency.symbol})`
-                  : 'Loading...'
-
-                return (
-                  <FormItem className="flex flex-row items-center gap-4">
-                    <div className="flex-1">
-                      <FormLabel>Currency</FormLabel>
-                    </div>
-                    <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            disabled={unitsOptionsLoading}
-                            className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
-                          >
-                            {unitsOptionsLoading ? 'Loading...' : displayText}
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="p-0 w-[300px]">
-                        <Command>
-                          <CommandInput placeholder="Search currency by code, symbol, or name..." />
-                          <CommandList>
-                            <CommandGroup>
-                              {unitsOptionsData?.currencies?.map((currencyOption) => (
-                                <CommandItem
-                                  key={currencyOption.code}
-                                  value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
-                                  onSelect={() => {
-                                    field.onChange(currencyOption.code)
-                                    handleLocalizationChange('currency', currencyOption.code)
-                                    setCurrencyDropdownOpen(false)
-                                  }}
-                                >
-                                  {currencyOption.name} ({currencyOption.symbol})
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )
-              }}
-            />
-          </form>
-        </Form>
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={currency.isModified}
+                onReset={currency.reset}
+              >
+                Currency
+              </ModificationIndicator>
+            </div>
+            <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !currency.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : (() => {
+                        const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
+                        return selectedCurrency ? `${selectedCurrency.name} (${selectedCurrency.symbol})` : 'Loading...'
+                      })()}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[300px]">
+                <Command>
+                  <CommandInput placeholder="Search currency by code, symbol, or name..." />
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.currencies?.map((currencyOption) => (
+                        <CommandItem
+                          key={currencyOption.code}
+                          value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
+                          onSelect={async () => {
+                            await currency.setValue(currencyOption.code)
+                            trackEvent('settings_localization_update')
+                            setCurrencyDropdownOpen(false)
+                          }}
+                        >
+                          {currencyOption.name} ({currencyOption.symbol})
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="h-6" />

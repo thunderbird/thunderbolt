@@ -82,14 +82,16 @@ jobs:
       - name: Set Android version for build
         run: |
           VERSION="$BUILD_VERSION"
-          BASE=1000
-          VERSION_CODE=$(( BASE + GITHUB_RUN_NUMBER ))
+          BASE=100000
+          VERSION_CODE=$(( BASE + ${GITHUB_RUN_NUMBER:-0} ))
           echo "🔧 Applying Android versionName=$VERSION, versionCode=$VERSION_CODE"
           mkdir -p src-tauri/gen/android/app
           cat > src-tauri/gen/android/app/tauri.properties << EOF
           tauri.android.versionName=$VERSION
           tauri.android.versionCode=$VERSION_CODE
           EOF
+          echo "== tauri.properties =="
+          cat src-tauri/gen/android/app/tauri.properties
 
       - name: Set build version locally for Android
         run: |

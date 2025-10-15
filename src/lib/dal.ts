@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import {
   chatMessagesTable,
@@ -187,30 +187,31 @@ export const updateSetting = async (key: string, value: string | null): Promise<
 }
 
 /**
- * Get multiple settings in a single query with auto-detection of types
- * @param config - Object with setting keys and their default values
- * @returns Object with key-value pairs for the requested settings, properly typed
+ * Get multiple settings in a single query
+ * @param config - Object with setting keys and their default values (strings or booleans)
+ * @returns Object with key-value pairs for the requested settings (preserving original types)
  */
-export const getSettings = async <T extends Record<string, string | number | boolean>>(config: T): Promise<T> => {
+export const getSettings = async <T extends Record<string, string | boolean>>(config: T): Promise<T> => {
   if (Object.keys(config).length === 0) return {} as T
 
-  const result: Record<string, string | number | boolean> = {}
+  const keys = Object.keys(config)
+  const db = DatabaseSingleton.instance.db
+  const results = await db.select().from(settingsTable).where(inArray(settingsTable.key, keys))
+
+  const result: Record<string, string | boolean> = {}
 
   for (const [key, defaultValue] of Object.entries(config)) {
-    if (typeof defaultValue === 'boolean') {
-      const setting = await getSetting(key, defaultValue.toString())
-      result[key] = setting === 'true'
-    } else if (typeof defaultValue === 'number') {
-      const setting = await getSetting(key, defaultValue.toString())
-      if (setting !== null && setting !== undefined) {
-        const parsed = parseFloat(setting)
-        result[key] = isNaN(parsed) ? defaultValue : parsed
+    result[key] = defaultValue
+  }
+
+  for (const setting of results) {
+    if (setting.value !== null) {
+      const defaultValue = config[setting.key]
+      if (typeof defaultValue === 'boolean') {
+        result[setting.key] = setting.value === 'true'
       } else {
-        result[key] = defaultValue
+        result[setting.key] = setting.value
       }
-    } else {
-      const setting = await getSetting(key, defaultValue)
-      result[key] = setting !== null && setting !== undefined ? setting : defaultValue
     }
   }
 

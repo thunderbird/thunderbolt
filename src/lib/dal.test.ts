@@ -308,121 +308,124 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('getSettings with type-safe auto-detection', () => {
-    it('should auto-detect string settings', async () => {
-      await updateSetting('test_string', 'stored_value')
+  describe('getSettings', () => {
+    it('should return stored values from database', async () => {
+      await updateSetting('test_key', 'stored_value')
 
       const result = await getSettings({
-        test_string: 'default_value',
-        non_existent_string: 'default_value',
+        test_key: 'default_value',
+        non_existent_key: 'default_value',
       })
 
       expect(result).toEqual({
-        test_string: 'stored_value',
-        non_existent_string: 'default_value',
+        test_key: 'stored_value',
+        non_existent_key: 'default_value',
       })
     })
 
-    it('should auto-detect boolean settings', async () => {
-      await updateSetting('test_boolean_true', 'true')
-      await updateSetting('test_boolean_false', 'false')
-
+    it('should return default values for non-existent keys', async () => {
       const result = await getSettings({
-        test_boolean_true: false as boolean,
-        test_boolean_false: true as boolean,
-        non_existent_boolean: true as boolean,
+        non_existent_key1: 'default1',
+        non_existent_key2: 'default2',
       })
 
       expect(result).toEqual({
-        test_boolean_true: true,
-        test_boolean_false: false,
-        non_existent_boolean: true,
+        non_existent_key1: 'default1',
+        non_existent_key2: 'default2',
       })
     })
 
-    it('should auto-detect number settings', async () => {
-      await updateSetting('test_number', '42.5')
+    it('should handle multiple existing and non-existent keys', async () => {
+      await updateSetting('existing_key1', 'value1')
+      await updateSetting('existing_key2', 'value2')
 
       const result = await getSettings({
-        test_number: 0,
-        non_existent_number: 100,
+        existing_key1: 'default1',
+        non_existent_key: 'default_value',
+        existing_key2: 'default2',
       })
 
       expect(result).toEqual({
-        test_number: 42.5,
-        non_existent_number: 100,
+        existing_key1: 'value1',
+        non_existent_key: 'default_value',
+        existing_key2: 'value2',
       })
     })
 
-    it('should handle mixed types', async () => {
-      await updateSetting('mixed_string', 'stored_string')
-      await updateSetting('mixed_boolean', 'true')
-      await updateSetting('mixed_number', '99')
+    it('should preserve empty strings from database', async () => {
+      await updateSetting('empty_key', '')
 
       const result = await getSettings({
-        mixed_string: 'default_string',
-        mixed_boolean: false as boolean,
-        mixed_number: 0,
+        empty_key: 'default_value',
+      })
+
+      expect(result).toEqual({
+        empty_key: '',
+      })
+    })
+
+    it('should preserve zero values from database', async () => {
+      await updateSetting('zero_key', '0')
+
+      const result = await getSettings({
+        zero_key: '42',
+      })
+
+      expect(result).toEqual({
+        zero_key: '0',
+      })
+    })
+
+    it('should return empty object for empty config', async () => {
+      const result = await getSettings({})
+      expect(result).toEqual({})
+    })
+
+    it('should handle null values from database by using default', async () => {
+      await updateSetting('null_key', null)
+
+      const result = await getSettings({
+        null_key: 'default_value',
+      })
+
+      expect(result).toEqual({
+        null_key: 'default_value',
+      })
+    })
+
+    it('should handle boolean values correctly', async () => {
+      await updateSetting('bool_true', 'true')
+      await updateSetting('bool_false', 'false')
+
+      const result = await getSettings({
+        bool_true: false as boolean,
+        bool_false: true as boolean,
+        non_existent_bool: true as boolean,
+      })
+
+      expect(result).toEqual({
+        bool_true: true,
+        bool_false: false,
+        non_existent_bool: true,
+      })
+    })
+
+    it('should handle mixed string and boolean values', async () => {
+      await updateSetting('string_setting', 'stored_string')
+      await updateSetting('bool_setting', 'true')
+
+      const result = await getSettings({
+        string_setting: 'default_string',
+        bool_setting: false as boolean,
         non_existent_string: 'default',
-        non_existent_boolean: false as boolean,
-        non_existent_number: 1,
+        non_existent_bool: true as boolean,
       })
 
       expect(result).toEqual({
-        mixed_string: 'stored_string',
-        mixed_boolean: true,
-        mixed_number: 99,
+        string_setting: 'stored_string',
+        bool_setting: true,
         non_existent_string: 'default',
-        non_existent_boolean: false,
-        non_existent_number: 1,
-      })
-    })
-
-    it('should preserve 0 values instead of replacing with default', async () => {
-      await updateSetting('zero_number', '0')
-
-      const result = await getSettings({
-        zero_number: 42,
-      })
-
-      expect(result).toEqual({
-        zero_number: 0,
-      })
-    })
-
-    it('should preserve empty strings instead of replacing with default', async () => {
-      await updateSetting('empty_string', '')
-
-      const result = await getSettings({
-        empty_string: 'default_value',
-      })
-
-      expect(result).toEqual({
-        empty_string: '',
-      })
-    })
-
-    it('should handle invalid number strings by returning default', async () => {
-      await updateSetting('invalid_number', 'not-a-number')
-
-      const result = await getSettings({
-        invalid_number: 42,
-      })
-
-      expect(result).toEqual({
-        invalid_number: 42,
-      })
-    })
-
-    it('should handle NaN values by returning default', async () => {
-      await updateSetting('nan_number', 'NaN')
-
-      const result = await getSettings({
-        nan_number: 100,
-      })
-
-      expect(result).toEqual({
-        nan_number: 100,
+        non_existent_bool: true,
       })
     })
   })

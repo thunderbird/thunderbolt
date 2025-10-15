@@ -1,23 +1,6 @@
 import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'
-import { customType, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-
-export const float32Array = customType<{
-  data: number[]
-  config: { dimensions: number }
-  configRequired: true
-  driverData: Buffer
-}>({
-  dataType(config) {
-    return `F32_BLOB(${config.dimensions})`
-  },
-  fromDriver(value: Buffer) {
-    return Array.from(new Float32Array(value.buffer))
-  },
-  toDriver(value: number[]) {
-    return sql`vector32(${JSON.stringify(value)})`
-  },
-})
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const settingsTable = sqliteTable('settings', {
   key: text('key').primaryKey(),
@@ -51,6 +34,7 @@ export const tasksTable = sqliteTable('tasks', {
   item: text('item').notNull(),
   order: integer('order').notNull().default(0),
   isComplete: integer('is_complete').notNull().default(0),
+  defaultHash: text('default_hash'),
 })
 
 export const modelsTable = sqliteTable('models', {

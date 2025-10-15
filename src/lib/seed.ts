@@ -7,6 +7,7 @@ import { modelsTable, promptsTable, settingsTable, tasksTable } from '../db/tabl
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
 import { defaultSettings, hashSetting } from './defaults/settings'
+import { defaultTasks, hashTask } from './defaults/tasks'
 
 /**
  * Generic function to seed defaults into a table
@@ -86,41 +87,7 @@ export const seedSettings = async () => {
 }
 
 export const seedTasks = async () => {
-  const db = DatabaseSingleton.instance.db
-  const existingTasks = await db.select().from(tasksTable).limit(1)
-
-  if (existingTasks.length > 0) {
-    return
-  }
-
-  /**
-   * Using hardwired IDs to ensure consistency across installs.
-   * New items should follow the pattern and have their ID hardwired.
-   */
-  const seedData = [
-    {
-      id: '0198ecc5-cc2b-735b-b478-93f8db7202ce',
-      item: 'Connect your email account to get started',
-      order: 100,
-      isComplete: 0,
-    },
-    {
-      id: '0198ecc5-cc2b-735b-b478-96071aa92f62',
-      item: 'Set your name and location in preferences for better AI responses',
-      order: 200,
-      isComplete: 0,
-    },
-    {
-      id: '0198ecc5-cc2b-735b-b478-99e9874d61ba',
-      item: 'Explore Thunderbolt Pro tools to extend capabilities',
-      order: 300,
-      isComplete: 0,
-    },
-  ]
-
-  for (const task of seedData) {
-    await db.insert(tasksTable).values(task)
-  }
+  await seedDefaults(tasksTable, defaultTasks, hashTask)
 }
 
 export const seedPrompts = async () => {

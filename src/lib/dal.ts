@@ -515,3 +515,12 @@ export const resetSettingToDefault = async (key: string, defaultSetting: Setting
   const { defaultHash, ...defaultFields } = defaultSetting
   await db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
 }
+
+/**
+ * Reset a task to its default state
+ */
+export const resetTaskToDefault = async (id: string, defaultTask: Task) => {
+  const db = DatabaseSingleton.instance.db
+  const { defaultHash, ...defaultFields } = defaultTask
+  await db.update(tasksTable).set(defaultFields).where(eq(tasksTable.id, id))
+}

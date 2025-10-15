@@ -59,4 +59,9 @@ export const migrations: Migration[] = [
     name: '0010_petite_blade.sql',
     sql: 'ALTER TABLE `settings` ADD `default_hash` text;',
   },
+  {
+    hash: '0011_useful_sinister_six',
+    name: '0011_useful_sinister_six.sql',
+    sql: 'ALTER TABLE `tasks` ADD `default_hash` text;',
+  },
 ]

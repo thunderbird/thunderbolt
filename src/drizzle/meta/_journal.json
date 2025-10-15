@@ -78,6 +78,13 @@
       "when": 1760485924066,
       "tag": "0010_petite_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1760492449280,
+      "tag": "0011_useful_sinister_six",
+      "breakpoints": true
     }
   ]
 }

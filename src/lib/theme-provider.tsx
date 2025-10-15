@@ -58,7 +58,6 @@ export function ThemeProvider({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', storageKey] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 

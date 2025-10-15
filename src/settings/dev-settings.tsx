@@ -3,17 +3,14 @@ import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { DatabaseSingleton } from '@/db/singleton'
-import { settingsTable } from '@/db/tables'
 import { useBooleanSetting, useSetting } from '@/hooks/use-setting'
-import { resetSettingToDefault } from '@/lib/dal'
+import { getRawSettings, resetSettingToDefault } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   // Tauri fetch setting
@@ -35,30 +32,12 @@ export default function DevSettingsPage() {
     enabled: isTauri(),
   })
 
-  // Query settings from DB to check for modifications
-  const { data: dbSettings } = useQuery({
-    queryKey: ['db-settings'],
-    queryFn: async () => {
-      const settings = await db.select().from(settingsTable)
-      return settings.reduce(
-        (acc, setting) => {
-          acc[setting.key] = setting
-          return acc
-        },
-        {} as Record<string, (typeof settings)[0]>,
-      )
-    },
+  // Query raw settings for modification checking
+  const { data: rawSettings } = useQuery({
+    queryKey: ['dev-settings-raw'],
+    queryFn: () =>
+      getRawSettings(['cloud_url', 'is_native_fetch_enabled', 'disable_flower_encryption', 'debug_posthog']),
   })
-
-  // Check if each setting has been modified
-  const isCloudUrlModified = dbSettings?.cloud_url ? isSettingModified(dbSettings.cloud_url) : false
-  const isNativeFetchModified = dbSettings?.is_native_fetch_enabled
-    ? isSettingModified(dbSettings.is_native_fetch_enabled)
-    : false
-  const isDisableEncryptionModified = dbSettings?.disable_flower_encryption
-    ? isSettingModified(dbSettings.disable_flower_encryption)
-    : false
-  const isDebugPosthogModified = dbSettings?.debug_posthog ? isSettingModified(dbSettings.debug_posthog) : false
 
   // Reset mutations
   const resetMutation = useMutation({
@@ -67,7 +46,7 @@ export default function DevSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['dev-settings-raw'] })
     },
   })
 
@@ -89,7 +68,7 @@ export default function DevSettingsPage() {
             <ModificationIndicator
               as="label"
               className="block text-sm font-medium"
-              hasModifications={isCloudUrlModified}
+              hasModifications={isSettingModified(rawSettings?.cloud_url)}
               onReset={() => handleResetSetting('cloud_url')}
             >
               Cloud URL
@@ -111,7 +90,7 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isNativeFetchModified}
+                hasModifications={isSettingModified(rawSettings?.is_native_fetch_enabled)}
                 onReset={() => handleResetSetting('is_native_fetch_enabled')}
               >
                 Use Native Fetch
@@ -145,7 +124,7 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isDisableEncryptionModified}
+                hasModifications={isSettingModified(rawSettings?.disable_flower_encryption)}
                 onReset={() => handleResetSetting('disable_flower_encryption')}
               >
                 Disable Encryption
@@ -163,7 +142,7 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isDebugPosthogModified}
+                hasModifications={isSettingModified(rawSettings?.debug_posthog)}
                 onReset={() => handleResetSetting('debug_posthog')}
               >
                 Debug PostHog

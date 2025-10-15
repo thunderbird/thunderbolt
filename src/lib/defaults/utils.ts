@@ -29,8 +29,8 @@ export const isAutomationModified = (prompt: Prompt): boolean => {
 /**
  * Check if a setting has been modified from its default
  */
-export const isSettingModified = (setting: Setting): boolean => {
-  if (!setting.defaultHash) return false
+export const isSettingModified = (setting: Setting | undefined): boolean => {
+  if (!setting || !setting.defaultHash) return false
   const currentHash = hashSetting(setting)
   return currentHash !== setting.defaultHash
 }

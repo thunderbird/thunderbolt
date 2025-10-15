@@ -130,24 +130,22 @@ export const getAllSettings = async () => {
 }
 
 /**
- * Gets preferences settings with specific structure
+ * Gets raw settings rows for specific keys
  */
-export const getPreferencesSettings = async () => {
-  const locationName = await getSetting('location_name', '')
-  const locationLat = await getSetting('location_lat', '')
-  const locationLng = await getSetting('location_lng', '')
-  const preferredName = await getSetting('preferred_name', '')
-  const dataCollection = await getBooleanSetting('data_collection', true)
-  const experimentalFeatureTasks = await getBooleanSetting('experimental_feature_tasks', false)
-
-  return {
-    locationName,
-    locationLat,
-    locationLng,
-    preferredName,
-    dataCollection,
-    experimentalFeatureTasks,
-  }
+export const getRawSettings = async (keys: string[]) => {
+  const db = DatabaseSingleton.instance.db
+  const results = await Promise.all(
+    keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
+  )
+  return results.reduce(
+    (acc, setting) => {
+      if (setting) {
+        acc[setting.key] = setting
+      }
+      return acc
+    },
+    {} as Record<string, Setting>,
+  )
 }
 
 /**

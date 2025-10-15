@@ -1,4 +1,3 @@
-import { settingsTable } from '@/db/tables'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, snakeCased } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -29,10 +28,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SectionCard } from '@/components/ui/section-card'
 
 import { Switch } from '@/components/ui/switch'
-import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
-import { getPreferencesSettings, resetSettingsToDefaults, updateBooleanSetting, updateSetting } from '@/lib/dal'
+import { getRawSettings, resetSettingsToDefaults, updateBooleanSetting, updateSetting } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
 import { resetAppDir } from '@/lib/fs'
@@ -115,7 +113,6 @@ const locationFormSchema = z.object({
 })
 
 export default function PreferencesSettingsPage() {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
@@ -141,38 +138,20 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  // Get any existing settings from the database
-  const { data: settings } = useQuery({
+  // Get raw settings from the database
+  const { data: rawSettings } = useQuery({
     queryKey: ['settings'],
-    queryFn: getPreferencesSettings,
+    queryFn: () =>
+      getRawSettings([
+        'location_name',
+        'location_lat',
+        'location_lng',
+        'preferred_name',
+        'data_collection',
+        'experimental_feature_tasks',
+      ]),
+    initialData: {},
   })
-
-  // Query settings from DB to check for modifications
-  const { data: dbSettings } = useQuery({
-    queryKey: ['db-settings'],
-    queryFn: async () => {
-      const settings = await db.select().from(settingsTable)
-      return settings.reduce(
-        (acc, setting) => {
-          acc[setting.key] = setting
-          return acc
-        },
-        {} as Record<string, (typeof settings)[0]>,
-      )
-    },
-  })
-
-  // Check if each setting has been modified
-  const isDataCollectionModified = dbSettings?.data_collection ? isSettingModified(dbSettings.data_collection) : false
-  const isExperimentalTasksModified = dbSettings?.experimental_feature_tasks
-    ? isSettingModified(dbSettings.experimental_feature_tasks)
-    : false
-  const isPreferredNameModified = dbSettings?.preferred_name ? isSettingModified(dbSettings.preferred_name) : false
-  const isLocationModified = Boolean(
-    (dbSettings?.location_name && isSettingModified(dbSettings.location_name)) ||
-      (dbSettings?.location_lat && isSettingModified(dbSettings.location_lat)) ||
-      (dbSettings?.location_lng && isSettingModified(dbSettings.location_lng)),
-  )
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -206,35 +185,31 @@ export default function PreferencesSettingsPage() {
 
   // Update forms when data is loaded
   useEffect(() => {
-    if (settings) {
-      nameForm.reset({
-        preferredName: settings.preferredName as string,
-      })
+    nameForm.reset({
+      preferredName: (rawSettings.preferred_name?.value as string | undefined) ?? '',
+    })
 
-      privacyForm.reset({
-        dataCollection: settings.dataCollection,
-      })
+    privacyForm.reset({
+      dataCollection: rawSettings.data_collection?.value === 'true',
+    })
 
-      previewFeaturesForm.reset({
-        experimentalFeatureTasks: settings.experimentalFeatureTasks,
-      })
+    previewFeaturesForm.reset({
+      experimentalFeatureTasks: rawSettings.experimental_feature_tasks?.value === 'true',
+    })
 
-      locationForm.reset({
-        locationName: settings.locationName as string,
-        locationLat:
-          typeof settings.locationLat === 'string' ? settings.locationLat : String(settings.locationLat || ''),
-        locationLng:
-          typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
-      })
-    }
-  }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
+    locationForm.reset({
+      locationName: (rawSettings.location_name?.value as string | undefined) ?? '',
+      locationLat: (rawSettings.location_lat?.value as string | undefined) ?? '',
+      locationLng: (rawSettings.location_lng?.value as string | undefined) ?? '',
+    })
+  }, [rawSettings, nameForm, locationForm, privacyForm, previewFeaturesForm])
 
   // Sync preview features when telemetry is disabled
   useEffect(() => {
-    if (!settings?.dataCollection) {
+    if (rawSettings.data_collection?.value !== 'true') {
       previewFeaturesForm.setValue('experimentalFeatureTasks', false)
     }
-  }, [settings?.dataCollection, previewFeaturesForm])
+  }, [rawSettings.data_collection?.value, previewFeaturesForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -290,7 +265,7 @@ export default function PreferencesSettingsPage() {
     }
 
     searchLocations()
-  }, [debouncedSearchQuery, db])
+  }, [debouncedSearchQuery])
 
   // Save name mutation
   const saveNameMutation = useMutation({
@@ -299,10 +274,9 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
       if (values.preferredName?.trim()) {
-        if (settings?.preferredName) {
+        if (rawSettings.preferred_name?.value) {
           trackEvent('settings_name_update')
         } else {
           trackEvent('settings_name_set')
@@ -321,7 +295,6 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
       if (values.dataCollection) {
         postHog.opt_in_capturing()
@@ -341,7 +314,6 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 
@@ -365,9 +337,8 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
 
-      if (settings?.locationName) {
+      if (rawSettings.location_name?.value) {
         trackEvent('settings_location_update', {
           location_name: values.locationName,
         })
@@ -407,7 +378,7 @@ export default function PreferencesSettingsPage() {
     featureName: keyof z.infer<typeof previewFeaturesFormSchema>,
     value: boolean,
   ) => {
-    if (value && !settings?.dataCollection) {
+    if (value && rawSettings.data_collection?.value !== 'true') {
       telemetryRequiredModalRef.current?.open(featureName)
       return
     }
@@ -475,7 +446,6 @@ export default function PreferencesSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['db-settings'] })
     },
   })
 
@@ -517,7 +487,7 @@ export default function PreferencesSettingsPage() {
                   <ModificationIndicator
                     as={FormLabel}
                     className="mb-2"
-                    hasModifications={isPreferredNameModified}
+                    hasModifications={isSettingModified(rawSettings.preferred_name)}
                     onReset={() => handleResetSettings(['preferred_name'])}
                   >
                     Preferred Name
@@ -554,7 +524,11 @@ export default function PreferencesSettingsPage() {
                   <ModificationIndicator
                     as={FormLabel}
                     className="mb-2"
-                    hasModifications={isLocationModified}
+                    hasModifications={
+                      isSettingModified(rawSettings.location_name) ||
+                      isSettingModified(rawSettings.location_lat) ||
+                      isSettingModified(rawSettings.location_lng)
+                    }
                     onReset={() => handleResetSettings(['location_name', 'location_lat', 'location_lng'])}
                   >
                     Location
@@ -649,7 +623,7 @@ export default function PreferencesSettingsPage() {
                     <ModificationIndicator
                       as="label"
                       className="text-sm font-medium"
-                      hasModifications={isExperimentalTasksModified}
+                      hasModifications={isSettingModified(rawSettings.experimental_feature_tasks)}
                       onReset={() => handleResetSettings(['experimental_feature_tasks'])}
                     >
                       Tasks
@@ -683,7 +657,7 @@ export default function PreferencesSettingsPage() {
                       <ModificationIndicator
                         as="label"
                         className="text-sm font-medium"
-                        hasModifications={isDataCollectionModified}
+                        hasModifications={isSettingModified(rawSettings.data_collection)}
                         onReset={() => handleResetSettings(['data_collection'])}
                       >
                         Data Collection

@@ -5,7 +5,7 @@ export const chatThreadsRelations = relations(chatThreadsTable, ({ many }) => ({
   messages: many(chatMessagesTable),
 }))
 
-export const chatMessagesRelations = relations(chatMessagesTable, ({ one }) => ({
+export const chatMessagesRelations = relations(chatMessagesTable, ({ one, many }) => ({
   thread: one(chatThreadsTable, {
     fields: [chatMessagesTable.chatThreadId],
     references: [chatThreadsTable.id],
@@ -13,6 +13,14 @@ export const chatMessagesRelations = relations(chatMessagesTable, ({ one }) => (
   model: one(modelsTable, {
     fields: [chatMessagesTable.modelId],
     references: [modelsTable.id],
+  }),
+  parent: one(chatMessagesTable, {
+    fields: [chatMessagesTable.parentId],
+    references: [chatMessagesTable.id],
+    relationName: 'messageThread',
+  }),
+  children: many(chatMessagesTable, {
+    relationName: 'messageThread',
   }),
 }))
 

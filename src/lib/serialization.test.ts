@@ -27,9 +27,9 @@ describe('serialization', () => {
     })
 
     it('should return undefined for objects and arrays (use JSON fallback)', () => {
-      expect(inferTypeFromSchema({ foo: 'bar' })).toBe(undefined)
-      expect(inferTypeFromSchema([1, 2, 3])).toBe(undefined)
-      expect(inferTypeFromSchema(null)).toBe(undefined)
+      expect(inferTypeFromSchema({ foo: 'bar' })).toBeUndefined()
+      expect(inferTypeFromSchema([1, 2, 3])).toBeUndefined()
+      expect(inferTypeFromSchema(null)).toBeUndefined()
     })
   })
 

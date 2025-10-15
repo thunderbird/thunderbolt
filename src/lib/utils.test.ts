@@ -1,5 +1,7 @@
+import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { formatNumber } from './utils'
+import { v7 as uuidv7 } from 'uuid'
+import { convertUIMessageToDbChatMessage, formatNumber } from './utils'
 
 describe('utils', () => {
   describe('formatNumber', () => {
@@ -32,6 +34,81 @@ describe('utils', () => {
       expect(formatNumber(2000)).toBe('2K')
       expect(formatNumber(5000000)).toBe('5M')
       expect(formatNumber(3000000000)).toBe('3B')
+    })
+  })
+
+  describe('convertUIMessageToDbChatMessage', () => {
+    it('should convert UI message to DB message without parent', () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+
+      const uiMessage: UIMessage = {
+        id: messageId,
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello world' }],
+      }
+
+      const dbMessage = convertUIMessageToDbChatMessage(uiMessage, threadId)
+
+      expect(dbMessage.id).toBe(messageId)
+      expect(dbMessage.chatThreadId).toBe(threadId)
+      expect(dbMessage.role).toBe('user')
+      expect(dbMessage.content).toBe('Hello world')
+      expect(dbMessage.parentId).toBe(null)
+    })
+
+    it('should convert UI message to DB message with parent_id', () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+      const parentId = uuidv7()
+
+      const uiMessage: UIMessage = {
+        id: messageId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Response text' }],
+      }
+
+      const dbMessage = convertUIMessageToDbChatMessage(uiMessage, threadId, parentId)
+
+      expect(dbMessage.id).toBe(messageId)
+      expect(dbMessage.chatThreadId).toBe(threadId)
+      expect(dbMessage.role).toBe('assistant')
+      expect(dbMessage.content).toBe('Response text')
+      expect(dbMessage.parentId).toBe(parentId)
+    })
+
+    it('should set parentId to null when explicitly passed null', () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+
+      const uiMessage: UIMessage = {
+        id: messageId,
+        role: 'user',
+        parts: [{ type: 'text', text: 'First message' }],
+      }
+
+      const dbMessage = convertUIMessageToDbChatMessage(uiMessage, threadId, null)
+
+      expect(dbMessage.parentId).toBe(null)
+    })
+
+    it('should handle messages with model metadata', () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+      const parentId = uuidv7()
+      const modelId = uuidv7()
+
+      const uiMessage: UIMessage = {
+        id: messageId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Response' }],
+        metadata: { modelId },
+      }
+
+      const dbMessage = convertUIMessageToDbChatMessage(uiMessage, threadId, parentId)
+
+      expect(dbMessage.modelId).toBe(modelId)
+      expect(dbMessage.parentId).toBe(parentId)
     })
   })
 })

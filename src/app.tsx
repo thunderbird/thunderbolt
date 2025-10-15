@@ -20,7 +20,7 @@ import { usePageTracking } from '@/hooks/use-analytics'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
-import { PostHogProvider } from '@/lib/analytics'
+import { initPosthog, PostHogProvider } from '@/lib/analytics'
 import { seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
@@ -131,9 +131,12 @@ const init = async (): Promise<InitData> => {
     }
   }
 
+  const posthogClient = await initPosthog()
+
   return {
     sideviewType,
     sideviewId,
+    posthogClient,
     ...tray,
   }
 }
@@ -206,7 +209,7 @@ export const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PostHogProvider>
+      <PostHogProvider client={initData.posthogClient}>
         <ThemeProvider defaultTheme="system" storageKey="ui_theme">
           <TrayProvider tray={initData.tray} window={initData.window}>
             <MCPProvider>

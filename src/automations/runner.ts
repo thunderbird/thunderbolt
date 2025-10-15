@@ -44,7 +44,8 @@ export const runAutomation = async (promptId: string, navigate?: Navigate) => {
     parts: [{ type: 'text', text: prompt.prompt }],
   }
 
-  await db.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId))
+  // First message in the thread, so no parent
+  await db.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId, null))
 
   navigate?.(`/chats/${threadId}`)
 }

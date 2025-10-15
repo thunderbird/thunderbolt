@@ -3,7 +3,7 @@ import { configs as googleConfigs } from '@/integrations/google/tools'
 import { configs as microsoftConfigs } from '@/integrations/microsoft/tools'
 import { configs as proConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getBooleanSetting, getSetting } from '@/lib/dal'
+import { getBooleanSetting, getSettings } from '@/lib/dal'
 import type { ToolConfig } from '@/types'
 import { zodSchema } from '@ai-sdk/provider-utils'
 import type { FlowerTool } from '@/flower'
@@ -16,15 +16,22 @@ export const getAvailableTools = async (): Promise<ToolConfig[]> => {
 
   // Check Thunderbolt Pro access and integration enabled state
   const proEnabled = await hasProAccess()
-  const proIntegrationEnabled = await getSetting('integrations_pro_is_enabled')
-  const shouldIncludeProTools = proEnabled && (proIntegrationEnabled === null ? true : proIntegrationEnabled === 'true')
+  const settings = await getSettings({
+    integrations_pro_is_enabled: String,
+    integrations_google_is_enabled: String,
+    integrations_microsoft_is_enabled: String,
+  })
+
+  const shouldIncludeProTools =
+    proEnabled &&
+    (settings.integrations_pro_is_enabled === null ? true : settings.integrations_pro_is_enabled === 'true')
 
   if (shouldIncludeProTools) {
     baseTools.push(...proConfigs)
   }
 
-  const googleEnabled = await getSetting('integrations_google_is_enabled')
-  const microsoftEnabled = await getSetting('integrations_microsoft_is_enabled')
+  const googleEnabled = settings.integrations_google_is_enabled
+  const microsoftEnabled = settings.integrations_microsoft_is_enabled
 
   if (googleEnabled === 'true') {
     baseTools.push(...googleConfigs)

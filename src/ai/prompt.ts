@@ -6,12 +6,19 @@ export type PromptParams = {
     lat?: number
     lng?: number
   }
+  localization: {
+    distanceUnit: string
+    temperatureUnit: string
+    dateFormat: string
+    timeFormat: string
+    currency: string
+  }
 }
 
 /**
  * Creates a system prompt for the AI assistant with user context and guidelines.
  */
-export const createPrompt = ({ preferredName, location }: PromptParams) => {
+export const createPrompt = ({ preferredName, location, localization }: PromptParams) => {
   const prompt = [
     // —— Context ——
     `You are a helpful executive assistant.`,
@@ -32,6 +39,14 @@ export const createPrompt = ({ preferredName, location }: PromptParams) => {
     location.name
       ? `You must use units that are appropriate for the user's country based on the task at hand. If tools give you results in the wrong units, you must convert them. For example, if the user's location is in the United States, use miles and Fahrenheit and miles per hour. If the user's location is in Canada, use kilometers, Celsius and kilometers per hour.`
       : '',
+
+    `The user has configured the following localization preferences:`,
+    `• Distance unit: ${localization.distanceUnit}`,
+    `• Temperature unit: ${localization.temperatureUnit}`,
+    `• Date format: ${localization.dateFormat}`,
+    `• Time format: ${localization.timeFormat}`,
+    `• Currency: ${localization.currency}`,
+    `Always use these preferred units and formats when providing information to the user. Convert any data from tools to match these preferences.`,
 
     // —— Live-data discipline ——
     `❖ You MAY have access to tools that give you access to real-time or external data.`,

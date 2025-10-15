@@ -106,6 +106,41 @@ export const defaultSettingTheme: Setting = {
   defaultHash: null,
 }
 
+export const defaultSettingDistanceUnit: Setting = {
+  key: 'distance_unit',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+}
+
+export const defaultSettingTemperatureUnit: Setting = {
+  key: 'temperature_unit',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+}
+
+export const defaultSettingDateFormat: Setting = {
+  key: 'date_format',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+}
+
+export const defaultSettingTimeFormat: Setting = {
+  key: 'time_format',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+}
+
+export const defaultSettingCurrency: Setting = {
+  key: 'currency',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+}
+
 /**
  * Array of all default settings for iteration
  */
@@ -122,4 +157,9 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingLocationLng,
   defaultSettingCloudUrl,
   defaultSettingTheme,
+  defaultSettingDistanceUnit,
+  defaultSettingTemperatureUnit,
+  defaultSettingDateFormat,
+  defaultSettingTimeFormat,
+  defaultSettingCurrency,
 ] as const

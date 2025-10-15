@@ -1,5 +1,22 @@
-import type { SimpleContext } from './context'
 import type { WeatherDay, WeatherForecastData } from './types'
+
+type LocalizationParams = {
+  temperatureUnit?: 'celsius' | 'fahrenheit'
+  windSpeedUnit?: 'kmh' | 'ms' | 'mph' | 'kn'
+  precipitationUnit?: 'mm' | 'inch'
+  timeFormat?: 'iso8601' | 'unixtime'
+  language?: string
+}
+
+/**
+ * Weather-specific user preferences for Open-Meteo API localization
+ * Only includes the properties that are actually used by the weather client.
+ * This is a subset of the full PreferencesSettings type from the frontend.
+ */
+type WeatherPreferences = {
+  distanceUnit?: string    // Maps to wind_speed_unit and precipitation_unit
+  temperatureUnit?: string // Maps to temperature_unit
+}
 
 interface Location {
   name: string
@@ -16,6 +33,72 @@ interface Location {
 export class OpenMeteoWeather {
   private readonly geocodingUrl = 'https://geocoding-api.open-meteo.com/v1/search'
   private readonly weatherUrl = 'https://api.open-meteo.com/v1/forecast'
+
+  /**
+   * Convert user preferences to Open-Meteo API parameters
+   */
+  private getUserLocalizationParams(userPreferences?: WeatherPreferences): LocalizationParams {
+    const params: LocalizationParams = {}
+    
+    if (userPreferences?.temperatureUnit) {
+      switch (userPreferences.temperatureUnit.toUpperCase()) {
+        case 'F':
+        case '°F':
+        case 'FAHRENHEIT':
+          params.temperatureUnit = 'fahrenheit'
+          break
+        case 'C':
+        case '°C':
+        case 'CELSIUS':
+          params.temperatureUnit = 'celsius'
+          break
+      }
+    }
+    
+    if (userPreferences?.distanceUnit) {
+      switch (userPreferences.distanceUnit.toLowerCase()) {
+        case 'imperial':
+          params.windSpeedUnit = 'mph'
+          break
+        case 'metric':
+          params.windSpeedUnit = 'kmh'
+          break
+      }
+    }
+    
+    if (userPreferences?.distanceUnit) {
+      switch (userPreferences.distanceUnit.toLowerCase()) {
+        case 'imperial':
+          params.precipitationUnit = 'inch'
+          break
+        case 'metric':
+          params.precipitationUnit = 'mm'
+          break
+      }
+    }
+
+    params.timeFormat = 'iso8601'
+
+    return params
+  }
+
+  /**
+   * Apply localization parameters to URL
+   */
+  private applyLocalizationParams(url: URL, params: LocalizationParams): void {
+    if (params.temperatureUnit) {
+      url.searchParams.set('temperature_unit', params.temperatureUnit)
+    }
+    if (params.windSpeedUnit) {
+      url.searchParams.set('wind_speed_unit', params.windSpeedUnit)
+    }
+    if (params.precipitationUnit) {
+      url.searchParams.set('precipitation_unit', params.precipitationUnit)
+    }
+    if (params.timeFormat) {
+      url.searchParams.set('timeformat', params.timeFormat)
+    }
+  }
 
   private disambiguateLocation(locations: Location[], region: string | null, country: string | null): Location[] {
     const regionNorm = region?.trim().toLowerCase()
@@ -49,7 +132,6 @@ export class OpenMeteoWeather {
     query: string,
     region: string | null,
     country: string | null,
-    ctx: SimpleContext,
   ): Promise<Location[]> {
     const url = new URL(this.geocodingUrl)
     url.searchParams.set('name', query)
@@ -76,10 +158,10 @@ export class OpenMeteoWeather {
     location: string,
     region: string | null,
     country: string | null,
-    ctx: SimpleContext,
+    userPreferences?: WeatherPreferences,
   ): Promise<string> {
     // First, search for the location
-    const locations = await this.searchLocations(location, region, country, ctx)
+    const locations = await this.searchLocations(location, region, country)
     if (locations.length === 0) {
       return `No location found matching: ${location}`
     }
@@ -96,6 +178,10 @@ export class OpenMeteoWeather {
     )
     url.searchParams.set('timezone', 'auto')
 
+    // Apply user localization preferences
+    const localizationParams = this.getUserLocalizationParams(userPreferences)
+    this.applyLocalizationParams(url, localizationParams)
+    
     const response = await fetch(url.toString())
 
     if (!response.ok) {
@@ -142,11 +228,11 @@ export class OpenMeteoWeather {
     region: string | null,
     country: string | null,
     days: number,
-    ctx: SimpleContext,
+    userPreferences?: WeatherPreferences,
   ): Promise<WeatherForecastData> {
     try {
       // First, search for the location
-      const locations = await this.searchLocations(location, region, country, ctx)
+      const locations = await this.searchLocations(location, region, country)
       if (locations.length === 0) {
         const errorMsg = `Could not find coordinates for location '${location}'`
         throw new Error(errorMsg)
@@ -165,6 +251,10 @@ export class OpenMeteoWeather {
       url.searchParams.set('forecast_days', days.toString())
       url.searchParams.set('timezone', 'auto')
 
+      // Apply user localization preferences
+      const localizationParams = this.getUserLocalizationParams(userPreferences)
+      this.applyLocalizationParams(url, localizationParams)
+      
       const response = await fetch(url.toString())
 
       if (!response.ok) {

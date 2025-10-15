@@ -76,7 +76,8 @@ export const getSystemModel = async () => {
  * Gets the currently selected model or falls back to the system default model
  */
 export const getSelectedModel = async (): Promise<Model> => {
-  const selectedModelId = await getSetting('selected_model')
+  const settings = await getSettings({ selected_model: String })
+  const selectedModelId = settings.selected_model
 
   if (selectedModelId) {
     const model = await getModel(selectedModelId)
@@ -133,9 +134,32 @@ export const getAllSettings = async () => {
 }
 
 /**
- * Gets raw settings rows for specific keys
+ * Type schema for settings - maps keys to their value types or default values
  */
-export const getRawSettings = async (keys: string[]) => {
+type SettingSchema = Record<
+  string,
+  string | number | boolean | null | StringConstructor | BooleanConstructor | NumberConstructor
+>
+
+/**
+ * Gets raw setting records for a schema object
+ * Returns the full Setting objects with metadata
+ *
+ * @param schema - Object mapping setting keys to either type constructors or default values
+ * @returns Record of setting keys to Setting objects
+ *
+ * @example
+ * ```ts
+ * const settings = await getSettingsRecords({
+ *   cloud_url: String,
+ *   max_retries: 3,
+ *   is_enabled: true,
+ * })
+ * // Returns: { cloud_url: Setting, max_retries: Setting, is_enabled: Setting }
+ * ```
+ */
+export const getSettingsRecords = async <T extends SettingSchema>(schema: T): Promise<Record<string, Setting>> => {
+  const keys = Object.keys(schema)
   const db = DatabaseSingleton.instance.db
   const results = await Promise.all(
     keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
@@ -152,11 +176,99 @@ export const getRawSettings = async (keys: string[]) => {
 }
 
 /**
+ * Gets settings values for a schema object
+ * Returns only the values (not the full Setting records)
+ * Values are properly typed based on the schema
+ *
+ * @param schema - Object mapping setting keys to either type constructors or default values
+ * @returns Object with key-value pairs for the requested settings
+ *
+ * @example
+ * ```ts
+ * const settings = await getSettings({
+ *   cloud_url: String,           // Returns string | null
+ *   max_retries: 3,               // Returns number (defaults to 3)
+ *   is_enabled: true,             // Returns boolean (defaults to true)
+ * })
+ * // settings = { cloud_url: string | null, max_retries: number, is_enabled: boolean }
+ * ```
+ */
+export const getSettings = async <T extends SettingSchema>(
+  schema: T,
+): Promise<{
+  [K in keyof T]: T[K] extends StringConstructor
+    ? string | null
+    : T[K] extends BooleanConstructor
+      ? boolean
+      : T[K] extends NumberConstructor
+        ? number | null
+        : T[K] extends true | false
+          ? boolean
+          : T[K] extends boolean
+            ? boolean
+            : T[K] extends number
+              ? number
+              : T[K] extends string
+                ? string
+                : T[K] extends null
+                  ? null
+                  : never
+}> => {
+  const keys = Object.keys(schema)
+  const db = DatabaseSingleton.instance.db
+
+  const results = await Promise.all(
+    keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
+  )
+
+  const result: Record<string, string | number | boolean | null> = {}
+
+  for (const key of keys) {
+    const schemaValue = schema[key]
+    const setting = results.find((r) => r?.key === key)
+
+    // Determine if this is a constructor or a default value
+    const isConstructor = typeof schemaValue === 'function'
+    const defaultValue = isConstructor ? (schemaValue === Boolean ? false : null) : schemaValue
+
+    // Determine the type hint for deserialization
+    const typeHint = isConstructor
+      ? schemaValue === String
+        ? 'string'
+        : schemaValue === Boolean
+          ? 'boolean'
+          : schemaValue === Number
+            ? 'number'
+            : 'string'
+      : typeof defaultValue === 'boolean'
+        ? 'boolean'
+        : typeof defaultValue === 'number'
+          ? 'number'
+          : 'string'
+
+    // Deserialize the value
+    const deserializedValue =
+      setting?.value !== null && setting?.value !== undefined
+        ? typeHint === 'boolean'
+          ? setting.value === 'true'
+          : typeHint === 'number'
+            ? Number(setting.value)
+            : setting.value
+        : null
+
+    // Apply default if value is null/undefined
+    result[key] = (deserializedValue ?? defaultValue) as string | number | boolean | null
+  }
+
+  return result as any
+}
+
+/**
  * Gets theme setting with proper typing
  */
 export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
-  const result = await getSetting(storageKey, defaultTheme)
-  return result
+  const settings = await getSettings({ [storageKey]: defaultTheme })
+  return settings[storageKey]
 }
 
 /**
@@ -173,20 +285,11 @@ export const hasSetting = async (key: string): Promise<boolean> => {
 }
 
 /**
- * Get a setting value from the settings table
- */
-export const getSetting = async <T = string, V = T | null>(key: string, defaultValue: V = null as V): Promise<V> => {
-  const db = DatabaseSingleton.instance.db
-  const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
-  return (setting?.value as V) ?? defaultValue
-}
-
-/**
  * Get a boolean setting value from the settings table
  */
 export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
-  const setting = await getSetting(key, defaultValue.toString())
-  return setting === 'true'
+  const settings = await getSettings({ [key]: defaultValue })
+  return settings[key]
 }
 
 /**

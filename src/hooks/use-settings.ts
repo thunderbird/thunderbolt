@@ -1,6 +1,6 @@
 import { defaultSettings } from '@/defaults/settings'
 import { isSettingModified } from '@/defaults/utils'
-import { getRawSettings, resetSettingToDefault, updateSetting } from '@/lib/dal'
+import { getSettingsRecords, resetSettingToDefault, updateSetting } from '@/lib/dal'
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
@@ -163,7 +163,7 @@ export function useSettings<T extends SettingSchema>(
   const query = useQuery({
     queryKey: ['settings', ...keys],
     queryFn: async () => {
-      const result = await getRawSettings([...keys])
+      const result = await getSettingsRecords(schema)
       return Object.values(result)
     },
   })

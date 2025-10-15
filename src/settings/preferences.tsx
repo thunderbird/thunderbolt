@@ -1,5 +1,10 @@
+import { useCountryUnits } from '@/hooks/use-country-units'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
+import { useUnitsOptions } from '@/hooks/use-units-options'
+import { trackEvent } from '@/lib/analytics'
+import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
@@ -26,10 +31,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
-
 import { Switch } from '@/components/ui/switch'
-import { trackEvent } from '@/lib/analytics'
-import { getCloudUrl } from '@/lib/config'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
@@ -39,6 +41,7 @@ import { z } from 'zod'
 interface LocationData {
   name: string
   city: string
+  country: string
   coordinates: {
     lat: number
     lng: number
@@ -101,24 +104,67 @@ const locationFormSchema = z.object({
   locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
 })
 
+const localizationFormSchema = z.object({
+  distanceUnit: z.string(),
+  temperatureUnit: z.string(),
+  dateFormat: z.string(),
+  timeFormat: z.string(),
+  currency: z.string(),
+})
+
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting } = state
+
+  // Localization dropdown states
+  const {
+    distanceDropdownOpen,
+    temperatureDropdownOpen,
+    dateFormatDropdownOpen,
+    timeFormatDropdownOpen,
+    currencyDropdownOpen,
+    setDistanceDropdownOpen,
+    setTemperatureDropdownOpen,
+    setDateFormatDropdownOpen,
+    setTimeFormatDropdownOpen,
+    setCurrencyDropdownOpen,
+  } = useLocalizationDropdowns()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
   const postHog = usePostHog()
 
-  const { preferredName, locationName, locationLat, locationLng, dataCollection, experimentalFeatureTasks } =
-    useSettings({
-      preferred_name: '',
-      location_name: '',
-      location_lat: '',
-      location_lng: '',
-      data_collection: true,
-      experimental_feature_tasks: false,
-    })
+  // Use our useSettings hook for all settings
+  const {
+    preferredName,
+    locationName,
+    locationLat,
+    locationLng,
+    dataCollection,
+    experimentalFeatureTasks,
+    distanceUnit,
+    temperatureUnit,
+    dateFormat,
+    timeFormat,
+    currency,
+  } = useSettings({
+    preferred_name: '',
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    data_collection: true,
+    experimental_feature_tasks: false,
+    distance_unit: 'imperial',
+    temperature_unit: 'F',
+    date_format: 'MM/DD/YYYY',
+    time_format: '12h',
+    currency: 'USD',
+  })
+
+  // Get units options and country units for localization
+  const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
+  const { data: countryUnitsData, isLoading: countryUnitsLoading, refetch: refetchCountryUnits } = useCountryUnits()
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
@@ -148,7 +194,17 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  // Update forms when data is loaded
+  const localizationForm = useForm<z.infer<typeof localizationFormSchema>>({
+    resolver: zodResolver(localizationFormSchema),
+    defaultValues: {
+      distanceUnit: 'imperial',
+      temperatureUnit: 'F',
+      dateFormat: 'MM/DD/YYYY',
+      timeFormat: '12h',
+      currency: 'USD',
+    },
+  })
+
   useEffect(() => {
     nameForm.reset({
       preferredName: preferredName.value,
@@ -162,6 +218,33 @@ export default function PreferencesSettingsPage() {
       locationLng: locationLng.value,
     })
   }, [locationName.value, locationLat.value, locationLng.value, locationForm])
+
+  useEffect(() => {
+    localizationForm.reset({
+      distanceUnit: distanceUnit.value,
+      temperatureUnit: temperatureUnit.value,
+      dateFormat: dateFormat.value,
+      timeFormat: timeFormat.value,
+      currency: currency.value,
+    })
+  }, [distanceUnit.value, temperatureUnit.value, dateFormat.value, timeFormat.value, currency.value, localizationForm])
+
+  // Auto-populate localization settings from country data if not set
+  useEffect(() => {
+    if (countryUnitsData && !countryUnitsLoading) {
+      const hasLocalizationSettings =
+        distanceUnit.value || temperatureUnit.value || dateFormat.value || timeFormat.value || currency.value
+
+      if (!hasLocalizationSettings) {
+        // Auto-set from country data
+        distanceUnit.setValue(countryUnitsData.unit)
+        temperatureUnit.setValue(countryUnitsData.temperature)
+        dateFormat.setValue(countryUnitsData.dateFormatExample)
+        timeFormat.setValue(countryUnitsData.timeFormat)
+        currency.setValue(countryUnitsData.currency.code)
+      }
+    }
+  }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -202,6 +285,7 @@ export default function PreferencesSettingsPage() {
         const transformedLocations: LocationData[] = data.map((location) => ({
           name: `${location.name}, ${location.region}, ${location.country}`,
           city: location.name,
+          country: location.country,
           coordinates: {
             lat: location.lat,
             lng: location.lon,
@@ -287,6 +371,18 @@ export default function PreferencesSettingsPage() {
       locationLng.setValue(String(location.coordinates.lng)),
     ])
 
+    // Refetch country units to update localization settings
+    const countryUnitsResult = await refetchCountryUnits()
+    if (countryUnitsResult.data) {
+      await Promise.all([
+        distanceUnit.setValue(countryUnitsResult.data.unit),
+        temperatureUnit.setValue(countryUnitsResult.data.temperature),
+        dateFormat.setValue(countryUnitsResult.data.dateFormatExample),
+        timeFormat.setValue(countryUnitsResult.data.timeFormat),
+        currency.setValue(countryUnitsResult.data.currency.code),
+      ])
+    }
+
     if (wasSet) {
       trackEvent('settings_location_update', {
         location_name: location.name,
@@ -323,6 +419,28 @@ export default function PreferencesSettingsPage() {
 
   const handleResetLocation = async () => {
     await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
+  }
+
+  const handleLocalizationChange = async (fieldName: string, value: string) => {
+    trackEvent('settings_localization_update')
+
+    switch (fieldName) {
+      case 'distanceUnit':
+        await distanceUnit.setValue(value)
+        break
+      case 'temperatureUnit':
+        await temperatureUnit.setValue(value)
+        break
+      case 'dateFormat':
+        await dateFormat.setValue(value)
+        break
+      case 'timeFormat':
+        await timeFormat.setValue(value)
+        break
+      case 'currency':
+        await currency.setValue(value)
+        break
+    }
   }
 
   return (
@@ -461,6 +579,283 @@ export default function PreferencesSettingsPage() {
                   <FormMessage />
                 </FormItem>
               )}
+            />
+          </form>
+        </Form>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Localization">
+        <Form {...localizationForm}>
+          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+            <FormField
+              control={localizationForm.control}
+              name="distanceUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Distance</FormLabel>
+                  </div>
+                  <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsOptionsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsOptionsLoading
+                            ? 'Loading...'
+                            : field.value
+                              ? (() => {
+                                  const unit = unitsOptionsData?.units?.find((unit) => unit === field.value)
+                                  return unit ? unit.charAt(0).toUpperCase() + unit.slice(1) : 'Loading...'
+                                })()
+                              : 'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsOptionsData?.units?.map((unit) => (
+                              <CommandItem
+                                key={unit}
+                                value={unit}
+                                onSelect={() => {
+                                  field.onChange(unit)
+                                  handleLocalizationChange('distanceUnit', unit)
+                                  setDistanceDropdownOpen(false)
+                                }}
+                              >
+                                {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="temperatureUnit"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Temperature</FormLabel>
+                  </div>
+                  <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsOptionsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsOptionsLoading
+                            ? 'Loading...'
+                            : unitsOptionsData?.temperature?.find((temp) => temp.symbol === field.value)?.name ||
+                              field.value ||
+                              'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsOptionsData?.temperature?.map((temp) => (
+                              <CommandItem
+                                key={temp.symbol}
+                                value={temp.symbol}
+                                onSelect={() => {
+                                  field.onChange(temp.symbol)
+                                  handleLocalizationChange('temperatureUnit', temp.symbol)
+                                  setTemperatureDropdownOpen(false)
+                                }}
+                              >
+                                {temp.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="dateFormat"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Date Format</FormLabel>
+                  </div>
+                  <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsOptionsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsOptionsLoading
+                            ? 'Loading...'
+                            : field.value
+                              ? unitsOptionsData?.dateFormats?.find((f) => f.format === field.value)?.example ||
+                                field.value
+                              : 'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsOptionsData?.dateFormats?.map((format) => (
+                              <CommandItem
+                                key={format.format}
+                                value={format.example}
+                                onSelect={() => {
+                                  field.onChange(format.format)
+                                  handleLocalizationChange('dateFormat', format.format)
+                                  setDateFormatDropdownOpen(false)
+                                }}
+                              >
+                                {format.example}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="timeFormat"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-4">
+                  <div className="flex-1">
+                    <FormLabel>Time Format</FormLabel>
+                  </div>
+                  <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          disabled={unitsOptionsLoading}
+                          className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                        >
+                          {unitsOptionsLoading ? 'Loading...' : field.value || 'Loading...'}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-auto">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {unitsOptionsData?.timeFormat?.map((format) => (
+                              <CommandItem
+                                key={format}
+                                value={format}
+                                onSelect={() => {
+                                  field.onChange(format)
+                                  handleLocalizationChange('timeFormat', format)
+                                  setTimeFormatDropdownOpen(false)
+                                }}
+                              >
+                                {format}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={localizationForm.control}
+              name="currency"
+              render={({ field }) => {
+                const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === field.value)
+                const displayText = selectedCurrency
+                  ? `${selectedCurrency.name} (${selectedCurrency.symbol})`
+                  : 'Loading...'
+
+                return (
+                  <FormItem className="flex flex-row items-center gap-4">
+                    <div className="flex-1">
+                      <FormLabel>Currency</FormLabel>
+                    </div>
+                    <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            disabled={unitsOptionsLoading}
+                            className={cn('w-auto justify-between', !field.value && 'text-muted-foreground')}
+                          >
+                            {unitsOptionsLoading ? 'Loading...' : displayText}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-[300px]">
+                        <Command>
+                          <CommandInput placeholder="Search currency by code, symbol, or name..." />
+                          <CommandList>
+                            <CommandGroup>
+                              {unitsOptionsData?.currencies?.map((currencyOption) => (
+                                <CommandItem
+                                  key={currencyOption.code}
+                                  value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
+                                  onSelect={() => {
+                                    field.onChange(currencyOption.code)
+                                    handleLocalizationChange('currency', currencyOption.code)
+                                    setCurrencyDropdownOpen(false)
+                                  }}
+                                >
+                                  {currencyOption.name} ({currencyOption.symbol})
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
           </form>
         </Form>

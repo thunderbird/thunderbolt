@@ -1,5 +1,4 @@
 import { Elysia, t } from 'elysia'
-import { SimpleContext } from './context'
 import { exaPlugin } from './exa'
 import { createProxyRoutes } from './proxy'
 import type {
@@ -10,6 +9,16 @@ import type {
   WeatherRequest,
 } from './types'
 import { OpenMeteoWeather } from './weather'
+
+/**
+ * Weather-specific user preferences for Open-Meteo API localization
+ * Only includes the properties that are actually used by the weather client.
+ * This is a subset of the full PreferencesSettings type from the frontend.
+ */
+type WeatherPreferences = {
+  distanceUnit?: string    // Maps to wind_speed_unit and precipitation_unit
+  temperatureUnit?: string // Maps to temperature_unit
+}
 
 // Initialize the tool clients
 const weatherClient = new OpenMeteoWeather()
@@ -34,44 +43,15 @@ export const createProToolsRoutes = () => {
       '/weather/current',
       async ({ body }): Promise<WeatherCurrentResponse> => {
         try {
-          const ctx = new SimpleContext()
-          const weatherData = await weatherClient.getCurrentWeather(body.location, body.region, body.country, ctx)
-
-          return {
-            data: weatherData,
-            success: true,
+          const userPreferences: WeatherPreferences = {
+            distanceUnit: body.distanceUnit || 'imperial',
+            temperatureUnit: body.temperatureUnit || 'F',
           }
-        } catch (error) {
-          return {
-            data: null,
-            success: false,
-            error: String(error),
-          }
-        }
-      },
-      {
-        body: t.Object({
-          location: t.String(),
-          region: t.String(),
-          country: t.String(),
-          days: t.Optional(t.Number({ default: 3 })),
-        }),
-      },
-    )
-
-    .post(
-      '/weather/forecast',
-      async ({ body }): Promise<WeatherForecastResponse> => {
-        const request = body as WeatherRequest
-
-        try {
-          const ctx = new SimpleContext()
-          const weatherData = await weatherClient.getWeatherForecast(
-            request.location,
-            request.region,
-            request.country,
-            request.days,
-            ctx,
+          const weatherData = await weatherClient.getCurrentWeather(
+            body.location,
+            body.region,
+            body.country,
+            userPreferences,
           )
 
           return {
@@ -92,6 +72,50 @@ export const createProToolsRoutes = () => {
           region: t.String(),
           country: t.String(),
           days: t.Optional(t.Number({ default: 3 })),
+          distanceUnit: t.Optional(t.String()),
+          temperatureUnit: t.Optional(t.String()),
+        }),
+      },
+    )
+
+    .post(
+      '/weather/forecast',
+      async ({ body }): Promise<WeatherForecastResponse> => {
+        const request = body as WeatherRequest
+
+        try {
+          const userPreferences: WeatherPreferences = {
+            distanceUnit: body.distanceUnit || 'imperial',
+            temperatureUnit: body.temperatureUnit || 'F',
+          }
+          const weatherData = await weatherClient.getWeatherForecast(
+            request.location,
+            request.region,
+            request.country,
+            request.days,
+            userPreferences,
+          )
+
+          return {
+            data: weatherData,
+            success: true,
+          }
+        } catch (error) {
+          return {
+            data: null,
+            success: false,
+            error: String(error),
+          }
+        }
+      },
+      {
+        body: t.Object({
+          location: t.String(),
+          region: t.String(),
+          country: t.String(),
+          days: t.Optional(t.Number({ default: 3 })),
+          distanceUnit: t.Optional(t.String()),
+          temperatureUnit: t.Optional(t.String()),
         }),
       },
     )
@@ -102,8 +126,11 @@ export const createProToolsRoutes = () => {
         const request = body as LocationSearchRequest
 
         try {
-          const ctx = new SimpleContext()
-          const locations = await weatherClient.searchLocations(request.query, request.region, request.country, ctx)
+          const locations = await weatherClient.searchLocations(
+            request.query,
+            request.region,
+            request.country,
+          )
 
           if (!locations || locations.length === 0) {
             return {
@@ -155,6 +182,8 @@ export const createProToolsRoutes = () => {
           query: t.String(),
           region: t.String(),
           country: t.String(),
+          distanceUnit: t.Optional(t.String()),
+          temperatureUnit: t.Optional(t.String()),
         }),
       },
     )

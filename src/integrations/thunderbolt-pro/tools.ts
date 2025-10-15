@@ -1,10 +1,34 @@
 import { getCloudUrl } from '@/lib/config'
+import { getSettings } from '@/lib/dal'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
-import type { ToolConfig } from '@/types'
+import type { ToolConfig, PreferencesSettings } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
 
 const requestTimeout = 5000
+
+/**
+ * Get user preferences for localization
+ */
+const getUserPreferences = async (): Promise<Partial<PreferencesSettings>> => {
+  try {
+    const settings = await getSettings({
+      temperature_unit: 'F',
+      distance_unit: 'imperial',
+    })
+
+    return {
+      distanceUnit: settings.distance_unit,
+      temperatureUnit: settings.temperature_unit,
+    }
+  } catch (error) {
+    console.warn('Could not get user preferences, using defaults:', error)
+    return {
+      distanceUnit: 'imperial',
+      temperatureUnit: 'F',
+    }
+  }
+}
 
 /**
  * Schemas for the pro tools
@@ -113,6 +137,8 @@ export const fetchContent = async (params: FetchContentParams): Promise<FetchCon
 export const getCurrentWeather = async (params: WeatherParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const userPreferences = await getUserPreferences()
+
     const response = await ky
       .post(`${cloudUrl}/pro/weather/current`, {
         timeout: requestTimeout,
@@ -120,6 +146,8 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
           location: params.location,
           region: params.region,
           country: params.country,
+          distanceUnit: userPreferences.distanceUnit,
+          temperatureUnit: userPreferences.temperatureUnit,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()
@@ -141,6 +169,8 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 export const getWeatherForecast = async (params: WeatherParams): Promise<WeatherForecastData> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const userPreferences = await getUserPreferences()
+
     const response = await ky
       .post(`${cloudUrl}/pro/weather/forecast`, {
         timeout: requestTimeout,
@@ -149,6 +179,8 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
           region: params.region,
           country: params.country,
           days: params.days || 3,
+          distanceUnit: userPreferences.distanceUnit,
+          temperatureUnit: userPreferences.temperatureUnit,
         },
       })
       .json<{ data: unknown; success: boolean; error?: string }>()
@@ -171,6 +203,8 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
 export const searchLocations = async (params: SearchLocationParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const userPreferences = await getUserPreferences()
+
     const response = await ky
       .post(`${cloudUrl}/pro/locations/search`, {
         timeout: requestTimeout,
@@ -178,6 +212,8 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
           query: params.query,
           region: params.region,
           country: params.country,
+          distanceUnit: userPreferences.distanceUnit,
+          temperatureUnit: userPreferences.temperatureUnit,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()

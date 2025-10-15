@@ -3,25 +3,31 @@ import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { useEntities } from './use-entities-plural'
 
 /**
  * Interface for a single setting within the useSettings result
  */
 export type SettingHook = {
+  /** The raw setting object with metadata */
+  data: Setting | null
+  /** The raw setting object with metadata (alias for consistency) */
+  rawSetting: Setting | null
   /** The setting's value */
   value: string | null
-  /** Update the setting's value */
-  setValue: (value: string | null) => Promise<void>
   /** Whether the setting has been modified from its default */
   isModified: boolean
+  /** Update the setting's value */
+  setValue: (value: string | null) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
-  /** The raw setting object with metadata */
-  rawSetting: Setting | null
+  /** Whether the query is loading */
+  isLoading: boolean
   /** Whether an update or reset is in progress for this setting */
   isSaving: boolean
+  /** The underlying query object for advanced use */
+  query: ReturnType<typeof useQuery<Setting[]>>
 }
 
 /**
@@ -92,72 +98,103 @@ export function useSettings<T extends readonly string[]>(
   keys: T,
   options: { camelCase?: boolean } = {},
 ): UseSettingsResult<T, boolean> {
-  const entities = useEntities<Setting>({
+  const queryClient = useQueryClient()
+  const { camelCase = true } = options
+
+  const query = useQuery({
     queryKey: ['settings', ...keys],
     queryFn: async () => {
       const result = await getRawSettings([...keys])
       return Object.values(result)
     },
-    updateFn: async (key: string, updates: Partial<Setting>) => {
-      if ('value' in updates) {
-        await updateSetting(key, updates.value ?? null)
-      }
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: string | null }) => updateSetting(key, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
     },
-    resetFn: async (key: string) => {
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: async (key: string) => {
       const defaultSetting = defaultSettings.find((s) => s.key === key)
       if (!defaultSetting) {
         throw new Error(`No default setting found for key: ${key}`)
       }
       await resetSettingToDefault(key, defaultSetting)
     },
-    isModifiedFn: isSettingModified,
-    getIdFn: (setting) => setting.key,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
+    },
   })
 
-  const { camelCase = true } = options
+  // Create lookup by key
+  const byKey = useMemo(() => {
+    if (!query.data) return {}
+    return query.data.reduce(
+      (acc, setting) => {
+        acc[setting.key] = setting
+        return acc
+      },
+      {} as Record<string, Setting>,
+    )
+  }, [query.data])
 
-  // Transform the entities result into a clean destructurable object
+  const isSaving = updateMutation.isPending || resetMutation.isPending
+  const isLoading = query.isLoading
+
+  // Transform into a clean destructurable object
   return useMemo(() => {
     const result = {} as Record<string, SettingHook>
 
     for (const key of keys) {
-      const setting = entities.byId[key]
+      const setting = byKey[key]
       const resultKey = camelCase ? camelCased(key) : key
 
       result[resultKey] = {
-        value: setting?.value ?? null,
-        setValue: async (value: string | null) => {
-          await entities.update(key, { value })
-        },
-        isModified: entities.isModified(key),
-        reset: async () => {
-          await entities.reset(key)
-        },
+        data: setting ?? null,
         rawSetting: setting ?? null,
-        isSaving: entities.isSaving,
+        value: setting?.value ?? null,
+        isModified: isSettingModified(setting),
+        setValue: async (value: string | null) => {
+          await updateMutation.mutateAsync({ key, value })
+        },
+        reset: async () => {
+          await resetMutation.mutateAsync(key)
+        },
+        isLoading,
+        isSaving,
+        query,
       }
     }
 
     return result as UseSettingsResult<T, typeof camelCase extends true ? true : false>
-  }, [entities, keys, camelCase])
+  }, [byKey, keys, camelCase, updateMutation, resetMutation, isSaving, isLoading, query])
 }
 
 /**
  * Interface for a single boolean setting within the useBooleanSettings result
  */
 export type BooleanSettingHook = {
+  /** The raw setting object with metadata */
+  data: Setting | null
+  /** The raw setting object with metadata (alias for consistency) */
+  rawSetting: Setting | null
   /** The boolean value */
   value: boolean
-  /** Update the boolean value */
-  setValue: (value: boolean) => Promise<void>
   /** Whether the setting has been modified from its default */
   isModified: boolean
+  /** Update the boolean value */
+  setValue: (value: boolean) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
-  /** The raw setting object with metadata */
-  rawSetting: Setting | null
+  /** Whether the query is loading */
+  isLoading: boolean
   /** Whether an update or reset is in progress for this setting */
   isSaving: boolean
+  /** The underlying query object for advanced use */
+  query: ReturnType<typeof useQuery<Setting[]>>
 }
 
 /**
@@ -223,53 +260,76 @@ export function useBooleanSettings<T extends readonly string[]>(
   keys: T,
   options?: { camelCase?: boolean },
 ): UseBooleanSettingsResult<T, boolean> {
-  // Get the underlying entities directly to avoid conditional hook calls
-  const entities = useEntities<Setting>({
+  const queryClient = useQueryClient()
+  const camelCase = options?.camelCase ?? true
+
+  const query = useQuery({
     queryKey: ['settings', ...keys],
     queryFn: async () => {
       const result = await getRawSettings([...keys])
       return Object.values(result)
     },
-    updateFn: async (key: string, updates: Partial<Setting>) => {
-      if ('value' in updates) {
-        await updateSetting(key, updates.value ?? null)
-      }
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: boolean }) => updateBooleanSetting(key, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
     },
-    resetFn: async (key: string) => {
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: async (key: string) => {
       const defaultSetting = defaultSettings.find((s) => s.key === key)
       if (!defaultSetting) {
         throw new Error(`No default setting found for key: ${key}`)
       }
       await resetSettingToDefault(key, defaultSetting)
     },
-    isModifiedFn: isSettingModified,
-    getIdFn: (setting) => setting.key,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
+    },
   })
 
-  const camelCase = options?.camelCase ?? true
+  // Create lookup by key
+  const byKey = useMemo(() => {
+    if (!query.data) return {}
+    return query.data.reduce(
+      (acc, setting) => {
+        acc[setting.key] = setting
+        return acc
+      },
+      {} as Record<string, Setting>,
+    )
+  }, [query.data])
+
+  const isSaving = updateMutation.isPending || resetMutation.isPending
+  const isLoading = query.isLoading
 
   return useMemo(() => {
     const result = {} as Record<string, BooleanSettingHook>
 
     for (const key of keys) {
-      const setting = entities.byId[key]
+      const setting = byKey[key]
       const resultKey = camelCase ? camelCased(key) : key
 
       result[resultKey] = {
-        value: setting?.value === 'true',
-        setValue: async (value: boolean) => {
-          await updateBooleanSetting(key, value)
-          await entities.query.refetch()
-        },
-        isModified: entities.isModified(key),
-        reset: async () => {
-          await entities.reset(key)
-        },
+        data: setting ?? null,
         rawSetting: setting ?? null,
-        isSaving: entities.isSaving,
+        value: setting?.value === 'true',
+        isModified: isSettingModified(setting),
+        setValue: async (value: boolean) => {
+          await updateMutation.mutateAsync({ key, value })
+        },
+        reset: async () => {
+          await resetMutation.mutateAsync(key)
+        },
+        isLoading,
+        isSaving,
+        query,
       }
     }
 
     return result as UseBooleanSettingsResult<T, typeof camelCase extends true ? true : false>
-  }, [entities, keys, camelCase])
+  }, [byKey, keys, camelCase, updateMutation, resetMutation, isSaving, isLoading, query])
 }

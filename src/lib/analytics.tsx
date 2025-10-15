@@ -100,9 +100,13 @@ export const PostHogProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  if (!client) return <>{children}</>
+  if (!client) return <div key="posthog-wrapper">{children}</div>
 
-  return <PostHogReactProvider client={client}>{children}</PostHogReactProvider>
+  return (
+    <PostHogReactProvider client={client} key="posthog-wrapper">
+      {children}
+    </PostHogReactProvider>
+  )
 }
 
 export type EventType =

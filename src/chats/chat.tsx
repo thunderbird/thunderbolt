@@ -1,7 +1,8 @@
-import { getAvailableModels, getAllSettings } from '@/lib/dal'
+import { getAvailableModels } from '@/lib/dal'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import ChatState from './chat-state'
+import { useEffect } from 'react'
 
 interface ChatProps {
   id: string
@@ -15,14 +16,12 @@ export default function Chat({ id, initialMessages, saveMessages }: ChatProps) {
     queryFn: getAvailableModels,
   })
 
-  const { data: settings = [] } = useQuery({
-    queryKey: ['settings'],
-    queryFn: getAllSettings,
-  })
-
-  if (!models || !settings) {
-    return <div>Loading...</div>
-  }
+  useEffect(() => {
+    console.log('DEBUG: Chat -> mounting')
+    return () => {
+      console.log('DEBUG: Chat -> unmounting')
+    }
+  }, [])
 
   return <ChatState id={id} models={models} initialMessages={initialMessages} saveMessages={saveMessages} />
 }

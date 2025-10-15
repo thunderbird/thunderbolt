@@ -159,7 +159,15 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])
 
+  useEffect(() => {
+    console.log('DEBUG: ChatState -> mounting')
+    return () => {
+      console.log('DEBUG: ChatState -> unmounting')
+    }
+  }, [])
+
   // If we don't pass a selectedModelId to the ChatUI, it will warn about changing an input from uncontrolled to controlled
+  console.log('DEBUG: ChatState -> selectedModelId -> ', selectedModelId)
   if (!selectedModelId) {
     return null
   }

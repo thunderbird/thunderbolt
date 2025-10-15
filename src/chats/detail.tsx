@@ -6,7 +6,7 @@ import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import Chat from './chat'
 import { getChatMessages } from '@/lib/dal'
@@ -16,7 +16,7 @@ export default function ChatDetailPage() {
   const params = useParams()
 
   const chatThreadId = useMemo(
-    () => (params.chatThreadId === 'new' ? uuidv7() : params.chatThreadId),
+    () => (params.chatThreadId === 'new' ? uuidv7() : params.chatThreadId!),
     [params.chatThreadId],
   )
 
@@ -39,7 +39,7 @@ export default function ChatDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
-  const { data: messages } = useQuery<ThunderboltUIMessage[], Error>({
+  const { data: messages = [] } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', chatThreadId],
     queryFn: async () => {
       const chatMessages = await getChatMessages(chatThreadId!)
@@ -91,15 +91,16 @@ export default function ChatDetailPage() {
     [addMessagesMutation.mutateAsync],
   )
 
-  return chatThreadId ? (
-    <>
-      <div className="h-full w-full">
-        {!!messages && (
-          <Chat key={chatThreadId} id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />
-        )}
-      </div>
-    </>
-  ) : (
-    <div>No chat thread ID</div>
+  useEffect(() => {
+    console.log('DEBUG: ChatDetailPage -> mounting')
+    return () => {
+      console.log('DEBUG: ChatDetailPage -> unmounting')
+    }
+  }, [])
+
+  return (
+    <div className="h-full w-full">
+      <Chat id={chatThreadId} initialMessages={messages} saveMessages={saveMessages} />
+    </div>
   )
 }

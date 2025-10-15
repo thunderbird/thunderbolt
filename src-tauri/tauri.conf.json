@@ -48,6 +48,9 @@
         "Metal.framework"
       ],
       "developmentTeam": "BUMSKVQ3D9"
+    },
+    "android": {
+      "versionCode": 1000
     }
   }
 }

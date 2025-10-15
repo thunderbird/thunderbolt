@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c3c03e5e-91d1-4ed5-8bf7-f770f0b938b7",
-  "prevId": "c0432a27-3a4d-450f-8d8b-258aa99e6b29",
+  "id": "22d135dd-9776-4eda-84d9-251264d439bc",
+  "prevId": "c3c03e5e-91d1-4ed5-8bf7-f770f0b938b7",
   "tables": {
     "chat_messages": {
       "name": "chat_messages",
@@ -341,6 +341,20 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -384,6 +398,20 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -433,6 +461,13 @@
           "notNull": false,
           "autoincrement": false,
           "default": "(unixepoch())"
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -473,6 +508,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {

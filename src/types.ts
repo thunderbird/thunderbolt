@@ -14,12 +14,14 @@ import type {
   tasksTable,
   triggersTable,
 } from './db/tables'
+import { type PostHog } from 'posthog-js'
 
 export type InitData = {
   tray: TrayIcon | undefined
   window: Window | undefined
   sideviewType: SideviewType | null
   sideviewId: string | null
+  posthogClient: PostHog | null
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>

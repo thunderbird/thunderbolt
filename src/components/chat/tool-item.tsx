@@ -66,6 +66,8 @@ const DefaultTool = ({ onClick, status, tool }: ToolProps) => {
 const SearchTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
   const metadata = useToolMetadata(tool.type)
 
+  const output = tool.output as SearchResponseData
+
   if (status === 'pending') {
     return <ToolLoader label={metadata?.loadingMessage ?? ''} toolId={tool.toolCallId} />
   }
@@ -80,7 +82,7 @@ const SearchTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
         onClick={onClick}
       >
         <ChainOfThoughtSearchResults className="flex-wrap">
-          {(tool.output as SearchResponseData)?.map((data, urlIndex) => {
+          {output?.map((data, urlIndex) => {
             const hostname = new URL(data.url).hostname
             const favicon = cloudUrl ? `${cloudUrl}/pro/proxy/https://icons.duckduckgo.com/ip3/${hostname}.ico` : null
 
@@ -90,10 +92,12 @@ const SearchTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1, transition: { delay: urlIndex * 0.1 } }}
               >
-                <ChainOfThoughtSearchResult>
-                  {!!favicon && <img alt={hostname} className="size-4" height={16} src={favicon} width={16} />}
-                  {hostname}
-                </ChainOfThoughtSearchResult>
+                <a href={data.url} target="_blank" rel="noopener noreferrer">
+                  <ChainOfThoughtSearchResult>
+                    {!!favicon && <img alt={hostname} className="size-4" height={16} src={favicon} width={16} />}
+                    {hostname}
+                  </ChainOfThoughtSearchResult>
+                </a>
               </motion.div>
             )
           })}
@@ -103,8 +107,10 @@ const SearchTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
   )
 }
 
-const FetchContentTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
+const FetchContentTool = ({ cloudUrl, status, tool }: ToolProps) => {
   const metadata = useToolMetadata(tool.type)
+
+  const output = tool.output as FetchContentData
 
   if (status === 'pending') {
     return <ToolLoader label={metadata?.loadingMessage ?? ''} toolId={tool.toolCallId} />
@@ -112,30 +118,29 @@ const FetchContentTool = ({ cloudUrl, onClick, status, tool }: ToolProps) => {
 
   return (
     <motion.div key={`${tool.toolCallId}_complete`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <ChainOfThoughtStep
-        className="cursor-pointer"
-        icon={metadata?.icon || undefined}
-        label={(tool.output as FetchContentData)?.title ?? ''}
-        status={status}
-        onClick={onClick}
-      >
-        <motion.div key={`${tool.toolCallId}_content`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          {(tool.output as FetchContentData)?.image && cloudUrl && (
-            <ChainOfThoughtImage>
-              <img
-                alt={(tool.output as FetchContentData)?.title ?? ''}
-                src={`${cloudUrl}/pro/proxy/${(tool.output as FetchContentData)?.image}`}
-                className="h-40 w-full object-cover rounded-lg"
-              />
-            </ChainOfThoughtImage>
-          )}
-          {(tool.output as FetchContentData)?.text && (
-            <p className="line-clamp-2 mt-2 text-muted-foreground text-xs">
-              {markdownToText((tool.output as FetchContentData)?.text ?? '')}
-            </p>
-          )}
-        </motion.div>
-      </ChainOfThoughtStep>
+      <a href={output?.url} target="_blank" rel="noopener noreferrer">
+        <ChainOfThoughtStep
+          className="cursor-pointer"
+          icon={metadata?.icon || undefined}
+          label={output?.title ?? ''}
+          status={status}
+        >
+          <motion.div key={`${tool.toolCallId}_content`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            {output?.image && cloudUrl && (
+              <ChainOfThoughtImage>
+                <img
+                  alt={output?.title ?? ''}
+                  src={`${cloudUrl}/pro/proxy/${output?.image}`}
+                  className="h-40 w-full object-cover rounded-lg"
+                />
+              </ChainOfThoughtImage>
+            )}
+            {output?.text && (
+              <p className="line-clamp-2 mt-2 text-muted-foreground text-xs">{markdownToText(output?.text ?? '')}</p>
+            )}
+          </motion.div>
+        </ChainOfThoughtStep>
+      </a>
     </motion.div>
   )
 }

@@ -1,6 +1,6 @@
 import type { settingsTable } from '@/db/tables'
+import { hashValues } from '@/lib/utils'
 import type { InferSelectModel } from 'drizzle-orm'
-import { hashValues } from '../utils'
 
 export type Setting = InferSelectModel<typeof settingsTable>
 

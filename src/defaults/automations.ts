@@ -1,5 +1,5 @@
+import { hashValues } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { hashValues } from '../utils'
 import { defaultModelQwen3Flower } from './models'
 
 /**

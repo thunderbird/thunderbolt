@@ -3,9 +3,9 @@ import { eq } from 'drizzle-orm'
 import { migrate } from '../db/migrate'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, settingsTable } from '../db/tables'
-import { defaultAutomations, hashPrompt } from './defaults/automations'
-import { defaultModels, hashModel } from './defaults/models'
-import { defaultSettings, hashSetting } from './defaults/settings'
+import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { defaultModels, hashModel } from '../defaults/models'
+import { defaultSettings, hashSetting } from '../defaults/settings'
 import { seedDefaults, seedModels, seedPrompts, seedSettings } from './seed'
 
 beforeAll(async () => {

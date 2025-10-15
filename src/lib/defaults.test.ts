@@ -1,8 +1,8 @@
 import type { Model } from '@/types'
 import { describe, expect, test } from 'bun:test'
-import { defaultAutomations, hashPrompt } from './defaults/automations'
-import { defaultModels, hashModel } from './defaults/models'
-import { defaultSettings, hashSetting } from './defaults/settings'
+import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { defaultModels, hashModel } from '../defaults/models'
+import { defaultSettings, hashSetting } from '../defaults/settings'
 
 describe('defaults', () => {
   test('defaultModels has expected structure', () => {

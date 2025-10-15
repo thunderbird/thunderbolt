@@ -4,10 +4,10 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
-import { defaultAutomations, hashPrompt } from './defaults/automations'
-import { defaultModels, hashModel } from './defaults/models'
-import { defaultSettings, hashSetting } from './defaults/settings'
-import { defaultTasks, hashTask } from './defaults/tasks'
+import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { defaultModels, hashModel } from '../defaults/models'
+import { defaultSettings, hashSetting } from '../defaults/settings'
+import { defaultTasks, hashTask } from '../defaults/tasks'
 
 /**
  * Generic function to seed defaults into a table

@@ -1,5 +1,5 @@
+import { hashValues } from '@/lib/utils'
 import type { Task } from '@/types'
-import { hashValues } from '../utils'
 
 /**
  * Compute hash of user-editable fields for a task

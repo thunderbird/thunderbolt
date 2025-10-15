@@ -62,7 +62,7 @@ export default function AutomationFormModal({
   })
 
   const { isTriggersEnabled } = useSettings({
-    is_triggers_enabled: Boolean,
+    is_triggers_enabled: false,
   })
 
   const [promptText, setPromptText] = useState('')

@@ -66,7 +66,7 @@ export default function ChatSidebar() {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
-    experimental_feature_tasks: Boolean,
+    experimental_feature_tasks: false,
   })
 
   useEffect(() => {

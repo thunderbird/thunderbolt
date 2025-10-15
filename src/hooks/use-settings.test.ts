@@ -79,23 +79,5 @@ describe('useSettings type safety', () => {
       const val: string | null = mockStringHook.value
       expect(val).toBe(null)
     })
-
-    it('BooleanSettingHook value cannot be assigned null (compile-time check)', () => {
-      // This is a compile-time check - if uncommented, it should fail TypeScript
-      // const mockBooleanHook: BooleanSettingHook = {
-      //   data: null,
-      //   rawSetting: null,
-      //   value: null, // ← This should cause a TypeScript error
-      //   isModified: false,
-      //   setValue: async () => {},
-      //   reset: async () => {},
-      //   isLoading: false,
-      //   isSaving: false,
-      //   query: {} as any,
-      // }
-
-      // This test passes because the commented code above would fail to compile
-      expect(true).toBe(true)
-    })
   })
 })

@@ -50,7 +50,7 @@ export default function AutomationsPage() {
   })
 
   const { isTriggersEnabled } = useSettings({
-    is_triggers_enabled: Boolean,
+    is_triggers_enabled: false,
   })
 
   const deletePromptMutation = useMutation({

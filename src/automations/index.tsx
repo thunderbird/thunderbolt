@@ -173,7 +173,7 @@ export default function AutomationsPage() {
                   <PromptCard
                     key={prompt.id}
                     prompt={prompt}
-                    triggersEnabled={isTriggersEnabled.value as boolean}
+                    triggersEnabled={isTriggersEnabled.value}
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}

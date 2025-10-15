@@ -151,15 +151,15 @@ export default function PreferencesSettingsPage() {
   // Update forms when data is loaded
   useEffect(() => {
     nameForm.reset({
-      preferredName: (preferredName.value as string) ?? '',
+      preferredName: preferredName.value ?? '',
     })
   }, [preferredName.value, nameForm])
 
   useEffect(() => {
     locationForm.reset({
-      locationName: (locationName.value as string) ?? '',
-      locationLat: (locationLat.value as string) ?? '',
-      locationLng: (locationLng.value as string) ?? '',
+      locationName: locationName.value ?? '',
+      locationLat: locationLat.value ?? '',
+      locationLng: locationLng.value ?? '',
     })
   }, [locationName.value, locationLat.value, locationLng.value, locationForm])
 
@@ -236,7 +236,7 @@ export default function PreferencesSettingsPage() {
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
-    if (!value && (experimentalFeatureTasks.value as boolean)) {
+    if (!value && experimentalFeatureTasks.value) {
       telemetryWarningModalRef.current?.open()
       return
     }
@@ -256,7 +256,7 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleExperimentalFeaturesToggle = async (value: boolean) => {
-    if (value && !(dataCollection.value as boolean)) {
+    if (value && !dataCollection.value) {
       telemetryRequiredModalRef.current?.open('experimentalFeatureTasks')
       return
     }
@@ -482,10 +482,7 @@ export default function PreferencesSettingsPage() {
               Tasks
             </ModificationIndicator>
           </div>
-          <Switch
-            checked={experimentalFeatureTasks.value as boolean}
-            onCheckedChange={handleExperimentalFeaturesToggle}
-          />
+          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
         </div>
       </SectionCard>
 
@@ -517,7 +514,7 @@ export default function PreferencesSettingsPage() {
               .
             </p>
           </div>
-          <Switch checked={(dataCollection.value as boolean) || false} onCheckedChange={handleDataCollectionToggle} />
+          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
         </div>
       </SectionCard>
 

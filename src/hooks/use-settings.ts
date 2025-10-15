@@ -1,26 +1,26 @@
 import { getRawSettings, resetSettingToDefault, updateSetting } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
+import { deserializeValue } from '@/lib/setting-types'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 /**
- * Interface for a single setting within the useSettings result
- * Supports both string and boolean values based on the schema
+ * Generic setting hook interface
  */
-export type SettingHook = {
+type SettingHook<T> = {
   /** The raw setting object with metadata */
   data: Setting | null
   /** The raw setting object with metadata (alias for consistency) */
   rawSetting: Setting | null
-  /** The setting's value (string, null, or boolean) */
-  value: string | null | boolean
+  /** The setting's value */
+  value: T
   /** Whether the setting has been modified from its default */
   isModified: boolean
   /** Update the setting's value */
-  setValue: (value: string | null | boolean) => Promise<void>
+  setValue: (value: T) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
   /** Whether the query is loading */
@@ -30,6 +30,16 @@ export type SettingHook = {
   /** The underlying query object for advanced use */
   query: ReturnType<typeof useQuery<Setting[]>>
 }
+
+/**
+ * String setting hook - for String type settings
+ */
+export type StringSettingHook = SettingHook<string | null>
+
+/**
+ * Boolean setting hook - for Boolean type settings
+ */
+export type BooleanSettingHook = SettingHook<boolean>
 
 /**
  * Helper type to convert snake_case to camelCase
@@ -44,7 +54,11 @@ type SettingSchema = Record<string, StringConstructor | BooleanConstructor>
 /**
  * Extract the hook type based on the constructor type
  */
-type HookForType<T> = T extends BooleanConstructor ? SettingHook : T extends StringConstructor ? SettingHook : never
+type HookForType<T> = T extends BooleanConstructor
+  ? BooleanSettingHook
+  : T extends StringConstructor
+    ? StringSettingHook
+    : never
 
 /**
  * Result type for useSettings with schema - returns an object with typed settings
@@ -62,10 +76,10 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
  */
 export type UseSettingsResult<T extends readonly string[], CamelCase extends boolean = true> = CamelCase extends true
   ? {
-      [K in T[number] as K extends string ? CamelCaseKey<K> : K]: SettingHook
+      [K in T[number] as K extends string ? CamelCaseKey<K> : K]: StringSettingHook
     }
   : {
-      [K in T[number]]: SettingHook
+      [K in T[number]]: StringSettingHook
     }
 
 /**
@@ -155,7 +169,7 @@ export function useSettings<T extends readonly string[] | SettingSchema>(
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ key, value }: { key: string; value: string | null | boolean }) => updateSetting(key, value),
+    mutationFn: ({ key, value }: { key: string; value: any }) => updateSetting(key, value),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
     },
@@ -191,20 +205,19 @@ export function useSettings<T extends readonly string[] | SettingSchema>(
 
   // Transform into a clean destructurable object
   return useMemo(() => {
-    const result = {} as Record<string, SettingHook>
+    const result = {} as Record<string, StringSettingHook | BooleanSettingHook>
 
     for (const key of keys) {
       const setting = byKey[key]
       const resultKey = camelCase ? camelCased(key) : key
-      const isBoolean = schema ? schema[key] === Boolean : false
-      const value = isBoolean ? setting?.value === 'true' : (setting?.value ?? null)
+      const value = deserializeValue(setting?.value)
 
       result[resultKey] = {
         data: setting ?? null,
         rawSetting: setting ?? null,
         value,
         isModified: isSettingModified(setting),
-        setValue: async (value: string | null | boolean) => {
+        setValue: async (value: any) => {
           await updateMutation.mutateAsync({ key, value })
         },
         reset: async () => {

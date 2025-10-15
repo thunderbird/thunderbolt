@@ -10,6 +10,7 @@ import {
   tasksTable,
 } from '../db/tables'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import { serializeValue } from './setting-types'
 import { convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================
@@ -197,11 +198,12 @@ export const createSetting = async (key: string, value: string | null): Promise<
 
 /**
  * Update or create a setting in the settings table
- * Accepts string, null, or boolean values. Booleans are stored as 'true'/'false' strings.
+ * @param key - The setting key
+ * @param value - The value (can be string, null, boolean, number, or JSON-serializable object)
  */
-export const updateSetting = async (key: string, value: string | null | boolean): Promise<void> => {
+export const updateSetting = async (key: string, value: any): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : value
+  const stringValue = serializeValue(value)
   await db
     .insert(settingsTable)
     .values({ key, value: stringValue })

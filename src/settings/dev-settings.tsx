@@ -39,7 +39,7 @@ export default function DevSettingsPage() {
             </ModificationIndicator>
             <Input
               type="url"
-              value={(cloudUrl.value as string) || ''}
+              value={cloudUrl.value || ''}
               onChange={(e) => cloudUrl.setValue(e.target.value || null)}
               placeholder="http://localhost:8000"
             />
@@ -65,7 +65,7 @@ export default function DevSettingsPage() {
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={isNativeFetchEnabled.value as boolean}
+                    checked={isNativeFetchEnabled.value}
                     onCheckedChange={isNativeFetchEnabled.setValue}
                     disabled={!capabilities?.native_fetch}
                   />
@@ -95,10 +95,7 @@ export default function DevSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
-            <Switch
-              checked={disableFlowerEncryption.value as boolean}
-              onCheckedChange={disableFlowerEncryption.setValue}
-            />
+            <Switch checked={disableFlowerEncryption.value} onCheckedChange={disableFlowerEncryption.setValue} />
           </div>
 
           {/* Divider between settings */}
@@ -116,7 +113,7 @@ export default function DevSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
-            <Switch checked={debugPosthog.value as boolean} onCheckedChange={debugPosthog.setValue} />
+            <Switch checked={debugPosthog.value} onCheckedChange={debugPosthog.setValue} />
           </div>
         </div>
       </SectionCard>

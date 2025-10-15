@@ -380,16 +380,18 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
               </Tooltip>
             </TooltipProvider>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </ButtonGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Delete Automation</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {!prompt.defaultHash && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </ButtonGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete Automation</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </ButtonGroup>
         </div>
       </CardContent>

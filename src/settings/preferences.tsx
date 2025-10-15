@@ -110,7 +110,6 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  // Fetch all settings in a single efficient query with automatic camelCase conversion
   const { preferredName, locationName, locationLat, locationLng } = useSettings([
     'preferred_name',
     'location_name',

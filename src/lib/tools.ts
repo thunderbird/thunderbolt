@@ -23,15 +23,14 @@ export const getAvailableTools = async (): Promise<ToolConfig[]> => {
   })
 
   const shouldIncludeProTools =
-    proEnabled &&
-    (settings.integrations_pro_is_enabled === null ? true : settings.integrations_pro_is_enabled === 'true')
+    proEnabled && (settings.integrationsProIsEnabled === null ? true : settings.integrationsProIsEnabled === 'true')
 
   if (shouldIncludeProTools) {
     baseTools.push(...proConfigs)
   }
 
-  const googleEnabled = settings.integrations_google_is_enabled
-  const microsoftEnabled = settings.integrations_microsoft_is_enabled
+  const googleEnabled = settings.integrationsGoogleIsEnabled
+  const microsoftEnabled = settings.integrationsMicrosoftIsEnabled
 
   if (googleEnabled === 'true') {
     baseTools.push(...googleConfigs)

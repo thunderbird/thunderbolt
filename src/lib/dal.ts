@@ -13,7 +13,7 @@ import {
 } from '../db/tables'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { serializeValue } from './serialization'
-import { convertUIMessageToDbChatMessage } from './utils'
+import { camelCased, convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================
 // MODELS
@@ -77,7 +77,7 @@ export const getSystemModel = async () => {
  */
 export const getSelectedModel = async (): Promise<Model> => {
   const settings = await getSettings({ selected_model: String })
-  const selectedModelId = settings.selected_model
+  const selectedModelId = settings.selectedModel
 
   if (selectedModelId) {
     const model = await getModel(selectedModelId)
@@ -176,44 +176,95 @@ export const getSettingsRecords = async <T extends SettingSchema>(schema: T): Pr
 }
 
 /**
+ * Helper type to convert snake_case to camelCase
+ */
+type CamelCaseKey<S extends string> = S extends `${infer P1}_${infer P2}` ? `${P1}${Capitalize<CamelCaseKey<P2>>}` : S
+
+/**
+ * Result type that conditionally applies camelCase transformation
+ */
+type GetSettingsResult<T extends SettingSchema, CamelCase extends boolean> = CamelCase extends true
+  ? {
+      [K in keyof T as K extends string ? CamelCaseKey<K> : K]: T[K] extends StringConstructor
+        ? string | null
+        : T[K] extends BooleanConstructor
+          ? boolean
+          : T[K] extends NumberConstructor
+            ? number | null
+            : T[K] extends true | false
+              ? boolean
+              : T[K] extends boolean
+                ? boolean
+                : T[K] extends number
+                  ? number
+                  : T[K] extends string
+                    ? string
+                    : T[K] extends null
+                      ? null
+                      : never
+    }
+  : {
+      [K in keyof T]: T[K] extends StringConstructor
+        ? string | null
+        : T[K] extends BooleanConstructor
+          ? boolean
+          : T[K] extends NumberConstructor
+            ? number | null
+            : T[K] extends true | false
+              ? boolean
+              : T[K] extends boolean
+                ? boolean
+                : T[K] extends number
+                  ? number
+                  : T[K] extends string
+                    ? string
+                    : T[K] extends null
+                      ? null
+                      : never
+    }
+
+/**
  * Gets settings values for a schema object
  * Returns only the values (not the full Setting records)
  * Values are properly typed based on the schema
  *
  * @param schema - Object mapping setting keys to either type constructors or default values
+ * @param options - Optional configuration
+ * @param options.camelCase - If true (default), converts snake_case keys to camelCase in the result
  * @returns Object with key-value pairs for the requested settings
  *
  * @example
  * ```ts
+ * // With camelCase (default)
  * const settings = await getSettings({
- *   cloud_url: String,           // Returns string | null
- *   max_retries: 3,               // Returns number (defaults to 3)
- *   is_enabled: true,             // Returns boolean (defaults to true)
+ *   cloud_url: String,           // Returns as cloudUrl: string | null
+ *   max_retries: 3,               // Returns as maxRetries: number (defaults to 3)
+ *   is_enabled: true,             // Returns as isEnabled: boolean (defaults to true)
  * })
- * // settings = { cloud_url: string | null, max_retries: number, is_enabled: boolean }
+ * // settings = { cloudUrl: string | null, maxRetries: number, isEnabled: boolean }
+ *
+ * // Without camelCase
+ * const settings = await getSettings({
+ *   cloud_url: String,
+ *   max_retries: 3,
+ * }, { camelCase: false })
+ * // settings = { cloud_url: string | null, max_retries: number }
  * ```
  */
-export const getSettings = async <T extends SettingSchema>(
+export function getSettings<T extends SettingSchema>(schema: T): Promise<GetSettingsResult<T, true>>
+export function getSettings<T extends SettingSchema>(
   schema: T,
-): Promise<{
-  [K in keyof T]: T[K] extends StringConstructor
-    ? string | null
-    : T[K] extends BooleanConstructor
-      ? boolean
-      : T[K] extends NumberConstructor
-        ? number | null
-        : T[K] extends true | false
-          ? boolean
-          : T[K] extends boolean
-            ? boolean
-            : T[K] extends number
-              ? number
-              : T[K] extends string
-                ? string
-                : T[K] extends null
-                  ? null
-                  : never
-}> => {
+  options: { camelCase: true },
+): Promise<GetSettingsResult<T, true>>
+export function getSettings<T extends SettingSchema>(
+  schema: T,
+  options: { camelCase: false },
+): Promise<GetSettingsResult<T, false>>
+export async function getSettings<T extends SettingSchema>(
+  schema: T,
+  options: { camelCase?: boolean } = {},
+): Promise<GetSettingsResult<T, boolean>> {
+  const { camelCase = true } = options
   const keys = Object.keys(schema)
   const db = DatabaseSingleton.instance.db
 
@@ -257,10 +308,14 @@ export const getSettings = async <T extends SettingSchema>(
         : null
 
     // Apply default if value is null/undefined
-    result[key] = (deserializedValue ?? defaultValue) as string | number | boolean | null
+    const value = (deserializedValue ?? defaultValue) as string | number | boolean | null
+
+    // Store with camelCase key if requested
+    const resultKey = camelCase ? camelCased(key) : key
+    result[resultKey] = value
   }
 
-  return result as any
+  return result as GetSettingsResult<T, typeof camelCase>
 }
 
 /**

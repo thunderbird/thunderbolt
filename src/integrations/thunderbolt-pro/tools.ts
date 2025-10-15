@@ -1,7 +1,7 @@
 import { getCloudUrl } from '@/lib/config'
 import { getSettings } from '@/lib/dal'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
-import type { ToolConfig, PreferencesSettings } from '@/types'
+import type { PreferencesSettings, ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
 
@@ -18,8 +18,8 @@ const getUserPreferences = async (): Promise<Partial<PreferencesSettings>> => {
     })
 
     return {
-      distanceUnit: settings.distance_unit,
-      temperatureUnit: settings.temperature_unit,
+      distanceUnit: settings.distanceUnit,
+      temperatureUnit: settings.temperatureUnit,
     }
   } catch (error) {
     console.warn('Could not get user preferences, using defaults:', error)

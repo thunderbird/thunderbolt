@@ -134,7 +134,7 @@ export const aiFetchStreamingResponse = async ({
 
   const db = DatabaseSingleton.instance.db
 
-  // Fetch all settings in a single query
+  // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings({
     preferred_name: '',
     location_name: '',
@@ -169,17 +169,17 @@ export const aiFetchStreamingResponse = async ({
   }
 
   const systemPrompt = createPrompt({
-    preferredName: settings.preferred_name,
+    preferredName: settings.preferredName,
     location: {
-      name: settings.location_name,
-      lat: settings.location_lat ? parseFloat(settings.location_lat) : undefined,
-      lng: settings.location_lng ? parseFloat(settings.location_lng) : undefined,
+      name: settings.locationName,
+      lat: settings.locationLat ? parseFloat(settings.locationLat) : undefined,
+      lng: settings.locationLng ? parseFloat(settings.locationLng) : undefined,
     },
     localization: {
-      distanceUnit: settings.distance_unit,
-      temperatureUnit: settings.temperature_unit,
-      dateFormat: settings.date_format,
-      timeFormat: settings.time_format,
+      distanceUnit: settings.distanceUnit,
+      temperatureUnit: settings.temperatureUnit,
+      dateFormat: settings.dateFormat,
+      timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
   })

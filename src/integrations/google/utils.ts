@@ -128,7 +128,7 @@ export const getGoogleCredentials = async (): Promise<{
   expires_at?: number
 }> => {
   const settings = await getSettings({ integrations_google_credentials: String })
-  const credentialsStr = settings.integrations_google_credentials
+  const credentialsStr = settings.integrationsGoogleCredentials
   if (!credentialsStr) throw new Error('Google integration not connected')
 
   try {

@@ -55,7 +55,7 @@ export type GraphListMessagesResponse = {
 
 const getMicrosoftCredentials = async () => {
   const settings = await getSettings({ integrations_microsoft_credentials: String })
-  const credentialsStr = settings.integrations_microsoft_credentials
+  const credentialsStr = settings.integrationsMicrosoftCredentials
   if (!credentialsStr) throw new Error('Microsoft integration not connected')
 
   try {

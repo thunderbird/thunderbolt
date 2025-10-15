@@ -169,7 +169,7 @@ export default function IntegrationsPage() {
   const loadIntegrations = async () => {
     setLoading(true)
     try {
-      // Fetch all integration settings in a single query
+      // Fetch all integration settings in a single query (returns camelCase by default)
       const settings = await getSettings({
         integrations_pro_is_enabled: String,
         integrations_google_is_enabled: String,
@@ -180,11 +180,11 @@ export default function IntegrationsPage() {
 
       // Thunderbolt Pro integration ----------------------------------------
       const proStatus = await getProStatus()
-      const proIsEnabled = settings.integrations_pro_is_enabled
+      const proIsEnabled = settings.integrationsProIsEnabled
 
       // Google integration --------------------------------------------------
-      const gIsEnabled = settings.integrations_google_is_enabled
-      const gCredentials = settings.integrations_google_credentials
+      const gIsEnabled = settings.integrationsGoogleIsEnabled
+      const gCredentials = settings.integrationsGoogleCredentials
 
       let gParsedCredentials: any = null
       let gUserEmail: string | undefined = undefined
@@ -199,8 +199,8 @@ export default function IntegrationsPage() {
       }
 
       // Microsoft integration ---------------------------------------------
-      const mIsEnabled = settings.integrations_microsoft_is_enabled
-      const mCredentials = settings.integrations_microsoft_credentials
+      const mIsEnabled = settings.integrationsMicrosoftIsEnabled
+      const mCredentials = settings.integrationsMicrosoftCredentials
 
       let mParsedCredentials: any = null
       let mUserEmail: string | undefined = undefined

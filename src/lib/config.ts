@@ -13,5 +13,5 @@ export const getDefaultCloudUrl = (): string => {
  */
 export const getCloudUrl = async (): Promise<string> => {
   const settings = await getSettings({ cloud_url: getDefaultCloudUrl() })
-  return settings.cloud_url
+  return settings.cloudUrl
 }

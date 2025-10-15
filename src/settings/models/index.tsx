@@ -279,7 +279,8 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
-      await db.delete(modelsTable).where(eq(modelsTable.id, id))
+      // Use soft delete - set deletedAt timestamp instead of hard delete
+      await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, id))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })

@@ -54,8 +54,8 @@ export default function AutomationsPage() {
     mutationFn: async (promptId: string) => {
       // Delete triggers first (due to foreign key)
       await db.delete(triggersTable).where(eq(triggersTable.promptId, promptId))
-      // Then delete the prompt
-      await db.delete(promptsTable).where(eq(promptsTable.id, promptId))
+      // Use soft delete - set deletedAt timestamp instead of hard delete
+      await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, promptId))
     },
     onSuccess: () => {
       trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import {
   chatMessagesTable,
@@ -25,36 +25,47 @@ const mapModel = (model: Model) => {
 }
 
 /**
- * Gets all models from the database
+ * Gets all models from the database (excluding soft-deleted)
  */
 export const getAllModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
-  const results = await db.select().from(modelsTable)
+  const results = await db.select().from(modelsTable).where(isNull(modelsTable.deletedAt))
 
   return results.map(mapModel)
 }
 
 /**
- * Gets all available (enabled) models from the database
+ * Gets all available (enabled) models from the database (excluding soft-deleted)
  */
 export const getAvailableModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
-  const results = await db.select().from(modelsTable).where(eq(modelsTable.enabled, 1))
+  const results = await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
   return results.map(mapModel)
 }
 
 /**
- * Gets a specific model by ID
+ * Gets a specific model by ID (excluding soft-deleted)
  */
 export const getModel = async (id: string): Promise<Model | null> => {
   const db = DatabaseSingleton.instance.db
-  const model = await db.select().from(modelsTable).where(eq(modelsTable.id, id)).get()
+  const model = await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+    .get()
   return model ? mapModel(model) : null
 }
 
 export const getSystemModel = async () => {
   const db = DatabaseSingleton.instance.db
-  const systemModel = await db.select().from(modelsTable).where(eq(modelsTable.isSystem, 1)).get()
+  const systemModel = await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
+    .get()
   return systemModel ? mapModel(systemModel) : null
 }
 
@@ -374,12 +385,12 @@ export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => 
     return db
       .select()
       .from(promptsTable)
-      .where(like(promptsTable.prompt, `%${searchQuery}%`))
+      .where(and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt)))
       .orderBy(asc(promptsTable.id))
       .limit(50)
   }
 
-  return db.select().from(promptsTable).orderBy(asc(promptsTable.id)).limit(50)
+  return db.select().from(promptsTable).where(isNull(promptsTable.deletedAt)).orderBy(asc(promptsTable.id)).limit(50)
 }
 
 /**

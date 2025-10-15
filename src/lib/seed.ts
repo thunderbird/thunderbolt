@@ -47,7 +47,7 @@ const seedDefaults = async <T extends { defaultHash: string | null }>(
           })
           .where(eq(table[keyField], keyValue))
       }
-      // If hashes don't match, user has modified - skip update
+      // If hashes don't match, user has modified (including soft-delete) - skip update
     }
   }
 }

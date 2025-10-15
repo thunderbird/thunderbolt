@@ -2,7 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
 import { convertUIMessageToDbChatMessage } from '@/lib/utils'
 import type { UIMessage } from 'ai'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 
 type Navigate = (url: string) => void
@@ -14,10 +14,18 @@ type Navigate = (url: string) => void
 export const runAutomation = async (promptId: string, navigate?: Navigate) => {
   const db = DatabaseSingleton.instance.db
 
-  const prompt = await db.select().from(promptsTable).where(eq(promptsTable.id, promptId)).get()
+  const prompt = await db
+    .select()
+    .from(promptsTable)
+    .where(and(eq(promptsTable.id, promptId), isNull(promptsTable.deletedAt)))
+    .get()
   if (!prompt) throw new Error('Prompt not found')
 
-  const model = await db.select().from(modelsTable).where(eq(modelsTable.id, prompt.modelId)).get()
+  const model = await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, prompt.modelId), isNull(modelsTable.deletedAt)))
+    .get()
   if (!model) throw new Error('Model not found')
 
   const threadId = uuidv7()

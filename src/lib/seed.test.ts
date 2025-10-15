@@ -102,9 +102,33 @@ describe('seedModels', () => {
     const model1 = models.find((m) => m.id === defaultModels[1].id)
     expect(model1?.name).toBe(defaultModels[1].name)
 
-    // Model 2 should be un-deleted and reset
+    // Model 2 should stay deleted - user deletions are respected
     const model2 = models.find((m) => m.id === defaultModels[2]?.id)
-    expect(model2?.deletedAt).toBeNull()
+    expect(model2?.deletedAt).not.toBeNull()
+  })
+
+  test('soft-deleted models do not appear in getAllModels', async () => {
+    const db = DatabaseSingleton.instance.db
+    await seedModels()
+
+    // Get all models before deletion
+    const { getAllModels } = await import('./dal')
+    const modelsBefore = await getAllModels()
+    expect(modelsBefore.length).toBe(defaultModels.length)
+
+    // Soft delete a model
+    await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, defaultModels[0].id))
+
+    // Get all models after deletion - should not include soft-deleted model
+    const modelsAfter = await getAllModels()
+    expect(modelsAfter.length).toBe(defaultModels.length - 1)
+    expect(modelsAfter.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
+
+    // Re-seed should not restore the deleted model
+    await seedModels()
+    const modelsAfterReseed = await getAllModels()
+    expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
+    expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
   })
 })
 

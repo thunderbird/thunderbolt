@@ -3,6 +3,7 @@ import { hashValues } from '../utils'
 
 /**
  * Compute hash of user-editable fields for a model
+ * Includes deletedAt to treat soft-delete as a user configuration choice
  */
 export const hashModel = (model: Model): string => {
   return hashValues([
@@ -17,6 +18,7 @@ export const hashModel = (model: Model): string => {
     model.isConfidential,
     model.startWithReasoning,
     model.contextWindow,
+    model.deletedAt,
   ])
 }
 

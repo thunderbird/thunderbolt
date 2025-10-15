@@ -4,9 +4,10 @@ import { defaultModelQwen3Flower } from './models'
 
 /**
  * Compute hash of user-editable fields for a prompt
+ * Includes deletedAt to treat soft-delete as a user configuration choice
  */
 export const hashPrompt = (prompt: Prompt): string => {
-  return hashValues([prompt.title, prompt.prompt, prompt.modelId])
+  return hashValues([prompt.title, prompt.prompt, prompt.modelId, prompt.deletedAt])
 }
 
 /**

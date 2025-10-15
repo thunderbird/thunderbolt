@@ -45,23 +45,8 @@ export const migrations: Migration[] = [
     sql: 'PRAGMA foreign_keys=OFF;--> statement-breakpoint\nDROP TABLE `accounts`;--> statement-breakpoint\nDROP TABLE `contacts`;--> statement-breakpoint\nDROP TABLE `email_addresses`;--> statement-breakpoint\nDROP TABLE `email_messages`;--> statement-breakpoint\nDROP TABLE `email_messages_to_addresses`;--> statement-breakpoint\nDROP TABLE `email_threads`;--> statement-breakpoint\nDROP TABLE `embeddings`;--> statement-breakpoint\nCREATE TABLE `__new_tasks` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`item` text NOT NULL,\n\t`order` integer DEFAULT 0 NOT NULL,\n\t`is_complete` integer DEFAULT 0 NOT NULL\n);\n--> statement-breakpoint\nINSERT INTO `__new_tasks`("id", "item", "order", "is_complete") SELECT "id", "item", "order", "is_complete" FROM `tasks`;--> statement-breakpoint\nDROP TABLE `tasks`;--> statement-breakpoint\nALTER TABLE `__new_tasks` RENAME TO `tasks`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE UNIQUE INDEX `tasks_id_unique` ON `tasks` (`id`);',
   },
   {
-    hash: '0007_salty_spyke',
-    name: '0007_salty_spyke.sql',
-    sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;',
-  },
-  {
-    hash: '0009_burly_union_jack',
-    name: '0009_burly_union_jack.sql',
-    sql: 'ALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;',
-  },
-  {
-    hash: '0010_petite_blade',
-    name: '0010_petite_blade.sql',
-    sql: 'ALTER TABLE `settings` ADD `default_hash` text;',
-  },
-  {
-    hash: '0011_useful_sinister_six',
-    name: '0011_useful_sinister_six.sql',
-    sql: 'ALTER TABLE `tasks` ADD `default_hash` text;',
+    hash: '0007_cute_epoch',
+    name: '0007_cute_epoch.sql',
+    sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `settings` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `tasks` ADD `default_hash` text;',
   },
 ]

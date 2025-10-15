@@ -1,1 +1,0 @@
-ALTER TABLE `tasks` ADD `default_hash` text;

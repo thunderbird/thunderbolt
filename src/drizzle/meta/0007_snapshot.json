@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "65043476-3110-4909-8c79-cc9f7a9b2c50",
+  "id": "7b07e209-02ce-48be-9514-e54adb6d1042",
   "prevId": "c0432a27-3a4d-450f-8d8b-258aa99e6b29",
   "tables": {
     "chat_messages": {
@@ -332,6 +332,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -383,6 +390,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -431,6 +445,13 @@
           "notNull": false,
           "autoincrement": false,
           "default": "(unixepoch())"
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -471,6 +492,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "default_hash": {
+          "name": "default_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {

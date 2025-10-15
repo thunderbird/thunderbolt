@@ -1,13 +1,8 @@
 import type { ToolUIPart } from 'ai'
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-} from '../ai-elements/chain-of-thought'
 import { Loader } from '../ai-elements/loader'
 import { AnimatePresence } from 'framer-motion'
 import { ToolItem } from './tool-item'
+import { Task, TaskContent, TaskTrigger } from '../ai-elements/task'
 
 type ToolGroupProps = {
   tools: ToolUIPart[]
@@ -51,21 +46,15 @@ export const ToolGroup = ({ tools, isStreaming, isLastPartInMessage, hasTextInMe
 
   return (
     <AnimatePresence>
-      <ChainOfThought defaultOpen>
-        <ChainOfThoughtHeader />
-        <ChainOfThoughtContent>
+      <Task className="w-full">
+        <TaskTrigger title="Tools" />
+        <TaskContent>
           {tools.map((tool) => (
-            <ToolItem tool={tool} />
+            <ToolItem key={tool.toolCallId} tool={tool} />
           ))}
-          {showLoadingNext && (
-            <ChainOfThoughtStep
-              // @ts-ignore
-              icon={Loader}
-              status="pending"
-            />
-          )}
-        </ChainOfThoughtContent>
-      </ChainOfThought>
+          {showLoadingNext && <Loader />}
+        </TaskContent>
+      </Task>
     </AnimatePresence>
   )
 }

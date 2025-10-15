@@ -78,6 +78,13 @@ jobs:
       - name: Export build version env
         run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
 
+      - name: Set Android versionName for build
+        run: |
+          VERSION="$BUILD_VERSION"
+          echo "🔧 Applying Android versionName $VERSION in tauri.properties"
+          mkdir -p src-tauri/gen/android/app
+          echo "tauri.android.versionName=$VERSION" >> src-tauri/gen/android/app/tauri.properties
+
       - name: Set build version locally for Android
         run: |
           VERSION="$BUILD_VERSION"

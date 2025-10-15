@@ -38,6 +38,9 @@ concurrency:
   group: android-release-${{ inputs.version }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build_and_deploy_android:
     runs-on: ubuntu-latest
@@ -80,18 +83,20 @@ jobs:
 
       # TODO: Revisit it when we have the auto increment version release to tauri CLI https://github.com/tauri-apps/tauri/pull/14194
       - name: Set Android version for build
+        uses: ./.github/actions/increment-android-version-code
+
+      - name: Commit updated Android versionCode
         run: |
-          VERSION="$BUILD_VERSION"
-          BASE=100000
-          VERSION_CODE=$(( BASE + ${GITHUB_RUN_NUMBER:-0} ))
-          echo "🔧 Applying Android versionName=$VERSION, versionCode=$VERSION_CODE"
-          mkdir -p src-tauri/gen/android/app
-          cat > src-tauri/gen/android/app/tauri.properties << EOF
-          tauri.android.versionName=$VERSION
-          tauri.android.versionCode=$VERSION_CODE
-          EOF
-          echo "== tauri.properties =="
-          cat src-tauri/gen/android/app/tauri.properties
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/tauri.conf.json
+          if git diff --cached --quiet; then
+            echo "No versionCode change to commit"
+          else
+            VC=$(node -e 'console.log(require("./src-tauri/tauri.conf.json").bundle.android.versionCode)')
+            git commit -m "ci(android): bump versionCode to ${VC}"
+            git push
+          fi
 
       - name: Set build version locally for Android
         run: |

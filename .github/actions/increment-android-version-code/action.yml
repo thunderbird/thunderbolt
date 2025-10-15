@@ -1,0 +1,25 @@
+name: 'Increment Android versionCode'
+description: 'Bump bundle.android.versionCode in src-tauri/tauri.conf.json'
+inputs:
+  step:
+    description: 'How much to increment (default 1)'
+    required: false
+    default: '1'
+runs:
+  using: 'composite'
+  steps:
+    - name: Increment versionCode in tauri.conf.json
+      shell: bash
+      run: |
+        STEP=${{ inputs.step }}
+        node -e "
+          const fs = require('fs');
+          const path = 'src-tauri/tauri.conf.json';
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          data.bundle = data.bundle || {};
+          data.bundle.android = data.bundle.android || {};
+          const current = Number(data.bundle.android.versionCode || 0);
+          data.bundle.android.versionCode = current + Number(process.env.STEP || 1);
+          fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+          console.log('✅ versionCode ->', data.bundle.android.versionCode);
+        "

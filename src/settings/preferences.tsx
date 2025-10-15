@@ -32,7 +32,7 @@ import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
-import { getPreferencesSettings, resetSettingToDefault, updateBooleanSetting } from '@/lib/dal'
+import { getPreferencesSettings, resetSettingsToDefaults, updateBooleanSetting } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
 import { resetAppDir } from '@/lib/fs'
@@ -502,8 +502,8 @@ export default function PreferencesSettingsPage() {
 
   // Reset mutation for settings
   const resetMutation = useMutation({
-    mutationFn: async ({ key, defaultSetting }: { key: string; defaultSetting: (typeof defaultSettings)[0] }) => {
-      await resetSettingToDefault(key, defaultSetting)
+    mutationFn: async (settings: Array<{ key: string; defaultSetting: (typeof defaultSettings)[0] }>) => {
+      await resetSettingsToDefaults(settings)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
@@ -511,10 +511,16 @@ export default function PreferencesSettingsPage() {
     },
   })
 
-  const handleResetSetting = (key: string) => {
-    const defaultSetting = defaultSettings.find((s) => s.key === key)
-    if (defaultSetting) {
-      resetMutation.mutate({ key, defaultSetting })
+  const handleResetSettings = (keys: string[]) => {
+    const settingsToReset = keys
+      .map((key) => {
+        const defaultSetting = defaultSettings.find((s) => s.key === key)
+        return defaultSetting ? { key, defaultSetting } : null
+      })
+      .filter((setting): setting is { key: string; defaultSetting: (typeof defaultSettings)[0] } => setting !== null)
+
+    if (settingsToReset.length > 0) {
+      resetMutation.mutate(settingsToReset)
     }
   }
 
@@ -544,7 +550,7 @@ export default function PreferencesSettingsPage() {
                     as={FormLabel}
                     className="mb-2"
                     hasModifications={isPreferredNameModified}
-                    onReset={() => handleResetSetting('preferred_name')}
+                    onReset={() => handleResetSettings(['preferred_name'])}
                   >
                     Preferred Name
                   </ModificationIndicator>
@@ -581,11 +587,7 @@ export default function PreferencesSettingsPage() {
                     as={FormLabel}
                     className="mb-2"
                     hasModifications={isLocationModified}
-                    onReset={() => {
-                      handleResetSetting('location_name')
-                      handleResetSetting('location_lat')
-                      handleResetSetting('location_lng')
-                    }}
+                    onReset={() => handleResetSettings(['location_name', 'location_lat', 'location_lng'])}
                   >
                     Location
                   </ModificationIndicator>
@@ -680,7 +682,7 @@ export default function PreferencesSettingsPage() {
                       as="label"
                       className="text-sm font-medium"
                       hasModifications={isExperimentalTasksModified}
-                      onReset={() => handleResetSetting('experimental_feature_tasks')}
+                      onReset={() => handleResetSettings(['experimental_feature_tasks'])}
                     >
                       Tasks
                     </ModificationIndicator>
@@ -714,7 +716,7 @@ export default function PreferencesSettingsPage() {
                         as="label"
                         className="text-sm font-medium"
                         hasModifications={isDataCollectionModified}
-                        onReset={() => handleResetSetting('data_collection')}
+                        onReset={() => handleResetSettings(['data_collection'])}
                       >
                         Data Collection
                       </ModificationIndicator>

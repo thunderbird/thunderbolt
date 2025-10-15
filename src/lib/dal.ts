@@ -517,6 +517,19 @@ export const resetSettingToDefault = async (key: string, defaultSetting: Setting
 }
 
 /**
+ * Reset multiple settings to their default states
+ */
+export const resetSettingsToDefaults = async (settings: Array<{ key: string; defaultSetting: Setting }>) => {
+  const db = DatabaseSingleton.instance.db
+  await Promise.all(
+    settings.map(({ key, defaultSetting }) => {
+      const { defaultHash, ...defaultFields } = defaultSetting
+      return db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
+    }),
+  )
+}
+
+/**
  * Reset a task to its default state
  */
 export const resetTaskToDefault = async (id: string, defaultTask: Task) => {

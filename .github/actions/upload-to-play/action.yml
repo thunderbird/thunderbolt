@@ -40,7 +40,7 @@ runs:
         export SERVICE_ACCOUNT_FILE="/tmp/service-account.json"
 
         # Run the script
-        node ${{ github.workspace }}/scripts/upload-to-play.js
+        node ${{ github.workspace }}/scripts/upload-to-play.cjs
 
         # Clean up
         rm -f /tmp/service-account.json

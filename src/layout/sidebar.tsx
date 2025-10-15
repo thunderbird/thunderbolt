@@ -1,3 +1,5 @@
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { NavLink } from '@/components/ui/nav-link'
@@ -15,11 +17,12 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { chatThreadsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSettings } from '@/hooks/use-settings'
+import { trackEvent } from '@/lib/analytics'
 import { getAllChatThreads } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
@@ -41,9 +44,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
-import { trackEvent } from '@/lib/analytics'
-import { useBooleanSetting } from '@/hooks/use-setting'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -65,7 +65,9 @@ export default function ChatSidebar() {
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const { experimentalFeatureTasks } = useSettings({
+    experimental_feature_tasks: false,
+  })
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -268,7 +270,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {isTasksEnabled && (
+              {experimentalFeatureTasks.value && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">

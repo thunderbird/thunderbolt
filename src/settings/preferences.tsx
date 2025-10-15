@@ -1,6 +1,6 @@
 import { useDebounce } from '@/hooks/use-debounce'
-import { cn, snakeCased } from '@/lib/utils'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSettings } from '@/hooks/use-settings'
+import { cn } from '@/lib/utils'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef } from 'react'
@@ -28,11 +28,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SectionCard } from '@/components/ui/section-card'
 
 import { Switch } from '@/components/ui/switch'
-import { trackEvent, type EventType } from '@/lib/analytics'
+import { trackEvent } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
-import { getRawSettings, resetSettingsToDefaults, updateBooleanSetting, updateSetting } from '@/lib/dal'
-import { defaultSettings } from '@/lib/defaults/settings'
-import { isSettingModified } from '@/lib/defaults/utils'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { usePostHog } from 'posthog-js/react'
@@ -98,14 +95,6 @@ const nameFormSchema = z.object({
   preferredName: z.string().optional(),
 })
 
-const privacyFormSchema = z.object({
-  dataCollection: z.boolean(),
-})
-
-const previewFeaturesFormSchema = z.object({
-  experimentalFeatureTasks: z.boolean(),
-})
-
 const locationFormSchema = z.object({
   locationName: z.string().min(1, { message: 'Location is required.' }),
   locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
@@ -113,64 +102,40 @@ const locationFormSchema = z.object({
 })
 
 export default function PreferencesSettingsPage() {
-  const queryClient = useQueryClient()
-
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting } = state
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
+  const postHog = usePostHog()
+
+  const { preferredName, locationName, locationLat, locationLng, dataCollection, experimentalFeatureTasks } =
+    useSettings({
+      preferred_name: '',
+      location_name: '',
+      location_lat: '',
+      location_lng: '',
+      data_collection: true,
+      experimental_feature_tasks: false,
+    })
+
   const handleEnableTelemetry = async (featureName?: string | null) => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-    if (featureName) {
-      await savePreviewFeaturesMutation.mutateAsync({
-        ...previewFeaturesForm.getValues(),
-        [featureName]: true,
-      })
+    await dataCollection.setValue(true)
+    if (featureName === 'experimentalFeatureTasks') {
+      await experimentalFeatureTasks.setValue(true)
     }
   }
 
   const handleDisableTelemetry = async () => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-    await disableAllPreviewFeatures()
+    await dataCollection.setValue(false)
+    await experimentalFeatureTasks.setValue(false)
   }
-
-  const postHog = usePostHog()
-
-  // Get raw settings from the database
-  const { data: rawSettings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () =>
-      getRawSettings([
-        'location_name',
-        'location_lat',
-        'location_lng',
-        'preferred_name',
-        'data_collection',
-        'experimental_feature_tasks',
-      ]),
-    initialData: {},
-  })
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
     defaultValues: {
       preferredName: '',
-    },
-  })
-
-  const privacyForm = useForm<z.infer<typeof privacyFormSchema>>({
-    resolver: zodResolver(privacyFormSchema),
-    defaultValues: {
-      dataCollection: true,
-    },
-  })
-
-  const previewFeaturesForm = useForm<z.infer<typeof previewFeaturesFormSchema>>({
-    resolver: zodResolver(previewFeaturesFormSchema),
-    defaultValues: {
-      experimentalFeatureTasks: false,
     },
   })
 
@@ -186,30 +151,17 @@ export default function PreferencesSettingsPage() {
   // Update forms when data is loaded
   useEffect(() => {
     nameForm.reset({
-      preferredName: (rawSettings.preferred_name?.value as string | undefined) ?? '',
+      preferredName: preferredName.value,
     })
+  }, [preferredName.value, nameForm])
 
-    privacyForm.reset({
-      dataCollection: rawSettings.data_collection?.value === 'true',
-    })
-
-    previewFeaturesForm.reset({
-      experimentalFeatureTasks: rawSettings.experimental_feature_tasks?.value === 'true',
-    })
-
-    locationForm.reset({
-      locationName: (rawSettings.location_name?.value as string | undefined) ?? '',
-      locationLat: (rawSettings.location_lat?.value as string | undefined) ?? '',
-      locationLng: (rawSettings.location_lng?.value as string | undefined) ?? '',
-    })
-  }, [rawSettings, nameForm, locationForm, privacyForm, previewFeaturesForm])
-
-  // Sync preview features when telemetry is disabled
   useEffect(() => {
-    if (rawSettings.data_collection?.value !== 'true') {
-      previewFeaturesForm.setValue('experimentalFeatureTasks', false)
-    }
-  }, [rawSettings.data_collection?.value, previewFeaturesForm])
+    locationForm.reset({
+      locationName: locationName.value,
+      locationLat: locationLat.value,
+      locationLng: locationLng.value,
+    })
+  }, [locationName.value, locationLat.value, locationLng.value, locationForm])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -267,130 +219,50 @@ export default function PreferencesSettingsPage() {
     searchLocations()
   }, [debouncedSearchQuery])
 
-  // Save name mutation
-  const saveNameMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof nameFormSchema>) => {
-      await updateSetting('preferred_name', values.preferredName ?? null)
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.preferredName?.trim()) {
-        if (rawSettings.preferred_name?.value) {
-          trackEvent('settings_name_update')
-        } else {
-          trackEvent('settings_name_set')
-        }
-      } else {
-        trackEvent('settings_name_clear')
-      }
-    },
-  })
-
-  // Save data collection mutation
-  const saveDataCollectionMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
-      // Upsert the setting
-      await updateBooleanSetting('data_collection', values.dataCollection)
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.dataCollection) {
-        postHog.opt_in_capturing()
-        trackEvent('settings_data_collection_enabled')
-      } else {
-        trackEvent('settings_data_collection_disabled')
-        postHog.opt_out_capturing()
-      }
-    },
-  })
-
-  // Save preview features mutation
-  const savePreviewFeaturesMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
-      // Save each feature setting
-      await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-    },
-  })
-
-  // Disable all preview features (when telemetry is turned off)
-  const disableAllPreviewFeatures = async () => {
-    await savePreviewFeaturesMutation.mutateAsync({
-      experimentalFeatureTasks: false,
-    })
-
-    trackEvent('settings_experimental_feature_tasks_disabled')
-  }
-
-  // Save location mutation
-  const saveLocationMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
-      await Promise.all([
-        updateSetting('location_name', values.locationName),
-        updateSetting('location_lat', values.locationLat.toString()),
-        updateSetting('location_lng', values.locationLng.toString()),
-      ])
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (rawSettings.location_name?.value) {
-        trackEvent('settings_location_update', {
-          location_name: values.locationName,
-        })
-      } else {
-        trackEvent('settings_location_set', {
-          location_name: values.locationName,
-        })
-      }
-    },
-  })
-
   const handleNameBlur = async (value: string) => {
-    // Save the value directly
-    await saveNameMutation.mutateAsync({ preferredName: value })
+    const wasSet = !!preferredName.value
+    await preferredName.setValue(value || null)
+
+    if (value.trim()) {
+      if (wasSet) {
+        trackEvent('settings_name_update')
+      } else {
+        trackEvent('settings_name_set')
+      }
+    } else {
+      trackEvent('settings_name_clear')
+    }
   }
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
-    if (!value) {
-      const currentValues = previewFeaturesForm.getValues()
-      const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
-      if (hasEnabledFeatures) {
-        telemetryWarningModalRef.current?.open()
-        return
-      }
-    }
-
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
-
-    // If telemetry is disabled, also disable experimental features
-    if (!value) {
-      await disableAllPreviewFeatures()
-    }
-  }
-
-  const handleExperimentalFeaturesToggle = async (
-    featureName: keyof z.infer<typeof previewFeaturesFormSchema>,
-    value: boolean,
-  ) => {
-    if (value && rawSettings.data_collection?.value !== 'true') {
-      telemetryRequiredModalRef.current?.open(featureName)
+    if (!value && experimentalFeatureTasks.value) {
+      telemetryWarningModalRef.current?.open()
       return
     }
 
-    const currentValues = previewFeaturesForm.getValues()
-    await savePreviewFeaturesMutation.mutateAsync({
-      ...currentValues,
-      [featureName]: value,
-    })
+    await dataCollection.setValue(value)
 
-    const eventName = `settings_${snakeCased(featureName)}_${value ? 'enabled' : 'disabled'}`
-    trackEvent(eventName as EventType)
+    if (value) {
+      postHog.opt_in_capturing()
+      trackEvent('settings_data_collection_enabled')
+    } else {
+      trackEvent('settings_data_collection_disabled')
+      postHog.opt_out_capturing()
+      // Also disable experimental features
+      await experimentalFeatureTasks.setValue(false)
+      trackEvent('settings_experimental_feature_tasks_disabled')
+    }
+  }
+
+  const handleExperimentalFeaturesToggle = async (value: boolean) => {
+    if (value && !dataCollection.value) {
+      telemetryRequiredModalRef.current?.open('experimentalFeatureTasks')
+      return
+    }
+
+    await experimentalFeatureTasks.setValue(value)
+    trackEvent(value ? 'settings_experimental_feature_tasks_enabled' : 'settings_experimental_feature_tasks_disabled')
   }
 
   const handleLocationSave = async (location: LocationData) => {
@@ -407,13 +279,23 @@ export default function PreferencesSettingsPage() {
       return
     }
 
-    const values = {
-      locationName: location.name,
-      locationLat: location.coordinates.lat,
-      locationLng: location.coordinates.lng,
-    }
+    const wasSet = !!locationName.value
 
-    await saveLocationMutation.mutateAsync(values)
+    await Promise.all([
+      locationName.setValue(location.name),
+      locationLat.setValue(String(location.coordinates.lat)),
+      locationLng.setValue(String(location.coordinates.lng)),
+    ])
+
+    if (wasSet) {
+      trackEvent('settings_location_update', {
+        location_name: location.name,
+      })
+    } else {
+      trackEvent('settings_location_set', {
+        location_name: location.name,
+      })
+    }
   }
 
   const handleSelectLocation = (location: LocationData) => {
@@ -439,27 +321,8 @@ export default function PreferencesSettingsPage() {
     }
   }
 
-  // Reset mutation for settings
-  const resetMutation = useMutation({
-    mutationFn: async (settings: Array<{ key: string; defaultSetting: (typeof defaultSettings)[0] }>) => {
-      await resetSettingsToDefaults(settings)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-    },
-  })
-
-  const handleResetSettings = (keys: string[]) => {
-    const settingsToReset = keys
-      .map((key) => {
-        const defaultSetting = defaultSettings.find((s) => s.key === key)
-        return defaultSetting ? { key, defaultSetting } : null
-      })
-      .filter((setting): setting is { key: string; defaultSetting: (typeof defaultSettings)[0] } => setting !== null)
-
-    if (settingsToReset.length > 0) {
-      resetMutation.mutate(settingsToReset)
-    }
+  const handleResetLocation = async () => {
+    await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
   }
 
   return (
@@ -487,8 +350,8 @@ export default function PreferencesSettingsPage() {
                   <ModificationIndicator
                     as={FormLabel}
                     className="mb-2"
-                    hasModifications={isSettingModified(rawSettings.preferred_name)}
-                    onReset={() => handleResetSettings(['preferred_name'])}
+                    hasModifications={preferredName.isModified}
+                    onReset={preferredName.reset}
                   >
                     Preferred Name
                   </ModificationIndicator>
@@ -524,12 +387,8 @@ export default function PreferencesSettingsPage() {
                   <ModificationIndicator
                     as={FormLabel}
                     className="mb-2"
-                    hasModifications={
-                      isSettingModified(rawSettings.location_name) ||
-                      isSettingModified(rawSettings.location_lat) ||
-                      isSettingModified(rawSettings.location_lng)
-                    }
-                    onReset={() => handleResetSettings(['location_name', 'location_lat', 'location_lng'])}
+                    hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
+                    onReset={handleResetLocation}
                   >
                     Location
                   </ModificationIndicator>
@@ -612,76 +471,51 @@ export default function PreferencesSettingsPage() {
       <SectionCard title="Preview Features">
         <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
 
-        <Form {...previewFeaturesForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={previewFeaturesForm.control}
-              name="experimentalFeatureTasks"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <ModificationIndicator
-                      as="label"
-                      className="text-sm font-medium"
-                      hasModifications={isSettingModified(rawSettings.experimental_feature_tasks)}
-                      onReset={() => handleResetSettings(['experimental_feature_tasks'])}
-                    >
-                      Tasks
-                    </ModificationIndicator>
-                  </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={async (value) =>
-                      await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                    }
-                  />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex-row flex items-center gap-4">
+          <div className="flex-1">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={experimentalFeatureTasks.isModified}
+              onReset={experimentalFeatureTasks.reset}
+            >
+              Tasks
+            </ModificationIndicator>
+          </div>
+          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+        </div>
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Privacy">
-        <Form {...privacyForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={privacyForm.control}
-              name="dataCollection"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div>
-                    <div className="mb-2">
-                      <ModificationIndicator
-                        as="label"
-                        className="text-sm font-medium"
-                        hasModifications={isSettingModified(rawSettings.data_collection)}
-                        onReset={() => handleResetSettings(['data_collection'])}
-                      >
-                        Data Collection
-                      </ModificationIndicator>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
-                      No personal data is collected or stored. Read more about our{' '}
-                      <a
-                        className="text-primary underline-offset-4 hover:underline"
-                        href="https://www.thunderbird.net/en-US/privacy/"
-                        target="_blank"
-                      >
-                        privacy policy
-                      </a>
-                      .
-                    </p>
-                  </div>
-                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex-row flex items-center gap-4">
+          <div>
+            <div className="mb-2">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={dataCollection.isModified}
+                onReset={dataCollection.reset}
+              >
+                Data Collection
+              </ModificationIndicator>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
+              personal data is collected or stored. Read more about our{' '}
+              <a
+                className="text-primary underline-offset-4 hover:underline"
+                href="https://www.thunderbird.net/en-US/privacy/"
+                target="_blank"
+              >
+                privacy policy
+              </a>
+              .
+            </p>
+          </div>
+          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+        </div>
       </SectionCard>
 
       <div className="h-6" />

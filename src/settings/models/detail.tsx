@@ -22,7 +22,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
-import { getModel } from '@/lib/dal'
+import { getModel, updateModel } from '@/lib/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -77,8 +77,8 @@ export default function ModelDetailPage() {
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {
-      await db.update(modelsTable).set(model).where(eq(modelsTable.id, model.id))
-      // Don't touch defaultHash - it stores the original default's hash
+      const { id, ...updates } = model
+      await updateModel(id, updates)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })

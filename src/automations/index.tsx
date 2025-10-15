@@ -17,10 +17,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
 import { getAllPrompts, resetAutomationToDefault } from '@/lib/dal'
-import { defaultAutomations, hashPrompt } from '@/lib/defaults/automations'
+import { defaultAutomations } from '@/lib/defaults/automations'
+import { isAutomationModified } from '@/lib/defaults/utils'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -48,7 +49,9 @@ export default function AutomationsPage() {
     placeholderData: (previousData) => previousData,
   })
 
-  const [triggersEnabled] = useBooleanSetting('is_triggers_enabled', false)
+  const { isTriggersEnabled } = useSettings({
+    is_triggers_enabled: false,
+  })
 
   const deletePromptMutation = useMutation({
     mutationFn: async (promptId: string) => {
@@ -170,7 +173,7 @@ export default function AutomationsPage() {
                   <PromptCard
                     key={prompt.id}
                     prompt={prompt}
-                    triggersEnabled={triggersEnabled}
+                    triggersEnabled={isTriggersEnabled.value}
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}
@@ -282,12 +285,8 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
 
   const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
 
-  // Determine modification status using hash
-  const defaultAutomation = defaultAutomations.find((d) => d.id === prompt.id)
-  const isDefaultAutomation = !!defaultAutomation
-  // Compare current content hash vs stored default hash
-  const currentHash = isDefaultAutomation ? hashPrompt(prompt) : null
-  const hasModifications = isDefaultAutomation && currentHash !== prompt.defaultHash
+  // Check if this is a default automation that has been modified
+  const hasModifications = isAutomationModified(prompt)
 
   return (
     <Card className="h-full flex flex-col pb-0">

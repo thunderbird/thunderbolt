@@ -10,6 +10,7 @@ import {
   tasksTable,
 } from '../db/tables'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import { serializeValue } from './serialization'
 import { convertUIMessageToDbChatMessage } from './utils'
 
 // ============================================================================
@@ -197,23 +198,18 @@ export const createSetting = async (key: string, value: string | null): Promise<
 
 /**
  * Update or create a setting in the settings table
+ * @param key - The setting key
+ * @param value - The value (can be string, null, boolean, number, or JSON-serializable object)
  */
-export const updateSetting = async (key: string, value: string | null): Promise<void> => {
+export const updateSetting = async (key: string, value: any): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(settingsTable).values({ key, value }).onConflictDoUpdate({
-    target: settingsTable.key,
-    set: { value },
-  })
-}
-
-export const updateBooleanSetting = async (key: string, value: boolean): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+  const stringValue = serializeValue(value)
   await db
     .insert(settingsTable)
-    .values({ key, value: value ? 'true' : 'false' })
+    .values({ key, value: stringValue })
     .onConflictDoUpdate({
       target: settingsTable.key,
-      set: { value: value ? 'true' : 'false' },
+      set: { value: stringValue },
     })
 }
 
@@ -498,12 +494,23 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
 // ============================================================================
 
 /**
- * Reset a model to its default state
+ * Update a model (preserves defaultHash for modification tracking)
  */
-export const resetModelToDefault = async (id: string, defaultModel: Model) => {
+export const updateModel = async (id: string, updates: Partial<Model>) => {
   const db = DatabaseSingleton.instance.db
-  const { defaultHash, ...defaultFields } = defaultModel
-  await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
+  await db.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
+}
+
+/**
+ * Update an automation/prompt (preserves defaultHash for modification tracking)
+ */
+export const updateAutomation = async (id: string, updates: Partial<Prompt>) => {
+  const db = DatabaseSingleton.instance.db
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
+  await db.update(promptsTable).set(updateFields).where(eq(promptsTable.id, id))
 }
 
 /**
@@ -525,23 +532,11 @@ export const resetSettingToDefault = async (key: string, defaultSetting: Setting
 }
 
 /**
- * Reset multiple settings to their default states
+ * Update a task (preserves defaultHash for modification tracking)
  */
-export const resetSettingsToDefaults = async (settings: Array<{ key: string; defaultSetting: Setting }>) => {
+export const updateTask = async (id: string, updates: Partial<Task>) => {
   const db = DatabaseSingleton.instance.db
-  await Promise.all(
-    settings.map(({ key, defaultSetting }) => {
-      const { defaultHash, ...defaultFields } = defaultSetting
-      return db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
-    }),
-  )
-}
-
-/**
- * Reset a task to its default state
- */
-export const resetTaskToDefault = async (id: string, defaultTask: Task) => {
-  const db = DatabaseSingleton.instance.db
-  const { defaultHash, ...defaultFields } = defaultTask
-  await db.update(tasksTable).set(defaultFields).where(eq(tasksTable.id, id))
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }
+  await db.update(tasksTable).set(updateFields).where(eq(tasksTable.id, id))
 }

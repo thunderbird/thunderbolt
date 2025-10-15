@@ -3,59 +3,23 @@ import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useBooleanSetting, useSetting } from '@/hooks/use-setting'
-import { getRawSettings, resetSettingToDefault } from '@/lib/dal'
-import { defaultSettings } from '@/lib/defaults/settings'
-import { isSettingModified } from '@/lib/defaults/utils'
+import { useSettings } from '@/hooks/use-settings'
 import { getCapabilities, isTauri } from '@/lib/platform'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  const queryClient = useQueryClient()
+  const { cloudUrl, isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useSettings({
+    cloud_url: '',
+    is_native_fetch_enabled: false,
+    disable_flower_encryption: false,
+    debug_posthog: false,
+  })
 
-  // Tauri fetch setting
-  const [tauriFetchEnabled, setTauriFetchEnabled] = useBooleanSetting('is_native_fetch_enabled', false)
-
-  // Cloud URL setting
-  const [cloudUrl, setCloudUrl] = useSetting('cloud_url', '')
-
-  // Disable encryption setting
-  const [disableEncryption, setDisableEncryption] = useBooleanSetting('disable_flower_encryption', false)
-
-  // Debug PostHog analytics
-  const [debugPosthog, setDebugPosthog] = useBooleanSetting('debug_posthog', false)
-
-  // Runtime capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
     queryFn: getCapabilities,
     enabled: isTauri(),
   })
-
-  // Query raw settings for modification checking
-  const { data: rawSettings } = useQuery({
-    queryKey: ['dev-settings-raw'],
-    queryFn: () =>
-      getRawSettings(['cloud_url', 'is_native_fetch_enabled', 'disable_flower_encryption', 'debug_posthog']),
-  })
-
-  // Reset mutations
-  const resetMutation = useMutation({
-    mutationFn: async ({ key, defaultSetting }: { key: string; defaultSetting: (typeof defaultSettings)[0] }) => {
-      await resetSettingToDefault(key, defaultSetting)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['dev-settings-raw'] })
-    },
-  })
-
-  const handleResetSetting = (key: string) => {
-    const defaultSetting = defaultSettings.find((s) => s.key === key)
-    if (defaultSetting) {
-      resetMutation.mutate({ key, defaultSetting })
-    }
-  }
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
@@ -68,15 +32,15 @@ export default function DevSettingsPage() {
             <ModificationIndicator
               as="label"
               className="block text-sm font-medium"
-              hasModifications={isSettingModified(rawSettings?.cloud_url)}
-              onReset={() => handleResetSetting('cloud_url')}
+              hasModifications={cloudUrl.isModified}
+              onReset={cloudUrl.reset}
             >
               Cloud URL
             </ModificationIndicator>
             <Input
               type="url"
-              value={cloudUrl || ''}
-              onChange={(e) => setCloudUrl(e.target.value)}
+              value={cloudUrl.value}
+              onChange={(e) => cloudUrl.setValue(e.target.value || null)}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
@@ -90,8 +54,8 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isSettingModified(rawSettings?.is_native_fetch_enabled)}
-                onReset={() => handleResetSetting('is_native_fetch_enabled')}
+                hasModifications={isNativeFetchEnabled.isModified}
+                onReset={isNativeFetchEnabled.reset}
               >
                 Use Native Fetch
               </ModificationIndicator>
@@ -101,8 +65,8 @@ export default function DevSettingsPage() {
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={tauriFetchEnabled}
-                    onCheckedChange={setTauriFetchEnabled}
+                    checked={isNativeFetchEnabled.value}
+                    onCheckedChange={isNativeFetchEnabled.setValue}
                     disabled={!capabilities?.native_fetch}
                   />
                 </span>
@@ -124,14 +88,14 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isSettingModified(rawSettings?.disable_flower_encryption)}
-                onReset={() => handleResetSetting('disable_flower_encryption')}
+                hasModifications={disableFlowerEncryption.isModified}
+                onReset={disableFlowerEncryption.reset}
               >
                 Disable Encryption
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
             </div>
-            <Switch checked={disableEncryption} onCheckedChange={setDisableEncryption} />
+            <Switch checked={disableFlowerEncryption.value} onCheckedChange={disableFlowerEncryption.setValue} />
           </div>
 
           {/* Divider between settings */}
@@ -142,14 +106,14 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isSettingModified(rawSettings?.debug_posthog)}
-                onReset={() => handleResetSetting('debug_posthog')}
+                hasModifications={debugPosthog.isModified}
+                onReset={debugPosthog.reset}
               >
                 Debug PostHog
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
-            <Switch checked={debugPosthog} onCheckedChange={setDebugPosthog} />
+            <Switch checked={debugPosthog.value} onCheckedChange={debugPosthog.setValue} />
           </div>
         </div>
       </SectionCard>

@@ -1,8 +1,6 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getEmailMessage, getEmailMessageByImapId } from '@/lib/dal'
 import { formatDate } from '@/lib/utils'
 import { useSideview } from '@/sideview/provider'
-import type { EmailMessageWithAddresses } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Mail } from 'lucide-react'
 
@@ -16,13 +14,15 @@ export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProp
 
   const { setSideview } = useSideview()
 
-  const { data: message } = useQuery<EmailMessageWithAddresses>({
+  const { data: message } = useQuery<any>({
     queryKey: ['messages', messageId, imapId],
     queryFn: async () => {
       if (messageId) {
-        return await getEmailMessage(messageId)
+        // @todo re-implement this
+        return null
       } else if (imapId) {
-        return await getEmailMessageByImapId(imapId)
+        // @todo re-implement this
+        return null
       }
       throw new Error('Either messageId or imapId must be provided')
     },

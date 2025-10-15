@@ -1,7 +1,0 @@
-{
-  "name": "com.thunderbird.mcp",
-  "description": "Thunderbird MCP Server Native Messaging Host",
-  "type": "stdio",
-  "allowed_extensions": ["thunderbird-mcp@example.com"],
-  "path": "/home/user/dev/thunderbolt/thunderbird/native-messaging/mcp-client.js"
-}

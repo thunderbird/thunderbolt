@@ -4,16 +4,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { formatDate } from '@/lib/utils'
-import type { EmailMessageWithAddresses } from '@/types'
 import { Fragment, useEffect, useState } from 'react'
 
-export function EmailMessageView({
-  message,
-  isOpen: defaultIsOpen = true,
-}: {
-  message: EmailMessageWithAddresses
-  isOpen?: boolean
-}) {
+// @todo re-implement types
+export function EmailMessageView({ message, isOpen: defaultIsOpen = true }: { message: any; isOpen?: boolean }) {
   const [isOpen, setIsOpen] = useState(defaultIsOpen)
 
   useEffect(() => {
@@ -43,7 +37,7 @@ export function EmailMessageView({
                   <TableRow>
                     <TableCell className="py-1 w-0 whitespace-nowrap font-bold">To</TableCell>
                     <TableCell className="py-1 w-full">
-                      {message.recipients.map((recipient, index) => (
+                      {message.recipients.map((recipient: any, index: number) => (
                         <Fragment key={recipient.address.address}>
                           <EmailAddressPreview emailAddress={recipient.address} />
                           {index < message.recipients.length - 1 && ', '}

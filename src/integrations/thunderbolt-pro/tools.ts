@@ -5,6 +5,8 @@ import type { ToolConfig, PreferencesSettings } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
 
+const requestTimeout = 5000
+
 /**
  * Get user preferences for localization
  */
@@ -85,6 +87,7 @@ export const search = async (params: SearchParams): Promise<string> => {
     const cloudUrl = await getCloudUrl()
     const response = await ky
       .post(`${cloudUrl}/pro/search`, {
+        timeout: requestTimeout,
         json: {
           query: params.query,
           max_results: params.max_results || 10,
@@ -110,6 +113,7 @@ export const fetchContent = async (params: FetchContentParams): Promise<FetchCon
     const cloudUrl = await getCloudUrl()
     const response = await ky
       .post(`${cloudUrl}/pro/fetch-content`, {
+        timeout: requestTimeout,
         json: {
           url: params.url,
         },
@@ -136,6 +140,7 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 
     const response = await ky
       .post(`${cloudUrl}/pro/weather/current`, {
+        timeout: requestTimeout,
         json: {
           location: params.location,
           region: params.region,
@@ -167,6 +172,7 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
 
     const response = await ky
       .post(`${cloudUrl}/pro/weather/forecast`, {
+        timeout: requestTimeout,
         json: {
           location: params.location,
           region: params.region,
@@ -200,6 +206,7 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
 
     const response = await ky
       .post(`${cloudUrl}/pro/locations/search`, {
+        timeout: requestTimeout,
         json: {
           query: params.query,
           region: params.region,

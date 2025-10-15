@@ -2,22 +2,7 @@ import { createSetting, deleteSetting, getSetting } from '@/lib/dal'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
-import { accountsTable, modelsTable, promptsTable, tasksTable } from '../db/tables'
-
-export const seedAccounts = async () => {
-  const db = DatabaseSingleton.instance.db
-  await db.select().from(accountsTable)
-  // if (accounts.length === 0) {
-  //   await db.insert(accountsTable).values({
-  //     id: uuidv7(),
-  //     type: 'imap',
-  //     imapHostname: 'imap.thundermail.com',
-  //     imapPort: 993,
-  //     imapUsername: 'you@tb.pro',
-  //     imapPassword: 'password',
-  //   })
-  // }
-}
+import { modelsTable, promptsTable, tasksTable } from '../db/tables'
 
 export const seedModels = async () => {
   const db = DatabaseSingleton.instance.db

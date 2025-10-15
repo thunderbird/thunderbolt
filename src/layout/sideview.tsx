@@ -1,8 +1,3 @@
-import {
-  getEmailThreadWithMessages,
-  getEmailThreadByMessageIdWithMessages,
-  getEmailThreadByMessageImapIdWithMessages,
-} from '@/lib/dal'
 import { useSideview } from '@/sideview/provider'
 import { EmailThreadView } from '@/sideview/thread'
 import { useQuery } from '@tanstack/react-query'
@@ -12,18 +7,18 @@ export function Sideview() {
 
   console.log('sideviewType', sideviewType, sideviewId)
 
-  const { data: object } = useQuery({
+  const { data: _object } = useQuery({
     queryKey: ['sideview', sideviewType, sideviewId],
     queryFn: async () => {
       if (!sideviewId || !sideviewType) return null
 
       switch (sideviewType) {
         case 'message':
-          return await getEmailThreadByMessageIdWithMessages(sideviewId)
-        case 'imap':
-          return await getEmailThreadByMessageImapIdWithMessages(sideviewId)
+          // @todo re-implement this
+          return null
         case 'thread':
-          return await getEmailThreadWithMessages(sideviewId)
+          // @todo re-implement this
+          return null
         default:
           return null
       }
@@ -32,12 +27,6 @@ export function Sideview() {
   })
 
   switch (sideviewType) {
-    case 'imap':
-      return (
-        <div>
-          IMAP {object?.id} {object?.messages.length}
-        </div>
-      )
     case 'message':
       return <EmailThreadView />
     case 'thread':

@@ -1,13 +1,8 @@
 import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import {
-  accountsTable,
   chatMessagesTable,
   chatThreadsTable,
-  emailAddressesTable,
-  emailMessagesTable,
-  emailMessagesToAddressesTable,
-  emailThreadsTable,
   mcpServersTable,
   modelsTable,
   promptsTable,
@@ -21,40 +16,34 @@ import {
   createChatThread,
   createSetting,
   deleteSetting,
+  getAllChatThreads,
+  getAllMcpServers,
+  getAllModels,
+  getAllPrompts,
   getAllSettings,
+  getAvailableModels,
   getBooleanSetting,
+  getBridgeSettings,
+  getChatMessages,
   getChatThread,
-  getOrCreateChatThread,
+  getContextSizeForThread,
   getDefaultModelForThread,
+  getHttpMcpServers,
+  getIncompleteTasks,
+  getIncompleteTasksCount,
+  getLastMessage,
   getModel,
+  getOrCreateChatThread,
   getSelectedModel,
   getSetting,
   getSettings,
   setSettings,
+  getSystemModel,
+  getThemeSetting,
+  getTriggerPromptForThread,
   hasSetting,
   updateBooleanSetting,
   updateSetting,
-  getAllModels,
-  getAvailableModels,
-  getSystemModel,
-  getThemeSetting,
-  getBridgeSettings,
-  getAllChatThreads,
-  getChatMessages,
-  getLastMessage,
-  getIncompleteTasks,
-  getIncompleteTasksCount,
-  getAllAccounts,
-  getAllMcpServers,
-  getHttpMcpServers,
-  getAllPrompts,
-  getTriggerPromptForThread,
-  getEmailThreadWithMessages,
-  getEmailThreadByMessageImapIdWithMessages,
-  getEmailThreadByMessageIdWithMessages,
-  getEmailMessage,
-  getEmailMessageByImapId,
-  getContextSizeForThread,
 } from './dal'
 
 beforeAll(async () => {
@@ -1191,7 +1180,9 @@ describe('Chat Threads DAL', () => {
       expect(threads.map((t) => t.id)).toContain(threadId2)
     })
   })
-}) // ============================================================================
+})
+
+// ============================================================================
 // CHAT MESSAGES TESTS
 // ============================================================================
 
@@ -1478,55 +1469,6 @@ describe('Tasks DAL', () => {
 
       const count = await getIncompleteTasksCount()
       expect(count).toBe(2)
-    })
-  })
-})
-
-// ============================================================================
-// ACCOUNTS TESTS
-// ============================================================================
-
-describe('Accounts DAL', () => {
-  afterEach(async () => {
-    // Clean up accounts table after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(accountsTable)
-  })
-
-  describe('getAllAccounts', () => {
-    it('should return empty array when no accounts exist', async () => {
-      const accounts = await getAllAccounts()
-      expect(accounts).toEqual([])
-    })
-
-    it('should return all accounts', async () => {
-      const db = DatabaseSingleton.instance.db
-      const accountId1 = uuidv7()
-      const accountId2 = uuidv7()
-
-      await db.insert(accountsTable).values([
-        {
-          id: accountId1,
-          type: 'imap',
-          imapHostname: 'imap.example.com',
-          imapPort: 993,
-          imapUsername: 'user1@example.com',
-          imapPassword: 'password1',
-        },
-        {
-          id: accountId2,
-          type: 'imap',
-          imapHostname: 'imap.example.com',
-          imapPort: 993,
-          imapUsername: 'user2@example.com',
-          imapPassword: 'password2',
-        },
-      ])
-
-      const accounts = await getAllAccounts()
-      expect(accounts).toHaveLength(2)
-      expect(accounts.map((a) => a.id)).toContain(accountId1)
-      expect(accounts.map((a) => a.id)).toContain(accountId2)
     })
   })
 })
@@ -1828,260 +1770,6 @@ describe('Prompts DAL', () => {
   })
 })
 
-// ============================================================================
-// EMAIL TESTS
-// ============================================================================
-
-describe('Email DAL', () => {
-  afterEach(async () => {
-    // Clean up email data after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(emailMessagesToAddressesTable)
-    await db.delete(emailMessagesTable)
-    await db.delete(emailThreadsTable)
-    await db.delete(emailAddressesTable)
-  })
-
-  describe('getEmailThreadWithMessages', () => {
-    it('should return null when email thread does not exist', async () => {
-      const threadId = uuidv7()
-      const result = await getEmailThreadWithMessages(threadId)
-      expect(result).toBe(null)
-    })
-
-    it('should return email thread with messages when thread exists', async () => {
-      const db = DatabaseSingleton.instance.db
-      const threadId = uuidv7()
-      const messageId = uuidv7()
-
-      // Create email thread
-      await db.insert(emailThreadsTable).values({
-        id: threadId,
-        subject: 'Test Subject',
-        firstMessageAt: Date.now(),
-        lastMessageAt: Date.now(),
-      })
-
-      // Create email address
-      await db.insert(emailAddressesTable).values({
-        address: 'test@example.com',
-        name: 'Test User',
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-      })
-
-      // Create email message
-      await db.insert(emailMessagesTable).values({
-        id: messageId,
-        emailThreadId: threadId,
-        imapId: 'imap123',
-        subject: 'Test Subject',
-        htmlBody: '<p>Test body</p>',
-        textBody: 'Test body',
-        sentAt: Date.now(),
-        fromAddress: 'test@example.com',
-        mailbox: 'INBOX',
-      })
-
-      const result = await getEmailThreadWithMessages(threadId)
-      expect(result).not.toBe(null)
-      expect(result?.id).toBe(threadId)
-      expect(result?.subject).toBe('Test Subject')
-      expect(result?.messages).toHaveLength(1)
-      expect(result?.messages[0]?.id).toBe(messageId)
-    })
-  })
-
-  describe('getEmailThreadByMessageImapIdWithMessages', () => {
-    it('should return null when message with IMAP ID does not exist', async () => {
-      const imapId = 'nonexistent'
-      const result = await getEmailThreadByMessageImapIdWithMessages(imapId)
-      expect(result).toBe(null)
-    })
-
-    it('should return email thread when message with IMAP ID exists', async () => {
-      const db = DatabaseSingleton.instance.db
-      const threadId = uuidv7()
-      const messageId = uuidv7()
-      const imapId = 'imap123'
-
-      // Create email address first
-      await db.insert(emailAddressesTable).values({
-        address: 'test@example.com',
-        name: 'Test User',
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-      })
-
-      // Create email thread
-      await db.insert(emailThreadsTable).values({
-        id: threadId,
-        subject: 'Test Subject',
-        firstMessageAt: Date.now(),
-        lastMessageAt: Date.now(),
-      })
-
-      // Create email message
-      await db.insert(emailMessagesTable).values({
-        id: messageId,
-        emailThreadId: threadId,
-        imapId: imapId,
-        subject: 'Test Subject',
-        htmlBody: '<p>Test body</p>',
-        textBody: 'Test body',
-        sentAt: Date.now(),
-        fromAddress: 'test@example.com',
-        mailbox: 'INBOX',
-      })
-
-      const result = await getEmailThreadByMessageImapIdWithMessages(imapId)
-      expect(result).not.toBe(null)
-      expect(result?.id).toBe(threadId)
-    })
-  })
-
-  describe('getEmailThreadByMessageIdWithMessages', () => {
-    it('should return null when message with ID does not exist', async () => {
-      const messageId = uuidv7()
-      const result = await getEmailThreadByMessageIdWithMessages(messageId)
-      expect(result).toBe(null)
-    })
-
-    it('should return email thread when message with ID exists', async () => {
-      const db = DatabaseSingleton.instance.db
-      const threadId = uuidv7()
-      const messageId = uuidv7()
-
-      // Create email address first
-      await db.insert(emailAddressesTable).values({
-        address: 'test@example.com',
-        name: 'Test User',
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-      })
-
-      // Create email thread
-      await db.insert(emailThreadsTable).values({
-        id: threadId,
-        subject: 'Test Subject',
-        firstMessageAt: Date.now(),
-        lastMessageAt: Date.now(),
-      })
-
-      // Create email message
-      await db.insert(emailMessagesTable).values({
-        id: messageId,
-        emailThreadId: threadId,
-        imapId: 'imap123',
-        subject: 'Test Subject',
-        htmlBody: '<p>Test body</p>',
-        textBody: 'Test body',
-        sentAt: Date.now(),
-        fromAddress: 'test@example.com',
-        mailbox: 'INBOX',
-      })
-
-      const result = await getEmailThreadByMessageIdWithMessages(messageId)
-      expect(result).not.toBe(null)
-      expect(result?.id).toBe(threadId)
-    })
-  })
-
-  describe('getEmailMessage', () => {
-    it('should throw error when message does not exist', async () => {
-      const messageId = uuidv7()
-      await expect(getEmailMessage(messageId)).rejects.toThrow('Message not found')
-    })
-
-    it('should return email message when it exists', async () => {
-      const db = DatabaseSingleton.instance.db
-      const messageId = uuidv7()
-
-      // Create email address
-      await db.insert(emailAddressesTable).values({
-        address: 'test@example.com',
-        name: 'Test User',
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-      })
-
-      // Create email thread
-      const threadId = uuidv7()
-      await db.insert(emailThreadsTable).values({
-        id: threadId,
-        subject: 'Test Subject',
-        firstMessageAt: Date.now(),
-        lastMessageAt: Date.now(),
-      })
-
-      // Create email message
-      await db.insert(emailMessagesTable).values({
-        id: messageId,
-        emailThreadId: threadId,
-        imapId: 'imap123',
-        subject: 'Test Subject',
-        htmlBody: '<p>Test body</p>',
-        textBody: 'Test body',
-        sentAt: Date.now(),
-        fromAddress: 'test@example.com',
-        mailbox: 'INBOX',
-      })
-
-      const result = await getEmailMessage(messageId)
-      expect(result).not.toBe(null)
-      expect(result.id).toBe(messageId)
-      expect(result.subject).toBe('Test Subject')
-    })
-  })
-
-  describe('getEmailMessageByImapId', () => {
-    it('should throw error when message with IMAP ID does not exist', async () => {
-      const imapId = 'nonexistent'
-      await expect(getEmailMessageByImapId(imapId)).rejects.toThrow('Message not found')
-    })
-
-    it('should return email message when IMAP ID exists', async () => {
-      const db = DatabaseSingleton.instance.db
-      const messageId = uuidv7()
-      const imapId = 'imap123'
-
-      // Create email address
-      await db.insert(emailAddressesTable).values({
-        address: 'test@example.com',
-        name: 'Test User',
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-      })
-
-      // Create email thread
-      const threadId = uuidv7()
-      await db.insert(emailThreadsTable).values({
-        id: threadId,
-        subject: 'Test Subject',
-        firstMessageAt: Date.now(),
-        lastMessageAt: Date.now(),
-      })
-
-      // Create email message
-      await db.insert(emailMessagesTable).values({
-        id: messageId,
-        emailThreadId: threadId,
-        imapId: imapId,
-        subject: 'Test Subject',
-        htmlBody: '<p>Test body</p>',
-        textBody: 'Test body',
-        sentAt: Date.now(),
-        fromAddress: 'test@example.com',
-        mailbox: 'INBOX',
-      })
-
-      const result = await getEmailMessageByImapId(imapId)
-      expect(result).not.toBe(null)
-      expect(result.id).toBe(messageId)
-      expect(result.imapId).toBe(imapId)
-    })
-  })
-})
 // ============================================================================
 // CONTEXT SIZE TESTS
 // ============================================================================

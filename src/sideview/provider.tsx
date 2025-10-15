@@ -1,5 +1,3 @@
-'use client'
-
 import type { SideviewType } from '@/types'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 

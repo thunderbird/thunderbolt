@@ -1,4 +1,4 @@
-import type { ChatMessage, ParsedEmail, ParsedEmailHeader, UIMessageMetadata } from '@/types'
+import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
@@ -38,28 +38,6 @@ export function convertUIMessageToDbChatMessage(message: UIMessage, chatThreadId
     chatThreadId,
     modelId: metadata?.modelId ?? null,
   }
-}
-
-export function getHeadersFromParsedEmail(parsedEmail: ParsedEmail): ParsedEmailHeader[] {
-  return parsedEmail.parts[0]?.headers ?? []
-}
-
-export function getSubjectFromParsedEmail(parsedEmail: ParsedEmail): string | undefined {
-  return getHeadersFromParsedEmail(parsedEmail).find(
-    (header) => typeof header.name === 'string' && header.name.toLocaleLowerCase() === 'subject',
-  )?.value.Text
-}
-
-export function getMessageIdFromParsedEmail(parsedEmail: ParsedEmail): string | undefined {
-  return getHeadersFromParsedEmail(parsedEmail).find(
-    (header) => typeof header.name === 'string' && header.name.toLocaleLowerCase() === 'message_id',
-  )?.value.Text
-}
-
-export function getFromFromParsedEmail(parsedEmail: ParsedEmail): string | undefined {
-  return getHeadersFromParsedEmail(parsedEmail).find(
-    (header) => typeof header.name === 'string' && header.name.toLocaleLowerCase() === 'from',
-  )?.value.Text
 }
 
 export function snakeCased(str: string): string {

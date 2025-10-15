@@ -17,7 +17,7 @@ import { defaultTasks, hashTask } from './defaults/tasks'
  * @param hashFn - Function to compute hash of an item
  * @param keyField - Name of the primary key field (defaults to 'id')
  */
-const seedDefaults = async <T extends { defaultHash: string | null }>(
+export const seedDefaults = async <T extends { defaultHash: string | null }>(
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
@@ -38,13 +38,18 @@ const seedDefaults = async <T extends { defaultHash: string | null }>(
     } else {
       // Exists - check if user modified by comparing hashes
       const currentHash = hashFn(existing)
-      if (currentHash === existing.defaultHash) {
+      const defaultHashValue = hashFn(defaultItem)
+
+      if (!existing.defaultHash) {
+        // No defaultHash - set it to the default hash to enable modification tracking
+        await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
+      } else if (currentHash === existing.defaultHash) {
         // Unmodified - safe to update to new default
         await db
           .update(table)
           .set({
             ...defaultItem,
-            defaultHash: hashFn(defaultItem),
+            defaultHash: defaultHashValue,
           })
           .where(eq(table[keyField], keyValue))
       }

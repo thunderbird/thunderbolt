@@ -32,7 +32,7 @@ import { Switch } from '@/components/ui/switch'
 import { DatabaseSingleton } from '@/db/singleton'
 import { trackEvent, type EventType } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
-import { getPreferencesSettings, resetSettingsToDefaults, updateBooleanSetting } from '@/lib/dal'
+import { getPreferencesSettings, resetSettingsToDefaults, updateBooleanSetting, updateSetting } from '@/lib/dal'
 import { defaultSettings } from '@/lib/defaults/settings'
 import { isSettingModified } from '@/lib/defaults/utils'
 import { resetAppDir } from '@/lib/fs'
@@ -168,12 +168,11 @@ export default function PreferencesSettingsPage() {
     ? isSettingModified(dbSettings.experimental_feature_tasks)
     : false
   const isPreferredNameModified = dbSettings?.preferred_name ? isSettingModified(dbSettings.preferred_name) : false
-  const isLocationModified =
-    dbSettings?.location_name && dbSettings?.location_lat && dbSettings?.location_lng
-      ? isSettingModified(dbSettings.location_name) ||
-        isSettingModified(dbSettings.location_lat) ||
-        isSettingModified(dbSettings.location_lng)
-      : false
+  const isLocationModified = Boolean(
+    (dbSettings?.location_name && isSettingModified(dbSettings.location_name)) ||
+      (dbSettings?.location_lat && isSettingModified(dbSettings.location_lat)) ||
+      (dbSettings?.location_lng && isSettingModified(dbSettings.location_lng)),
+  )
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({
     resolver: zodResolver(nameFormSchema),
@@ -296,14 +295,7 @@ export default function PreferencesSettingsPage() {
   // Save name mutation
   const saveNameMutation = useMutation({
     mutationFn: async (values: z.infer<typeof nameFormSchema>) => {
-      // Upsert the setting
-      await db
-        .insert(settingsTable)
-        .values({ key: 'preferred_name', value: values.preferredName })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.preferredName },
-        })
+      await updateSetting('preferred_name', values.preferredName ?? null)
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
@@ -365,35 +357,11 @@ export default function PreferencesSettingsPage() {
   // Save location mutation
   const saveLocationMutation = useMutation({
     mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
-      try {
-        // Save each setting sequentially with individual error handling
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_name', value: values.locationName })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationName },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_lat', value: values.locationLat.toString() })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationLat.toString() },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_lng', value: values.locationLng.toString() })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationLng.toString() },
-          })
-      } catch (error) {
-        console.error('Error saving location settings:', error)
-        throw error
-      }
+      await Promise.all([
+        updateSetting('location_name', values.locationName),
+        updateSetting('location_lat', values.locationLat.toString()),
+        updateSetting('location_lng', values.locationLng.toString()),
+      ])
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })

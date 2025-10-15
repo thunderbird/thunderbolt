@@ -6,7 +6,7 @@ import { modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from './defaults/automations'
 import { defaultModels, hashModel } from './defaults/models'
 import { defaultSettings, hashSetting } from './defaults/settings'
-import { seedModels, seedPrompts, seedSettings } from './seed'
+import { seedDefaults, seedModels, seedPrompts, seedSettings } from './seed'
 
 beforeAll(async () => {
   await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
@@ -288,5 +288,35 @@ describe('seedSettings', () => {
     // Setting 1 should be updated to latest default
     const setting1 = settings.find((s) => s.key === defaultSettings[1].key)
     expect(setting1?.value).toBe(defaultSettings[1].value)
+  })
+
+  test('adds defaultHash to settings that lack it', async () => {
+    const db = DatabaseSingleton.instance.db
+
+    // Create a setting without defaultHash (simulates old data or manual creation)
+    await db.insert(settingsTable).values({
+      key: 'test_setting_no_hash',
+      value: 'some_value',
+      updatedAt: null,
+      defaultHash: null,
+    })
+
+    // Create a default for this setting
+    const testDefault = {
+      key: 'test_setting_no_hash',
+      value: 'default_value',
+      updatedAt: null,
+      defaultHash: null,
+    }
+
+    // Seed with this default
+    await seedDefaults(settingsTable, [testDefault], hashSetting, 'key')
+
+    // Should now have a defaultHash
+    const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_setting_no_hash')).get()
+    expect(setting?.defaultHash).toBeDefined()
+    expect(setting?.defaultHash).toBe(hashSetting(testDefault))
+    // Value should be preserved
+    expect(setting?.value).toBe('some_value')
   })
 })

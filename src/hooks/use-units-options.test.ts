@@ -32,7 +32,7 @@ const mockUnitsOptionsData = {
 }
 
 const mockCountryUnitsData = {
-  units: 'metric',
+  unit: 'metric',
   temperature: 'C',
   timeFormat: '24h',
   dateFormatExample: 'DD/MM/YYYY',
@@ -72,7 +72,7 @@ describe('useUnitsOptions and useCountryUnits API contracts and data structures'
   })
 
   it('should handle successful country units API response structure', () => {
-    expect(mockCountryUnitsData).toHaveProperty('units')
+    expect(mockCountryUnitsData).toHaveProperty('unit')
     expect(mockCountryUnitsData).toHaveProperty('temperature')
     expect(mockCountryUnitsData).toHaveProperty('timeFormat')
     expect(mockCountryUnitsData).toHaveProperty('dateFormatExample')
@@ -133,7 +133,7 @@ describe('useUnitsOptions and useCountryUnits API contracts and data structures'
   })
 
   it('should have correct country units data structure', () => {
-    expect(typeof mockCountryUnitsData.units).toBe('string')
+    expect(typeof mockCountryUnitsData.unit).toBe('string')
     expect(typeof mockCountryUnitsData.temperature).toBe('string')
     expect(typeof mockCountryUnitsData.timeFormat).toBe('string')
     expect(typeof mockCountryUnitsData.dateFormatExample).toBe('string')

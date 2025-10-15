@@ -158,7 +158,7 @@ describe('useLocalizationForm', () => {
 
   describe('createFormValues helper function', () => {
     const mockCountryUnitsData = {
-      units: 'metric',
+      unit: 'metric',
       temperature: 'C',
       timeFormat: '24h',
       dateFormatExample: 'DD/MM/YYYY',
@@ -320,7 +320,7 @@ describe('useLocalizationForm', () => {
       }
 
       const colombiaCountryData = {
-        units: 'metric',
+        unit: 'metric',
         temperature: 'C',
         timeFormat: '12h',
         dateFormatExample: 'DD/MM/YYYY',

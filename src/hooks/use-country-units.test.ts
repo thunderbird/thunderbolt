@@ -2,7 +2,7 @@ import { describe, it, expect } from 'bun:test'
 
 // Mock data
 const mockCountryUnitsData = {
-  units: 'metric',
+  unit: 'metric',
   temperature: 'C',
   timeFormat: '24h',
   dateFormatExample: 'DD/MM/YYYY',
@@ -86,7 +86,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
   })
 
   it('should handle successful country units API response structure', () => {
-    expect(mockCountryUnitsData).toHaveProperty('units')
+    expect(mockCountryUnitsData).toHaveProperty('unit')
     expect(mockCountryUnitsData).toHaveProperty('temperature')
     expect(mockCountryUnitsData).toHaveProperty('timeFormat')
     expect(mockCountryUnitsData).toHaveProperty('dateFormatExample')
@@ -94,7 +94,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
   })
 
   it('should have correct country units data types', () => {
-    expect(typeof mockCountryUnitsData.units).toBe('string')
+    expect(typeof mockCountryUnitsData.unit).toBe('string')
     expect(typeof mockCountryUnitsData.temperature).toBe('string')
     expect(typeof mockCountryUnitsData.timeFormat).toBe('string')
     expect(typeof mockCountryUnitsData.dateFormatExample).toBe('string')
@@ -126,7 +126,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
 
   it('should validate country units data structure', () => {
     // Test valid data structure
-    expect(mockCountryUnitsData.units).toMatch(/^(metric|imperial)$/)
+    expect(mockCountryUnitsData.unit).toMatch(/^(metric|imperial)$/)
     expect(mockCountryUnitsData.temperature).toMatch(/^[CF]$/)
     expect(mockCountryUnitsData.timeFormat).toMatch(/^(12h|24h)$/)
     expect(mockCountryUnitsData.dateFormatExample).toMatch(/^[A-Z]{2}\/[A-Z]{2}\/[A-Z]{4}$/)
@@ -139,7 +139,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
 
   it('should handle invalid country units data', () => {
     const invalidData = {
-      units: 'invalid',
+      unit: 'invalid',
       temperature: 'X',
       timeFormat: 'invalid',
       dateFormatExample: 'invalid',
@@ -151,7 +151,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
     }
 
     // These should fail validation
-    expect(invalidData.units).not.toMatch(/^(metric|imperial)$/)
+    expect(invalidData.unit).not.toMatch(/^(metric|imperial)$/)
     expect(invalidData.temperature).not.toMatch(/^[CF]$/)
     expect(invalidData.timeFormat).not.toMatch(/^(12h|24h)$/)
     expect(invalidData.dateFormatExample).not.toMatch(/^[A-Z]{2}\/[A-Z]{2}\/[A-Z]{4}$/)

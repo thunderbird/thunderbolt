@@ -26,7 +26,7 @@ export const unitsOptionsResponseSchema = z.object({
 })
 
 export const countryUnitsResponseSchema = z.object({
-  units: z.string(),
+  unit: z.string(),
   temperature: z.string(),
   timeFormat: z.string(),
   dateFormatExample: z.string(),

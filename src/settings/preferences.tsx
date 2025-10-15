@@ -388,7 +388,7 @@ export default function PreferencesSettingsPage() {
       const countryUnitsResult = await refetchCountryUnits()
       if (countryUnitsResult.data) {
         const countryDefaults = {
-          distance_unit: countryUnitsResult.data.units,
+          distance_unit: countryUnitsResult.data.unit,
           temperature_unit: countryUnitsResult.data.temperature,
           date_format: countryUnitsResult.data.dateFormatExample,
           time_format: countryUnitsResult.data.timeFormat,

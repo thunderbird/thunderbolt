@@ -33,8 +33,8 @@ export const createFormValues = (
   prioritizeCountryData: boolean = false,
 ) => ({
   distanceUnit: prioritizeCountryData
-    ? countryUnitsData?.units || settings?.distanceUnit || 'imperial'
-    : settings?.distanceUnit || countryUnitsData?.units || 'imperial',
+    ? countryUnitsData?.unit || settings?.distanceUnit || 'imperial'
+    : settings?.distanceUnit || countryUnitsData?.unit || 'imperial',
   temperatureUnit: prioritizeCountryData
     ? countryUnitsData?.temperature || settings?.temperatureUnit || 'F'
     : settings?.temperatureUnit || countryUnitsData?.temperature || 'F',

@@ -1,108 +1,154 @@
-import { getBooleanSetting, getSetting, updateSetting } from '@/lib/dal'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseMutationResult,
-  type UseQueryResult,
-} from '@tanstack/react-query'
+import { getRawSettings, resetSettingToDefault, updateBooleanSetting, updateSetting } from '@/lib/dal'
+import { defaultSettings } from '@/lib/defaults/settings'
+import { isSettingModified } from '@/lib/defaults/utils'
+import type { Setting } from '@/types'
+import { useEntity, type UseEntityResult } from './use-entity'
 
 /**
- * Custom hook for managing settings with React Query
- * @param key The setting key
- * @param defaultValue The default value if setting doesn't exist
- * @returns [value, setter] tuple similar to useState
- *
- * @example
- * ```tsx
- * const [cloudUrl, setCloudUrl] = useSetting('cloud_url', 'https://default.com')
- *
- * // Use the value
- * console.log(cloudUrl) // current value or default
- *
- * // Update the value
- * setCloudUrl('https://new-url.com')
- * ```
+ * Extended result type for settings that includes the raw setting data
  */
-export const useSetting = <T = string, V = T | null>(
-  key: string,
-  defaultValue: V = null as V,
-): [V, (newValue: V) => void, UseQueryResult<V, Error>, UseMutationResult<void, Error, V, unknown>] => {
-  const queryClient = useQueryClient()
+export type UseSettingResult = UseEntityResult<Setting> & {
+  /** The raw setting object with metadata */
+  rawSetting: Setting | null
 
-  const query = useQuery({
-    queryKey: ['settings', key],
-    queryFn: () => getSetting(key, defaultValue),
-  })
+  /** The setting's value (convenience accessor) */
+  value: string | null
 
-  const mutation = useMutation({
-    mutationFn: (newValue: V) => updateSetting(key, newValue ? newValue.toString() : null),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', key] })
-    },
-  })
-
-  const setValue = (newValue: V) => {
-    mutation.mutate(newValue)
-  }
-
-  const value = query.data ?? defaultValue
-
-  return [value, setValue, query, mutation]
+  /** Update just the value (convenience method) */
+  setValue: (value: string | null) => Promise<void>
 }
 
 /**
- * Custom hook for managing boolean settings with React Query
- * @param key The setting key
- * @param defaultValue The default boolean value if setting doesn't exist
- * @returns [value, setter, query, mutation] tuple with boolean value, boolean setter, and query/mutation objects
+ * Hook for managing a string setting with modification tracking and reset capability
+ *
+ * @param key - The setting key
+ * @param defaultValue - Default value to use if setting doesn't exist
  *
  * @example
  * ```tsx
- * const [triggersEnabled, setTriggersEnabled, query, mutation] = useBooleanSetting('is_triggers_enabled', false)
+ * const preferredName = useSetting('preferred_name', '')
  *
- * // Use the value
- * if (triggersEnabled) {
- *   // Do something when enabled
- * }
- *
- * // Update the value
- * setTriggersEnabled(true)
- *
- * // Check loading state
- * if (query.isLoading) {
- *   // Handle loading
- * }
+ * return (
+ *   <>
+ *     <Input
+ *       value={preferredName.value ?? ''}
+ *       onChange={(e) => preferredName.setValue(e.target.value)}
+ *     />
+ *     {preferredName.isModified && (
+ *       <Button onClick={preferredName.reset}>Reset</Button>
+ *     )}
+ *   </>
+ * )
  * ```
  */
-export const useBooleanSetting = (
-  key: string,
-  defaultValue: boolean = false,
-): [
-  boolean,
-  (newValue: boolean) => void,
-  UseQueryResult<boolean, Error>,
-  UseMutationResult<void, Error, boolean, unknown>,
-] => {
-  const queryClient = useQueryClient()
+export const useSetting = (key: string, defaultValue: string | null = null): UseSettingResult => {
+  const defaultSetting = defaultSettings.find((s) => s.key === key)
 
-  const query = useQuery({
+  const entity = useEntity<Setting>({
     queryKey: ['settings', key],
-    queryFn: () => getBooleanSetting(key, defaultValue),
-  })
-
-  const mutation = useMutation({
-    mutationFn: (newValue: boolean) => updateSetting(key, newValue.toString()),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', key] })
+    queryFn: async () => {
+      const result = await getRawSettings([key])
+      return result[key] ?? null
     },
+    updateFn: async (updates) => {
+      if ('value' in updates) {
+        await updateSetting(key, updates.value ?? null)
+      }
+    },
+    resetFn: async () => {
+      if (!defaultSetting) {
+        throw new Error(`No default setting found for key: ${key}`)
+      }
+      await resetSettingToDefault(key, defaultSetting)
+    },
+    isModifiedFn: (data) => isSettingModified(data ?? undefined),
   })
 
-  const setValue = (newValue: boolean) => {
-    mutation.mutate(newValue)
+  const value = entity.data?.value ?? defaultValue
+
+  const setValue = async (newValue: string | null) => {
+    await entity.update({ value: newValue } as Partial<Setting>)
   }
 
-  const value = query.data ?? defaultValue
+  return {
+    ...entity,
+    rawSetting: entity.data,
+    value,
+    setValue,
+  }
+}
 
-  return [value, setValue, query, mutation]
+/**
+ * Extended result type for boolean settings
+ */
+export type UseBooleanSettingResult = UseEntityResult<Setting> & {
+  /** The raw setting object with metadata */
+  rawSetting: Setting | null
+
+  /** The boolean value (convenience accessor) */
+  value: boolean
+
+  /** Update just the value (convenience method) */
+  setValue: (value: boolean) => Promise<void>
+}
+
+/**
+ * Hook for managing a boolean setting with modification tracking and reset capability
+ *
+ * @param key - The setting key
+ * @param defaultValue - Default boolean value to use if setting doesn't exist
+ *
+ * @example
+ * ```tsx
+ * const dataCollection = useBooleanSetting('data_collection', true)
+ *
+ * return (
+ *   <>
+ *     <Switch
+ *       checked={dataCollection.value}
+ *       onCheckedChange={dataCollection.setValue}
+ *     />
+ *     {dataCollection.isModified && (
+ *       <Button onClick={dataCollection.reset}>Reset</Button>
+ *     )}
+ *   </>
+ * )
+ * ```
+ */
+export const useBooleanSetting = (key: string, defaultValue: boolean = false): UseBooleanSettingResult => {
+  const defaultSetting = defaultSettings.find((s) => s.key === key)
+
+  const entity = useEntity<Setting>({
+    queryKey: ['settings', key],
+    queryFn: async () => {
+      const result = await getRawSettings([key])
+      return result[key] ?? null
+    },
+    updateFn: async (updates) => {
+      if ('value' in updates) {
+        const boolValue = updates.value === 'true'
+        await updateBooleanSetting(key, boolValue)
+      }
+    },
+    resetFn: async () => {
+      if (!defaultSetting) {
+        throw new Error(`No default setting found for key: ${key}`)
+      }
+      await resetSettingToDefault(key, defaultSetting)
+    },
+    isModifiedFn: (data) => isSettingModified(data ?? undefined),
+  })
+
+  const value = entity.data?.value === 'true' || (entity.data === null && defaultValue)
+
+  const setValue = async (newValue: boolean) => {
+    await entity.update({ value: newValue ? 'true' : 'false' } as Partial<Setting>)
+  }
+
+  return {
+    ...entity,
+    rawSetting: entity.data,
+    value,
+    setValue,
+  }
 }

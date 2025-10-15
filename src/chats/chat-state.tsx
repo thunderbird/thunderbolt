@@ -45,7 +45,9 @@ const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseS
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
   const { getEnabledClients } = useMCP()
 
-  const [defaultModelId, setDefaultModelId] = useSetting<string>('selected_model')
+  const defaultModelIdSetting = useSetting('selected_model', '')
+  const defaultModelId = defaultModelIdSetting.value
+  const setDefaultModelId = defaultModelIdSetting.setValue
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
 

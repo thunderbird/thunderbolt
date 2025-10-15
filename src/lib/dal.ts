@@ -488,12 +488,32 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
 // ============================================================================
 
 /**
+ * Update a model (preserves defaultHash for modification tracking)
+ */
+export const updateModel = async (id: string, updates: Partial<Model>) => {
+  const db = DatabaseSingleton.instance.db
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
+  await db.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
+}
+
+/**
  * Reset a model to its default state
  */
 export const resetModelToDefault = async (id: string, defaultModel: Model) => {
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultModel
   await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+}
+
+/**
+ * Update an automation/prompt (preserves defaultHash for modification tracking)
+ */
+export const updateAutomation = async (id: string, updates: Partial<Prompt>) => {
+  const db = DatabaseSingleton.instance.db
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
+  await db.update(promptsTable).set(updateFields).where(eq(promptsTable.id, id))
 }
 
 /**
@@ -525,6 +545,16 @@ export const resetSettingsToDefaults = async (settings: Array<{ key: string; def
       return db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
     }),
   )
+}
+
+/**
+ * Update a task (preserves defaultHash for modification tracking)
+ */
+export const updateTask = async (id: string, updates: Partial<Task>) => {
+  const db = DatabaseSingleton.instance.db
+  // Don't allow updating defaultHash - it must be preserved for modification tracking
+  const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }
+  await db.update(tasksTable).set(updateFields).where(eq(tasksTable.id, id))
 }
 
 /**

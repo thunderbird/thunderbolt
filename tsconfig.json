@@ -2,11 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": [
-      "ES2020",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     /* Bundler mode */
@@ -24,33 +20,14 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/src/*": [
-        "./src/*"
-      ],
-      "@/flower": [
-        "src/flower/index.ts"
-      ],
-      "@/flower/*": [
-        "src/flower/*"
-      ]
+      "@/*": ["./src/*"],
+      "@/src/*": ["./src/*"]
     },
     /* Types */
-    "typeRoots": [
-      "./node_modules/@types",
-      "./src/types"
-    ]
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": [
-    "src",
-    "src/flower"
-  ],
-  "exclude": [
-    "src/db/bundle-migrations.ts",
-    "src/drizzle/_migrations.ts"
-  ],
+  "include": ["src"],
+  "exclude": ["src/db/bundle-migrations.ts", "src/drizzle/_migrations.ts"],
   "references": [
     {
       "path": "./tsconfig.node.json"

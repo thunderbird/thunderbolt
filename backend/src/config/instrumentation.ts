@@ -7,16 +7,18 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
  */
 const getOtelExporter = () => {
   const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-  
+
   if (!otlpEndpoint) {
     return null
-  }  
+  }
 
   return new OTLPTraceExporter({
     url: otlpEndpoint,
-    headers: process.env.OTEL_EXPORTER_OTLP_TOKEN ? {
-      'Authorization': `Bearer ${process.env.OTEL_EXPORTER_OTLP_TOKEN}`,
-    } : undefined,
+    headers: process.env.OTEL_EXPORTER_OTLP_TOKEN
+      ? {
+          Authorization: `Bearer ${process.env.OTEL_EXPORTER_OTLP_TOKEN}`,
+        }
+      : undefined,
   })
 }
 
@@ -27,7 +29,7 @@ const getOtelExporter = () => {
 export const createInstrumentation = () => {
   const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
   const exporter = getOtelExporter()
-  
+
   if (!exporter) {
     // Return a no-op plugin if OpenTelemetry is not configured
     return null

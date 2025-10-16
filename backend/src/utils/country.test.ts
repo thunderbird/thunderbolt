@@ -62,11 +62,11 @@ describe('resolveCountryCode', () => {
     expect(resolveCountryCode('Germany')).toBe('DE')
     expect(resolveCountryCode('DE')).toBe('DE')
     expect(resolveCountryCode('DEU')).toBe('DE')
-    
+
     expect(resolveCountryCode('Japan')).toBe('JP')
     expect(resolveCountryCode('JP')).toBe('JP')
     expect(resolveCountryCode('JPN')).toBe('JP')
-    
+
     expect(resolveCountryCode('Australia')).toBe('AU')
     expect(resolveCountryCode('AU')).toBe('AU')
     expect(resolveCountryCode('AUS')).toBe('AU')

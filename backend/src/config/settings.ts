@@ -6,8 +6,6 @@ import { z } from 'zod'
 const settingsSchema = z.object({
   // API Keys
   fireworksApiKey: z.string().default(''),
-  flowerMgmtKey: z.string().default(''),
-  flowerProjId: z.string().default(''),
   exaApiKey: z.string().default(''),
 
   // Health Check Configuration
@@ -48,8 +46,6 @@ export type Settings = z.infer<typeof settingsSchema>
 const parseSettings = (): Settings => {
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
-    flowerMgmtKey: process.env.FLOWER_MGMT_KEY || '',
-    flowerProjId: process.env.FLOWER_PROJ_ID || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',

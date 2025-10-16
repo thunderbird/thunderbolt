@@ -32,13 +32,13 @@ export const createMainRoutes = () => {
         }
 
         const countryCode = resolveCountryCode(country)
-        
+
         if (!countryCode) {
           return unitsByCountryData.US
         }
 
         const countryData = unitsByCountryData[countryCode as keyof typeof unitsByCountryData]
-        
+
         if (!countryData) {
           return unitsByCountryData.US
         }
@@ -77,7 +77,6 @@ export const createMainRoutes = () => {
           const response = await fetch(url.toString())
 
           if (!response.ok) {
-
             if (response.status === 400) {
               set.status = 400
               throw new Error('Invalid search query')
@@ -125,4 +124,3 @@ export const createMainRoutes = () => {
       },
     )
 }
-

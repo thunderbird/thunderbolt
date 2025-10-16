@@ -1,12 +1,13 @@
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { Brain } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { useObjectView } from './object-view-provider'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
 import { getMessagePartOutput, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 type UseToolGroupStateParams = {
   tools: ToolUIPart[]
@@ -55,9 +56,11 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
     <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
       {parts.map((part, index) => {
         if (part.type === 'reasoning') {
+          const isOpen = part.state === 'streaming'
+
           return (
-            <Tooltip key={`reasoning-${index}`}>
-              <TooltipTrigger asChild>
+            <Popover key={`reasoning-${index}`} open={isOpen}>
+              <PopoverTrigger asChild>
                 <motion.div
                   className="data-[slot=avatar]:ring-background data-[slot=avatar]:ring-2 data-[slot=avatar]:grayscale"
                   initial={{ scale: 0 }}
@@ -81,11 +84,12 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
                     }
                   />
                 </motion.div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
+              </PopoverTrigger>
+              <PopoverContent className="PopoverContent max-w-lg max-h-40 overflow-scroll">
                 <p className="font-medium">Thinking</p>
-              </TooltipContent>
-            </Tooltip>
+                <p className="font-medium">{part.text}</p>
+              </PopoverContent>
+            </Popover>
           )
         } else {
           const tool = part as ToolUIPart

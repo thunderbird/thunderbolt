@@ -96,6 +96,17 @@
   }
 }
 
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @utility animate-accordion-down {
   animation: accordion-down 0.2s ease-out;
 }
@@ -148,4 +159,11 @@ body {
 
 .prose-sm tr:last-child td {
   @apply border-b-0;
+}
+
+.PopoverContent {
+  width: var(--radix-popover-content-available-width);
+  /* max-height: var(--radix-popover-content-available-height); */
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: scaleIn 0.5s ease-out;
 }

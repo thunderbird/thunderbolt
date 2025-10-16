@@ -14,7 +14,7 @@ import {
   type GoogleUserInfo,
   type OAuthTokens,
 } from '@/lib/auth'
-import { getSettings, updateSetting } from '@/lib/dal'
+import { getSettings, updateSetting } from '@/src/dal'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 import { isTauri } from '@/lib/platform'
 import { Loader2 } from 'lucide-react'

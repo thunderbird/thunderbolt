@@ -1,4 +1,4 @@
-import { getSettings } from '@/lib/dal'
+import { getSettings } from '@/src/dal'
 
 /**
  * Get the default cloud URL from environment variables or fallback to localhost

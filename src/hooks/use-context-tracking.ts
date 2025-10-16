@@ -1,5 +1,5 @@
 import { estimateTokensForText } from '@/ai/tokenizers'
-import { getContextSizeForThread } from '@/lib/dal'
+import { getContextSizeForThread } from '@/src/dal'
 import type { Model } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 

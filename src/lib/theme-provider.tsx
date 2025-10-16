@@ -2,7 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getThemeSetting } from '@/lib/dal'
+import { getThemeSetting } from '@/src/dal'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 type Theme = 'dark' | 'light' | 'system'

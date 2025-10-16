@@ -22,7 +22,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
-import { getModel, updateModel } from '@/lib/dal'
+import { getModel, updateModel } from '@/src/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 

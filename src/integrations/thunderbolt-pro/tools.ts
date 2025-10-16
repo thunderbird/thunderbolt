@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { getSettings } from '@/lib/dal'
+import { getSettings } from '@/src/dal'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'

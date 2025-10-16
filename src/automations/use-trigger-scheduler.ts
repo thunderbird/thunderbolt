@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { triggersTable } from '@/db/tables'
 import { useSettings } from '@/hooks/use-settings'
-import { runAutomation } from '@/lib/dal'
+import { runAutomation } from '@/src/dal'
 import { eq } from 'drizzle-orm'
 import { useEffect, useRef } from 'react'
 

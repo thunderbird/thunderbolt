@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { trackEvent } from '@/lib/analytics'
-import { getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/lib/dal'
+import { getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/src/dal'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/types'
 import type { DropAnimation } from '@dnd-kit/core'

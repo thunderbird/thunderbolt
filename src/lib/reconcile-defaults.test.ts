@@ -1,3 +1,4 @@
+import { getAllModels } from '@/src/dal'
 import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { migrate } from '../db/migrate'
@@ -112,7 +113,6 @@ describe('seedModels', () => {
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Get all models before deletion
-    const { getAllModels } = await import('./dal')
     const modelsBefore = await getAllModels()
     expect(modelsBefore.length).toBe(defaultModels.length)
 

@@ -1,4 +1,4 @@
-import { getSettings } from '@/lib/dal'
+import { getSettings } from '@/src/dal'
 import { isTauri } from '@/lib/platform'
 
 /**

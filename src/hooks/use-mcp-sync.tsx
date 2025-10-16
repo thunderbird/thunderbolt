@@ -1,4 +1,4 @@
-import { getAllMcpServers } from '@/lib/dal'
+import { getAllMcpServers } from '@/src/dal'
 import { useMCP } from '@/lib/mcp-provider'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'

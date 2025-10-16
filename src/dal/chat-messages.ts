@@ -1,0 +1,90 @@
+import { desc, eq, sql } from 'drizzle-orm'
+import { DatabaseSingleton } from '../db/singleton'
+import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import type { ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import { convertUIMessageToDbChatMessage } from '../lib/utils'
+
+/**
+ * Gets all chat messages for a specific thread
+ */
+export const getChatMessages = async (threadId: string) => {
+  const db = DatabaseSingleton.instance.db
+  const chatMessages = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .orderBy(chatMessagesTable.id)
+  return chatMessages
+}
+
+export const getLastMessage = async (threadId: string) => {
+  const db = DatabaseSingleton.instance.db
+
+  return await db
+    .select({
+      id: chatMessagesTable.id,
+      chatThreadId: chatMessagesTable.chatThreadId,
+      modelId: chatMessagesTable.modelId,
+    })
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .orderBy(desc(chatMessagesTable.id))
+    .limit(1)
+    .get()
+}
+
+/**
+ * Saves messages to a chat thread and updates context size if available
+ * @param threadId - The ID of the chat thread
+ * @param messages - Array of UI messages to save
+ * @returns The saved database messages
+ * @throws Error if thread is not found
+ */
+export const saveMessagesWithContextUpdate = async (threadId: string, messages: ThunderboltUIMessage[]) => {
+  const db = DatabaseSingleton.instance.db
+
+  // Verify thread exists
+  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
+  if (!thread) {
+    throw new Error('Thread not found')
+  }
+
+  // Get the last message in the thread to use as parent for new messages
+  const lastMessage = await getLastMessage(threadId)
+  const parentId = lastMessage?.id ?? null
+
+  // Convert UI messages to DB messages with parent relationship
+  const dbChatMessages = messages.map((message, index) => {
+    // For the first message in this batch, use the last message in the thread as parent
+    // For subsequent messages in the batch, use the previous message in the batch
+    const messageParentId = index === 0 ? parentId : messages[index - 1].id
+    return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
+  })
+
+  // Insert messages
+  await db
+    .insert(chatMessagesTable)
+    .values(dbChatMessages)
+    .onConflictDoUpdate({
+      target: chatMessagesTable.id,
+      set: {
+        content: sql`excluded.content`,
+        parts: sql`excluded.parts`,
+        role: sql`excluded.role`,
+        parentId: sql`excluded.parent_id`,
+      },
+    })
+
+  // Update context size if available in latest message
+  const latestMessage = messages[messages.length - 1]
+  const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
+
+  if (metadata?.usage?.totalTokens) {
+    await db
+      .update(chatThreadsTable)
+      .set({ contextSize: metadata.usage.totalTokens })
+      .where(eq(chatThreadsTable.id, threadId))
+  }
+
+  return dbChatMessages
+}

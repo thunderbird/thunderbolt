@@ -1,4 +1,4 @@
-import { getAllModels } from '@/src/dal'
+import { getAllModels } from '@/dal'
 import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { migrate } from '../db/migrate'

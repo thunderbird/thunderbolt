@@ -1,12 +1,12 @@
 /// <reference types="vitest/config" />
+import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import { bundleMigrations } from './src/db/bundle-migrations'
-import { fileURLToPath } from 'node:url'
-import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -22,7 +22,10 @@ const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.a
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
-    sourcemap: true, // This enables source map generation
+    sourcemap: true,
+    rollupOptions: {
+      external: ['bun:sqlite'],
+    },
   },
   plugins: [
     {
@@ -60,6 +63,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    conditions: ['browser'],
   },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/src/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import type { ThunderboltUIMessage } from '@/types'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'

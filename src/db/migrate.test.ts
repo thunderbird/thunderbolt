@@ -1,5 +1,5 @@
 import { migrations } from '@/drizzle/_migrations'
-import { DatabaseSingleton } from '@/src/db/singleton'
+import { DatabaseSingleton } from '@/db/singleton'
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { migrate } from './migrate'

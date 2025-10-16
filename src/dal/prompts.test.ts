@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '@/src/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'

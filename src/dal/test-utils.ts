@@ -1,5 +1,5 @@
-import { migrate } from '@/src/db/migrate'
-import { DatabaseSingleton } from '@/src/db/singleton'
+import { migrate } from '@/db/migrate'
+import { DatabaseSingleton } from '@/db/singleton'
 import { reconcileDefaults } from '../lib/reconcile-defaults'
 
 /**

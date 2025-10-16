@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { getSettings } from '@/src/dal'
+import { getSettings } from '@/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'

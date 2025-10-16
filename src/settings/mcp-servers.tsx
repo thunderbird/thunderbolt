@@ -23,7 +23,7 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { getHttpMcpServers } from '@/src/dal'
+import { getHttpMcpServers } from '@/dal'
 
 interface McpServer {
   id: string

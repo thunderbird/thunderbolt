@@ -1,8 +1,8 @@
-import { aiFetchStreamingResponse } from '@/src/ai/fetch'
-import { migrate } from '@/src/db/migrate'
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { modelsTable, settingsTable } from '@/src/db/tables'
-import type { ThunderboltUIMessage } from '@/src/types'
+import { aiFetchStreamingResponse } from '@/ai/fetch'
+import { migrate } from '@/db/migrate'
+import { DatabaseSingleton } from '@/db/singleton'
+import { modelsTable, settingsTable } from '@/db/tables'
+import type { ThunderboltUIMessage } from '@/types'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 

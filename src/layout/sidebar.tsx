@@ -23,7 +23,7 @@ import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
-import { getAllChatThreads } from '@/src/dal'
+import { getAllChatThreads } from '@/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {

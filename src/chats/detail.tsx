@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable } from '@/db/tables'
-import { getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/src/dal'
+import { getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm'
 import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import Chat from './chat'
-import { getChatMessages } from '@/src/dal'
+import { getChatMessages } from '@/dal'
 import { v7 as uuidv7 } from 'uuid'
 
 export default function ChatDetailPage() {

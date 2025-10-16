@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { mcpServersTable } from '@/src/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { mcpServersTable } from '@/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getAllMcpServers, getHttpMcpServers } from './mcp-servers'

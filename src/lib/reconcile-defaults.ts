@@ -1,5 +1,5 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { createSetting } from '@/src/dal'
+import { createSetting } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'

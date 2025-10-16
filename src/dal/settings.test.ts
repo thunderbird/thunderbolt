@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { settingsTable } from '@/src/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { settingsTable } from '@/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { defaultSettings, hashSetting } from '../defaults/settings'

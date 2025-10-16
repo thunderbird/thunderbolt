@@ -1,6 +1,6 @@
 import { defaultSettings } from '@/defaults/settings'
 import { isSettingModified } from '@/defaults/utils'
-import { getSettingsRecords, resetSettingToDefault, updateSetting } from '@/src/dal'
+import { getSettingsRecords, resetSettingToDefault, updateSetting } from '@/dal'
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'

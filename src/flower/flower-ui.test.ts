@@ -1,4 +1,4 @@
-import { createFlowerMiddleware } from '@/src/ai/middleware/default'
+import { createFlowerMiddleware } from '@/ai/middleware/default'
 import { readUIMessageStream, streamText, wrapLanguageModel, type UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { createFlowerProvider, type FlowerChatArgs, type FlowerClient } from './flower'

@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/src/db/singleton'
-import { tasksTable } from '@/src/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { tasksTable } from '@/db/tables'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getIncompleteTasks, getIncompleteTasksCount } from './tasks'

@@ -14,7 +14,7 @@ type LocalizationParams = {
  * This is a subset of the full PreferencesSettings type from the frontend.
  */
 type WeatherPreferences = {
-  distanceUnit?: string    // Maps to wind_speed_unit and precipitation_unit
+  distanceUnit?: string // Maps to wind_speed_unit and precipitation_unit
   temperatureUnit?: string // Maps to temperature_unit
 }
 
@@ -39,7 +39,7 @@ export class OpenMeteoWeather {
    */
   private getUserLocalizationParams(userPreferences?: WeatherPreferences): LocalizationParams {
     const params: LocalizationParams = {}
-    
+
     if (userPreferences?.temperatureUnit) {
       switch (userPreferences.temperatureUnit.toUpperCase()) {
         case 'F':
@@ -54,7 +54,7 @@ export class OpenMeteoWeather {
           break
       }
     }
-    
+
     if (userPreferences?.distanceUnit) {
       switch (userPreferences.distanceUnit.toLowerCase()) {
         case 'imperial':
@@ -65,7 +65,7 @@ export class OpenMeteoWeather {
           break
       }
     }
-    
+
     if (userPreferences?.distanceUnit) {
       switch (userPreferences.distanceUnit.toLowerCase()) {
         case 'imperial':
@@ -128,11 +128,7 @@ export class OpenMeteoWeather {
   /**
    * Search for locations by name
    */
-  async searchLocations(
-    query: string,
-    region: string | null,
-    country: string | null,
-  ): Promise<Location[]> {
+  async searchLocations(query: string, region: string | null, country: string | null): Promise<Location[]> {
     const url = new URL(this.geocodingUrl)
     url.searchParams.set('name', query)
     url.searchParams.set('count', '10')
@@ -181,7 +177,7 @@ export class OpenMeteoWeather {
     // Apply user localization preferences
     const localizationParams = this.getUserLocalizationParams(userPreferences)
     this.applyLocalizationParams(url, localizationParams)
-    
+
     const response = await fetch(url.toString())
 
     if (!response.ok) {
@@ -254,7 +250,10 @@ export class OpenMeteoWeather {
       // Apply user localization preferences
       const localizationParams = this.getUserLocalizationParams(userPreferences)
       this.applyLocalizationParams(url, localizationParams)
-      
+
+      // Determine temperature unit based on what was requested
+      const temperatureUnit: 'c' | 'f' = localizationParams.temperatureUnit === 'fahrenheit' ? 'f' : 'c'
+
       const response = await fetch(url.toString())
 
       if (!response.ok) {
@@ -310,6 +309,7 @@ export class OpenMeteoWeather {
       return {
         location: fullLocationName,
         days: weatherDays,
+        temperature_unit: temperatureUnit,
       }
     } catch (error) {
       throw new Error(`Could not fetch forecast data: ${String(error)}`)

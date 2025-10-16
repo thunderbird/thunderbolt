@@ -1,5 +1,5 @@
-import { z } from 'zod'
 import dayjs from 'dayjs'
+import { z } from 'zod'
 
 const WeatherDaySchema = z.object({
   date: z.string(),
@@ -16,6 +16,7 @@ const WeatherDaySchema = z.object({
 export const WeatherForecastDataSchema = z.object({
   location: z.string(),
   days: z.array(WeatherDaySchema).min(1).max(7),
+  temperature_unit: z.enum(['c', 'f']),
 })
 
 export type WeatherDay = z.infer<typeof WeatherDaySchema>
@@ -196,9 +197,25 @@ export const getWeatherMetadata = (code: number, dateString: string): WeatherMet
   }
 }
 
-export const convertTemperature = (temp: number, unit: 'c' | 'f'): number => {
-  if (unit === 'f') {
+/**
+ * Convert temperature between Celsius and Fahrenheit
+ * @param temp - The temperature value
+ * @param sourceUnit - The unit the temperature is currently in
+ * @param targetUnit - The unit to convert to
+ * @returns The converted temperature
+ */
+export const convertTemperature = (temp: number, sourceUnit: 'c' | 'f', targetUnit: 'c' | 'f'): number => {
+  if (sourceUnit === targetUnit) {
+    return Math.round(temp)
+  }
+
+  if (sourceUnit === 'c' && targetUnit === 'f') {
     return Math.round((temp * 9) / 5 + 32)
   }
+
+  if (sourceUnit === 'f' && targetUnit === 'c') {
+    return Math.round(((temp - 32) * 5) / 9)
+  }
+
   return Math.round(temp)
 }

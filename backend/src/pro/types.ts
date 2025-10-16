@@ -76,6 +76,7 @@ export const weatherDaySchema = z.object({
 export const weatherForecastDataSchema = z.object({
   location: z.string(),
   days: z.array(weatherDaySchema),
+  temperature_unit: z.enum(['c', 'f']),
 })
 
 export const weatherCurrentResponseSchema = baseApiResponseSchema(z.string())

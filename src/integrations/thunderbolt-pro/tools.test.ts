@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { SearchParams, FetchContentParams, WeatherParams, SearchLocationParams } from './tools'
-import { search, fetchContent, getCurrentWeather, getWeatherForecast, searchLocations } from './tools'
 import type { WeatherForecastData } from '@/lib/weather-forecast'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
+import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
 // Mock external dependencies
 const mockGet = mock()
@@ -49,6 +49,7 @@ const mockWeatherForecastData: WeatherForecastData = {
       wind_speed_10m_max: 15,
     },
   ],
+  temperature_unit: 'f',
 }
 
 describe('Thunderbolt Pro Tools', () => {

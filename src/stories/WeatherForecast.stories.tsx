@@ -32,7 +32,7 @@ const WeatherForecastWithToggle = ({
           {dayTime ? '☀️ Day' : '🌙 Night'}
         </button>
       </div>
-      <WeatherForecast location={location} days={modifiedDays} />
+      <WeatherForecast location={location} days={modifiedDays} temperature_unit="c" />
     </div>
   )
 }
@@ -101,6 +101,7 @@ const createWeatherData = (codes: number[], isDayTime: boolean = true): WeatherF
         wind_speed_10m_max: Math.random() * 15, // 0-15 m/s wind speed
       }
     }),
+    temperature_unit: 'c',
   }
 }
 
@@ -264,6 +265,7 @@ export const InteractiveDayNightToggle: Story = {
         wind_speed_10m_max: 12.4,
       },
     ],
+    temperature_unit: 'c',
     isDayTime: true,
   },
   parameters: {
@@ -321,6 +323,7 @@ export const NightModeDefault: Story = {
         wind_speed_10m_max: 7.2,
       },
     ],
+    temperature_unit: 'c',
     isDayTime: false,
   },
   parameters: {
@@ -415,6 +418,7 @@ export const AllWeatherCodes: Story = {
         wind_speed_10m_max: 5.4,
       },
     ],
+    temperature_unit: 'c',
   },
   parameters: {
     docs: {

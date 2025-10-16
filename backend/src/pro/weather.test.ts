@@ -73,9 +73,7 @@ describe('Pro - OpenMeteoWeather', () => {
       const networkError = new Error('Network failure')
       mockFetch.mockRejectedValueOnce(networkError)
 
-      await expect(weather.searchLocations('London', 'England', 'United Kingdom')).rejects.toThrow(
-        'Network failure',
-      )
+      await expect(weather.searchLocations('London', 'England', 'United Kingdom')).rejects.toThrow('Network failure')
     })
 
     it('should construct correct URL with query parameters', async () => {
@@ -586,6 +584,7 @@ describe('Pro - OpenMeteoWeather', () => {
             wind_speed_10m_max: 22.1,
           },
         ],
+        temperature_unit: 'c',
       })
 
       expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -628,6 +627,7 @@ describe('Pro - OpenMeteoWeather', () => {
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toHaveLength(1)
       expect(result.days[0].date).toBe('2024-01-15')
+      expect(result.temperature_unit).toBe('c')
 
       const forecastCall = mockFetch.mock.calls[1][0] as string
       expect(forecastCall).toContain('forecast_days=1')
@@ -678,6 +678,7 @@ describe('Pro - OpenMeteoWeather', () => {
       expect(result.days[0].date).toBe('2024-01-15')
       expect(result.days[1].date).toBe('2024-01-16')
       expect(result.days[2].date).toBe('2024-01-17')
+      expect(result.temperature_unit).toBe('c')
     })
 
     it('should handle missing forecast data gracefully', async () => {
@@ -710,6 +711,7 @@ describe('Pro - OpenMeteoWeather', () => {
 
       expect(result.location).toBe('London, England, United Kingdom')
       expect(result.days).toEqual([])
+      expect(result.temperature_unit).toBe('c')
       // Should not crash with empty data
     })
   })

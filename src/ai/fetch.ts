@@ -141,7 +141,7 @@ export const aiFetchStreamingResponse = async ({
     location_lat: '',
     location_lng: '',
     distance_unit: 'imperial',
-    temperature_unit: 'F',
+    temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',

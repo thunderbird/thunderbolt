@@ -4,8 +4,8 @@
       "imperial"
     ],
     "temperature": [
-      { "symbol": "C", "name": "Celsius" },
-      { "symbol": "F", "name": "Fahrenheit" }
+      { "symbol": "c", "name": "Celsius" },
+      { "symbol": "f", "name": "Fahrenheit" }
     ],
     "timeFormat": [
       "12h",

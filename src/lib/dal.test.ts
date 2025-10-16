@@ -287,7 +287,7 @@ describe('Settings DAL', () => {
 
       // Simulate initial auto-population from country data with recomputeHash
       await updateSetting('distance_unit', 'metric', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'C', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'c', { recomputeHash: true })
 
       // Verify they're not marked as modified
       const distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -297,7 +297,7 @@ describe('Settings DAL', () => {
       expect(isSettingModified(tempSetting!)).toBe(false)
 
       // User manually changes one setting
-      await updateSetting('temperature_unit', 'F')
+      await updateSetting('temperature_unit', 'f')
 
       // Only the manually changed setting should be modified
       const distanceAfter = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -308,7 +308,7 @@ describe('Settings DAL', () => {
 
       // User changes location, triggering new localization values with recomputeHash
       await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'F', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'f', { recomputeHash: true })
 
       // Both should now be unmodified relative to the new baseline
       const distanceFinal = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -369,12 +369,12 @@ describe('Settings DAL', () => {
     it('should work in location change scenario with mixed modified/unmodified settings', async () => {
       const db = DatabaseSingleton.instance.db
 
-      // Initial location (UK): metric and C
+      // Initial location (UK): metric and c
       await updateSetting('distance_unit', 'metric', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'C', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'c', { recomputeHash: true })
 
-      // User manually changes temperature to F
-      await updateSetting('temperature_unit', 'F')
+      // User manually changes temperature to f
+      await updateSetting('temperature_unit', 'f')
 
       // Verify state before location change
       let distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -382,18 +382,18 @@ describe('Settings DAL', () => {
       expect(isSettingModified(distanceSetting!)).toBe(false)
       expect(isSettingModified(tempSetting!)).toBe(true)
 
-      // User changes location to US: imperial and F
+      // User changes location to US: imperial and f
       // For unmodified settings, update value and hash
       await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
       // For modified settings, only update hash (preserve user's value)
-      await updateSetting('temperature_unit', 'F', { updateHashOnly: true })
+      await updateSetting('temperature_unit', 'f', { updateHashOnly: true })
 
       // Check final state
       distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
       tempSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
 
       expect(distanceSetting?.value).toBe('imperial') // Changed from metric to imperial
-      expect(tempSetting?.value).toBe('F') // Stayed F (was already F)
+      expect(tempSetting?.value).toBe('f') // Stayed f (was already f)
       expect(isSettingModified(distanceSetting!)).toBe(false) // New baseline
       expect(isSettingModified(tempSetting!)).toBe(false) // Now matches baseline
     })

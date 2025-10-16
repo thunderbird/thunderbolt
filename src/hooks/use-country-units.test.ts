@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 
 // Mock data
 const mockCountryUnitsData = {
   unit: 'metric',
-  temperature: 'C',
+  temperature: 'c',
   timeFormat: '24h',
   dateFormatExample: 'DD/MM/YYYY',
   currency: {
@@ -20,7 +20,7 @@ const mockPreferencesSettings = {
   preferredName: 'John',
   dataCollection: true,
   experimentalFeatureTasks: false,
-  temperatureUnit: 'C',
+  temperatureUnit: 'c',
   timeFormat: '24h',
   distanceUnit: 'metric',
   dateFormat: 'DD/MM/YYYY',
@@ -127,7 +127,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
   it('should validate country units data structure', () => {
     // Test valid data structure
     expect(mockCountryUnitsData.unit).toMatch(/^(metric|imperial)$/)
-    expect(mockCountryUnitsData.temperature).toMatch(/^[CF]$/)
+    expect(mockCountryUnitsData.temperature).toMatch(/^[cf]$/)
     expect(mockCountryUnitsData.timeFormat).toMatch(/^(12h|24h)$/)
     expect(mockCountryUnitsData.dateFormatExample).toMatch(/^[A-Z]{2}\/[A-Z]{2}\/[A-Z]{4}$/)
 
@@ -152,7 +152,7 @@ describe('useCountryUnits hook configuration and data structures', () => {
 
     // These should fail validation
     expect(invalidData.unit).not.toMatch(/^(metric|imperial)$/)
-    expect(invalidData.temperature).not.toMatch(/^[CF]$/)
+    expect(invalidData.temperature).not.toMatch(/^[cf]$/)
     expect(invalidData.timeFormat).not.toMatch(/^(12h|24h)$/)
     expect(invalidData.dateFormatExample).not.toMatch(/^[A-Z]{2}\/[A-Z]{2}\/[A-Z]{4}$/)
   })

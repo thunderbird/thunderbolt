@@ -106,14 +106,14 @@ describe('Main Routes', () => {
       const data = await response.json()
       expect(data).toEqual({
         unit: 'metric',
-        temperature: 'C',
+        temperature: 'c',
         timeFormat: '24h',
         dateFormatExample: 'DD/MM/YYYY',
         currency: {
           code: 'BRL',
           symbol: 'R$',
-          name: 'Brazilian Real'
-        }
+          name: 'Brazilian Real',
+        },
       })
     })
 
@@ -124,14 +124,14 @@ describe('Main Routes', () => {
       const data = await response.json()
       expect(data).toEqual({
         unit: 'metric',
-        temperature: 'C',
+        temperature: 'c',
         timeFormat: '24h',
         dateFormatExample: 'DD/MM/YYYY',
         currency: {
           code: 'BRL',
           symbol: 'R$',
-          name: 'Brazilian Real'
-        }
+          name: 'Brazilian Real',
+        },
       })
     })
 
@@ -142,14 +142,14 @@ describe('Main Routes', () => {
       const data = await response.json()
       expect(data).toEqual({
         unit: 'imperial',
-        temperature: 'F',
+        temperature: 'f',
         timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',
           symbol: '$',
-          name: 'US Dollar'
-        }
+          name: 'US Dollar',
+        },
       })
     })
 
@@ -160,14 +160,14 @@ describe('Main Routes', () => {
       const data = await response.json()
       expect(data).toEqual({
         unit: 'imperial',
-        temperature: 'F',
+        temperature: 'f',
         timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',
           symbol: '$',
-          name: 'US Dollar'
-        }
+          name: 'US Dollar',
+        },
       })
     })
 
@@ -178,14 +178,14 @@ describe('Main Routes', () => {
       const data = await response.json()
       expect(data).toEqual({
         unit: 'imperial',
-        temperature: 'F',
+        temperature: 'f',
         timeFormat: '12h',
         dateFormatExample: 'MM/DD/YYYY',
         currency: {
           code: 'USD',
           symbol: '$',
-          name: 'US Dollar'
-        }
+          name: 'US Dollar',
+        },
       })
     })
 
@@ -216,9 +216,9 @@ describe('Main Routes', () => {
       expect(Array.isArray(data.temperature)).toBe(true)
       expect(data.temperature).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ symbol: 'C', name: 'Celsius' }),
-          expect.objectContaining({ symbol: 'F', name: 'Fahrenheit' })
-        ])
+          expect.objectContaining({ symbol: 'c', name: 'Celsius' }),
+          expect.objectContaining({ symbol: 'f', name: 'Fahrenheit' }),
+        ]),
       )
 
       expect(Array.isArray(data.timeFormat)).toBe(true)
@@ -238,4 +238,3 @@ describe('Main Routes', () => {
     })
   })
 })
-

@@ -300,7 +300,7 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             distanceUnit: 'imperial',
-            temperatureUnit: 'F',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -371,7 +371,7 @@ describe('Thunderbolt Pro Tools', () => {
             country: 'US',
             days: 3,
             distanceUnit: 'imperial',
-            temperatureUnit: 'F',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -403,7 +403,7 @@ describe('Thunderbolt Pro Tools', () => {
             country: 'US',
             days: 5,
             distanceUnit: 'imperial',
-            temperatureUnit: 'F',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -492,7 +492,7 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             distanceUnit: 'imperial',
-            temperatureUnit: 'F',
+            temperatureUnit: 'f',
           },
         }),
       )

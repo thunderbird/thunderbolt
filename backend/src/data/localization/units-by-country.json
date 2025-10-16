@@ -1,7 +1,7 @@
 {
     "AC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -12,7 +12,7 @@
     },
     "AD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -23,7 +23,7 @@
     },
     "AE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -34,7 +34,7 @@
     },
     "AF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -45,7 +45,7 @@
     },
     "AG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -56,7 +56,7 @@
     },
     "AI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -67,7 +67,7 @@
     },
     "AL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -78,7 +78,7 @@
     },
     "AM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -89,7 +89,7 @@
     },
     "AO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -100,7 +100,7 @@
     },
     "AQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -111,7 +111,7 @@
     },
     "AR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -122,7 +122,7 @@
     },
     "AS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -133,7 +133,7 @@
     },
     "AT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -144,7 +144,7 @@
     },
     "AU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -155,7 +155,7 @@
     },
     "AW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -166,7 +166,7 @@
     },
     "AX": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -177,7 +177,7 @@
     },
     "AZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -188,7 +188,7 @@
     },
     "BA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -199,7 +199,7 @@
     },
     "BB": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -210,7 +210,7 @@
     },
     "BD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -221,7 +221,7 @@
     },
     "BE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -232,7 +232,7 @@
     },
     "BF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -243,7 +243,7 @@
     },
     "BG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -254,7 +254,7 @@
     },
     "BH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -265,7 +265,7 @@
     },
     "BI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -276,7 +276,7 @@
     },
     "BJ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -287,7 +287,7 @@
     },
     "BL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -298,7 +298,7 @@
     },
     "BM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -309,7 +309,7 @@
     },
     "BN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -320,7 +320,7 @@
     },
     "BO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -331,7 +331,7 @@
     },
     "BQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -342,7 +342,7 @@
     },
     "BR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -353,7 +353,7 @@
     },
     "BS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -364,7 +364,7 @@
     },
     "BT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -375,7 +375,7 @@
     },
     "BV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -386,7 +386,7 @@
     },
     "BW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -397,7 +397,7 @@
     },
     "BY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -408,7 +408,7 @@
     },
     "BZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -419,7 +419,7 @@
     },
     "CA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -430,7 +430,7 @@
     },
     "CC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -441,7 +441,7 @@
     },
     "CD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -452,7 +452,7 @@
     },
     "CF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -463,7 +463,7 @@
     },
     "CG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -474,7 +474,7 @@
     },
     "CH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -485,7 +485,7 @@
     },
     "CI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -496,7 +496,7 @@
     },
     "CK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -507,7 +507,7 @@
     },
     "CL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -518,7 +518,7 @@
     },
     "CM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -529,7 +529,7 @@
     },
     "CN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -540,7 +540,7 @@
     },
     "CO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -551,7 +551,7 @@
     },
     "CP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -562,7 +562,7 @@
     },
     "CQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -573,7 +573,7 @@
     },
     "CR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -584,7 +584,7 @@
     },
     "CU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -595,7 +595,7 @@
     },
     "CV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -606,7 +606,7 @@
     },
     "CW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -617,7 +617,7 @@
     },
     "CX": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -628,7 +628,7 @@
     },
     "CY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -639,7 +639,7 @@
     },
     "CZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -650,7 +650,7 @@
     },
     "DE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -661,7 +661,7 @@
     },
     "DG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -672,7 +672,7 @@
     },
     "DJ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -683,7 +683,7 @@
     },
     "DK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -694,7 +694,7 @@
     },
     "DM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -705,7 +705,7 @@
     },
     "DO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -716,7 +716,7 @@
     },
     "DZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -727,7 +727,7 @@
     },
     "EA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -738,7 +738,7 @@
     },
     "EC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -749,7 +749,7 @@
     },
     "EE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -760,7 +760,7 @@
     },
     "EG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -771,7 +771,7 @@
     },
     "EH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -782,7 +782,7 @@
     },
     "ER": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -793,7 +793,7 @@
     },
     "ES": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -804,7 +804,7 @@
     },
     "ET": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -815,7 +815,7 @@
     },
     "FI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -826,7 +826,7 @@
     },
     "FJ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -837,7 +837,7 @@
     },
     "FK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -848,7 +848,7 @@
     },
     "FM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -859,7 +859,7 @@
     },
     "FO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -870,7 +870,7 @@
     },
     "FR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -881,7 +881,7 @@
     },
     "GA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -892,7 +892,7 @@
     },
     "GB": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -903,7 +903,7 @@
     },
     "GD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -914,7 +914,7 @@
     },
     "GE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -925,7 +925,7 @@
     },
     "GF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -936,7 +936,7 @@
     },
     "GG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -947,7 +947,7 @@
     },
     "GH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -958,7 +958,7 @@
     },
     "GI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -969,7 +969,7 @@
     },
     "GL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -980,7 +980,7 @@
     },
     "GM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -991,7 +991,7 @@
     },
     "GN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1002,7 +1002,7 @@
     },
     "GP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1013,7 +1013,7 @@
     },
     "GQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1024,7 +1024,7 @@
     },
     "GR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1035,7 +1035,7 @@
     },
     "GS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1046,7 +1046,7 @@
     },
     "GT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1057,7 +1057,7 @@
     },
     "GU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1068,7 +1068,7 @@
     },
     "GW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1079,7 +1079,7 @@
     },
     "GY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1090,7 +1090,7 @@
     },
     "HK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1101,7 +1101,7 @@
     },
     "HM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1112,7 +1112,7 @@
     },
     "HN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1123,7 +1123,7 @@
     },
     "HR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1134,7 +1134,7 @@
     },
     "HT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1145,7 +1145,7 @@
     },
     "HU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1156,7 +1156,7 @@
     },
     "IC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1167,7 +1167,7 @@
     },
     "ID": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1178,7 +1178,7 @@
     },
     "IE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1189,7 +1189,7 @@
     },
     "IL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1200,7 +1200,7 @@
     },
     "IM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1211,7 +1211,7 @@
     },
     "IN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1222,7 +1222,7 @@
     },
     "IO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1233,7 +1233,7 @@
     },
     "IQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1244,7 +1244,7 @@
     },
     "IR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1255,7 +1255,7 @@
     },
     "IS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1266,7 +1266,7 @@
     },
     "IT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1277,7 +1277,7 @@
     },
     "JE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1288,7 +1288,7 @@
     },
     "JM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1299,7 +1299,7 @@
     },
     "JO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1310,7 +1310,7 @@
     },
     "JP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1321,7 +1321,7 @@
     },
     "KE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1332,7 +1332,7 @@
     },
     "KG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1343,7 +1343,7 @@
     },
     "KH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1354,7 +1354,7 @@
     },
     "KI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1365,7 +1365,7 @@
     },
     "KM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1376,7 +1376,7 @@
     },
     "KN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1387,7 +1387,7 @@
     },
     "KP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1398,7 +1398,7 @@
     },
     "KR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1409,7 +1409,7 @@
     },
     "KW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1420,7 +1420,7 @@
     },
     "KY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1431,7 +1431,7 @@
     },
     "KZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1442,7 +1442,7 @@
     },
     "LA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1453,7 +1453,7 @@
     },
     "LB": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1464,7 +1464,7 @@
     },
     "LC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1475,7 +1475,7 @@
     },
     "LI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1486,7 +1486,7 @@
     },
     "LK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1497,7 +1497,7 @@
     },
     "LR": {
       "unit": "imperial",
-      "temperature": "F",
+      "temperature": "f",
       "timeFormat": "12h",
       "dateFormatExample": "MM/DD/YYYY",
       "currency": {
@@ -1508,7 +1508,7 @@
     },
     "LS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1519,7 +1519,7 @@
     },
     "LT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1530,7 +1530,7 @@
     },
     "LU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1541,7 +1541,7 @@
     },
     "LV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1552,7 +1552,7 @@
     },
     "LY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1563,7 +1563,7 @@
     },
     "MA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1574,7 +1574,7 @@
     },
     "MC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1585,7 +1585,7 @@
     },
     "MD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1596,7 +1596,7 @@
     },
     "ME": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1607,7 +1607,7 @@
     },
     "MF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1618,7 +1618,7 @@
     },
     "MG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1629,7 +1629,7 @@
     },
     "MH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1640,7 +1640,7 @@
     },
     "MK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1651,7 +1651,7 @@
     },
     "ML": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1662,7 +1662,7 @@
     },
     "MM": {
       "unit": "imperial",
-      "temperature": "F",
+      "temperature": "f",
       "timeFormat": "12h",
       "dateFormatExample": "MM/DD/YYYY",
       "currency": {
@@ -1673,7 +1673,7 @@
     },
     "MN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1684,7 +1684,7 @@
     },
     "MO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1695,7 +1695,7 @@
     },
     "MP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1706,7 +1706,7 @@
     },
     "MQ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1717,7 +1717,7 @@
     },
     "MR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1728,7 +1728,7 @@
     },
     "MS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1739,7 +1739,7 @@
     },
     "MT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1750,7 +1750,7 @@
     },
     "MU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1761,7 +1761,7 @@
     },
     "MV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1772,7 +1772,7 @@
     },
     "MW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1783,7 +1783,7 @@
     },
     "MX": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1794,7 +1794,7 @@
     },
     "MY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1805,7 +1805,7 @@
     },
     "MZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1816,7 +1816,7 @@
     },
     "NA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1827,7 +1827,7 @@
     },
     "NC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1838,7 +1838,7 @@
     },
     "NE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1849,7 +1849,7 @@
     },
     "NF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1860,7 +1860,7 @@
     },
     "NG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1871,7 +1871,7 @@
     },
     "NI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1882,7 +1882,7 @@
     },
     "NL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1893,7 +1893,7 @@
     },
     "NO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1904,7 +1904,7 @@
     },
     "NP": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1915,7 +1915,7 @@
     },
     "NR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1926,7 +1926,7 @@
     },
     "NU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1937,7 +1937,7 @@
     },
     "NZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1948,7 +1948,7 @@
     },
     "OM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1959,7 +1959,7 @@
     },
     "PA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1970,7 +1970,7 @@
     },
     "PE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1981,7 +1981,7 @@
     },
     "PF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -1992,7 +1992,7 @@
     },
     "PG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2003,7 +2003,7 @@
     },
     "PH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2014,7 +2014,7 @@
     },
     "PK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2025,7 +2025,7 @@
     },
     "PL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2036,7 +2036,7 @@
     },
     "PM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2047,7 +2047,7 @@
     },
     "PN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2058,7 +2058,7 @@
     },
     "PR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2069,7 +2069,7 @@
     },
     "PS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2080,7 +2080,7 @@
     },
     "PT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2091,7 +2091,7 @@
     },
     "PW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2102,7 +2102,7 @@
     },
     "PY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2113,7 +2113,7 @@
     },
     "QA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2124,7 +2124,7 @@
     },
     "RE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2135,7 +2135,7 @@
     },
     "RO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2146,7 +2146,7 @@
     },
     "RS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2157,7 +2157,7 @@
     },
     "RU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2168,7 +2168,7 @@
     },
     "RW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2179,7 +2179,7 @@
     },
     "SA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2190,7 +2190,7 @@
     },
     "SB": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2201,7 +2201,7 @@
     },
     "SC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2212,7 +2212,7 @@
     },
     "SD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2223,7 +2223,7 @@
     },
     "SE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2234,7 +2234,7 @@
     },
     "SG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2245,7 +2245,7 @@
     },
     "SH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2256,7 +2256,7 @@
     },
     "SI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2267,7 +2267,7 @@
     },
     "SJ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2278,7 +2278,7 @@
     },
     "SK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2289,7 +2289,7 @@
     },
     "SL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2300,7 +2300,7 @@
     },
     "SM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2311,7 +2311,7 @@
     },
     "SN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2322,7 +2322,7 @@
     },
     "SO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2333,7 +2333,7 @@
     },
     "SR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2344,7 +2344,7 @@
     },
     "SS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2355,7 +2355,7 @@
     },
     "ST": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2366,7 +2366,7 @@
     },
     "SV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2377,7 +2377,7 @@
     },
     "SX": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2388,7 +2388,7 @@
     },
     "SY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2399,7 +2399,7 @@
     },
     "SZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2410,7 +2410,7 @@
     },
     "TA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2421,7 +2421,7 @@
     },
     "TC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2432,7 +2432,7 @@
     },
     "TD": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2443,7 +2443,7 @@
     },
     "TF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2454,7 +2454,7 @@
     },
     "TG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2465,7 +2465,7 @@
     },
     "TH": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2476,7 +2476,7 @@
     },
     "TJ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2487,7 +2487,7 @@
     },
     "TK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2498,7 +2498,7 @@
     },
     "TL": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2509,7 +2509,7 @@
     },
     "TM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2520,7 +2520,7 @@
     },
     "TN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2531,7 +2531,7 @@
     },
     "TO": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2542,7 +2542,7 @@
     },
     "TR": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2553,7 +2553,7 @@
     },
     "TT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2564,7 +2564,7 @@
     },
     "TV": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2575,7 +2575,7 @@
     },
     "TW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2586,7 +2586,7 @@
     },
     "TZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2597,7 +2597,7 @@
     },
     "UA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2608,7 +2608,7 @@
     },
     "UG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2619,7 +2619,7 @@
     },
     "UM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2630,7 +2630,7 @@
     },
     "US": {
       "unit": "imperial",
-      "temperature": "F",
+      "temperature": "f",
       "timeFormat": "12h",
       "dateFormatExample": "MM/DD/YYYY",
       "currency": {
@@ -2641,7 +2641,7 @@
     },
     "UY": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2652,7 +2652,7 @@
     },
     "UZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2663,7 +2663,7 @@
     },
     "VA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2674,7 +2674,7 @@
     },
     "VC": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2685,7 +2685,7 @@
     },
     "VE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2696,7 +2696,7 @@
     },
     "VG": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2707,7 +2707,7 @@
     },
     "VI": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2718,7 +2718,7 @@
     },
     "VN": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2729,7 +2729,7 @@
     },
     "VU": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2740,7 +2740,7 @@
     },
     "WF": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2751,7 +2751,7 @@
     },
     "WS": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2762,7 +2762,7 @@
     },
     "XK": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2773,7 +2773,7 @@
     },
     "YE": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2784,7 +2784,7 @@
     },
     "YT": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2795,7 +2795,7 @@
     },
     "ZA": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2806,7 +2806,7 @@
     },
     "ZM": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "12h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2817,7 +2817,7 @@
     },
     "ZW": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {
@@ -2828,7 +2828,7 @@
     },
     "ZZ": {
       "unit": "metric",
-      "temperature": "C",
+      "temperature": "c",
       "timeFormat": "24h",
       "dateFormatExample": "DD/MM/YYYY",
       "currency": {

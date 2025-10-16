@@ -152,7 +152,7 @@ export default function PreferencesSettingsPage() {
     data_collection: true,
     experimental_feature_tasks: false,
     distance_unit: 'imperial',
-    temperature_unit: 'F',
+    temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',

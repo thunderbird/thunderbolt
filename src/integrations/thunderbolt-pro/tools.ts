@@ -115,7 +115,7 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
   try {
     const cloudUrl = await getCloudUrl()
     const { temperatureUnit, distanceUnit } = await getSettings({
-      temperature_unit: 'F',
+      temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 
@@ -150,7 +150,7 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
   try {
     const cloudUrl = await getCloudUrl()
     const { temperatureUnit, distanceUnit } = await getSettings({
-      temperature_unit: 'F',
+      temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 
@@ -187,7 +187,7 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
   try {
     const cloudUrl = await getCloudUrl()
     const { temperatureUnit, distanceUnit } = await getSettings({
-      temperature_unit: 'F',
+      temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 

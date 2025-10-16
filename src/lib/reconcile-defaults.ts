@@ -1,8 +1,8 @@
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createSetting } from '@/lib/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
@@ -18,13 +18,12 @@ import { defaultTasks, hashTask } from '../defaults/tasks'
  * @param keyField - Name of the primary key field (defaults to 'id')
  */
 export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
+  db: AnyDrizzleDatabase,
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
   keyField: string = 'id',
 ) => {
-  const db = DatabaseSingleton.instance.db
-
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
     const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
@@ -58,18 +57,18 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   }
 }
 
-export const reconcileDefaults = async () => {
+export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
   // AI models
-  await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+  await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
   // Tasks
-  await reconcileDefaultsForTable(tasksTable, defaultTasks, hashTask)
+  await reconcileDefaultsForTable(db, tasksTable, defaultTasks, hashTask)
 
   // Automations (Prompts)
-  await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+  await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
   // Settings
-  await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+  await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
   // Initialize anonymous ID for analytics (unique per user)
   await createSetting('anonymous_id', uuidv7())

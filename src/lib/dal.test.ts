@@ -48,7 +48,7 @@ import {
   saveMessagesWithContextUpdate,
   updateSetting,
 } from './dal'
-import { reconcileDefaultsForTable } from './reconcile-defaults'
+import { reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 
 beforeAll(async () => {
   // Use in-memory Bun SQLite for testing (much faster than sqlocal)
@@ -57,6 +57,7 @@ beforeAll(async () => {
   // Run migrations to create tables
   const db = DatabaseSingleton.instance.db
   await migrate(db)
+  await reconcileDefaults(db)
 })
 
 afterEach(async () => {
@@ -1495,6 +1496,12 @@ describe('Chat Messages DAL', () => {
 // ============================================================================
 
 describe('Tasks DAL', () => {
+  beforeEach(async () => {
+    // Clean up tasks table before each test to ensure clean slate
+    const db = DatabaseSingleton.instance.db
+    await db.delete(tasksTable)
+  })
+
   afterEach(async () => {
     // Clean up tasks table after each test
     const db = DatabaseSingleton.instance.db
@@ -1977,8 +1984,8 @@ describe('resetAutomationToDefault', () => {
     const db = DatabaseSingleton.instance.db
     await db.delete(modelsTable)
     await db.delete(promptsTable)
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
   })
 
   it('resets modified automation to default state', async () => {

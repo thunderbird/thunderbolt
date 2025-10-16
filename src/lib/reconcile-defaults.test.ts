@@ -23,7 +23,7 @@ describe('seedModels', () => {
 
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     const models = await db.select().from(modelsTable)
     expect(models.length).toBe(defaultModels.length)
@@ -40,14 +40,14 @@ describe('seedModels', () => {
   test('updates unmodified rows on re-seed', async () => {
     const db = DatabaseSingleton.instance.db
     // First seed
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Get an unmodified model
     const model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModels[0].id)).get()
     expect(model).toBeDefined()
 
     // Seed again - should be idempotent
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Model should still match default
     const modelAfterReseed = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModels[0].id)).get()
@@ -59,14 +59,14 @@ describe('seedModels', () => {
   test('preserves user modifications', async () => {
     const db = DatabaseSingleton.instance.db
     // First seed
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // User modifies a model
     const defaultModel = defaultModels[0]
     await db.update(modelsTable).set({ name: 'User Modified Name' }).where(eq(modelsTable.id, defaultModel.id))
 
     // Seed again with "updated" default
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Should NOT be overwritten
     const model = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()
@@ -77,7 +77,7 @@ describe('seedModels', () => {
 
   test('handles mixed scenarios correctly', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Scenario 1: User modifies model 0
     await db.update(modelsTable).set({ name: 'User Modified' }).where(eq(modelsTable.id, defaultModels[0].id))
@@ -90,7 +90,7 @@ describe('seedModels', () => {
       .where(eq(modelsTable.id, defaultModels[2]?.id))
 
     // Seed again
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     const models = await db.select().from(modelsTable)
 
@@ -109,7 +109,7 @@ describe('seedModels', () => {
 
   test('soft-deleted models do not appear in getAllModels', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Get all models before deletion
     const { getAllModels } = await import('./dal')
@@ -125,7 +125,7 @@ describe('seedModels', () => {
     expect(modelsAfter.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
 
     // Re-seed should not restore the deleted model
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
     const modelsAfterReseed = await getAllModels()
     expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
     expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
@@ -142,8 +142,8 @@ describe('seedPrompts', () => {
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
     // Need models for FK constraint
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
     const prompts = await db.select().from(promptsTable)
     expect(prompts.length).toBe(defaultAutomations.length)
@@ -159,15 +159,15 @@ describe('seedPrompts', () => {
 
   test('updates unmodified prompts on re-seed', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
     // Get an unmodified prompt
     const prompt = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomations[0].id)).get()
     expect(prompt).toBeDefined()
 
     // Seed again - should be idempotent
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
     // Prompt should still match default
     const promptAfterReseed = await db
@@ -182,15 +182,15 @@ describe('seedPrompts', () => {
 
   test('preserves user modifications', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(modelsTable, defaultModels, hashModel)
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
     // User modifies a prompt
     const defaultPrompt = defaultAutomations[0]
     await db.update(promptsTable).set({ title: 'User Modified Title' }).where(eq(promptsTable.id, defaultPrompt.id))
 
     // Seed again
-    await reconcileDefaultsForTable(promptsTable, defaultAutomations, hashPrompt)
+    await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
     // Should NOT be overwritten
     const prompt = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultPrompt.id)).get()
@@ -200,7 +200,7 @@ describe('seedPrompts', () => {
   })
 })
 
-describe('seedSettings', () => {
+describe('reconcileDefaultsForTable', () => {
   beforeEach(async () => {
     const db = DatabaseSingleton.instance.db
     // Clean up settings table
@@ -209,7 +209,7 @@ describe('seedSettings', () => {
 
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     const settings = await db.select().from(settingsTable)
     // Should have all default settings plus anonymous_id
@@ -226,14 +226,14 @@ describe('seedSettings', () => {
 
   test('updates unmodified settings on re-seed', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Get an unmodified setting
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSettings[0].key)).get()
     expect(setting).toBeDefined()
 
     // Seed again - should be idempotent
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Setting should still match default
     const settingAfterReseed = await db
@@ -248,7 +248,7 @@ describe('seedSettings', () => {
 
   test('preserves user modifications', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // User modifies a setting
     const defaultSetting = defaultSettings[0]
@@ -258,7 +258,7 @@ describe('seedSettings', () => {
       .where(eq(settingsTable.key, defaultSetting.key))
 
     // Seed again
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Should NOT be overwritten
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
@@ -269,7 +269,7 @@ describe('seedSettings', () => {
 
   test('handles mixed scenarios correctly', async () => {
     const db = DatabaseSingleton.instance.db
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Scenario 1: User modifies setting 0
     await db.update(settingsTable).set({ value: 'modified' }).where(eq(settingsTable.key, defaultSettings[0].key))
@@ -277,7 +277,7 @@ describe('seedSettings', () => {
     // Scenario 2: Setting 1 stays unmodified
 
     // Seed again
-    await reconcileDefaultsForTable(settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     const settings = await db.select().from(settingsTable)
 
@@ -310,7 +310,7 @@ describe('seedSettings', () => {
     }
 
     // Seed with this default
-    await reconcileDefaultsForTable(settingsTable, [testDefault], hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, [testDefault], hashSetting, 'key')
 
     // Should now have a defaultHash
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_setting_no_hash')).get()

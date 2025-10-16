@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { initPosthog, sanitizeUrl } from './analytics'
 
 const mockKyGet = mock()
@@ -28,16 +29,13 @@ mock.module('@/lib/config', () => ({
   getCloudUrl: async () => 'http://cloud.example',
 }))
 
-mock.module('@/lib/dal', () => ({
-  getSettings: async (defaults: Record<string, any>) => {
-    const result: Record<string, any> = {}
-    for (const [key, value] of Object.entries(defaults)) {
-      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-      result[camelKey] = value
-    }
-    return result
-  },
-}))
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 describe('analytics sanitizeUrl', () => {
   it('replaces dynamic chat IDs with route params for pathnames', () => {

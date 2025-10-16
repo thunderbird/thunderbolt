@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { chatThreadsTable } from '@/db/tables'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
@@ -9,18 +9,19 @@ import {
   getContextSizeForThread,
   getOrCreateChatThread,
 } from './chat-threads'
-import { setupTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
 })
 
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('Chat Threads DAL', () => {
   afterEach(async () => {
-    // Clean up chat tables after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(chatMessagesTable)
-    await db.delete(chatThreadsTable)
+    await resetTestDatabase()
   })
 
   describe('createChatThread', () => {

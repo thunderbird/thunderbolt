@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { isSettingModified } from '../defaults/utils'
@@ -14,16 +14,18 @@ import {
   resetSettingToDefault,
   updateSetting,
 } from './settings'
-import { setupTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
 })
 
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 afterEach(async () => {
-  // Clean up settings table after each test
-  const db = DatabaseSingleton.instance.db
-  await db.delete(settingsTable)
+  await resetTestDatabase()
 })
 
 describe('Settings DAL', () => {

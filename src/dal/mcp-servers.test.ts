@@ -1,19 +1,21 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getAllMcpServers, getHttpMcpServers } from './mcp-servers'
-import { setupTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
 })
 
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('MCP Servers DAL', () => {
   afterEach(async () => {
-    // Clean up MCP servers table after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(mcpServersTable)
+    await resetTestDatabase()
   })
 
   describe('getAllMcpServers', () => {

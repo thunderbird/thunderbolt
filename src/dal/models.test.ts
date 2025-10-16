@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/db/tables'
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -12,18 +12,19 @@ import {
   getSystemModel,
 } from './models'
 import { updateSetting } from './settings'
-import { setupTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
 })
 
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('Models DAL', () => {
   afterEach(async () => {
-    // Clean up models table and settings after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(modelsTable)
-    await db.delete(settingsTable)
+    await resetTestDatabase()
   })
 
   describe('getModel', () => {
@@ -283,13 +284,6 @@ describe('Models DAL', () => {
   })
 
   describe('getDefaultModelForThread', () => {
-    afterEach(async () => {
-      // Clean up chat data after each test (must be done before deleting models due to FK constraints)
-      const db = DatabaseSingleton.instance.db
-      await db.delete(chatMessagesTable)
-      await db.delete(chatThreadsTable)
-    })
-
     it('should fall back to system model when thread has no messages', async () => {
       const db = DatabaseSingleton.instance.db
 

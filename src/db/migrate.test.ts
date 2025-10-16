@@ -1,13 +1,21 @@
-import { migrations } from '@/drizzle/_migrations'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { DatabaseSingleton } from '@/db/singleton'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { migrations } from '@/drizzle/_migrations'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { migrate } from './migrate'
 
 describe('Database Migrations', () => {
-  beforeEach(async () => {
-    // Create a fresh in-memory database for each test
-    await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
   })
 
   describe('migrate', () => {

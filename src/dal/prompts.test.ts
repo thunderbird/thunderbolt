@@ -1,28 +1,29 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
-import { setupTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
 })
 
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('Prompts DAL', () => {
   afterEach(async () => {
-    // Clean up prompts table after each test
-    const db = DatabaseSingleton.instance.db
-    await db.delete(promptsTable)
+    await resetTestDatabase()
   })
 
   describe('getAllPrompts', () => {
     it('should return empty array when no prompts exist', async () => {
-      // Clean up default prompts first
       const db = DatabaseSingleton.instance.db
       await db.delete(promptsTable)
 
@@ -123,13 +124,6 @@ describe('Prompts DAL', () => {
   })
 
   describe('getTriggerPromptForThread', () => {
-    afterEach(async () => {
-      // Clean up chat data after each test
-      const db = DatabaseSingleton.instance.db
-      await db.delete(chatMessagesTable)
-      await db.delete(chatThreadsTable)
-    })
-
     it('should return null when thread does not exist', async () => {
       const threadId = uuidv7()
       const result = await getTriggerPromptForThread(threadId)

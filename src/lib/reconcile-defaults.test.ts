@@ -1,7 +1,7 @@
 import { getAllModels } from '@/dal'
-import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import { migrate } from '../db/migrate'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
@@ -10,18 +10,18 @@ import { defaultSettings, hashSetting } from '../defaults/settings'
 import { reconcileDefaultsForTable } from './reconcile-defaults'
 
 beforeAll(async () => {
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
+  await setupTestDatabase()
+})
+
+afterEach(async () => {
+  await resetTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
 })
 
 describe('seedModels', () => {
-  beforeEach(async () => {
-    const db = DatabaseSingleton.instance.db
-    // Clean up models table
-    await db.delete(modelsTable)
-  })
-
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -133,12 +133,6 @@ describe('seedModels', () => {
 })
 
 describe('seedPrompts', () => {
-  beforeEach(async () => {
-    const db = DatabaseSingleton.instance.db
-    // Clean up prompts table
-    await db.delete(promptsTable)
-  })
-
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
     // Need models for FK constraint
@@ -201,12 +195,6 @@ describe('seedPrompts', () => {
 })
 
 describe('reconcileDefaultsForTable', () => {
-  beforeEach(async () => {
-    const db = DatabaseSingleton.instance.db
-    // Clean up settings table
-    await db.delete(settingsTable)
-  })
-
   test('inserts new defaults on first run', async () => {
     const db = DatabaseSingleton.instance.db
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')

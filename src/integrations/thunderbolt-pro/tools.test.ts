@@ -1,5 +1,6 @@
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { WeatherForecastData } from '@/lib/weather-forecast'
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
 import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
@@ -21,6 +22,14 @@ mock.module('ky', () => ({
 mock.module('@/lib/config', () => ({
   getCloudUrl: mockGetCloudUrl,
 }))
+
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 // Mock weather forecast schema
 const mockWeatherForecastData: WeatherForecastData = {

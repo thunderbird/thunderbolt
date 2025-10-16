@@ -55,13 +55,16 @@ const ReasoningPart = ({ part, index, onOpenDetails }: ReasoningPartProps) => {
         </motion.div>
       </PopoverTrigger>
       <PopoverContent
-        className="PopoverContent max-w-lg max-h-40 overflow-scroll"
+        align="start"
+        className="PopoverContent max-w-lg py-4"
         ref={scrollContainerRef}
         {...scrollHandlers}
       >
-        <p className="font-medium">Thinking</p>
-        <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{part.text}</p>
-        <div ref={scrollTargetRef} />
+        <div className="max-h-40 overflow-scroll">
+          <p className="font-medium">Thinking</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{part.text}</p>
+          <div ref={scrollTargetRef} />
+        </div>
       </PopoverContent>
     </Popover>
   )

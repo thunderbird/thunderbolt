@@ -1,21 +1,14 @@
-import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/src/db/tables'
 import type { ThunderboltUIMessage } from '@/types'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { reconcileDefaults } from '../lib/reconcile-defaults'
 import { getChatMessages, getLastMessage, saveMessagesWithContextUpdate } from './chat-messages'
+import { setupTestDatabase } from './test-utils'
 
 beforeAll(async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
-  await reconcileDefaults(db)
+  await setupTestDatabase()
 })
 
 describe('Chat Messages DAL', () => {

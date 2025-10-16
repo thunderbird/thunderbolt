@@ -1,11 +1,9 @@
-import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { settingsTable } from '@/src/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { isSettingModified } from '../defaults/utils'
-import { reconcileDefaults } from '../lib/reconcile-defaults'
 import {
   createSetting,
   deleteSetting,
@@ -16,15 +14,10 @@ import {
   resetSettingToDefault,
   updateSetting,
 } from './settings'
+import { setupTestDatabase } from './test-utils'
 
 beforeAll(async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
-  await reconcileDefaults(db)
+  await setupTestDatabase()
 })
 
 afterEach(async () => {

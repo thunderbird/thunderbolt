@@ -1,19 +1,12 @@
-import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { tasksTable } from '@/src/db/tables'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { reconcileDefaults } from '../lib/reconcile-defaults'
 import { getIncompleteTasks, getIncompleteTasksCount } from './tasks'
+import { setupTestDatabase } from './test-utils'
 
 beforeAll(async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
-  await reconcileDefaults(db)
+  await setupTestDatabase()
 })
 
 describe('Tasks DAL', () => {

@@ -1,4 +1,3 @@
-import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/src/db/tables'
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
@@ -13,16 +12,10 @@ import {
   getSystemModel,
 } from './models'
 import { updateSetting } from './settings'
-import { reconcileDefaults } from '../lib/reconcile-defaults'
+import { setupTestDatabase } from './test-utils'
 
 beforeAll(async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
-  await reconcileDefaults(db)
+  await setupTestDatabase()
 })
 
 describe('Models DAL', () => {

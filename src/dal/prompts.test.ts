@@ -1,4 +1,3 @@
-import { migrate } from '@/src/db/migrate'
 import { DatabaseSingleton } from '@/src/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '@/src/db/tables'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -6,17 +5,12 @@ import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
-import { reconcileDefaults, reconcileDefaultsForTable } from '../lib/reconcile-defaults'
+import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
+import { setupTestDatabase } from './test-utils'
 
 beforeAll(async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
-  await reconcileDefaults(db)
+  await setupTestDatabase()
 })
 
 describe('Prompts DAL', () => {

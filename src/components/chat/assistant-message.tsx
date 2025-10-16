@@ -6,10 +6,9 @@ import {
   type ToolGroupUIPart,
 } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
-import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
+import type { TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { memo, type ReactNode } from 'react'
 import { DisplayToolHandler } from './display-tool-handler'
-import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolGroup } from './tool-group'
@@ -45,14 +44,12 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
     const isLastPart = index === groupedParts.length - 1
 
     switch (partType) {
-      case 'reasoning':
-        partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
-        break
       case 'group_tools': {
         const toolGroup = part as ToolGroupUIPart
         partElements.push(
           <ToolGroup
             tools={toolGroup.tools}
+            parts={toolGroup.parts}
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
             hasTextInMessage={hasTextPart}

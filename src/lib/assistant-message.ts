@@ -6,6 +6,7 @@ export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
 export type ToolGroupUIPart = {
   type: 'group_tools'
   tools: ToolUIPart[]
+  parts: (ToolUIPart | ReasoningUIPart)[]
 }
 
 export type GroupedUIPart = GroupableUIPart | ToolGroupUIPart
@@ -14,28 +15,32 @@ const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 export const groupToolParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
   const grouped: GroupedUIPart[] = []
-  let currentGroup: ToolUIPart[] = []
+  let currentGroup: (ToolUIPart | ReasoningUIPart)[] = []
 
-  // Collects the currently buffered tool parts into a single group node so they render via ToolGroup.
+  // Collects the currently buffered tool parts and reasoning into a single group node so they render via ToolGroup.
   const flushGroup = () => {
     if (currentGroup.length === 0) {
       return
     }
 
+    // Extract only tools for the tools array (for backward compatibility)
+    const tools: ToolUIPart[] = currentGroup.filter((part) => part.type !== 'reasoning') as ToolUIPart[]
+
     grouped.push({
       type: 'group_tools',
-      tools: [...currentGroup],
+      tools,
+      parts: [...currentGroup], // Keep original order for rendering
     })
 
     currentGroup = []
   }
 
-  // Walk through the incoming parts and buffer every consecutive non-display tool call.
+  // Walk through the incoming parts and buffer every consecutive non-display tool call and reasoning.
   parts.forEach((part) => {
     const [partType, toolName] = splitPartType(part.type)
 
-    if (partType === 'tool' && !toolName.startsWith('display-')) {
-      currentGroup.push(part as ToolUIPart)
+    if ((partType === 'tool' && !toolName.startsWith('display-')) || partType === 'reasoning') {
+      currentGroup.push(part as ToolUIPart | ReasoningUIPart)
       return
     }
 

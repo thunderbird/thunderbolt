@@ -26,6 +26,7 @@ describe('assistant-message utilities', () => {
       expect(grouped[0]).toEqual({
         type: 'group_tools',
         tools: [toolAlpha, toolBeta],
+        parts: [toolAlpha, toolBeta],
       })
       expect(grouped[1]).toBe(textPart)
     })
@@ -38,17 +39,52 @@ describe('assistant-message utilities', () => {
 
       const grouped = groupToolParts([displayTool, regularTool, reasoningPart, trailingTool])
 
-      expect(grouped).toHaveLength(4)
+      expect(grouped).toHaveLength(2)
       expect(grouped[0]).toBe(displayTool)
       expect(grouped[1]).toEqual({
         type: 'group_tools',
-        tools: [regularTool],
+        tools: [regularTool, trailingTool],
+        parts: [regularTool, reasoningPart, trailingTool],
       })
-      expect(grouped[2]).toBe(reasoningPart)
-      expect(grouped[3]).toEqual({
+    })
+
+    it('groups reasoning and tools together in the same group', () => {
+      const reasoningPart1: ReasoningUIPart = { type: 'reasoning', text: 'thinking first' }
+      const toolAlpha = createToolPart('alpha')
+      const reasoningPart2: ReasoningUIPart = { type: 'reasoning', text: 'thinking second' }
+      const toolBeta = createToolPart('beta')
+      const toolGamma = createToolPart('gamma')
+      const textPart: TextUIPart = { type: 'text', text: 'response' }
+
+      const parts = [reasoningPart1, toolAlpha, reasoningPart2, toolBeta, toolGamma, textPart]
+
+      const grouped = groupToolParts(parts)
+
+      expect(grouped).toHaveLength(2)
+      expect(grouped[0]).toEqual({
         type: 'group_tools',
-        tools: [trailingTool],
+        tools: [toolAlpha, toolBeta, toolGamma],
+        parts: [reasoningPart1, toolAlpha, reasoningPart2, toolBeta, toolGamma],
       })
+      expect(grouped[1]).toBe(textPart)
+    })
+
+    it('handles reasoning parts without tools', () => {
+      const reasoningPart1: ReasoningUIPart = { type: 'reasoning', text: 'thinking first' }
+      const reasoningPart2: ReasoningUIPart = { type: 'reasoning', text: 'thinking second' }
+      const textPart: TextUIPart = { type: 'text', text: 'response' }
+
+      const parts = [reasoningPart1, reasoningPart2, textPart]
+
+      const grouped = groupToolParts(parts)
+
+      expect(grouped).toHaveLength(2)
+      expect(grouped[0]).toEqual({
+        type: 'group_tools',
+        tools: [],
+        parts: [reasoningPart1, reasoningPart2],
+      })
+      expect(grouped[1]).toBe(textPart)
     })
   })
 

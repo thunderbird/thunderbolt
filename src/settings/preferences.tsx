@@ -6,6 +6,8 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { trackEvent } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
+import { countryUnitsResponseSchema } from '@/schemas/api'
+import type { CountryUnitsData } from '@/types'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef, useState } from 'react'
@@ -50,6 +52,8 @@ type PreferencesState = {
   locations: LocationData[]
   isSearching: boolean
   isResetting: boolean
+  localizationDialogOpen: boolean
+  pendingCountryUnits: CountryUnitsData | null
 }
 
 type PreferencesAction =
@@ -60,6 +64,8 @@ type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
   | { type: 'RESET_STATE' }
+  | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
+  | { type: 'CLOSE_LOCALIZATION_DIALOG' }
 
 const initialState: PreferencesState = {
   open: false,
@@ -67,6 +73,8 @@ const initialState: PreferencesState = {
   locations: [],
   isSearching: false,
   isResetting: false,
+  localizationDialogOpen: false,
+  pendingCountryUnits: null,
 }
 
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
@@ -85,6 +93,10 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, searchQuery: '', locations: [] }
     case 'RESET_STATE':
       return initialState
+    case 'OPEN_LOCALIZATION_DIALOG':
+      return { ...state, localizationDialogOpen: true, pendingCountryUnits: action.payload }
+    case 'CLOSE_LOCALIZATION_DIALOG':
+      return { ...state, localizationDialogOpen: false, pendingCountryUnits: null }
     default:
       return state
   }
@@ -92,7 +104,7 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { open, searchQuery, locations, isSearching, isResetting } = state
+  const { open, searchQuery, locations, isSearching, isResetting, localizationDialogOpen, pendingCountryUnits } = state
 
   // Localization dropdown states
   const {
@@ -145,7 +157,7 @@ export default function PreferencesSettingsPage() {
 
   // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
-  const { data: countryUnitsData, isLoading: countryUnitsLoading, refetch: refetchCountryUnits } = useCountryUnits()
+  const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits()
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
@@ -171,12 +183,12 @@ export default function PreferencesSettingsPage() {
         distanceUnit.value || temperatureUnit.value || dateFormat.value || timeFormat.value || currency.value
 
       if (!hasLocalizationSettings) {
-        // Auto-set from country data
-        distanceUnit.setValue(countryUnitsData.unit)
-        temperatureUnit.setValue(countryUnitsData.temperature)
-        dateFormat.setValue(countryUnitsData.dateFormatExample)
-        timeFormat.setValue(countryUnitsData.timeFormat)
-        currency.setValue(countryUnitsData.currency.code)
+        // Auto-set from country data and establish these as the baseline for future modifications
+        distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
+        temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
+        dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
+        timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
+        currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
       }
     }
   }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency])
@@ -272,6 +284,10 @@ export default function PreferencesSettingsPage() {
   const handleSelectLocation = async (location: LocationData) => {
     const wasSet = !!locationName.value
 
+    // Get current country to compare
+    const currentCountry = locationName.value ? locationName.value.split(',').pop()?.trim() : null
+    const newCountry = location.country
+
     await Promise.all([
       locationName.setValue(location.name),
       locationLat.setValue(String(location.coordinates.lat)),
@@ -280,21 +296,54 @@ export default function PreferencesSettingsPage() {
 
     dispatch({ type: 'SET_OPEN', payload: false })
 
-    // Refetch country units to update localization settings
-    const countryUnitsResult = await refetchCountryUnits()
-    if (countryUnitsResult.data) {
-      await Promise.all([
-        distanceUnit.setValue(countryUnitsResult.data.unit),
-        temperatureUnit.setValue(countryUnitsResult.data.temperature),
-        dateFormat.setValue(countryUnitsResult.data.dateFormatExample),
-        timeFormat.setValue(countryUnitsResult.data.timeFormat),
-        currency.setValue(countryUnitsResult.data.currency.code),
-      ])
-    }
-
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
       location_name: location.name,
     })
+
+    // If country changed, ask user if they want to update localization settings
+    if (currentCountry !== newCountry) {
+      const cloudUrl = await getCloudUrl()
+
+      if (!cloudUrl) {
+        console.error('Cloud URL not configured')
+        return
+      }
+
+      const countryUnitsData: CountryUnitsData | null = await ky
+        .get(`${cloudUrl}/units`, {
+          searchParams: { country: newCountry },
+        })
+        .json()
+        .then((response) => countryUnitsResponseSchema.parse(response))
+        .catch((error) => {
+          console.error('Error fetching country units:', error)
+          return null
+        })
+
+      if (countryUnitsData) {
+        dispatch({ type: 'OPEN_LOCALIZATION_DIALOG', payload: countryUnitsData })
+      }
+    }
+  }
+
+  const handleApplyLocalizationSettings = async () => {
+    if (!pendingCountryUnits) return
+
+    // Apply all localization settings with recomputeHash to establish new baselines
+    await Promise.all([
+      distanceUnit.setValue(pendingCountryUnits.unit, { recomputeHash: true }),
+      temperatureUnit.setValue(pendingCountryUnits.temperature, { recomputeHash: true }),
+      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { recomputeHash: true }),
+      timeFormat.setValue(pendingCountryUnits.timeFormat, { recomputeHash: true }),
+      currency.setValue(pendingCountryUnits.currency.code, { recomputeHash: true }),
+    ])
+
+    dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
+    trackEvent('settings_localization_update')
+  }
+
+  const handleDeclineLocalizationSettings = () => {
+    dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
   const handleResetDatabase = async () => {
@@ -790,6 +839,22 @@ export default function PreferencesSettingsPage() {
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 
       <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
+
+      <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update Localization Settings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your location has changed to a different country. Would you like to update your localization settings
+              (distance, temperature, date format, time format, and currency) to match the new location's defaults?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>No, Keep Current Settings</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Yes, Update Settings</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

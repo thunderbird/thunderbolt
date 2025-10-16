@@ -20,7 +20,7 @@ type SettingHook<TValue, TInput = TValue> = {
   /** Whether the setting has been modified from its default */
   isModified: boolean
   /** Update the setting's value (can pass null to clear) */
-  setValue: (value: TInput) => Promise<void>
+  setValue: (value: TInput, options?: { recomputeHash?: boolean; updateHashOnly?: boolean }) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
   /** Whether the query is loading */
@@ -169,7 +169,15 @@ export function useSettings<T extends SettingSchema>(
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ key, value }: { key: string; value: any }) => updateSetting(key, value),
+    mutationFn: ({
+      key,
+      value,
+      options,
+    }: {
+      key: string
+      value: any
+      options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
+    }) => updateSetting(key, value, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
     },
@@ -238,8 +246,11 @@ export function useSettings<T extends SettingSchema>(
         rawSetting: setting ?? null,
         value,
         isModified: isSettingModified(setting),
-        setValue: async (value: string | number | boolean | null) => {
-          await updateMutation.mutateAsync({ key, value })
+        setValue: async (
+          value: string | number | boolean | null,
+          options?: { recomputeHash?: boolean; updateHashOnly?: boolean },
+        ) => {
+          await updateMutation.mutateAsync({ key, value, options })
         },
         reset: async () => {
           await resetMutation.mutateAsync(key)

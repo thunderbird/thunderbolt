@@ -11,9 +11,10 @@ import {
   tasksTable,
   triggersTable,
 } from '../db/tables'
+import { hashSetting } from '../defaults/settings'
 import type { AutomationRun, Model, Prompt, Setting, Task, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { serializeValue } from './serialization'
-import { camelCased, convertUIMessageToDbChatMessage } from './utils'
+import { camelCased, convertUIMessageToDbChatMessage, hashValues } from './utils'
 
 // ============================================================================
 // MODELS
@@ -362,16 +363,38 @@ export const createSetting = async (key: string, value: string | null): Promise<
  * Update or create a setting in the settings table
  * @param key - The setting key
  * @param value - The value (can be string, null, boolean, number, or JSON-serializable object)
+ * @param options - Optional configuration
+ * @param options.recomputeHash - If true, updates the defaultHash to match the new value (makes it the new baseline for modification tracking)
+ * @param options.updateHashOnly - If true, only updates the defaultHash using the provided value without changing the actual stored value (useful for updating the baseline without overwriting user customizations)
  */
-export const updateSetting = async (key: string, value: any): Promise<void> => {
+export const updateSetting = async (
+  key: string,
+  value: any,
+  options: { recomputeHash?: boolean; updateHashOnly?: boolean } = {},
+): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const stringValue = serializeValue(value)
+
+  if (options.updateHashOnly) {
+    // Only update the hash, don't change the actual value
+    const newHash = hashValues([key, stringValue])
+    await db.update(settingsTable).set({ defaultHash: newHash }).where(eq(settingsTable.key, key))
+    return
+  }
+
+  const updateFields: { value: string | null; defaultHash?: string | null } = { value: stringValue }
+
+  // If recomputeHash is true, update the defaultHash to match the new value
+  if (options.recomputeHash) {
+    updateFields.defaultHash = hashValues([key, stringValue])
+  }
+
   await db
     .insert(settingsTable)
-    .values({ key, value: stringValue })
+    .values({ key, ...updateFields })
     .onConflictDoUpdate({
       target: settingsTable.key,
-      set: { value: stringValue },
+      set: updateFields,
     })
 }
 
@@ -742,8 +765,13 @@ export const runAutomation = async (promptId: string): Promise<string> => {
  */
 export const resetSettingToDefault = async (key: string, defaultSetting: Setting) => {
   const db = DatabaseSingleton.instance.db
+  // Compute the hash for the default setting so it shows as unmodified after reset
+  const computedHash = hashSetting(defaultSetting)
   const { defaultHash, ...defaultFields } = defaultSetting
-  await db.update(settingsTable).set(defaultFields).where(eq(settingsTable.key, key))
+  await db
+    .update(settingsTable)
+    .set({ ...defaultFields, defaultHash: computedHash })
+    .where(eq(settingsTable.key, key))
 }
 
 /**

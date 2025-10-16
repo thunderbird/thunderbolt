@@ -245,6 +245,191 @@ describe('Settings DAL', () => {
     })
   })
 
+  describe('updateSetting with recomputeHash option', () => {
+    it('should not update defaultHash by default', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a setting with a defaultHash
+      await db.insert(settingsTable).values({
+        key: 'test_key',
+        value: 'original',
+        updatedAt: null,
+        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+      })
+
+      // Update the value without recomputeHash
+      await updateSetting('test_key', 'modified')
+
+      const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+
+      // Value should be updated but hash should remain the same (pointing to original)
+      expect(setting?.value).toBe('modified')
+      expect(setting?.defaultHash).toBe(
+        hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+      )
+      expect(isSettingModified(setting!)).toBe(true)
+    })
+
+    it('should update defaultHash when recomputeHash is true', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a setting with a defaultHash
+      await db.insert(settingsTable).values({
+        key: 'test_key',
+        value: 'original',
+        updatedAt: null,
+        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+      })
+
+      // Update the value with recomputeHash: true
+      await updateSetting('test_key', 'new_baseline', { recomputeHash: true })
+
+      const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+
+      // Value should be updated and hash should point to the new value
+      expect(setting?.value).toBe('new_baseline')
+      expect(setting?.defaultHash).toBe(
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+      )
+      expect(isSettingModified(setting!)).toBe(false)
+    })
+
+    it('should detect modifications after recomputing hash', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a setting
+      await updateSetting('test_key', 'baseline', { recomputeHash: true })
+
+      // Verify it's not modified
+      let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+      expect(isSettingModified(setting!)).toBe(false)
+
+      // Now modify it again without recomputeHash
+      await updateSetting('test_key', 'different_value')
+
+      // Should be detected as modified relative to the new baseline
+      setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+      expect(setting?.value).toBe('different_value')
+      expect(isSettingModified(setting!)).toBe(true)
+    })
+
+    it('should work with location-based localization scenario', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Simulate initial auto-population from country data with recomputeHash
+      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'C', { recomputeHash: true })
+
+      // Verify they're not marked as modified
+      const distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      const tempSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
+
+      expect(isSettingModified(distanceSetting!)).toBe(false)
+      expect(isSettingModified(tempSetting!)).toBe(false)
+
+      // User manually changes one setting
+      await updateSetting('temperature_unit', 'F')
+
+      // Only the manually changed setting should be modified
+      const distanceAfter = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      const tempAfter = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
+
+      expect(isSettingModified(distanceAfter!)).toBe(false)
+      expect(isSettingModified(tempAfter!)).toBe(true)
+
+      // User changes location, triggering new localization values with recomputeHash
+      await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'F', { recomputeHash: true })
+
+      // Both should now be unmodified relative to the new baseline
+      const distanceFinal = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      const tempFinal = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
+
+      expect(isSettingModified(distanceFinal!)).toBe(false)
+      expect(isSettingModified(tempFinal!)).toBe(false)
+    })
+  })
+
+  describe('updateSetting with updateHashOnly option', () => {
+    it('should only update hash without changing value', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a setting with an initial value
+      await updateSetting('test_key', 'user_custom_value', { recomputeHash: true })
+
+      // Verify initial state
+      let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+      expect(setting?.value).toBe('user_custom_value')
+      expect(isSettingModified(setting!)).toBe(false)
+
+      // Update only the hash to a new baseline value without changing the actual value
+      await updateSetting('test_key', 'new_baseline', { updateHashOnly: true })
+
+      // Value should remain unchanged, but hash should be updated
+      setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
+      expect(setting?.value).toBe('user_custom_value')
+      expect(setting?.defaultHash).toBe(
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+      )
+      expect(isSettingModified(setting!)).toBe(true) // Still modified since value differs from new baseline
+    })
+
+    it('should preserve user customization when updating baseline', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Scenario: User has location set to UK, gets 'metric' units
+      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
+
+      // User manually changes to imperial
+      await updateSetting('distance_unit', 'imperial')
+
+      let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      expect(setting?.value).toBe('imperial')
+      expect(isSettingModified(setting!)).toBe(true)
+
+      // User changes location to US, which defaults to 'imperial'
+      // We update the hash to 'imperial' without changing the value
+      await updateSetting('distance_unit', 'imperial', { updateHashOnly: true })
+
+      // Value stays 'imperial' (user's choice), but now it's the baseline
+      setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      expect(setting?.value).toBe('imperial')
+      expect(isSettingModified(setting!)).toBe(false) // No longer modified since value matches new baseline
+    })
+
+    it('should work in location change scenario with mixed modified/unmodified settings', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Initial location (UK): metric and C
+      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
+      await updateSetting('temperature_unit', 'C', { recomputeHash: true })
+
+      // User manually changes temperature to F
+      await updateSetting('temperature_unit', 'F')
+
+      // Verify state before location change
+      let distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      let tempSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
+      expect(isSettingModified(distanceSetting!)).toBe(false)
+      expect(isSettingModified(tempSetting!)).toBe(true)
+
+      // User changes location to US: imperial and F
+      // For unmodified settings, update value and hash
+      await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
+      // For modified settings, only update hash (preserve user's value)
+      await updateSetting('temperature_unit', 'F', { updateHashOnly: true })
+
+      // Check final state
+      distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+      tempSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'temperature_unit')).get()
+
+      expect(distanceSetting?.value).toBe('imperial') // Changed from metric to imperial
+      expect(tempSetting?.value).toBe('F') // Stayed F (was already F)
+      expect(isSettingModified(distanceSetting!)).toBe(false) // New baseline
+      expect(isSettingModified(tempSetting!)).toBe(false) // Now matches baseline
+    })
+  })
+
   describe('deleteSetting', () => {
     it('should delete an existing setting', async () => {
       await createSetting('delete_key', 'value')

@@ -24,17 +24,16 @@ type ReasoningPartProps = {
 }
 
 const ReasoningPart = ({ part, index, onOpenDetails }: ReasoningPartProps) => {
-  const isOpen = part.state === 'streaming'
   const isStreaming = part.state === 'streaming'
 
   const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
     dependencies: [part.text],
     isStreaming,
-    smooth: false, // Use instant scrolling for better UX during streaming
+    smooth: true,
   })
 
   return (
-    <Popover key={`reasoning-${index}`} open={isOpen}>
+    <Popover key={`reasoning-${index}`} open={isStreaming}>
       <PopoverTrigger asChild>
         <motion.div
           className="data-[slot=avatar]:ring-background data-[slot=avatar]:ring-2 data-[slot=avatar]:grayscale"

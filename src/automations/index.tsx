@@ -278,9 +278,6 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
 
   const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
 
-  // Check if this is a default automation that has been modified
-  const hasModifications = isAutomationModified(prompt)
-
   return (
     <Card className="h-full flex flex-col pb-0">
       <CardContent className="p-4 flex flex-col flex-1">
@@ -291,7 +288,7 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
             <ModificationIndicator
               as="h3"
               className="text-lg font-semibold text-foreground truncate"
-              hasModifications={hasModifications}
+              hasModifications={isAutomationModified(prompt)}
               onReset={() => onReset(prompt.id)}
               customMessage="You've customized this automation."
               ariaLabel="Modified automation"

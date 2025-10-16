@@ -20,15 +20,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { getModel, updateModel } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
-import { getModel, updateModel } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'flower']),
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     url: z.string().optional(),
@@ -51,8 +51,8 @@ const formSchema = z
       if (data.provider === 'custom') {
         return true // API key is optional for custom provider
       }
-      if (data.provider === 'thunderbolt' || data.provider === 'flower') {
-        return true // API key not required for thunderbolt or flower
+      if (data.provider === 'thunderbolt') {
+        return true // API key not required for thunderbolt
       }
       return data.apiKey !== undefined && data.apiKey.length > 0
     },

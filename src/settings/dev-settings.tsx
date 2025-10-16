@@ -8,10 +8,9 @@ import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  const { cloudUrl, isNativeFetchEnabled, disableFlowerEncryption, debugPosthog } = useSettings({
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useSettings({
     cloud_url: '',
     is_native_fetch_enabled: false,
-    disable_flower_encryption: false,
     debug_posthog: false,
   })
 
@@ -78,24 +77,6 @@ export default function DevSettingsPage() {
                 </TooltipContent>
               )}
             </Tooltip>
-          </div>
-
-          {/* Divider between settings */}
-          <div className="border-t -mx-6" />
-
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={disableFlowerEncryption.isModified}
-                onReset={disableFlowerEncryption.reset}
-              >
-                Disable Encryption
-              </ModificationIndicator>
-              <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
-            </div>
-            <Switch checked={disableFlowerEncryption.value} onCheckedChange={disableFlowerEncryption.setValue} />
           </div>
 
           {/* Divider between settings */}

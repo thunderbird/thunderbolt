@@ -4,12 +4,3 @@ interface Window {
     invoke: (cmd: string, args: any) => Promise<any>
   }
 }
-
-declare module '@flwr/flwr' {
-  interface FlowerIntelligence {
-    baseUrl: string
-    instance: FlowerIntelligence
-  }
-
-  const FlowerIntelligence: FlowerIntelligence
-}

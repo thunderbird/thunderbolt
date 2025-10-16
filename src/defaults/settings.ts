@@ -50,13 +50,6 @@ export const defaultSettingNativeFetchEnabled: Setting = {
   defaultHash: null,
 }
 
-export const defaultSettingDisableFlowerEncryption: Setting = {
-  key: 'disable_flower_encryption',
-  value: 'false',
-  updatedAt: null,
-  defaultHash: null,
-}
-
 export const defaultSettingDebugPosthog: Setting = {
   key: 'debug_posthog',
   value: 'false',
@@ -156,7 +149,6 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingTriggersEnabled,
   defaultSettingExperimentalFeatureTasks,
   defaultSettingNativeFetchEnabled,
-  defaultSettingDisableFlowerEncryption,
   defaultSettingDebugPosthog,
   defaultSettingPreferredName,
   defaultSettingLocationName,

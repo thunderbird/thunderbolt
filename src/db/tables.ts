@@ -41,7 +41,7 @@ export const tasksTable = sqliteTable('tasks', {
 export const modelsTable = sqliteTable('models', {
   id: text('id').primaryKey().notNull().unique(),
   provider: text('provider', {
-    enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'flower'],
+    enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic'],
   }).notNull(),
   name: text('name').notNull(),
   model: text('model').notNull(),

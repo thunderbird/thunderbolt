@@ -45,23 +45,6 @@ export const defaultModelGptOss120b: Model = {
   defaultHash: null,
 }
 
-export const defaultModelQwen3Flower: Model = {
-  id: '0198ecc5-cc2b-735b-b478-785b85d3c731',
-  name: 'qwen3-flower',
-  provider: 'flower',
-  model: 'qwen/qwen3-235b',
-  isSystem: 0,
-  enabled: 0,
-  isConfidential: 1,
-  contextWindow: 32000,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-}
-
 export const defaultModelQwen3Instruct: Model = {
   id: '0198ecc5-cc2b-735b-b478-7c6770371b84',
   name: 'qwen3-instruct',
@@ -101,7 +84,6 @@ export const defaultModelQwen3Thinking: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
-  defaultModelQwen3Flower,
   defaultModelQwen3Instruct,
   defaultModelQwen3Thinking,
 ] as const

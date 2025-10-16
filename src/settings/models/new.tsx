@@ -16,7 +16,7 @@ import type { Model } from '@/types'
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter', 'flower']),
+    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     url: z.string().optional(),
@@ -39,8 +39,8 @@ const formSchema = z
       if (data.provider === 'custom') {
         return true // API key is optional for custom provider
       }
-      if (data.provider === 'thunderbolt' || data.provider === 'flower') {
-        return true // API key optional for thunderbolt and flower
+      if (data.provider === 'thunderbolt') {
+        return true // API key optional for thunderbolt
       }
       return data.apiKey !== undefined && data.apiKey.length > 0
     },
@@ -117,7 +117,6 @@ export default function NewModelPage() {
                         <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
                         <SelectItem value="openai">OpenAI</SelectItem>
                         <SelectItem value="openrouter">OpenRouter</SelectItem>
-                        <SelectItem value="flower">Flower</SelectItem>
                         <SelectItem value="custom">Custom</SelectItem>
                       </SelectContent>
                     </Select>

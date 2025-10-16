@@ -77,9 +77,9 @@ describe('Models DAL', () => {
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })
@@ -97,9 +97,9 @@ describe('Models DAL', () => {
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })
@@ -141,9 +141,9 @@ describe('Models DAL', () => {
       const disabledModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: disabledModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'Disabled Model',
-        model: 'qwen/qwen3-235b',
+        model: 'qwen3-235b-a22b-instruct-2507',
         isSystem: 0,
         enabled: 0,
       })
@@ -181,9 +181,9 @@ describe('Models DAL', () => {
         },
         {
           id: modelId2,
-          provider: 'flower',
+          provider: 'thunderbolt',
           name: 'Model 2',
-          model: 'system/model',
+          model: 'gpt-oss-120b',
           isSystem: 1,
           enabled: 0,
         },
@@ -230,9 +230,9 @@ describe('Models DAL', () => {
         },
         {
           id: disabledModelId,
-          provider: 'flower',
+          provider: 'anthropic',
           name: 'Disabled Model',
-          model: 'system/model',
+          model: 'claude-3-5-sonnet-20241022',
           isSystem: 1,
           enabled: 0,
         },
@@ -268,9 +268,9 @@ describe('Models DAL', () => {
 
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })
@@ -297,9 +297,9 @@ describe('Models DAL', () => {
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })
@@ -323,9 +323,9 @@ describe('Models DAL', () => {
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })
@@ -367,9 +367,9 @@ describe('Models DAL', () => {
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
         id: systemModelId,
-        provider: 'flower',
+        provider: 'thunderbolt',
         name: 'System Model',
-        model: 'system/model',
+        model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
       })

@@ -171,7 +171,7 @@ function modelReducer(state: ModelState, action: ModelAction): ModelState {
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'flower']),
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     customModel: z.string().optional(),
@@ -193,8 +193,8 @@ const formSchema = z
   )
   .refine(
     (data) => {
-      if (data.provider === 'thunderbolt' || data.provider === 'flower') {
-        return true // API key not required for thunderbolt or flower
+      if (data.provider === 'thunderbolt') {
+        return true // API key not required for thunderbolt
       }
       if (data.provider === 'custom') {
         return true // API key is optional for custom (OpenAI compatible)
@@ -723,7 +723,6 @@ export default function ModelsPage() {
   const getProviderDisplay = (provider: string) => {
     switch (provider) {
       case 'thunderbolt':
-      case 'flower':
         return 'Thunderbolt'
       case 'anthropic':
         return 'Anthropic'
@@ -1258,7 +1257,7 @@ export default function ModelsPage() {
                         <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
                       </div>
                     )}
-                    {['thunderbolt', 'flower'].includes(model.provider) && (
+                    {model.provider === 'thunderbolt' && (
                       <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
                     )}
                   </div>

@@ -1,9 +1,8 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { streamText, wrapLanguageModel } from 'ai'
+import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
-import { createDefaultMiddleware } from '../middleware/default'
 import { createSimulatedFetch, normalizeStepResult, parseSseLog } from './util'
 
 describe('sse', async () => {
@@ -24,7 +23,7 @@ describe('sse', async () => {
 
   const wrappedModel = wrapLanguageModel({
     model,
-    middleware: createDefaultMiddleware(),
+    middleware: [extractReasoningMiddleware({ tagName: 'think', startWithReasoning: false })],
   })
 
   it('should return a readable stream', async () => {
@@ -53,7 +52,10 @@ describe('sse', async () => {
       const simulatedFetch = createSimulatedFetch(chunks, { initialDelayInMs: 0, chunkDelayInMs: 0 })
       const provider = createOpenAICompatible({ name: 'test', baseURL: 'http://localhost:8000', fetch: simulatedFetch })
       const model = provider('test-model')
-      const wrappedModel = wrapLanguageModel({ model, middleware: createDefaultMiddleware() })
+      const wrappedModel = wrapLanguageModel({
+        model,
+        middleware: [extractReasoningMiddleware({ tagName: 'think', startWithReasoning: false })],
+      })
       const result = streamText({ model: wrappedModel, prompt: 'test' })
       await result.consumeStream()
       results.push(await result.steps)

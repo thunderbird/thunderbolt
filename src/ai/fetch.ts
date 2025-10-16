@@ -1,8 +1,8 @@
 import { createPrompt } from '@/ai/prompt'
+import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
-import { getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -16,9 +16,9 @@ import type { LanguageModelV2 } from '@ai-sdk/provider'
 // OpenRouter is working on a new version of their SDK that is compatible with Vercel AI SDK v5. We'll uncomment this when it's ready.
 // import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
-import { createFlowerProvider } from '@/flower'
 import {
   convertToModelMessages,
+  extractReasoningMiddleware,
   stepCountIs,
   streamText,
   wrapLanguageModel,
@@ -26,8 +26,6 @@ import {
   type ToolSet,
 } from 'ai'
 import { eq } from 'drizzle-orm'
-import { createConfiguredFlowerClient } from './flower'
-import { createDefaultMiddleware, createFlowerMiddleware } from './middleware/default'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
@@ -47,23 +45,6 @@ type AiFetchStreamingResponseOptions = {
 
 export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
   switch (modelConfig.provider) {
-    case 'flower': {
-      // Check if encryption should be disabled via dev settings
-      const { disableFlowerEncryption } = await getSettings({ disable_flower_encryption: false })
-
-      // Enable encryption for confidential models unless explicitly disabled in dev settings
-      const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableFlowerEncryption
-
-      const cloudUrl = await getCloudUrl()
-      const client = await createConfiguredFlowerClient(cloudUrl)
-
-      const provider = createFlowerProvider({
-        client,
-        encrypt: shouldEncrypt,
-      })
-
-      return provider(modelConfig.model)
-    }
     case 'thunderbolt': {
       const cloudUrl = await getCloudUrl()
       const openaiCompatible = createOpenAICompatible({
@@ -187,17 +168,15 @@ export const aiFetchStreamingResponse = async ({
   try {
     const baseModel = await createModel(model)
 
-    // Use Flower-specific middleware for the Flower provider to enable enhanced tool support
-    // Other providers already have native function calling support
-    const middleware =
-      model.provider === 'flower'
-        ? createFlowerMiddleware(Boolean(model.startWithReasoning))
-        : createDefaultMiddleware(Boolean(model.startWithReasoning))
-
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
       model: baseModel,
-      middleware,
+      middleware: [
+        extractReasoningMiddleware({
+          tagName: 'think',
+          startWithReasoning: Boolean(model.startWithReasoning),
+        }),
+      ],
     })
 
     const MAX_STEPS = 20
@@ -211,7 +190,6 @@ export const aiFetchStreamingResponse = async ({
       stopWhen: stepCountIs(MAX_STEPS),
 
       // Guarantee the last allowed step cannot call tools
-      // Note: This currently does NOT work for Flower - likely because of the Hermes middleware. (@todo)
       prepareStep: ({ steps, stepNumber, messages }) => {
         if (steps.length >= MAX_STEPS - 1) {
           console.log(`Final step ${stepNumber} - telling model to wrap it up...`)

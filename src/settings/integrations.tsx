@@ -10,9 +10,9 @@ import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import {
   exchangeCodeForTokens,
   getUserInfo,
+  redirectOAuthFlow,
   type GoogleUserInfo,
   type OAuthTokens,
-  redirectOAuthFlow,
 } from '@/lib/auth'
 import { getSettings, updateSetting } from '@/lib/dal'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
@@ -170,44 +170,41 @@ export default function IntegrationsPage() {
     setLoading(true)
     try {
       // Fetch all integration settings in a single query (returns camelCase by default)
-      const settings = await getSettings({
-        integrations_pro_is_enabled: String,
-        integrations_google_is_enabled: String,
-        integrations_google_credentials: String,
-        integrations_microsoft_is_enabled: String,
-        integrations_microsoft_credentials: String,
+      const {
+        integrationsProIsEnabled,
+        integrationsGoogleIsEnabled,
+        integrationsGoogleCredentials,
+        integrationsMicrosoftIsEnabled,
+        integrationsMicrosoftCredentials,
+      } = await getSettings({
+        integrations_pro_is_enabled: false,
+        integrations_google_is_enabled: false,
+        integrations_google_credentials: '',
+        integrations_microsoft_is_enabled: false,
+        integrations_microsoft_credentials: '',
       })
 
       // Thunderbolt Pro integration ----------------------------------------
       const proStatus = await getProStatus()
-      const proIsEnabled = settings.integrationsProIsEnabled
-
-      // Google integration --------------------------------------------------
-      const gIsEnabled = settings.integrationsGoogleIsEnabled
-      const gCredentials = settings.integrationsGoogleCredentials
 
       let gParsedCredentials: any = null
       let gUserEmail: string | undefined = undefined
 
-      if (gCredentials) {
+      if (integrationsGoogleCredentials) {
         try {
-          gParsedCredentials = JSON.parse(gCredentials)
+          gParsedCredentials = JSON.parse(integrationsGoogleCredentials)
           gUserEmail = gParsedCredentials.profile?.email
         } catch (e) {
           console.error('Failed to parse Google credentials:', e)
         }
       }
 
-      // Microsoft integration ---------------------------------------------
-      const mIsEnabled = settings.integrationsMicrosoftIsEnabled
-      const mCredentials = settings.integrationsMicrosoftCredentials
-
       let mParsedCredentials: any = null
       let mUserEmail: string | undefined = undefined
 
-      if (mCredentials) {
+      if (integrationsMicrosoftCredentials) {
         try {
-          mParsedCredentials = JSON.parse(mCredentials)
+          mParsedCredentials = JSON.parse(integrationsMicrosoftCredentials)
           mUserEmail = mParsedCredentials.profile?.email
         } catch (e) {
           console.error('Failed to parse Microsoft credentials:', e)
@@ -221,7 +218,7 @@ export default function IntegrationsPage() {
           provider: 'thunderbolt-pro',
           connectLabel: 'Get Pro',
           icon: <ThunderboltProIcon />,
-          isEnabled: proStatus.isProUser && (proIsEnabled === null ? true : proIsEnabled === 'true'),
+          isEnabled: proStatus.isProUser && integrationsProIsEnabled,
           isConnected: proStatus.isProUser,
           userEmail: proStatus.isProUser ? 'Thunderbolt Pro' : undefined,
         },
@@ -231,7 +228,7 @@ export default function IntegrationsPage() {
           provider: 'google',
           connectLabel: 'Connect Google',
           icon: <GoogleIcon />,
-          isEnabled: gIsEnabled === 'true',
+          isEnabled: integrationsGoogleIsEnabled,
           isConnected: !!gParsedCredentials,
           userEmail: gUserEmail,
           credentials: gParsedCredentials,
@@ -242,7 +239,7 @@ export default function IntegrationsPage() {
           provider: 'microsoft',
           connectLabel: 'Connect Microsoft',
           icon: <MicrosoftIcon />,
-          isEnabled: mIsEnabled === 'true',
+          isEnabled: integrationsMicrosoftIsEnabled,
           isConnected: !!mParsedCredentials,
           userEmail: mUserEmail,
           credentials: mParsedCredentials,

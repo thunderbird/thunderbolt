@@ -280,7 +280,7 @@ export async function getSettings<T extends SettingSchema>(
     const setting = results.find((r) => r?.key === key)
 
     // Determine if this is a constructor or a default value
-    const isConstructor = typeof schemaValue === 'function'
+    const isConstructor = schemaValue === String || schemaValue === Boolean || schemaValue === Number
     const defaultValue = isConstructor ? (schemaValue === Boolean ? false : null) : schemaValue
 
     // Determine the type hint for deserialization

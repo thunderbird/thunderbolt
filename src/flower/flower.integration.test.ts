@@ -12,8 +12,8 @@ const makeInit = (messages: ThunderboltUIMessage[], chatId: string): RequestInit
 })
 
 beforeAll(async () => {
-  // Use in-memory database for testing
-  await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
+  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
+  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
 
   // Run migrations to create tables
   const db = DatabaseSingleton.instance.db

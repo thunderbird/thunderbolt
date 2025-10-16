@@ -34,6 +34,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePostHog } from 'posthog-js/react'
 
 interface LocationData {
@@ -105,6 +106,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting, localizationDialogOpen, pendingCountryUnits } = state
+
+  const queryClient = useQueryClient()
 
   // Localization dropdown states
   const {
@@ -302,19 +305,21 @@ export default function PreferencesSettingsPage() {
 
     // If country changed, ask user if they want to update localization settings
     if (currentCountry !== newCountry) {
-      const cloudUrl = await getCloudUrl()
-
-      if (!cloudUrl) {
-        console.error('Cloud URL not configured')
-        return
-      }
-
-      const countryUnitsData: CountryUnitsData | null = await ky
-        .get(`${cloudUrl}/units`, {
-          searchParams: { country: newCountry },
+      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
+      const countryUnitsData = await queryClient
+        .fetchQuery({
+          queryKey: ['country-units', newCountry],
+          queryFn: async (): Promise<CountryUnitsData> => {
+            const cloudUrl = await getCloudUrl()
+            const response = await ky
+              .get(`${cloudUrl}/units`, {
+                searchParams: { country: newCountry },
+              })
+              .json()
+            return countryUnitsResponseSchema.parse(response)
+          },
+          staleTime: 24 * 60 * 60 * 1000,
         })
-        .json()
-        .then((response) => countryUnitsResponseSchema.parse(response))
         .catch((error) => {
           console.error('Error fetching country units:', error)
           return null
@@ -342,7 +347,18 @@ export default function PreferencesSettingsPage() {
     trackEvent('settings_localization_update')
   }
 
-  const handleDeclineLocalizationSettings = () => {
+  const handleDeclineLocalizationSettings = async () => {
+    if (!pendingCountryUnits) return
+
+    // Update hash values to new country defaults without changing actual values
+    await Promise.all([
+      distanceUnit.setValue(pendingCountryUnits.unit, { updateHashOnly: true }),
+      temperatureUnit.setValue(pendingCountryUnits.temperature, { updateHashOnly: true }),
+      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { updateHashOnly: true }),
+      timeFormat.setValue(pendingCountryUnits.timeFormat, { updateHashOnly: true }),
+      currency.setValue(pendingCountryUnits.currency.code, { updateHashOnly: true }),
+    ])
+
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
@@ -361,6 +377,57 @@ export default function PreferencesSettingsPage() {
 
   const handleResetLocation = async () => {
     await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
+  }
+
+  const handleResetLocalizationSetting = async (
+    settingType: 'distance' | 'temperature' | 'date' | 'time' | 'currency',
+  ) => {
+    const settingMap = {
+      distance: { hook: distanceUnit, dataKey: 'unit' as const },
+      temperature: { hook: temperatureUnit, dataKey: 'temperature' as const },
+      date: { hook: dateFormat, dataKey: 'dateFormatExample' as const },
+      time: { hook: timeFormat, dataKey: 'timeFormat' as const },
+      currency: { hook: currency, dataKey: 'currency.code' as const },
+    }
+
+    const { hook, dataKey } = settingMap[settingType]
+
+    // If user has a location set, reset to that country's defaults
+    if (locationName.value) {
+      const country = locationName.value.split(',').pop()?.trim()
+      if (!country) return
+
+      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
+      const countryUnitsData = await queryClient
+        .fetchQuery({
+          queryKey: ['country-units', country],
+          queryFn: async (): Promise<CountryUnitsData> => {
+            const cloudUrl = await getCloudUrl()
+            const response = await ky
+              .get(`${cloudUrl}/units`, {
+                searchParams: { country },
+              })
+              .json()
+            return countryUnitsResponseSchema.parse(response)
+          },
+          staleTime: 24 * 60 * 60 * 1000,
+        })
+        .catch((error) => {
+          console.error('Error fetching country units:', error)
+          return null
+        })
+
+      if (!countryUnitsData) return
+
+      // Get the value from countryUnitsData using the dataKey
+      const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]
+      await hook.setValue(value, { recomputeHash: true })
+    } else {
+      // No location set, fall back to system defaults
+      await hook.reset()
+    }
+
+    trackEvent('settings_localization_reset')
   }
 
   return (
@@ -501,7 +568,7 @@ export default function PreferencesSettingsPage() {
                 as="label"
                 className="text-sm font-medium"
                 hasModifications={distanceUnit.isModified}
-                onReset={distanceUnit.reset}
+                onReset={() => handleResetLocalizationSetting('distance')}
               >
                 Distance
               </ModificationIndicator>
@@ -552,7 +619,7 @@ export default function PreferencesSettingsPage() {
                 as="label"
                 className="text-sm font-medium"
                 hasModifications={temperatureUnit.isModified}
-                onReset={temperatureUnit.reset}
+                onReset={() => handleResetLocalizationSetting('temperature')}
               >
                 Temperature
               </ModificationIndicator>
@@ -603,7 +670,7 @@ export default function PreferencesSettingsPage() {
                 as="label"
                 className="text-sm font-medium"
                 hasModifications={dateFormat.isModified}
-                onReset={dateFormat.reset}
+                onReset={() => handleResetLocalizationSetting('date')}
               >
                 Date Format
               </ModificationIndicator>
@@ -655,7 +722,7 @@ export default function PreferencesSettingsPage() {
                 as="label"
                 className="text-sm font-medium"
                 hasModifications={timeFormat.isModified}
-                onReset={timeFormat.reset}
+                onReset={() => handleResetLocalizationSetting('time')}
               >
                 Time Format
               </ModificationIndicator>
@@ -702,7 +769,7 @@ export default function PreferencesSettingsPage() {
                 as="label"
                 className="text-sm font-medium"
                 hasModifications={currency.isModified}
-                onReset={currency.reset}
+                onReset={() => handleResetLocalizationSetting('currency')}
               >
                 Currency
               </ModificationIndicator>
@@ -843,15 +910,14 @@ export default function PreferencesSettingsPage() {
       <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Update Localization Settings?</AlertDialogTitle>
+            <AlertDialogTitle>Update Defaults?</AlertDialogTitle>
             <AlertDialogDescription>
-              Your location has changed to a different country. Would you like to update your localization settings
-              (distance, temperature, date format, time format, and currency) to match the new location's defaults?
+              Would you like to update your units based on the new location?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>No, Keep Current Settings</AlertDialogCancel>
-            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Yes, Update Settings</AlertDialogAction>
+            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>Keep Current Units</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Update Units</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

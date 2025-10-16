@@ -109,7 +109,7 @@ const init = async (): Promise<InitData> => {
   })
 
   await migrate(db)
-  await reconcileDefaults()
+  await reconcileDefaults(db)
 
   const tray = await TrayManager.initIfSupported()
 

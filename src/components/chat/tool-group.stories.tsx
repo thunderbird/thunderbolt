@@ -2,7 +2,7 @@ import { ObjectViewProvider } from '@/components/chat/object-view-provider'
 import { ToolGroup } from '@/components/chat/tool-group'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import type { ToolUIPart } from 'ai'
+import type { ReasoningUIPart, ToolUIPart } from 'ai'
 
 const meta = {
   title: 'components/chat/tool-group',
@@ -46,9 +46,16 @@ const createMockTool = (
     input: {},
   }) as ToolUIPart
 
+const createMockReasoning = (text: string): ReasoningUIPart =>
+  ({
+    type: 'reasoning',
+    text,
+  }) as ReasoningUIPart
+
 export const SingleToolLoading: Story = {
   args: {
     tools: [createMockTool('input-streaming', undefined, 'tool-1')],
+    parts: [createMockTool('input-streaming', undefined, 'tool-1')],
     isStreaming: true,
     isLastPartInMessage: true,
     hasTextInMessage: false,
@@ -65,6 +72,7 @@ export const SingleToolLoading: Story = {
 export const SingleToolComplete: Story = {
   args: {
     tools: [createMockTool('output-available', { result: 'success' }, 'tool-1')],
+    parts: [createMockTool('output-available', { result: 'success' }, 'tool-1')],
     isStreaming: false,
     isLastPartInMessage: true,
     hasTextInMessage: false,
@@ -81,6 +89,11 @@ export const SingleToolComplete: Story = {
 export const MultipleToolsLoading: Story = {
   args: {
     tools: [
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockTool('input-streaming', undefined, 'tool-2', 'tool:fetch_content'),
+      createMockTool('input-available', undefined, 'tool-3', 'tool:get_weather'),
+    ],
+    parts: [
       createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
       createMockTool('input-streaming', undefined, 'tool-2', 'tool:fetch_content'),
       createMockTool('input-available', undefined, 'tool-3', 'tool:get_weather'),
@@ -105,6 +118,11 @@ export const MultipleToolsCompleteWithNextAction: Story = {
       createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
       createMockTool('output-available', { result: 'info' }, 'tool-3', 'tool:get_weather'),
     ],
+    parts: [
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
+      createMockTool('output-available', { result: 'info' }, 'tool-3', 'tool:get_weather'),
+    ],
     isStreaming: true,
     isLastPartInMessage: true,
     hasTextInMessage: false,
@@ -125,6 +143,10 @@ export const MultipleToolsWithText: Story = {
       createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
       createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
     ],
+    parts: [
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
+    ],
     isStreaming: true,
     isLastPartInMessage: false,
     hasTextInMessage: true,
@@ -141,6 +163,11 @@ export const MultipleToolsWithText: Story = {
 export const ToolsWithError: Story = {
   args: {
     tools: [
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockTool('output-error', undefined, 'tool-2', 'tool:fetch_content'),
+      createMockTool('output-available', { result: 'info' }, 'tool-3', 'tool:get_weather'),
+    ],
+    parts: [
       createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
       createMockTool('output-error', undefined, 'tool-2', 'tool:fetch_content'),
       createMockTool('output-available', { result: 'info' }, 'tool-3', 'tool:get_weather'),
@@ -169,6 +196,14 @@ export const ManyTools: Story = {
       createMockTool('output-available', { result: '5' }, 'tool-5', 'tool:get_email'),
       createMockTool('output-available', { result: '6' }, 'tool-6', 'tool:search'),
     ],
+    parts: [
+      createMockTool('output-available', { result: '1' }, 'tool-1', 'tool:search'),
+      createMockTool('output-available', { result: '2' }, 'tool-2', 'tool:fetch_content'),
+      createMockTool('output-available', { result: '3' }, 'tool-3', 'tool:get_weather'),
+      createMockTool('output-available', { result: '4' }, 'tool-4', 'tool:search'),
+      createMockTool('output-available', { result: '5' }, 'tool-5', 'tool:get_email'),
+      createMockTool('output-available', { result: '6' }, 'tool-6', 'tool:search'),
+    ],
     isStreaming: false,
     isLastPartInMessage: true,
     hasTextInMessage: false,
@@ -177,6 +212,31 @@ export const ManyTools: Story = {
     docs: {
       description: {
         story: 'Many tools showing the wrap behavior of the tool group layout.',
+      },
+    },
+  },
+}
+
+export const WithReasoning: Story = {
+  args: {
+    tools: [
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
+    ],
+    parts: [
+      createMockReasoning('Let me search for that information'),
+      createMockTool('output-available', { result: 'success' }, 'tool-1', 'tool:search'),
+      createMockReasoning('Now let me fetch the content'),
+      createMockTool('output-available', { result: 'data' }, 'tool-2', 'tool:fetch_content'),
+    ],
+    isStreaming: false,
+    isLastPartInMessage: true,
+    hasTextInMessage: false,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Tools with reasoning parts showing the mixed order of thinking and actions.',
       },
     },
   },

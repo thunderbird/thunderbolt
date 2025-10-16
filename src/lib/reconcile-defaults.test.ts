@@ -9,7 +9,7 @@ import { defaultSettings, hashSetting } from '../defaults/settings'
 import { reconcileDefaultsForTable } from './reconcile-defaults'
 
 beforeAll(async () => {
-  await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
+  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
   const db = DatabaseSingleton.instance.db
   await migrate(db)
 })

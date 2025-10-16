@@ -51,8 +51,8 @@ import {
 import { reconcileDefaultsForTable } from './reconcile-defaults'
 
 beforeAll(async () => {
-  // Use in-memory database for testing
-  await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
+  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
+  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
 
   // Run migrations to create tables
   const db = DatabaseSingleton.instance.db

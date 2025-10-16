@@ -7,7 +7,7 @@ import { migrate } from './migrate'
 describe('Database Migrations', () => {
   beforeEach(async () => {
     // Create a fresh in-memory database for each test
-    await DatabaseSingleton.instance.initialize({ type: 'sqlocal', path: ':memory:' })
+    await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
   })
 
   describe('migrate', () => {

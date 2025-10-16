@@ -2,6 +2,7 @@ import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { Brain } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
+import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useObjectView } from './object-view-provider'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
@@ -14,6 +15,57 @@ type UseToolGroupStateParams = {
   isStreaming: boolean
   isLastPartInMessage: boolean
   hasTextInMessage: boolean
+}
+
+type ReasoningPartProps = {
+  part: ReasoningUIPart
+  index: number
+  onOpenDetails: () => void
+}
+
+const ReasoningPart = ({ part, index, onOpenDetails }: ReasoningPartProps) => {
+  const isOpen = part.state === 'streaming'
+  const isStreaming = part.state === 'streaming'
+
+  const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
+    dependencies: [part.text],
+    isStreaming,
+    smooth: false, // Use instant scrolling for better UX during streaming
+  })
+
+  return (
+    <Popover key={`reasoning-${index}`} open={isOpen}>
+      <PopoverTrigger asChild>
+        <motion.div
+          className="data-[slot=avatar]:ring-background data-[slot=avatar]:ring-2 data-[slot=avatar]:grayscale"
+          initial={{ scale: 0 }}
+          animate={{
+            scale: 1,
+          }}
+        >
+          <ToolIcon
+            toolName="reasoning"
+            toolOutput=""
+            Icon={Brain}
+            initials=""
+            isLoading={false}
+            isError={false}
+            tooltipKey={`reasoning-${index}`}
+            onClick={onOpenDetails}
+          />
+        </motion.div>
+      </PopoverTrigger>
+      <PopoverContent
+        className="PopoverContent max-w-lg max-h-40 overflow-scroll"
+        ref={scrollContainerRef}
+        {...scrollHandlers}
+      >
+        <p className="font-medium">Thinking</p>
+        <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{part.text}</p>
+        <div ref={scrollTargetRef} />
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 /**
@@ -56,40 +108,18 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
     <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
       {parts.map((part, index) => {
         if (part.type === 'reasoning') {
-          const isOpen = part.state === 'streaming'
-
           return (
-            <Popover key={`reasoning-${index}`} open={isOpen}>
-              <PopoverTrigger asChild>
-                <motion.div
-                  className="data-[slot=avatar]:ring-background data-[slot=avatar]:ring-2 data-[slot=avatar]:grayscale"
-                  initial={{ scale: 0 }}
-                  animate={{
-                    scale: 1,
-                  }}
-                >
-                  <ToolIcon
-                    toolName="reasoning"
-                    toolOutput=""
-                    Icon={Brain}
-                    initials=""
-                    isLoading={false}
-                    isError={false}
-                    tooltipKey={`reasoning-${index}`}
-                    onClick={() =>
-                      openObjectSidebar({
-                        content: part.text,
-                        title: 'Thinking',
-                      })
-                    }
-                  />
-                </motion.div>
-              </PopoverTrigger>
-              <PopoverContent className="PopoverContent max-w-lg max-h-40 overflow-scroll">
-                <p className="font-medium">Thinking</p>
-                <p className="font-medium">{part.text}</p>
-              </PopoverContent>
-            </Popover>
+            <ReasoningPart
+              key={`reasoning-${index}`}
+              part={part}
+              index={index}
+              onOpenDetails={() =>
+                openObjectSidebar({
+                  content: part.text,
+                  title: 'Thinking',
+                })
+              }
+            />
           )
         } else {
           const tool = part as ToolUIPart

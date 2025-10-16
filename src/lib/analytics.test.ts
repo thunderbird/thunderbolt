@@ -29,7 +29,14 @@ mock.module('@/lib/config', () => ({
 }))
 
 mock.module('@/lib/dal', () => ({
-  getBooleanSetting: async () => false,
+  getSettings: async (defaults: Record<string, any>) => {
+    const result: Record<string, any> = {}
+    for (const [key, value] of Object.entries(defaults)) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+      result[camelKey] = value
+    }
+    return result
+  },
 }))
 
 describe('analytics sanitizeUrl', () => {

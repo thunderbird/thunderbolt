@@ -2,7 +2,7 @@ import { createPrompt } from '@/ai/prompt'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { getCloudUrl } from '@/lib/config'
-import { getBooleanSetting, getSettings } from '@/lib/dal'
+import { getSettings } from '@/lib/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -49,10 +49,10 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> 
   switch (modelConfig.provider) {
     case 'flower': {
       // Check if encryption should be disabled via dev settings
-      const disableEncryption = await getBooleanSetting('disable_flower_encryption', false)
+      const { disableFlowerEncryption } = await getSettings({ disable_flower_encryption: false })
 
       // Enable encryption for confidential models unless explicitly disabled in dev settings
-      const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableEncryption
+      const shouldEncrypt = Boolean(modelConfig.isConfidential) && !disableFlowerEncryption
 
       const cloudUrl = await getCloudUrl()
       const client = await createConfiguredFlowerClient(cloudUrl)

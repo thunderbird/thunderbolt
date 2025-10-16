@@ -342,15 +342,6 @@ export const hasSetting = async (key: string): Promise<boolean> => {
 }
 
 /**
- * Get a boolean setting value from the settings table
- */
-export const getBooleanSetting = async (key: string, defaultValue: boolean = false): Promise<boolean> => {
-  const settings = await getSettings({ [key]: defaultValue })
-  const camelKey = camelCased(key)
-  return settings[camelKey]
-}
-
-/**
  * Create a setting only if it doesn't already exist
  * Does nothing if the setting already exists (preserves existing value)
  */

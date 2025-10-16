@@ -1,4 +1,4 @@
-import { getBooleanSetting } from '@/lib/dal'
+import { getSettings } from '@/lib/dal'
 import { isTauri } from '@/lib/platform'
 
 /**
@@ -12,9 +12,9 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
     return globalThis.fetch(input, init)
   }
 
-  const tauriFetchEnabled = await getBooleanSetting('is_native_fetch_enabled', false)
+  const { isNativeFetchEnabled } = await getSettings({ is_native_fetch_enabled: false })
 
-  if (tauriFetchEnabled) {
+  if (isNativeFetchEnabled) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
     return tauriFetch(input, init)
   }

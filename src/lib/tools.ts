@@ -1,42 +1,42 @@
 import * as tasksTools from '@/extensions/tasks/tools'
+import type { FlowerTool } from '@/flower'
 import { configs as googleConfigs } from '@/integrations/google/tools'
 import { configs as microsoftConfigs } from '@/integrations/microsoft/tools'
 import { configs as proConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getBooleanSetting, getSettings } from '@/lib/dal'
+import { getSettings } from '@/lib/dal'
 import type { ToolConfig } from '@/types'
 import { zodSchema } from '@ai-sdk/provider-utils'
-import type { FlowerTool } from '@/flower'
 import { tool, type Tool } from 'ai'
 
 export const getAvailableTools = async (): Promise<ToolConfig[]> => {
-  const isTasksEnabled = await getBooleanSetting('experimental_feature_tasks')
-
-  const baseTools: ToolConfig[] = isTasksEnabled ? [...Object.values(tasksTools)] : []
-
   // Check Thunderbolt Pro access and integration enabled state
   const proEnabled = await hasProAccess()
-  const settings = await getSettings({
-    integrations_pro_is_enabled: String,
-    integrations_google_is_enabled: String,
-    integrations_microsoft_is_enabled: String,
+  const {
+    experimentalFeatureTasks,
+    integrationsProIsEnabled,
+    integrationsGoogleIsEnabled,
+    integrationsMicrosoftIsEnabled,
+  } = await getSettings({
+    experimental_feature_tasks: false,
+    integrations_pro_is_enabled: false,
+    integrations_google_is_enabled: false,
+    integrations_microsoft_is_enabled: false,
   })
 
-  const shouldIncludeProTools =
-    proEnabled && (settings.integrationsProIsEnabled === null ? true : settings.integrationsProIsEnabled === 'true')
+  const baseTools: ToolConfig[] = experimentalFeatureTasks ? [...Object.values(tasksTools)] : []
+
+  const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 
   if (shouldIncludeProTools) {
     baseTools.push(...proConfigs)
   }
 
-  const googleEnabled = settings.integrationsGoogleIsEnabled
-  const microsoftEnabled = settings.integrationsMicrosoftIsEnabled
-
-  if (googleEnabled === 'true') {
+  if (integrationsGoogleIsEnabled) {
     baseTools.push(...googleConfigs)
   }
 
-  if (microsoftEnabled === 'true') {
+  if (integrationsMicrosoftIsEnabled) {
     baseTools.push(...microsoftConfigs)
   }
 

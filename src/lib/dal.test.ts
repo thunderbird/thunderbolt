@@ -27,7 +27,6 @@ import {
   getAllPrompts,
   getAllSettings,
   getAvailableModels,
-  getBooleanSetting,
   getChatMessages,
   getChatThread,
   getContextSizeForThread,
@@ -132,36 +131,6 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('getBooleanSetting', () => {
-    it('should return false by default when setting does not exist', async () => {
-      const value = await getBooleanSetting('nonexistent_key')
-      expect(value).toBe(false)
-    })
-
-    it('should return true when value is "true"', async () => {
-      await createSetting('bool_key', 'true')
-      const value = await getBooleanSetting('bool_key')
-      expect(value).toBe(true)
-    })
-
-    it('should return false when value is "false"', async () => {
-      await createSetting('bool_key', 'false')
-      const value = await getBooleanSetting('bool_key')
-      expect(value).toBe(false)
-    })
-
-    it('should return false for any non-"true" value', async () => {
-      await createSetting('bool_key', '1')
-      expect(await getBooleanSetting('bool_key')).toBe(false)
-
-      await updateSetting('bool_key', 'yes')
-      expect(await getBooleanSetting('bool_key')).toBe(false)
-
-      await updateSetting('bool_key', 'TRUE')
-      expect(await getBooleanSetting('bool_key')).toBe(false)
-    })
-  })
-
   describe('createSetting', () => {
     it('should create a new setting', async () => {
       await createSetting('new_key', 'new_value')
@@ -217,21 +186,21 @@ describe('Settings DAL', () => {
   describe('updateSetting with boolean values', () => {
     it('should create a boolean setting with true value', async () => {
       await updateSetting('bool_key', true)
-      const value = await getBooleanSetting('bool_key')
-      expect(value).toBe(true)
+      const settings = await getSettings({ bool_key: false })
+      expect(settings.boolKey).toBe(true)
     })
 
     it('should create a boolean setting with false value', async () => {
       await updateSetting('bool_key', false)
-      const value = await getBooleanSetting('bool_key')
-      expect(value).toBe(false)
+      const settings = await getSettings({ bool_key: true })
+      expect(settings.boolKey).toBe(false)
     })
 
     it('should update existing boolean setting', async () => {
       await updateSetting('bool_key', false)
       await updateSetting('bool_key', true)
-      const value = await getBooleanSetting('bool_key')
-      expect(value).toBe(true)
+      const settings = await getSettings({ bool_key: false })
+      expect(settings.boolKey).toBe(true)
     })
 
     it('should store as "true" and "false" strings', async () => {

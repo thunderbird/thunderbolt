@@ -36,9 +36,6 @@ export const createPrompt = ({ preferredName, location, localization }: PromptPa
     location.name
       ? `The user's location is ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}.`
       : 'The user has not provided a location. Please ask the user for their location before using any location-based tools.',
-    location.name
-      ? `You must use units that are appropriate for the user's country based on the task at hand. If tools give you results in the wrong units, you must convert them. For example, if the user's location is in the United States, use miles and Fahrenheit and miles per hour. If the user's location is in Canada, use kilometers, Celsius and kilometers per hour.`
-      : '',
 
     `The user has configured the following localization preferences:`,
     `• Distance unit: ${localization.distanceUnit}`,

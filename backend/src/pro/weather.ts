@@ -14,8 +14,8 @@ type LocalizationParams = {
  * This is a subset of the full PreferencesSettings type from the frontend.
  */
 type WeatherPreferences = {
-  distanceUnit?: string // Maps to wind_speed_unit and precipitation_unit
-  temperatureUnit?: string // Maps to temperature_unit
+  distanceUnit?: 'metric' | 'imperial'
+  temperatureUnit?: 'c' | 'f'
 }
 
 interface Location {
@@ -38,48 +38,23 @@ export class OpenMeteoWeather {
    * Convert user preferences to Open-Meteo API parameters
    */
   private getUserLocalizationParams(userPreferences?: WeatherPreferences): LocalizationParams {
-    const params: LocalizationParams = {}
+    const temperatureUnit = userPreferences?.temperatureUnit === 'f' ? 'fahrenheit' : 'celsius'
 
-    if (userPreferences?.temperatureUnit) {
-      switch (userPreferences.temperatureUnit.toUpperCase()) {
-        case 'F':
-        case '°F':
-        case 'FAHRENHEIT':
-          params.temperatureUnit = 'fahrenheit'
-          break
-        case 'C':
-        case '°C':
-        case 'CELSIUS':
-          params.temperatureUnit = 'celsius'
-          break
+    if (userPreferences?.distanceUnit === 'imperial') {
+      return {
+        temperatureUnit,
+        windSpeedUnit: 'mph',
+        precipitationUnit: 'inch',
+        timeFormat: 'iso8601',
       }
     }
 
-    if (userPreferences?.distanceUnit) {
-      switch (userPreferences.distanceUnit.toLowerCase()) {
-        case 'imperial':
-          params.windSpeedUnit = 'mph'
-          break
-        case 'metric':
-          params.windSpeedUnit = 'kmh'
-          break
-      }
+    return {
+      temperatureUnit,
+      windSpeedUnit: 'kmh',
+      precipitationUnit: 'mm',
+      timeFormat: 'iso8601',
     }
-
-    if (userPreferences?.distanceUnit) {
-      switch (userPreferences.distanceUnit.toLowerCase()) {
-        case 'imperial':
-          params.precipitationUnit = 'inch'
-          break
-        case 'metric':
-          params.precipitationUnit = 'mm'
-          break
-      }
-    }
-
-    params.timeFormat = 'iso8601'
-
-    return params
   }
 
   /**

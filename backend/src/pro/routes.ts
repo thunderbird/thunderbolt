@@ -16,8 +16,8 @@ import { OpenMeteoWeather } from './weather'
  * This is a subset of the full PreferencesSettings type from the frontend.
  */
 type WeatherPreferences = {
-  distanceUnit?: string    // Maps to wind_speed_unit and precipitation_unit
-  temperatureUnit?: string // Maps to temperature_unit
+  distanceUnit?: 'metric' | 'imperial'
+  temperatureUnit?: 'c' | 'f'
 }
 
 // Initialize the tool clients
@@ -45,7 +45,7 @@ export const createProToolsRoutes = () => {
         try {
           const userPreferences: WeatherPreferences = {
             distanceUnit: body.distanceUnit || 'imperial',
-            temperatureUnit: body.temperatureUnit || 'F',
+            temperatureUnit: body.temperatureUnit || 'f',
           }
           const weatherData = await weatherClient.getCurrentWeather(
             body.location,
@@ -72,8 +72,8 @@ export const createProToolsRoutes = () => {
           region: t.String(),
           country: t.String(),
           days: t.Optional(t.Number({ default: 3 })),
-          distanceUnit: t.Optional(t.String()),
-          temperatureUnit: t.Optional(t.String()),
+          distanceUnit: t.Optional(t.Union([t.Literal('metric'), t.Literal('imperial')])),
+          temperatureUnit: t.Optional(t.Union([t.Literal('c'), t.Literal('f')])),
         }),
       },
     )
@@ -86,7 +86,7 @@ export const createProToolsRoutes = () => {
         try {
           const userPreferences: WeatherPreferences = {
             distanceUnit: body.distanceUnit || 'imperial',
-            temperatureUnit: body.temperatureUnit || 'F',
+            temperatureUnit: body.temperatureUnit || 'f',
           }
           const weatherData = await weatherClient.getWeatherForecast(
             request.location,
@@ -114,8 +114,8 @@ export const createProToolsRoutes = () => {
           region: t.String(),
           country: t.String(),
           days: t.Optional(t.Number({ default: 3 })),
-          distanceUnit: t.Optional(t.String()),
-          temperatureUnit: t.Optional(t.String()),
+          distanceUnit: t.Optional(t.Union([t.Literal('metric'), t.Literal('imperial')])),
+          temperatureUnit: t.Optional(t.Union([t.Literal('c'), t.Literal('f')])),
         }),
       },
     )
@@ -126,11 +126,7 @@ export const createProToolsRoutes = () => {
         const request = body as LocationSearchRequest
 
         try {
-          const locations = await weatherClient.searchLocations(
-            request.query,
-            request.region,
-            request.country,
-          )
+          const locations = await weatherClient.searchLocations(request.query, request.region, request.country)
 
           if (!locations || locations.length === 0) {
             return {
@@ -182,8 +178,8 @@ export const createProToolsRoutes = () => {
           query: t.String(),
           region: t.String(),
           country: t.String(),
-          distanceUnit: t.Optional(t.String()),
-          temperatureUnit: t.Optional(t.String()),
+          distanceUnit: t.Optional(t.Union([t.Literal('metric'), t.Literal('imperial')])),
+          temperatureUnit: t.Optional(t.Union([t.Literal('c'), t.Literal('f')])),
         }),
       },
     )

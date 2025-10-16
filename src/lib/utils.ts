@@ -211,3 +211,11 @@ export const hashValues = (values: (string | number | null | undefined)[]): stri
   }
   return hash.toString(36)
 }
+
+export const getMessagePartOutput = (part: any) => {
+  if (typeof part?.output === 'string') {
+    return part?.output
+  } else {
+    return JSON.stringify(part?.output, null, 2)
+  }
+}

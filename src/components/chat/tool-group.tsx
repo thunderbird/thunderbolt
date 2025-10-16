@@ -5,6 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useObjectView } from './object-view-provider'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
+import { getMessagePartOutput, splitPartType } from '@/lib/utils'
+import { getToolMetadataSync } from '@/lib/tool-metadata'
 
 type UseToolGroupStateParams = {
   tools: ToolUIPart[]
@@ -71,7 +73,12 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
                     isLoading={false}
                     isError={false}
                     tooltipKey={`reasoning-${index}`}
-                    onClick={() => {}}
+                    onClick={() =>
+                      openObjectSidebar({
+                        content: part.text,
+                        title: 'Thinking',
+                      })
+                    }
                   />
                 </motion.div>
               </TooltipTrigger>
@@ -82,12 +89,21 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
           )
         } else {
           const tool = part as ToolUIPart
+
+          const [, toolName] = splitPartType(tool.type)
+          const metadata = getToolMetadataSync(toolName, tool.input)
+
           return (
             <ToolItem
               key={tool.toolCallId ?? `${tool.type}-${index}`}
               tool={tool}
               index={index}
-              onOpenDetails={openObjectSidebar}
+              onOpenDetails={() =>
+                openObjectSidebar({
+                  content: getMessagePartOutput(tool),
+                  title: metadata.displayName,
+                })
+              }
             />
           )
         }

@@ -2,9 +2,14 @@ import { createContext, useContext, useState } from 'react'
 import { SidebarInset, useSidebar } from '../ui/sidebar'
 import { ObjectSidebar } from './object-sidebar'
 
+type ObjectContent = {
+  title: string
+  content: string
+}
+
 interface ObjectViewContextType {
-  objectContent: any
-  openObjectSidebar: (content: any) => void
+  objectContent: ObjectContent | null
+  openObjectSidebar: (content: ObjectContent) => void
   closeObjectSidebar: () => void
 }
 
@@ -15,10 +20,10 @@ interface ObjectViewProviderProps {
 }
 
 export function ObjectViewProvider({ children }: ObjectViewProviderProps) {
-  const [objectContent, setObjectContent] = useState<any>()
+  const [objectContent, setObjectContent] = useState<ObjectContent | null>(null)
   const { isMobile, setOpenMobile, setOpen } = useSidebar()
 
-  const openObjectSidebar = (content: any) => {
+  const openObjectSidebar = (content: ObjectContent) => {
     setObjectContent(content)
     isMobile ? setOpenMobile(true) : setOpen(true)
   }

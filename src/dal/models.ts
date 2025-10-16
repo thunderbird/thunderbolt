@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable } from '../db/tables'
 import type { Model } from '../types'
@@ -13,16 +13,22 @@ const mapModel = (model: Model) => {
 
 /**
  * Gets all models from the database (excluding soft-deleted)
+ * Sorted with system model first, then alphabetically by name
  */
 export const getAllModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
-  const results = await db.select().from(modelsTable).where(isNull(modelsTable.deletedAt))
+  const results = await db
+    .select()
+    .from(modelsTable)
+    .where(isNull(modelsTable.deletedAt))
+    .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
   return results.map(mapModel)
 }
 
 /**
  * Gets all available (enabled) models from the database (excluding soft-deleted)
+ * Sorted with system model first, then alphabetically by name
  */
 export const getAvailableModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
@@ -30,6 +36,7 @@ export const getAvailableModels = async (): Promise<Model[]> => {
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
+    .orderBy(desc(modelsTable.isSystem), modelsTable.name)
   return results.map(mapModel)
 }
 
@@ -58,6 +65,7 @@ export const getSystemModel = async () => {
 
 /**
  * Gets the currently selected model or falls back to the system default model
+ * If the selected model is disabled, automatically falls back to system model
  */
 export const getSelectedModel = async (): Promise<Model> => {
   // Import locally to avoid circular dependency
@@ -69,7 +77,8 @@ export const getSelectedModel = async (): Promise<Model> => {
   if (selectedModelId) {
     const model = await getModel(selectedModelId)
 
-    if (model?.id) {
+    // Check if model exists and is enabled
+    if (model?.id && model.enabled) {
       return model
     }
   }
@@ -85,6 +94,7 @@ export const getSelectedModel = async (): Promise<Model> => {
 
 /**
  * Gets the default model for a chat thread based on the last message in the thread, falling back to the selected_model setting.
+ * If any fallback model is disabled, continues to the next fallback option.
  */
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
   // Import locally to avoid circular dependency
@@ -95,7 +105,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
   if (lastMessage?.modelId) {
     const model = await getModel(lastMessage.modelId)
 
-    if (model) {
+    if (model && model.enabled) {
       return model
     }
   }
@@ -103,7 +113,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
   if (fallbackModelId) {
     const model = await getModel(fallbackModelId)
 
-    if (model) {
+    if (model && model.enabled) {
       return model
     }
   }
@@ -119,4 +129,13 @@ export const updateModel = async (id: string, updates: Partial<Model>) => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
   await db.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
+}
+
+/**
+ * Reset a model to its default state
+ */
+export const resetModelToDefault = async (id: string, defaultModel: Model) => {
+  const db = DatabaseSingleton.instance.db
+  const { defaultHash, ...defaultFields } = defaultModel
+  await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
 }

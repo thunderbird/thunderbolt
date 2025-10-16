@@ -18,18 +18,18 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { getAllChatThreads } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
-import { getAllChatThreads } from '@/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
   ArrowLeft,
-  Bot,
   CheckSquare,
+  Cpu,
   Flame,
   Loader2,
   Lock,
@@ -207,20 +207,20 @@ export default function ChatSidebar() {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    onClick={() => handleSettingsNavigation('/settings/models')}
-                    className="cursor-pointer"
-                  >
-                    <Bot className="size-4" />
-                    <span>Models</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
                     onClick={() => handleSettingsNavigation('/settings/integrations')}
                     className="cursor-pointer"
                   >
                     <Plug className="size-4" />
                     <span>Integrations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => handleSettingsNavigation('/settings/models')}
+                    className="cursor-pointer"
+                  >
+                    <Cpu className="size-4" />
+                    <span>Models</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>

@@ -122,6 +122,41 @@ describe('Models DAL', () => {
       expect(model.id).toBe(selectedModelId)
       expect(model.name).toBe('Selected Model')
     })
+
+    it('should fall back to system model when selected model is disabled', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a system model
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'thunderbolt',
+        name: 'System Model',
+        model: 'gpt-oss-120b',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      // Create a disabled model
+      const disabledModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: disabledModelId,
+        provider: 'flower',
+        name: 'Disabled Model',
+        model: 'qwen/qwen3-235b',
+        isSystem: 0,
+        enabled: 0,
+      })
+
+      // Set the disabled model as selected
+      await updateSetting('selected_model', disabledModelId)
+
+      // Should fall back to system model since selected model is disabled
+      const model = await getSelectedModel()
+      expect(model.id).toBe(systemModelId)
+      expect(model.name).toBe('System Model')
+      expect(model.isSystem).toBe(1)
+    })
   })
 
   describe('getAllModels', () => {

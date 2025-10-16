@@ -2,33 +2,34 @@
 export {
   getAllModels,
   getAvailableModels,
-  getModel,
-  getSystemModel,
-  getSelectedModel,
   getDefaultModelForThread,
+  getModel,
+  getSelectedModel,
+  getSystemModel,
+  resetModelToDefault,
   updateModel,
 } from './models'
 
 // Settings
 export {
+  createSetting,
+  deleteSetting,
   getAllSettings,
-  getSettingsRecords,
   getSettings,
+  getSettingsRecords,
   getThemeSetting,
   hasSetting,
-  createSetting,
-  updateSetting,
-  deleteSetting,
   resetSettingToDefault,
+  updateSetting,
 } from './settings'
 
 // Chat Threads
 export {
+  createChatThread,
   getAllChatThreads,
   getChatThread,
-  createChatThread,
-  getOrCreateChatThread,
   getContextSizeForThread,
+  getOrCreateChatThread,
 } from './chat-threads'
 
 // Chat Messages
@@ -42,10 +43,10 @@ export { getAllMcpServers, getHttpMcpServers } from './mcp-servers'
 
 // Prompts
 export {
+  deleteAutomation,
   getAllPrompts,
   getTriggerPromptForThread,
-  updateAutomation,
   resetAutomationToDefault,
-  deleteAutomation,
   runAutomation,
+  updateAutomation,
 } from './prompts'

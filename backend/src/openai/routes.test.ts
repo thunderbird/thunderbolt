@@ -233,6 +233,7 @@ describe('OpenAI Routes', () => {
 
     it('should validate all supported models', () => {
       const expectedModels = [
+        'gpt-oss-120b',
         'qwen3-235b-a22b-instruct-2507',
         'qwen3-235b-a22b-thinking-2507',
         'kimi-k2-instruct',

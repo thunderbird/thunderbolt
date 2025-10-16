@@ -1,6 +1,6 @@
 import { hashValues } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { defaultModelQwen3Flower } from './models'
+import { defaultModelGptOss120b } from './models'
 
 /**
  * Compute hash of user-editable fields for a prompt
@@ -19,7 +19,7 @@ export const defaultAutomationDailyBrief: Prompt = {
   title: 'Daily Brief',
   deletedAt: null,
   defaultHash: null,
-  modelId: defaultModelQwen3Flower.id,
+  modelId: defaultModelGptOss120b.id,
   prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
 1. If you know my location, use the get_weather_forecast tool to check today's weather for my location. I only need to know the weather for today. If not, skip this section.
@@ -62,7 +62,7 @@ export const defaultAutomationDeepResearch: Prompt = {
   title: 'Deep Research',
   deletedAt: null,
   defaultHash: null,
-  modelId: defaultModelQwen3Flower.id,
+  modelId: defaultModelGptOss120b.id,
   prompt: `You are **Deep Research**, an expert analyst who can iteratively SEARCH the web and FETCH full documents.
 
 First, ask the user: "What topic or question would you like me to investigate?"
@@ -149,7 +149,7 @@ export const defaultAutomationImportantEmails: Prompt = {
   title: 'Important Emails',
   deletedAt: null,
   defaultHash: null,
-  modelId: defaultModelQwen3Flower.id,
+  modelId: defaultModelGptOss120b.id,
   prompt: `Review my inbox and summarize the 5 most important emails that need my attention today. Include sender, subject, and why each is important.`,
 }
 

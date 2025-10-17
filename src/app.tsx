@@ -47,6 +47,7 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import { SideviewProvider } from './sideview/provider'
 import type { InitData, SideviewType } from './types'
+import OnboardingDialog from './components/onboarding/onboarding-dialog'
 
 const queryClient = new QueryClient()
 
@@ -58,6 +59,7 @@ function AppContent({ initData }: { initData: InitData }) {
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
+      <OnboardingDialog />
     </BrowserRouter>
   )
 }

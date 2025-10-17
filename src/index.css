@@ -160,10 +160,3 @@ body {
 .prose-sm tr:last-child td {
   @apply border-b-0;
 }
-
-.PopoverContent {
-  width: var(--radix-popover-content-available-width);
-  /* max-height: var(--radix-popover-content-available-height); */
-  transform-origin: var(--radix-popover-content-transform-origin);
-  animation: scaleIn 0.5s ease-out;
-}

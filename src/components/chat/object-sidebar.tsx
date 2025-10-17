@@ -1,10 +1,9 @@
-import { type ComponentProps } from 'react'
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail, useSidebar } from '@/components/ui/sidebar'
-import { Button } from '../ui/button'
-import { useObjectView } from './object-view-provider'
-import { X } from 'lucide-react'
-import { splitPartType } from '@/lib/utils'
+import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { splitPartType } from '@/lib/utils'
+import { type ComponentProps } from 'react'
+import { useObjectView } from './object-view-provider'
 
 const getOutput = (part: any) => {
   if (typeof part?.output === 'string') {
@@ -25,9 +24,7 @@ export function ObjectSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
     <Sidebar side="right" variant="sidebar" {...props}>
       <SidebarHeader className="flex-row justify-between items-center flex bg-card">
         <h2 className="text-lg font-semibold truncate">{metadata.displayName}</h2>
-        <Button onClick={closeObjectSidebar} variant="ghost" size="sm">
-          <X />
-        </Button>
+        <SidebarCloseButton onClick={closeObjectSidebar} />
       </SidebarHeader>
       <SidebarContent className="p-4 overflow-x-hidden">
         <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(objectContent)}</p>

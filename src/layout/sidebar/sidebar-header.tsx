@@ -1,0 +1,75 @@
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { PanelLeft, Zap } from 'lucide-react'
+import { useState } from 'react'
+
+type SidebarHeaderProps = {
+  onToggle: () => void
+}
+
+export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
+  const isMobile = useIsMobile()
+  const { state } = useSidebar()
+  const [showExpandButton, setShowExpandButton] = useState(false)
+
+  // On mobile, always treat the sidebar as expanded when it's open
+  const isExpanded = isMobile || state === 'expanded'
+
+  return (
+    <div className="h-12 border-b border-border flex items-center justify-between px-2">
+      <div
+        className="flex items-center gap-2 h-8 px-2 relative flex-1"
+        onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
+        onMouseLeave={() => !isMobile && !isExpanded && setShowExpandButton(false)}
+      >
+        {!isExpanded && showExpandButton ? (
+          <SidebarGroup className="p-0 absolute left-0 right-0">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
+                    <PanelLeft className="size-4" />
+                    <span className="sr-only">Expand Sidebar</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : (
+          <>
+            <Zap className="size-4 shrink-0 fill-yellow-500" />
+            {isExpanded && <span className="text-sm truncate">Thunderbolt</span>}
+          </>
+        )}
+      </div>
+      {isExpanded && (
+        <div className="flex items-center">
+          {isMobile ? (
+            <SidebarCloseButton onClick={onToggle} />
+          ) : (
+            <SidebarGroup className="p-0 w-auto">
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem className="w-auto">
+                    <SidebarMenuButton onClick={onToggle} tooltip="Toggle Sidebar" className="cursor-pointer w-8">
+                      <PanelLeft className="size-4" />
+                      <span className="sr-only">Toggle Sidebar</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

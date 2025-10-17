@@ -65,7 +65,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
         <Input
           ref={ref}
           value={displayValue}
-          className={cn(showIcon ? 'pl-9' : '', hasValue ? 'pr-9' : '', className)}
+          className={cn('text-sm', showIcon ? 'pl-9' : '', hasValue ? 'pr-9' : '', className)}
           onChange={handleChange}
           autoComplete="off"
           autoCorrect="off"

@@ -26,6 +26,8 @@ export {
 // Chat Threads
 export {
   createChatThread,
+  deleteAllChatThreads,
+  deleteChatThread,
   getAllChatThreads,
   getChatThread,
   getContextSizeForThread,

@@ -56,3 +56,19 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 
   return thread?.contextSize ?? null
 }
+
+/**
+ * Deletes a specific chat thread by ID
+ */
+export const deleteChatThread = async (id: string) => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(chatThreadsTable).where(eq(chatThreadsTable.id, id))
+}
+
+/**
+ * Deletes all chat threads
+ */
+export const deleteAllChatThreads = async () => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(chatThreadsTable)
+}

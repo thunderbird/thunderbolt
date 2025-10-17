@@ -6,10 +6,10 @@ import { getCloudUrl } from '@/lib/config'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { useSettings } from './use-settings'
 
-const STALE_TIME = 24 * 60 * 60 * 1000 // 24 hours
-const GC_TIME = 24 * 60 * 60 * 1000 // 24 hours
-const RETRY_COUNT = 2
-const RETRY_DELAY = 1000 // 1 second
+const staleTime = 24 * 60 * 60 * 1000 // 24 hours
+const gcTime = 24 * 60 * 60 * 1000 // 24 hours
+const retryCount = 2
+const retryDelay = 1000 // 1 second
 
 /**
  * Creates a query function for fetching country units data
@@ -42,10 +42,10 @@ export const useCountryUnits = (country?: string) => {
     queryFn: createCountryUnitsQueryFn(countryName),
     enabled: false,
     refetchOnMount: false,
-    staleTime: STALE_TIME,
-    gcTime: GC_TIME,
-    retry: RETRY_COUNT,
-    retryDelay: RETRY_DELAY,
+    staleTime: staleTime,
+    gcTime: gcTime,
+    retry: retryCount,
+    retryDelay: retryDelay,
   })
 
   const fetchCountryUnits = async (targetCountry: string): Promise<CountryUnitsData | null> => {
@@ -53,7 +53,7 @@ export const useCountryUnits = (country?: string) => {
       .fetchQuery({
         queryKey: ['country-units', targetCountry],
         queryFn: createCountryUnitsQueryFn(targetCountry),
-        staleTime: STALE_TIME,
+        staleTime: staleTime,
       })
       .catch((error) => {
         console.error('Error fetching country units:', error)

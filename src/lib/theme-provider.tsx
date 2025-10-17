@@ -1,9 +1,9 @@
-import { settingsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { settingsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { getThemeSetting } from '@/dal'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { getThemeSetting } from '@/lib/dal'
 
 type Theme = 'dark' | 'light' | 'system'
 

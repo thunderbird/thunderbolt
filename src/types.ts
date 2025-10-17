@@ -61,3 +61,21 @@ export type ToolConfig = {
 export type AuthProviderBackendConfig = {
   client_id: string
 }
+
+// Re-export types from schemas to maintain backward compatibility
+export type { DateFormat, Currency, TemperatureUnit, UnitsOptionsData, CountryUnitsData } from './schemas/api'
+
+export type PreferencesSettings = {
+  locationName: string
+  locationLat: string
+  locationLng: string
+  preferredName: string
+  dataCollection: boolean
+  experimentalFeatureTasks: boolean
+  distanceUnit: string
+  temperatureUnit: string
+  dateFormat: string
+  timeFormat: string
+  currency: string
+  countryName: string | null
+}

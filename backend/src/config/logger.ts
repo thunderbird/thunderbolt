@@ -2,7 +2,6 @@ import { Elysia } from 'elysia'
 import { pino, type Logger } from 'pino'
 import type { Settings } from './settings'
 
-
 /**
  * Map our log levels to Pino's log levels
  */

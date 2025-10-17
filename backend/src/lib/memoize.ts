@@ -41,4 +41,3 @@ export const memoize = <Fn extends (...args: any[]) => any>(fn: Fn, key?: string
     return result
   }) as Fn
 }
-

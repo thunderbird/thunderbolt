@@ -12,8 +12,9 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
-import { useBooleanSetting } from '@/hooks/use-setting'
-import { getAvailableModels, getSelectedModel } from '@/lib/dal'
+import { useSettings } from '@/hooks/use-settings'
+import { trackEvent } from '@/lib/analytics'
+import { getAvailableModels, getSelectedModel, updateAutomation } from '@/dal'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,7 +24,6 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
-import { trackEvent } from '@/lib/analytics'
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -61,7 +61,9 @@ export default function AutomationFormModal({
     queryFn: getSelectedModel,
   })
 
-  const [isTriggersEnabled] = useBooleanSetting('is_triggers_enabled', false)
+  const { isTriggersEnabled } = useSettings({
+    is_triggers_enabled: false,
+  })
 
   const [promptText, setPromptText] = useState('')
   const [modelId, setModelId] = useState<string | null>(null)
@@ -149,6 +151,7 @@ export default function AutomationFormModal({
         title: generatedTitle,
         prompt: values.prompt,
         modelId: values.modelId,
+        defaultHash: null, // User-created, not based on a default
       })
 
       // Create trigger if specified and not manual
@@ -178,14 +181,11 @@ export default function AutomationFormModal({
       if (!prompt) return
 
       // Update the prompt with model and title
-      await db
-        .update(promptsTable)
-        .set({
-          title: values.title || null,
-          prompt: values.prompt,
-          modelId: values.modelId,
-        })
-        .where(eq(promptsTable.id, prompt.id))
+      await updateAutomation(prompt.id, {
+        title: values.title || null,
+        prompt: values.prompt,
+        modelId: values.modelId,
+      })
 
       // Handle trigger updates when editing
       const existingTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, prompt.id))
@@ -318,7 +318,7 @@ export default function AutomationFormModal({
               </CardHeader>
 
               {/* Trigger Section - Direct Below Prompt */}
-              {isTriggersEnabled && (
+              {isTriggersEnabled.value && (
                 <CardContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Inline trigger configuration */}

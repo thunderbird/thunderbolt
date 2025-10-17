@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { convertUIMessageToDbChatMessage, formatNumber } from './utils'
+import { convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
 
 describe('utils', () => {
   describe('formatNumber', () => {
@@ -109,6 +109,79 @@ describe('utils', () => {
 
       expect(dbMessage.modelId).toBe(modelId)
       expect(dbMessage.parentId).toBe(parentId)
+    })
+  })
+
+  describe('splitPartType', () => {
+    it('should split type with dash into [type, name]', () => {
+      expect(splitPartType('tool-read_file')).toEqual(['tool', 'read_file'])
+      expect(splitPartType('call-function')).toEqual(['call', 'function'])
+    })
+
+    it('should return [type, "unknown"] when no dash present', () => {
+      expect(splitPartType('text')).toEqual(['text', 'unknown'])
+      expect(splitPartType('user')).toEqual(['user', 'unknown'])
+    })
+
+    it('should split at first dash only when multiple dashes present', () => {
+      expect(splitPartType('tool-call-function')).toEqual(['tool', 'call-function'])
+      expect(splitPartType('a-b-c-d')).toEqual(['a', 'b-c-d'])
+    })
+
+    it('should handle edge cases', () => {
+      expect(splitPartType('')).toEqual(['', 'unknown'])
+      expect(splitPartType('-')).toEqual(['', ''])
+      expect(splitPartType('-suffix')).toEqual(['', 'suffix'])
+      expect(splitPartType('prefix-')).toEqual(['prefix', ''])
+    })
+  })
+
+  describe('hashValues', () => {
+    it('should produce consistent hashes for same input', () => {
+      const hash1 = hashValues(['a', 'b', 'c'])
+      const hash2 = hashValues(['a', 'b', 'c'])
+      expect(hash1).toBe(hash2)
+    })
+
+    it('should produce different hashes for different inputs', () => {
+      const hash1 = hashValues(['a', 'b', 'c'])
+      const hash2 = hashValues(['a', 'b', 'd'])
+      const hash3 = hashValues(['x', 'y', 'z'])
+      expect(hash1).not.toBe(hash2)
+      expect(hash1).not.toBe(hash3)
+      expect(hash2).not.toBe(hash3)
+    })
+
+    it('should handle various data types', () => {
+      const hash1 = hashValues(['string', 42, null, undefined])
+      const hash2 = hashValues(['string', 42, null, undefined])
+      expect(hash1).toBe(hash2)
+    })
+
+    it('should produce hash for empty array', () => {
+      const hash = hashValues([])
+      expect(typeof hash).toBe('string')
+      expect(hash.length).toBeGreaterThan(0)
+    })
+
+    it('should produce hash for single value', () => {
+      const hash = hashValues(['single'])
+      expect(typeof hash).toBe('string')
+      expect(hash.length).toBeGreaterThan(0)
+    })
+
+    it('should produce different hashes for different orderings', () => {
+      const hash1 = hashValues(['a', 'b', 'c'])
+      const hash2 = hashValues(['c', 'b', 'a'])
+      expect(hash1).not.toBe(hash2)
+    })
+
+    it('should handle numbers correctly', () => {
+      const hash1 = hashValues([1, 2, 3])
+      const hash2 = hashValues([1, 2, 3])
+      const hash3 = hashValues([3, 2, 1])
+      expect(hash1).toBe(hash2)
+      expect(hash1).not.toBe(hash3)
     })
   })
 })

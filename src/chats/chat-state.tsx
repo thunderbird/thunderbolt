@@ -1,9 +1,9 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
-import { useSetting } from '@/hooks/use-setting'
+import { useSettings } from '@/hooks/use-settings'
 import { useThrottledCallback } from '@/hooks/use-throttle'
 import { trackEvent } from '@/lib/analytics'
-import { getDefaultModelForThread, getTriggerPromptForThread } from '@/lib/dal'
+import { getDefaultModelForThread, getTriggerPromptForThread } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat, type UseChatHelpers } from '@ai-sdk/react'
@@ -45,7 +45,9 @@ const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseS
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
   const { getEnabledClients } = useMCP()
 
-  const [defaultModelId, setDefaultModelId] = useSetting<string>('selected_model')
+  const { selectedModel } = useSettings({
+    selected_model: '',
+  })
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
 
@@ -56,22 +58,22 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     selectedModelIdRef.current = selectedModelId
   }, [selectedModelId])
 
-  const { data: selectedModel } = useQuery<Model>({
+  const { data: defaultModel } = useQuery<Model>({
     queryKey: ['models', 'defaultModel', id],
-    queryFn: () => getDefaultModelForThread(id, defaultModelId ?? undefined),
+    queryFn: () => getDefaultModelForThread(id, selectedModel.value ?? undefined),
   })
 
   const handleModelChange = (modelId: string | null) => {
     setSelectedModelId(modelId)
-    setDefaultModelId(modelId)
+    selectedModel.setValue(modelId)
     trackEvent('model_select', { model: modelId })
   }
 
   useEffect(() => {
-    if (selectedModel) {
-      setSelectedModelId(selectedModel.id)
+    if (defaultModel) {
+      setSelectedModelId(defaultModel.id)
     }
-  }, [selectedModel])
+  }, [defaultModel])
 
   // Hydrate the singleton store the first time a thread is opened
   useEffect(() => {

@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { SearchParams, FetchContentParams, WeatherParams, SearchLocationParams } from './tools'
-import { search, fetchContent, getCurrentWeather, getWeatherForecast, searchLocations } from './tools'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { WeatherForecastData } from '@/lib/weather-forecast'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
+import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
 // Mock external dependencies
 const mockGet = mock()
@@ -21,6 +22,14 @@ mock.module('ky', () => ({
 mock.module('@/lib/config', () => ({
   getCloudUrl: mockGetCloudUrl,
 }))
+
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 // Mock weather forecast schema
 const mockWeatherForecastData: WeatherForecastData = {
@@ -49,6 +58,7 @@ const mockWeatherForecastData: WeatherForecastData = {
       wind_speed_10m_max: 15,
     },
   ],
+  temperature_unit: 'f',
 }
 
 describe('Thunderbolt Pro Tools', () => {
@@ -298,6 +308,8 @@ describe('Thunderbolt Pro Tools', () => {
             location: 'New York',
             region: 'NY',
             country: 'US',
+            distanceUnit: 'imperial',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -367,6 +379,8 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             days: 3,
+            distanceUnit: 'imperial',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -397,6 +411,8 @@ describe('Thunderbolt Pro Tools', () => {
             region: 'NY',
             country: 'US',
             days: 5,
+            distanceUnit: 'imperial',
+            temperatureUnit: 'f',
           },
         }),
       )
@@ -484,6 +500,8 @@ describe('Thunderbolt Pro Tools', () => {
             query: 'New York',
             region: 'NY',
             country: 'US',
+            distanceUnit: 'imperial',
+            temperatureUnit: 'f',
           },
         }),
       )

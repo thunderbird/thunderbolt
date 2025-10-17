@@ -1,17 +1,22 @@
-import { Card, CardContent, CardHeader } from '../ui/card'
-import { useMemo, useState } from 'react'
-import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group'
 import { cn } from '@/lib/utils'
-import dayjs from 'dayjs'
 import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from '@/lib/weather-forecast'
+import dayjs from 'dayjs'
+import { useEffect, useMemo, useState } from 'react'
+import { Card, CardContent, CardHeader } from '../ui/card'
 import { Skeleton } from '../ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group'
 
 type WeatherForecastProps = WeatherForecastData
 
-export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) => {
-  const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>('c')
+export const WeatherForecast = ({ location, days = [], temperature_unit }: WeatherForecastProps) => {
+  const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
 
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
+
+  // Sync local state with prop when it changes
+  useEffect(() => {
+    setTemperatureUnit(temperature_unit)
+  }, [temperature_unit])
 
   const selectedDayMetadata = useMemo(
     () =>
@@ -38,16 +43,17 @@ export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) =
           onValueChange={(value) => value && setTemperatureUnit(value as 'c' | 'f')}
           aria-label="Temperature Unit"
           variant="outline"
+          className="cursor-pointer"
         >
-          <ToggleGroupItem value="c" aria-label="Celsius">
+          <ToggleGroupItem value="c" aria-label="Celsius" className="cursor-pointer">
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem value="f" aria-label="Fahrenheit">
+          <ToggleGroupItem value="f" aria-label="Fahrenheit" className="cursor-pointer">
             °F
           </ToggleGroupItem>
         </ToggleGroup>
       </CardHeader>
-      <CardContent className="grid grid-flow-row md:grid-flow-col border-t border-t-border px-0">
+      <CardContent className="grid grid-cols-1 md:grid-cols-7 border-t border-t-border px-0">
         {days.map((day, dayIndex) => {
           const dayMetadata = getWeatherMetadata(day.weather_code, day.date)
 
@@ -63,9 +69,13 @@ export const WeatherForecast = ({ location, days = [] }: WeatherForecastProps) =
             >
               <p className="text-sm font-bold">{dayjs(day.date).format('ddd')}</p>
               <img className="size-10" src={dayMetadata.icon} alt={dayMetadata.description} />
-              <div className="flex flex-row gap-1 items-center justify-center">
-                <p className="text-base font-bold">{convertTemperature(day.temperature_max, temperatureUnit)}°</p>
-                <p className="text-sm font-normal">{convertTemperature(day.temperature_min, temperatureUnit)}°</p>
+              <div className="flex flex-row gap-1 items-center justify-center min-w-[4rem]">
+                <p className="text-base font-bold tabular-nums">
+                  {convertTemperature(day.temperature_max, temperature_unit, temperatureUnit)}°
+                </p>
+                <p className="text-sm font-normal tabular-nums">
+                  {convertTemperature(day.temperature_min, temperature_unit, temperatureUnit)}°
+                </p>
               </div>
             </a>
           )
@@ -88,7 +98,7 @@ const WeatherForecastSkeleton = () => {
           <Skeleton className="h-9 w-12" />
         </div>
       </CardHeader>
-      <CardContent className="grid grid-flow-row md:grid-flow-col border-t border-t-border px-0">
+      <CardContent className="grid grid-cols-1 md:grid-cols-7 border-t border-t-border px-0">
         {Array.from({ length: 7 }).map((_, dayIndex) => (
           <div
             key={dayIndex}
@@ -99,7 +109,7 @@ const WeatherForecastSkeleton = () => {
           >
             <Skeleton className="h-4 w-8" />
             <Skeleton className="size-10 rounded-full" />
-            <div className="flex flex-row gap-1 items-center justify-center">
+            <div className="flex flex-row gap-1 items-center justify-center min-w-[4rem]">
               <Skeleton className="h-5 w-8" />
               <Skeleton className="h-4 w-6" />
             </div>

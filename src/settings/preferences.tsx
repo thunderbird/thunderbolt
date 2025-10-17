@@ -1,12 +1,18 @@
-import { settingsTable } from '@/db/tables'
+import { useCountryUnits } from '@/hooks/use-country-units'
 import { useDebounce } from '@/hooks/use-debounce'
-import { cn, snakeCased } from '@/lib/utils'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
+import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
+import { useSettings } from '@/hooks/use-settings'
+import { useUnitsOptions } from '@/hooks/use-units-options'
+import { trackEvent } from '@/lib/analytics'
+import { getCloudUrl } from '@/lib/config'
+import { cn } from '@/lib/utils'
+import { countryUnitsResponseSchema } from '@/schemas/api'
+import type { CountryUnitsData } from '@/types'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 
+import { ModificationIndicator } from '@/components/modification-indicator'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -23,24 +29,18 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
-
 import { Switch } from '@/components/ui/switch'
-import { DatabaseSingleton } from '@/db/singleton'
-import { trackEvent, type EventType } from '@/lib/analytics'
-import { getPreferencesSettings, updateBooleanSetting } from '@/lib/dal'
 import { resetAppDir } from '@/lib/fs'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePostHog } from 'posthog-js/react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
 
 interface LocationData {
   name: string
   city: string
+  country: string
   coordinates: {
     lat: number
     lng: number
@@ -53,6 +53,8 @@ type PreferencesState = {
   locations: LocationData[]
   isSearching: boolean
   isResetting: boolean
+  localizationDialogOpen: boolean
+  pendingCountryUnits: CountryUnitsData | null
 }
 
 type PreferencesAction =
@@ -63,6 +65,8 @@ type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
   | { type: 'RESET_STATE' }
+  | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
+  | { type: 'CLOSE_LOCALIZATION_DIALOG' }
 
 const initialState: PreferencesState = {
   open: false,
@@ -70,6 +74,8 @@ const initialState: PreferencesState = {
   locations: [],
   isSearching: false,
   isResetting: false,
+  localizationDialogOpen: false,
+  pendingCountryUnits: null,
 }
 
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
@@ -88,123 +94,107 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, searchQuery: '', locations: [] }
     case 'RESET_STATE':
       return initialState
+    case 'OPEN_LOCALIZATION_DIALOG':
+      return { ...state, localizationDialogOpen: true, pendingCountryUnits: action.payload }
+    case 'CLOSE_LOCALIZATION_DIALOG':
+      return { ...state, localizationDialogOpen: false, pendingCountryUnits: null }
     default:
       return state
   }
 }
 
-const nameFormSchema = z.object({
-  preferredName: z.string().optional(),
-})
-
-const privacyFormSchema = z.object({
-  dataCollection: z.boolean(),
-})
-
-const previewFeaturesFormSchema = z.object({
-  experimentalFeatureTasks: z.boolean(),
-})
-
-const locationFormSchema = z.object({
-  locationName: z.string().min(1, { message: 'Location is required.' }),
-  locationLat: z.union([z.string().min(1, { message: 'Latitude is required.' }), z.number()]),
-  locationLng: z.union([z.string().min(1, { message: 'Longitude is required.' }), z.number()]),
-})
-
 export default function PreferencesSettingsPage() {
-  const db = DatabaseSingleton.instance.db
+  const [state, dispatch] = useReducer(preferencesReducer, initialState)
+  const { open, searchQuery, locations, isSearching, isResetting, localizationDialogOpen, pendingCountryUnits } = state
+
   const queryClient = useQueryClient()
 
-  const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { open, searchQuery, locations, isSearching, isResetting } = state
+  // Localization dropdown states
+  const {
+    distanceDropdownOpen,
+    temperatureDropdownOpen,
+    dateFormatDropdownOpen,
+    timeFormatDropdownOpen,
+    currencyDropdownOpen,
+    setDistanceDropdownOpen,
+    setTemperatureDropdownOpen,
+    setDateFormatDropdownOpen,
+    setTimeFormatDropdownOpen,
+    setCurrencyDropdownOpen,
+  } = useLocalizationDropdowns()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
+  const postHog = usePostHog()
+
+  // Local state for name input (only save on blur to avoid DB writes on every keystroke)
+  const [nameInput, setNameInput] = useState('')
+
+  // Use our useSettings hook for all settings
+  const {
+    preferredName,
+    locationName,
+    locationLat,
+    locationLng,
+    dataCollection,
+    experimentalFeatureTasks,
+    distanceUnit,
+    temperatureUnit,
+    dateFormat,
+    timeFormat,
+    currency,
+  } = useSettings({
+    preferred_name: '',
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    data_collection: true,
+    experimental_feature_tasks: false,
+    distance_unit: 'imperial',
+    temperature_unit: 'f',
+    date_format: 'MM/DD/YYYY',
+    time_format: '12h',
+    currency: 'USD',
+  })
+
+  // Get units options and country units for localization
+  const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
+  const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits()
+
   const handleEnableTelemetry = async (featureName?: string | null) => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: true })
-    if (featureName) {
-      await savePreviewFeaturesMutation.mutateAsync({
-        ...previewFeaturesForm.getValues(),
-        [featureName]: true,
-      })
+    await dataCollection.setValue(true)
+    if (featureName === 'experimentalFeatureTasks') {
+      await experimentalFeatureTasks.setValue(true)
     }
   }
 
   const handleDisableTelemetry = async () => {
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: false })
-    await disableAllPreviewFeatures()
+    await dataCollection.setValue(false)
+    await experimentalFeatureTasks.setValue(false)
   }
 
-  const postHog = usePostHog()
-
-  // Get any existing settings from the database
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: getPreferencesSettings,
-  })
-
-  const nameForm = useForm<z.infer<typeof nameFormSchema>>({
-    resolver: zodResolver(nameFormSchema),
-    defaultValues: {
-      preferredName: '',
-    },
-  })
-
-  const privacyForm = useForm<z.infer<typeof privacyFormSchema>>({
-    resolver: zodResolver(privacyFormSchema),
-    defaultValues: {
-      dataCollection: true,
-    },
-  })
-
-  const previewFeaturesForm = useForm<z.infer<typeof previewFeaturesFormSchema>>({
-    resolver: zodResolver(previewFeaturesFormSchema),
-    defaultValues: {
-      experimentalFeatureTasks: false,
-    },
-  })
-
-  const locationForm = useForm<z.infer<typeof locationFormSchema>>({
-    resolver: zodResolver(locationFormSchema),
-    defaultValues: {
-      locationName: '',
-      locationLat: '',
-      locationLng: '',
-    },
-  })
-
-  // Update forms when data is loaded
+  // Sync local name input with settings value
   useEffect(() => {
-    if (settings) {
-      nameForm.reset({
-        preferredName: settings.preferredName as string,
-      })
+    setNameInput(preferredName.value || '')
+  }, [preferredName.value])
 
-      privacyForm.reset({
-        dataCollection: settings.dataCollection,
-      })
-
-      previewFeaturesForm.reset({
-        experimentalFeatureTasks: settings.experimentalFeatureTasks,
-      })
-
-      locationForm.reset({
-        locationName: settings.locationName as string,
-        locationLat:
-          typeof settings.locationLat === 'string' ? settings.locationLat : String(settings.locationLat || ''),
-        locationLng:
-          typeof settings.locationLng === 'string' ? settings.locationLng : String(settings.locationLng || ''),
-      })
-    }
-  }, [settings, nameForm, locationForm, privacyForm, previewFeaturesForm])
-
-  // Sync preview features when telemetry is disabled
+  // Auto-populate localization settings from country data if not set
   useEffect(() => {
-    if (!settings?.dataCollection) {
-      previewFeaturesForm.setValue('experimentalFeatureTasks', false)
+    if (countryUnitsData && !countryUnitsLoading) {
+      const hasLocalizationSettings =
+        distanceUnit.value || temperatureUnit.value || dateFormat.value || timeFormat.value || currency.value
+
+      if (!hasLocalizationSettings) {
+        // Auto-set from country data and establish these as the baseline for future modifications
+        distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
+        temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
+        dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
+        timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
+        currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
+      }
     }
-  }, [settings?.dataCollection, previewFeaturesForm])
+  }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency])
 
   // Debounce the search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -220,9 +210,7 @@ export default function PreferencesSettingsPage() {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        // Get cloud_url from database settings
-        const cloudUrlData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
-        const cloudUrl = cloudUrlData[0]?.value
+        const cloudUrl = await getCloudUrl()
 
         if (!cloudUrl) {
           console.error('Cloud URL not configured')
@@ -247,6 +235,7 @@ export default function PreferencesSettingsPage() {
         const transformedLocations: LocationData[] = data.map((location) => ({
           name: `${location.name}, ${location.region}, ${location.country}`,
           city: location.name,
+          country: location.country,
           coordinates: {
             lat: location.lat,
             lng: location.lon,
@@ -262,196 +251,115 @@ export default function PreferencesSettingsPage() {
     }
 
     searchLocations()
-  }, [debouncedSearchQuery, db])
-
-  // Save name mutation
-  const saveNameMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof nameFormSchema>) => {
-      // Upsert the setting
-      await db
-        .insert(settingsTable)
-        .values({ key: 'preferred_name', value: values.preferredName })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: values.preferredName },
-        })
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.preferredName?.trim()) {
-        if (settings?.preferredName) {
-          trackEvent('settings_name_update')
-        } else {
-          trackEvent('settings_name_set')
-        }
-      } else {
-        trackEvent('settings_name_clear')
-      }
-    },
-  })
-
-  // Save data collection mutation
-  const saveDataCollectionMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof privacyFormSchema>) => {
-      // Upsert the setting
-      await updateBooleanSetting('data_collection', values.dataCollection)
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (values.dataCollection) {
-        postHog.opt_in_capturing()
-        trackEvent('settings_data_collection_enabled')
-      } else {
-        trackEvent('settings_data_collection_disabled')
-        postHog.opt_out_capturing()
-      }
-    },
-  })
-
-  // Save preview features mutation
-  const savePreviewFeaturesMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof previewFeaturesFormSchema>) => {
-      // Save each feature setting
-      await updateBooleanSetting('experimental_feature_tasks', values.experimentalFeatureTasks)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-    },
-  })
-
-  // Disable all preview features (when telemetry is turned off)
-  const disableAllPreviewFeatures = async () => {
-    await savePreviewFeaturesMutation.mutateAsync({
-      experimentalFeatureTasks: false,
-    })
-
-    trackEvent('settings_experimental_feature_tasks_disabled')
-  }
-
-  // Save location mutation
-  const saveLocationMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof locationFormSchema>) => {
-      try {
-        // Save each setting sequentially with individual error handling
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_name', value: values.locationName })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationName },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_lat', value: values.locationLat.toString() })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationLat.toString() },
-          })
-
-        await db
-          .insert(settingsTable)
-          .values({ key: 'location_lng', value: values.locationLng.toString() })
-          .onConflictDoUpdate({
-            target: settingsTable.key,
-            set: { value: values.locationLng.toString() },
-          })
-      } catch (error) {
-        console.error('Error saving location settings:', error)
-        throw error
-      }
-    },
-    onSuccess: (_, values) => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-
-      if (settings?.locationName) {
-        trackEvent('settings_location_update', {
-          location_name: values.locationName,
-        })
-      } else {
-        trackEvent('settings_location_set', {
-          location_name: values.locationName,
-        })
-      }
-    },
-  })
-
-  const handleNameBlur = async (value: string) => {
-    // Save the value directly
-    await saveNameMutation.mutateAsync({ preferredName: value })
-  }
+  }, [debouncedSearchQuery])
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
-    if (!value) {
-      const currentValues = previewFeaturesForm.getValues()
-      const hasEnabledFeatures = Object.values(currentValues).some((val) => val === true)
-      if (hasEnabledFeatures) {
-        telemetryWarningModalRef.current?.open()
-        return
-      }
+    if (!value && experimentalFeatureTasks.value) {
+      telemetryWarningModalRef.current?.open()
+      return
     }
 
-    await saveDataCollectionMutation.mutateAsync({ dataCollection: value })
+    await dataCollection.setValue(value)
 
-    // If telemetry is disabled, also disable experimental features
-    if (!value) {
-      await disableAllPreviewFeatures()
+    if (value) {
+      postHog.opt_in_capturing()
+      trackEvent('settings_data_collection_enabled')
+    } else {
+      trackEvent('settings_data_collection_disabled')
+      postHog.opt_out_capturing()
+      // Also disable experimental features
+      await experimentalFeatureTasks.setValue(false)
+      trackEvent('settings_experimental_feature_tasks_disabled')
     }
   }
 
-  const handleExperimentalFeaturesToggle = async (
-    featureName: keyof z.infer<typeof previewFeaturesFormSchema>,
-    value: boolean,
-  ) => {
-    if (value && !settings?.dataCollection) {
-      telemetryRequiredModalRef.current?.open(featureName)
+  const handleExperimentalFeaturesToggle = async (value: boolean) => {
+    if (value && !dataCollection.value) {
+      telemetryRequiredModalRef.current?.open('experimentalFeatureTasks')
       return
     }
 
-    const currentValues = previewFeaturesForm.getValues()
-    await savePreviewFeaturesMutation.mutateAsync({
-      ...currentValues,
-      [featureName]: value,
-    })
-
-    const eventName = `settings_${snakeCased(featureName)}_${value ? 'enabled' : 'disabled'}`
-    trackEvent(eventName as EventType)
+    await experimentalFeatureTasks.setValue(value)
+    trackEvent(value ? 'settings_experimental_feature_tasks_enabled' : 'settings_experimental_feature_tasks_disabled')
   }
 
-  const handleLocationSave = async (location: LocationData) => {
-    // Validate the data before saving
-    if (!location.name || location.name.trim() === '') {
-      return
-    }
+  const handleSelectLocation = async (location: LocationData) => {
+    const wasSet = !!locationName.value
 
-    if (typeof location.coordinates.lat !== 'number' || isNaN(location.coordinates.lat)) {
-      return
-    }
+    // Get current country to compare
+    const currentCountry = locationName.value ? locationName.value.split(',').pop()?.trim() : null
+    const newCountry = location.country
 
-    if (typeof location.coordinates.lng !== 'number' || isNaN(location.coordinates.lng)) {
-      return
-    }
+    await Promise.all([
+      locationName.setValue(location.name),
+      locationLat.setValue(String(location.coordinates.lat)),
+      locationLng.setValue(String(location.coordinates.lng)),
+    ])
 
-    const values = {
-      locationName: location.name,
-      locationLat: location.coordinates.lat,
-      locationLng: location.coordinates.lng,
-    }
-
-    await saveLocationMutation.mutateAsync(values)
-  }
-
-  const handleSelectLocation = (location: LocationData) => {
-    locationForm.setValue('locationName', location.name)
-    locationForm.setValue('locationLat', String(location.coordinates.lat))
-    locationForm.setValue('locationLng', String(location.coordinates.lng))
     dispatch({ type: 'SET_OPEN', payload: false })
 
-    // Save immediately after selection, passing the location data directly
-    handleLocationSave(location)
+    trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
+      location_name: location.name,
+    })
+
+    // If country changed, ask user if they want to update localization settings
+    if (currentCountry !== newCountry) {
+      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
+      const countryUnitsData = await queryClient
+        .fetchQuery({
+          queryKey: ['country-units', newCountry],
+          queryFn: async (): Promise<CountryUnitsData> => {
+            const cloudUrl = await getCloudUrl()
+            const response = await ky
+              .get(`${cloudUrl}/units`, {
+                searchParams: { country: newCountry },
+              })
+              .json()
+            return countryUnitsResponseSchema.parse(response)
+          },
+          staleTime: 24 * 60 * 60 * 1000,
+        })
+        .catch((error) => {
+          console.error('Error fetching country units:', error)
+          return null
+        })
+
+      if (countryUnitsData) {
+        dispatch({ type: 'OPEN_LOCALIZATION_DIALOG', payload: countryUnitsData })
+      }
+    }
+  }
+
+  const handleApplyLocalizationSettings = async () => {
+    if (!pendingCountryUnits) return
+
+    // Apply all localization settings with recomputeHash to establish new baselines
+    await Promise.all([
+      distanceUnit.setValue(pendingCountryUnits.unit, { recomputeHash: true }),
+      temperatureUnit.setValue(pendingCountryUnits.temperature, { recomputeHash: true }),
+      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { recomputeHash: true }),
+      timeFormat.setValue(pendingCountryUnits.timeFormat, { recomputeHash: true }),
+      currency.setValue(pendingCountryUnits.currency.code, { recomputeHash: true }),
+    ])
+
+    dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
+    trackEvent('settings_localization_update')
+  }
+
+  const handleDeclineLocalizationSettings = async () => {
+    if (!pendingCountryUnits) return
+
+    // Update hash values to new country defaults without changing actual values
+    await Promise.all([
+      distanceUnit.setValue(pendingCountryUnits.unit, { updateHashOnly: true }),
+      temperatureUnit.setValue(pendingCountryUnits.temperature, { updateHashOnly: true }),
+      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { updateHashOnly: true }),
+      timeFormat.setValue(pendingCountryUnits.timeFormat, { updateHashOnly: true }),
+      currency.setValue(pendingCountryUnits.currency.code, { updateHashOnly: true }),
+    ])
+
+    dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
   const handleResetDatabase = async () => {
@@ -465,6 +373,61 @@ export default function PreferencesSettingsPage() {
       console.error('Failed to reset database:', error)
       dispatch({ type: 'SET_IS_RESETTING', payload: false })
     }
+  }
+
+  const handleResetLocation = async () => {
+    await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
+  }
+
+  const handleResetLocalizationSetting = async (
+    settingType: 'distance' | 'temperature' | 'date' | 'time' | 'currency',
+  ) => {
+    const settingMap = {
+      distance: { hook: distanceUnit, dataKey: 'unit' as const },
+      temperature: { hook: temperatureUnit, dataKey: 'temperature' as const },
+      date: { hook: dateFormat, dataKey: 'dateFormatExample' as const },
+      time: { hook: timeFormat, dataKey: 'timeFormat' as const },
+      currency: { hook: currency, dataKey: 'currency.code' as const },
+    }
+
+    const { hook, dataKey } = settingMap[settingType]
+
+    // If user has a location set, reset to that country's defaults
+    if (locationName.value) {
+      const country = locationName.value.split(',').pop()?.trim()
+      if (!country) return
+
+      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
+      const countryUnitsData = await queryClient
+        .fetchQuery({
+          queryKey: ['country-units', country],
+          queryFn: async (): Promise<CountryUnitsData> => {
+            const cloudUrl = await getCloudUrl()
+            const response = await ky
+              .get(`${cloudUrl}/units`, {
+                searchParams: { country },
+              })
+              .json()
+            return countryUnitsResponseSchema.parse(response)
+          },
+          staleTime: 24 * 60 * 60 * 1000,
+        })
+        .catch((error) => {
+          console.error('Error fetching country units:', error)
+          return null
+        })
+
+      if (!countryUnitsData) return
+
+      // Get the value from countryUnitsData using the dataKey
+      const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]
+      await hook.setValue(value, { recomputeHash: true })
+    } else {
+      // No location set, fall back to system defaults
+      await hook.reset()
+    }
+
+    trackEvent('settings_localization_reset')
   }
 
   return (
@@ -482,116 +445,377 @@ export default function PreferencesSettingsPage() {
       <div className="h-6" />
 
       <SectionCard title="Personal Information">
-        <Form {...nameForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={nameForm.control}
-              name="preferredName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Preferred Name</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Your name"
-                      {...field}
-                      onBlur={(e) => {
-                        field.onBlur()
-                        handleNameBlur(e.target.value)
-                      }}
-                    />
-                  </FormControl>
-                  <FormDescription>Your assistant will use this name to address you.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={preferredName.isModified}
+              onReset={async () => {
+                await preferredName.reset()
+                setNameInput('')
+              }}
+            >
+              Preferred Name
+            </ModificationIndicator>
+            <Input
+              placeholder="Your name"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onBlur={async (e) => {
+                const value = e.target.value
+                const wasSet = !!preferredName.value
+                await preferredName.setValue(value || null)
+                if (value.trim()) {
+                  trackEvent(wasSet ? 'settings_name_update' : 'settings_name_set')
+                } else {
+                  trackEvent('settings_name_clear')
+                }
+              }}
             />
-          </form>
-        </Form>
+            <p className="text-sm text-muted-foreground">Your assistant will use this name to address you.</p>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Location">
-        <Form {...locationForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={locationForm.control}
-              name="locationName"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Location</FormLabel>
-                  <Popover
-                    open={open}
-                    onOpenChange={(newOpen) => {
-                      dispatch({ type: 'SET_OPEN', payload: newOpen })
-                      if (!newOpen) {
-                        // Clear search when closing
-                        dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
-                      }
-                    }}
-                  >
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={open}
-                          className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
+              onReset={handleResetLocation}
+            >
+              Location
+            </ModificationIndicator>
+            <Popover
+              open={open}
+              onOpenChange={(newOpen) => {
+                dispatch({ type: 'SET_OPEN', payload: newOpen })
+                if (!newOpen) {
+                  dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={open}
+                  className={cn('w-full justify-between', !locationName.value && 'text-muted-foreground')}
+                >
+                  {locationName.value || 'Select location...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="p-0 w-[--radix-popover-trigger-width]"
+                side="bottom"
+                align="start"
+                sideOffset={4}
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Search for locations..."
+                    value={searchQuery}
+                    onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
+                  />
+                  <CommandList>
+                    {searchQuery.trim().length > 0 && isSearching && (
+                      <div className="py-6 text-center text-sm">
+                        <div className="inline-flex items-center gap-2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                          Searching...
+                        </div>
+                      </div>
+                    )}
+                    {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
+                      <CommandEmpty>No locations found.</CommandEmpty>
+                    )}
+                    {!isSearching && locations.length > 0 && (
+                      <CommandGroup>
+                        {locations.map((location) => (
+                          <CommandItem
+                            key={`${location.coordinates.lat}-${location.coordinates.lng}`}
+                            value={location.name}
+                            onSelect={() => handleSelectLocation(location)}
+                            className="pl-2"
+                          >
+                            {location.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-sm text-muted-foreground">Select your location to enable location-based features.</p>
+          </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Localization">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={distanceUnit.isModified}
+                onReset={() => handleResetLocalizationSetting('distance')}
+              >
+                Distance
+              </ModificationIndicator>
+            </div>
+            <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !distanceUnit.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : distanceUnit.value
+                      ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1)
+                      : 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.units?.map((unit) => (
+                        <CommandItem
+                          key={unit}
+                          value={unit}
+                          onSelect={async () => {
+                            await distanceUnit.setValue(unit)
+                            trackEvent('settings_localization_update')
+                            setDistanceDropdownOpen(false)
+                          }}
                         >
-                          {field.value || 'Select location...'}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="p-0 w-[--radix-popover-trigger-width]"
-                      side="bottom"
-                      align="start"
-                      sideOffset={4}
-                    >
-                      <Command>
-                        <CommandInput
-                          placeholder="Search for locations..."
-                          value={searchQuery}
-                          onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
-                        />
-                        <CommandList>
-                          {searchQuery.trim().length > 0 && isSearching && (
-                            <div className="py-6 text-center text-sm">
-                              <div className="inline-flex items-center gap-2">
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                                Searching...
-                              </div>
-                            </div>
-                          )}
-                          {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
-                            <CommandEmpty>No locations found.</CommandEmpty>
-                          )}
-                          {!isSearching && locations.length > 0 && (
-                            <CommandGroup>
-                              {locations.map((location) => (
-                                <CommandItem
-                                  key={`${location.coordinates.lat}-${location.coordinates.lng}`}
-                                  value={location.name}
-                                  onSelect={() => handleSelectLocation(location)}
-                                  className="pl-2"
-                                >
-                                  {location.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormDescription>Select your location to enable location-based features.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </form>
-        </Form>
+                          {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={temperatureUnit.isModified}
+                onReset={() => handleResetLocalizationSetting('temperature')}
+              >
+                Temperature
+              </ModificationIndicator>
+            </div>
+            <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !temperatureUnit.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : unitsOptionsData?.temperature?.find((temp) => temp.symbol === temperatureUnit.value)?.name ||
+                      temperatureUnit.value ||
+                      'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.temperature?.map((temp) => (
+                        <CommandItem
+                          key={temp.symbol}
+                          value={temp.symbol}
+                          onSelect={async () => {
+                            await temperatureUnit.setValue(temp.symbol)
+                            trackEvent('settings_localization_update')
+                            setTemperatureDropdownOpen(false)
+                          }}
+                        >
+                          {temp.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={dateFormat.isModified}
+                onReset={() => handleResetLocalizationSetting('date')}
+              >
+                Date Format
+              </ModificationIndicator>
+            </div>
+            <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !dateFormat.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : dateFormat.value
+                      ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example ||
+                        dateFormat.value
+                      : 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.dateFormats?.map((format) => (
+                        <CommandItem
+                          key={format.format}
+                          value={format.example}
+                          onSelect={async () => {
+                            await dateFormat.setValue(format.format)
+                            trackEvent('settings_localization_update')
+                            setDateFormatDropdownOpen(false)
+                          }}
+                        >
+                          {format.example}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={timeFormat.isModified}
+                onReset={() => handleResetLocalizationSetting('time')}
+              >
+                Time Format
+              </ModificationIndicator>
+            </div>
+            <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !timeFormat.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading ? 'Loading...' : timeFormat.value || 'Loading...'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-auto">
+                <Command>
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.timeFormat?.map((format) => (
+                        <CommandItem
+                          key={format}
+                          value={format}
+                          onSelect={async () => {
+                            await timeFormat.setValue(format)
+                            trackEvent('settings_localization_update')
+                            setTimeFormatDropdownOpen(false)
+                          }}
+                        >
+                          {format}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={currency.isModified}
+                onReset={() => handleResetLocalizationSetting('currency')}
+              >
+                Currency
+              </ModificationIndicator>
+            </div>
+            <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  disabled={unitsOptionsLoading}
+                  className={cn('w-auto justify-between', !currency.value && 'text-muted-foreground')}
+                >
+                  {unitsOptionsLoading
+                    ? 'Loading...'
+                    : (() => {
+                        const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
+                        return selectedCurrency ? `${selectedCurrency.name} (${selectedCurrency.symbol})` : 'Loading...'
+                      })()}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[300px]">
+                <Command>
+                  <CommandInput placeholder="Search currency by code, symbol, or name..." />
+                  <CommandList>
+                    <CommandGroup>
+                      {unitsOptionsData?.currencies?.map((currencyOption) => (
+                        <CommandItem
+                          key={currencyOption.code}
+                          value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
+                          onSelect={async () => {
+                            await currency.setValue(currencyOption.code)
+                            trackEvent('settings_localization_update')
+                            setCurrencyDropdownOpen(false)
+                          }}
+                        >
+                          {currencyOption.name} ({currencyOption.symbol})
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="h-6" />
@@ -599,60 +823,51 @@ export default function PreferencesSettingsPage() {
       <SectionCard title="Preview Features">
         <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
 
-        <Form {...previewFeaturesForm}>
-          <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={previewFeaturesForm.control}
-              name="experimentalFeatureTasks"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium">Tasks</label>
-                  </div>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={async (value) =>
-                      await handleExperimentalFeaturesToggle('experimentalFeatureTasks', value)
-                    }
-                  />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex-row flex items-center gap-4">
+          <div className="flex-1">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={experimentalFeatureTasks.isModified}
+              onReset={experimentalFeatureTasks.reset}
+            >
+              Tasks
+            </ModificationIndicator>
+          </div>
+          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+        </div>
       </SectionCard>
 
       <div className="h-6" />
 
       <SectionCard title="Privacy">
-        <Form {...privacyForm}>
-          <form className="flex flex-col gap-2" onSubmit={(e) => e.preventDefault()}>
-            <FormField
-              control={privacyForm.control}
-              name="dataCollection"
-              render={({ field }) => (
-                <div className="flex-row flex items-center gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Data Collection</label>
-                    <p className="text-sm text-muted-foreground">
-                      Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
-                      No personal data is collected or stored. Read more about our{' '}
-                      <a
-                        className="text-primary underline-offset-4 hover:underline"
-                        href="https://www.thunderbird.net/en-US/privacy/"
-                        target="_blank"
-                      >
-                        privacy policy
-                      </a>
-                      .
-                    </p>
-                  </div>
-                  <Switch checked={field.value} onCheckedChange={handleDataCollectionToggle} />
-                </div>
-              )}
-            />
-          </form>
-        </Form>
+        <div className="flex-row flex items-center gap-4">
+          <div>
+            <div className="mb-2">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={dataCollection.isModified}
+                onReset={dataCollection.reset}
+              >
+                Data Collection
+              </ModificationIndicator>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
+              personal data is collected or stored. Read more about our{' '}
+              <a
+                className="text-primary underline-offset-4 hover:underline"
+                href="https://www.thunderbird.net/en-US/privacy/"
+                target="_blank"
+              >
+                privacy policy
+              </a>
+              .
+            </p>
+          </div>
+          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+        </div>
       </SectionCard>
 
       <div className="h-6" />
@@ -691,6 +906,21 @@ export default function PreferencesSettingsPage() {
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 
       <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
+
+      <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update Defaults?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Would you like to update your units based on the new location?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>Keep Current Units</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Update Units</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

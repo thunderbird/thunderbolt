@@ -1,4 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
+import { getSettings } from '@/dal'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
@@ -113,6 +114,11 @@ export const fetchContent = async (params: FetchContentParams): Promise<FetchCon
 export const getCurrentWeather = async (params: WeatherParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const { temperatureUnit, distanceUnit } = await getSettings({
+      temperature_unit: 'f',
+      distance_unit: 'imperial',
+    })
+
     const response = await ky
       .post(`${cloudUrl}/pro/weather/current`, {
         timeout: requestTimeout,
@@ -120,6 +126,8 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
           location: params.location,
           region: params.region,
           country: params.country,
+          distanceUnit,
+          temperatureUnit,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()
@@ -141,6 +149,11 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 export const getWeatherForecast = async (params: WeatherParams): Promise<WeatherForecastData> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const { temperatureUnit, distanceUnit } = await getSettings({
+      temperature_unit: 'f',
+      distance_unit: 'imperial',
+    })
+
     const response = await ky
       .post(`${cloudUrl}/pro/weather/forecast`, {
         timeout: requestTimeout,
@@ -149,6 +162,8 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
           region: params.region,
           country: params.country,
           days: params.days || 3,
+          distanceUnit,
+          temperatureUnit,
         },
       })
       .json<{ data: unknown; success: boolean; error?: string }>()
@@ -171,6 +186,11 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
 export const searchLocations = async (params: SearchLocationParams): Promise<string> => {
   try {
     const cloudUrl = await getCloudUrl()
+    const { temperatureUnit, distanceUnit } = await getSettings({
+      temperature_unit: 'f',
+      distance_unit: 'imperial',
+    })
+
     const response = await ky
       .post(`${cloudUrl}/pro/locations/search`, {
         timeout: requestTimeout,
@@ -178,6 +198,8 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
           query: params.query,
           region: params.region,
           country: params.country,
+          distanceUnit,
+          temperatureUnit,
         },
       })
       .json<{ data: string; success: boolean; error?: string }>()

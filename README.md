@@ -82,8 +82,6 @@ brew install cmake # Mac only
 
 - [Rust](https://rustup.rs/) - See Rust Setup section below
 - [Bun](https://bun.sh/) - JavaScript runtime and package manager
-- [uv](https://github.com/astral-sh/uv) - Python package manager for backend
-- Python 3.9+ - For Flower framework and backend
 
 ### Quick Setup
 
@@ -96,12 +94,7 @@ cd thunderbolt
 make setup
 ```
 
-The `make setup` command will:
-
-1. Initialize and update git submodules (including the Flower framework)
-2. Install frontend dependencies with bun
-3. Install backend dependencies with uv
-4. Configure Flower framework environment (optional - manual installation may be needed)
+The `make setup` command will install all frontend and backend dependencies.
 
 ### Manual Setup (if needed)
 
@@ -110,7 +103,7 @@ The `make setup` command will:
 bun install
 
 # Install backend dependencies
-cd backend && uv sync --frozen && cd ..
+cd backend && bun install
 ```
 
 ## Code Formatting
@@ -122,13 +115,12 @@ Thunderbolt uses automated code formatting to maintain consistent code style acr
 Staged git files are automatically formatted before commits via lint-staged:
 
 - **Frontend files** (`.ts`, `.tsx`, `.js`, `.jsx`, `.json`, `.css`, `.md`) are formatted with Prettier
-- **Python files** (`.py`) are formatted with Ruff
 - **Rust files** (`.rs`) are formatted with cargo fmt
 
 ### Manual Formatting Commands
 
 ```sh
-# Format all code (frontend, Python, Rust)
+# Format all code (frontend, Rust)
 make format
 
 # Check formatting without modifying files

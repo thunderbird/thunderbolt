@@ -2,7 +2,6 @@
 
 This is the REST API backend that powers Thunderbolt's AI inference, tool calls, and cloud features.
 
-
 ## Getting Started
 
 ### Prerequisites
@@ -53,10 +52,6 @@ bun run build
 bun run start
 ```
 
-### Health Checks
-
-- `GET /flower/healthcheck/{publisher}/{model}?token=<token>` - Test Flower AI model (e.g., `/flower/healthcheck/qwen/qwen3-235b?token=...`)
-
 ## OpenTelemetry
 
 OpenTelemetry integration is available for distributed tracing and observability. To enable:
@@ -87,6 +82,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
 
 OpenTelemetry will automatically:
+
 - Collect span data for all requests
 - Group lifecycle hooks together
 - Measure function execution time
@@ -105,4 +101,3 @@ bun test test/main.test.ts
 # Run tests with coverage
 bun test --coverage
 ```
-

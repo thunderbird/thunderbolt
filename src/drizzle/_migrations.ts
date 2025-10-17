@@ -49,4 +49,9 @@ export const migrations: Migration[] = [
     name: '0007_mighty_hannibal_king.sql',
     sql: 'ALTER TABLE `chat_messages` ADD `parent_id` text REFERENCES chat_messages(id) ON DELETE CASCADE;--> statement-breakpoint\n\n-- Set parent_id for existing messages based on chronological order within each thread\n-- This creates a linear chain of messages within each thread\nUPDATE chat_messages\nSET parent_id = (\n  SELECT id \n  FROM chat_messages AS prev_msg\n  WHERE prev_msg.chat_thread_id = chat_messages.chat_thread_id\n    AND prev_msg.id < chat_messages.id\n  ORDER BY prev_msg.id DESC\n  LIMIT 1\n);',
   },
+  {
+    hash: '0008_clever_warstar',
+    name: '0008_clever_warstar.sql',
+    sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `settings` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `tasks` ADD `default_hash` text;',
+  },
 ]

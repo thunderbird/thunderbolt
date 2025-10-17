@@ -4,7 +4,6 @@ import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
-import { createFlowerRoutes } from '@/flower/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createOpenAIRoutes } from '@/openai/routes'
@@ -40,27 +39,28 @@ const createApp = async () => {
 
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
-  return configuredApp
-    .use(
-      cors({
-        origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
-        credentials: settings.corsAllowCredentials,
-        methods: settings.corsAllowMethods,
-        allowedHeaders: settings.corsAllowHeaders,
-        exposeHeaders: settings.corsExposeHeaders,
-      }),
-    )
-    .use(createLoggerMiddleware(settings))
-    .use(createHttpLoggingMiddleware())
-    .use(createErrorHandlingMiddleware())
-    // Mount route groups
-    .use(createMainRoutes())
-    .use(createGoogleAuthRoutes())
-    .use(createMicrosoftAuthRoutes())
-    .use(createProToolsRoutes())
-    .use(createOpenAIRoutes())
-    .use(createPostHogRoutes())
-    .use(createFlowerRoutes())
+  return (
+    configuredApp
+      .use(
+        cors({
+          origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
+          credentials: settings.corsAllowCredentials,
+          methods: settings.corsAllowMethods,
+          allowedHeaders: settings.corsAllowHeaders,
+          exposeHeaders: settings.corsExposeHeaders,
+        }),
+      )
+      .use(createLoggerMiddleware(settings))
+      .use(createHttpLoggingMiddleware())
+      .use(createErrorHandlingMiddleware())
+      // Mount route groups
+      .use(createMainRoutes())
+      .use(createGoogleAuthRoutes())
+      .use(createMicrosoftAuthRoutes())
+      .use(createProToolsRoutes())
+      .use(createOpenAIRoutes())
+      .use(createPostHogRoutes())
+  )
 }
 
 /**
@@ -72,35 +72,51 @@ const startServer = async () => {
 
   // Set up logging
   log.info('Starting Thunderbolt Server...')
-  log.info({
-    logLevel: settings.logLevel,
-    port: settings.port,
-    corsOrigins: getCorsOriginsList(settings),
-    nodeEnv: process.env.NODE_ENV,
-  }, 'Server configuration')
+  log.info(
+    {
+      logLevel: settings.logLevel,
+      port: settings.port,
+      corsOrigins: getCorsOriginsList(settings),
+      nodeEnv: process.env.NODE_ENV,
+    },
+    'Server configuration',
+  )
 
   try {
     const app = await createApp()
 
-    const hostname = process.env.HOST ? process.env.HOST : process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost'
-    
-    app.listen({
-      hostname,
-      port: settings.port,
-      reusePort: process.env.NODE_ENV === 'production',
-    }, () => {
-      log.info({
+    const hostname = process.env.HOST
+      ? process.env.HOST
+      : process.env.NODE_ENV === 'production'
+        ? '0.0.0.0'
+        : 'localhost'
+
+    app.listen(
+      {
         hostname,
         port: settings.port,
-        url: `http://localhost:${settings.port}/v1`,
-      }, '🦊 Elysia server started')
+        reusePort: process.env.NODE_ENV === 'production',
+      },
+      () => {
+        log.info(
+          {
+            hostname,
+            port: settings.port,
+            url: `http://localhost:${settings.port}/v1`,
+          },
+          '🦊 Elysia server started',
+        )
 
-      if (process.env.NODE_ENV !== 'production') {
-        log.info({
-          swaggerUrl: `http://localhost:${settings.port}/v1/swagger`,
-        }, '📚 Swagger documentation available')
-      }
-    })
+        if (process.env.NODE_ENV !== 'production') {
+          log.info(
+            {
+              swaggerUrl: `http://localhost:${settings.port}/v1/swagger`,
+            },
+            '📚 Swagger documentation available',
+          )
+        }
+      },
+    )
 
     // Graceful shutdown
     process.on('SIGINT', async () => {

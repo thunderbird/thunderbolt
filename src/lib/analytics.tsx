@@ -1,5 +1,5 @@
 import { getCloudUrl } from '@/lib/config'
-import { getBooleanSetting } from '@/lib/dal'
+import { getSettings } from '@/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import posthog from 'posthog-js'
@@ -49,12 +49,11 @@ export const initPosthog = async (): Promise<PostHog | null> => {
   const apiHost = `${cloudUrl}/posthog`
 
   if (!posthogClient) {
-    const isDataCollectionEnabled = await getBooleanSetting('data_collection', true)
-    const enableDebug = await getBooleanSetting('debug_posthog', false)
+    const { dataCollection, debugPosthog } = await getSettings({ data_collection: true, debug_posthog: false })
     posthogClient = posthog.init(apiKey, {
-      opt_out_capturing_by_default: !isDataCollectionEnabled,
+      opt_out_capturing_by_default: !dataCollection,
       api_host: apiHost,
-      debug: enableDebug,
+      debug: debugPosthog,
       autocapture: false,
       capture_exceptions: true,
       capture_pageview: false,
@@ -107,6 +106,8 @@ export type EventType =
   | 'settings_name_clear'
   | 'settings_location_set'
   | 'settings_location_update'
+  | 'settings_localization_update'
+  | 'settings_localization_reset'
   | 'settings_database_reset'
   | 'settings_data_collection_enabled'
   | 'settings_data_collection_disabled'

@@ -1,8 +1,7 @@
-import type { DatabaseInterface, AnyDrizzleDatabase } from './database-interface'
-import { LibSQLTauriDatabase } from './libsql-tauri-database'
+import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 import { SQLocalDatabase } from './sqlocal-database'
 
-export type DatabaseType = 'sqlocal' | 'libsql-tauri'
+export type DatabaseType = 'sqlocal' | 'libsql-tauri' | 'bun-sqlite'
 
 export class DatabaseSingleton {
   static #instance: DatabaseSingleton | null = null
@@ -25,7 +24,7 @@ export class DatabaseSingleton {
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('sqlocal' or 'libsql-tauri')
+   * @param type - The database type to use ('sqlocal', 'libsql-tauri', or 'bun-sqlite')
    * @param config - Configuration for the database
    */
   public async initialize({
@@ -41,7 +40,14 @@ export class DatabaseSingleton {
 
     if (type === 'libsql-tauri') {
       console.log('Initializing LibSQL for Tauri Database')
+      // Lazy load LibSQLTauriDatabase (only used in Tauri/mobile, not browser)
+      const { LibSQLTauriDatabase } = await import('./libsql-tauri-database')
       this.#database = new LibSQLTauriDatabase()
+    } else if (type === 'bun-sqlite') {
+      console.log('Initializing Bun SQLite Database')
+      // Lazy load BunSQLiteDatabase (only used in tests, not production)
+      const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
+      this.#database = new BunSQLiteDatabase()
     } else {
       console.log('Initializing SQLocal Database')
       this.#database = new SQLocalDatabase()

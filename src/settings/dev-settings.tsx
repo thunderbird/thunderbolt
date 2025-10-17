@@ -1,26 +1,19 @@
-import { useBooleanSetting, useSetting } from '@/hooks/use-setting'
-import { getCapabilities, isTauri } from '@/lib/platform'
-import { useQuery } from '@tanstack/react-query'
-
+import { ModificationIndicator } from '@/components/modification-indicator'
 import { Input } from '@/components/ui/input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useSettings } from '@/hooks/use-settings'
+import { getCapabilities, isTauri } from '@/lib/platform'
+import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  // Tauri fetch setting
-  const [tauriFetchEnabled, setTauriFetchEnabled] = useBooleanSetting('is_native_fetch_enabled', false)
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useSettings({
+    cloud_url: '',
+    is_native_fetch_enabled: false,
+    debug_posthog: false,
+  })
 
-  // Cloud URL setting
-  const [cloudUrl, setCloudUrl] = useSetting('cloud_url', '')
-
-  // Disable encryption setting
-  const [disableEncryption, setDisableEncryption] = useBooleanSetting('disable_flower_encryption', false)
-
-  // Debug PostHog analytics
-  const [debugPosthog, setDebugPosthog] = useBooleanSetting('debug_posthog', false)
-
-  // Runtime capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
     queryFn: getCapabilities,
@@ -35,11 +28,18 @@ export default function DevSettingsPage() {
         <div className="flex flex-col gap-8">
           {/* Cloud URL Setting */}
           <div className="space-y-2">
-            <label className="block text-sm font-medium">Cloud URL</label>
+            <ModificationIndicator
+              as="label"
+              className="block text-sm font-medium"
+              hasModifications={cloudUrl.isModified}
+              onReset={cloudUrl.reset}
+            >
+              Cloud URL
+            </ModificationIndicator>
             <Input
               type="url"
-              value={cloudUrl || ''}
-              onChange={(e) => setCloudUrl(e.target.value)}
+              value={cloudUrl.value}
+              onChange={(e) => cloudUrl.setValue(e.target.value || null)}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
@@ -50,15 +50,22 @@ export default function DevSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Use Native Fetch</label>
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={isNativeFetchEnabled.isModified}
+                onReset={isNativeFetchEnabled.reset}
+              >
+                Use Native Fetch
+              </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Proxy HTTP requests through Tauri to bypass CORS</p>
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={tauriFetchEnabled}
-                    onCheckedChange={setTauriFetchEnabled}
+                    checked={isNativeFetchEnabled.value}
+                    onCheckedChange={isNativeFetchEnabled.setValue}
                     disabled={!capabilities?.native_fetch}
                   />
                 </span>
@@ -77,21 +84,17 @@ export default function DevSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Disable Encryption</label>
-              <p className="text-sm text-muted-foreground">Disable encryption even for confidential models</p>
-            </div>
-            <Switch checked={disableEncryption} onCheckedChange={setDisableEncryption} />
-          </div>
-
-          {/* Divider between settings */}
-          <div className="border-t -mx-6" />
-
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Debug PostHog</label>
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={debugPosthog.isModified}
+                onReset={debugPosthog.reset}
+              >
+                Debug PostHog
+              </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
-            <Switch checked={debugPosthog} onCheckedChange={setDebugPosthog} />
+            <Switch checked={debugPosthog.value} onCheckedChange={debugPosthog.setValue} />
           </div>
         </div>
       </SectionCard>

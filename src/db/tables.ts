@@ -1,28 +1,12 @@
 import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'
-import { customType, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-
-export const float32Array = customType<{
-  data: number[]
-  config: { dimensions: number }
-  configRequired: true
-  driverData: Buffer
-}>({
-  dataType(config) {
-    return `F32_BLOB(${config.dimensions})`
-  },
-  fromDriver(value: Buffer) {
-    return Array.from(new Float32Array(value.buffer))
-  },
-  toDriver(value: number[]) {
-    return sql`vector32(${JSON.stringify(value)})`
-  },
-})
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const settingsTable = sqliteTable('settings', {
   key: text('key').primaryKey(),
   value: text('value'),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+  defaultHash: text('default_hash'),
 })
 
 export const chatThreadsTable = sqliteTable('chat_threads', {
@@ -51,12 +35,13 @@ export const tasksTable = sqliteTable('tasks', {
   item: text('item').notNull(),
   order: integer('order').notNull().default(0),
   isComplete: integer('is_complete').notNull().default(0),
+  defaultHash: text('default_hash'),
 })
 
 export const modelsTable = sqliteTable('models', {
   id: text('id').primaryKey().notNull().unique(),
   provider: text('provider', {
-    enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'flower'],
+    enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic'],
   }).notNull(),
   name: text('name').notNull(),
   model: text('model').notNull(),
@@ -68,6 +53,8 @@ export const modelsTable = sqliteTable('models', {
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
   contextWindow: integer('context_window'),
+  deletedAt: integer('deleted_at'),
+  defaultHash: text('default_hash'),
 })
 
 export const mcpServersTable = sqliteTable('mcp_servers', {
@@ -91,6 +78,8 @@ export const promptsTable = sqliteTable('prompts', {
   modelId: text('model_id')
     .notNull()
     .references(() => modelsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  deletedAt: integer('deleted_at'),
+  defaultHash: text('default_hash'),
 })
 
 export const triggersTable = sqliteTable('triggers', {

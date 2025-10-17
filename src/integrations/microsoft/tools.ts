@@ -1,6 +1,6 @@
 // New file with Microsoft Graph tools
 
-import { getSetting, updateSetting } from '@/lib/dal'
+import { getSettings, updateSetting } from '@/dal'
 import type { ToolConfig } from '@/types'
 import ky from 'ky'
 import { z } from 'zod'
@@ -54,7 +54,8 @@ export type GraphListMessagesResponse = {
 // ---------------------------------------------------------------------------
 
 const getMicrosoftCredentials = async () => {
-  const credentialsStr = await getSetting('integrations_microsoft_credentials')
+  const settings = await getSettings({ integrations_microsoft_credentials: String })
+  const credentialsStr = settings.integrationsMicrosoftCredentials
   if (!credentialsStr) throw new Error('Microsoft integration not connected')
 
   try {

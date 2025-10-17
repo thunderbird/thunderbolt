@@ -34,8 +34,6 @@ describe('Main Routes', () => {
     // Mock settings for analytics route
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
       fireworksApiKey: 'test-api-key',
-      flowerMgmtKey: '',
-      flowerProjId: '',
       exaApiKey: '',
       monitoringToken: '',
       googleClientId: '',
@@ -92,5 +90,149 @@ describe('Main Routes', () => {
     const data = await response.json()
     expect(Array.isArray(data)).toBe(true)
   })
-})
 
+  describe('Units routes', () => {
+    it('should require country parameter for units endpoint', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units'))
+      expect(response.status).toBe(422) // Elysia validation error
+    })
+
+    it('should return units data for valid country code (Brazil)', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country=BR'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toEqual({
+        unit: 'metric',
+        temperature: 'c',
+        timeFormat: '24h',
+        dateFormatExample: 'DD/MM/YYYY',
+        currency: {
+          code: 'BRL',
+          symbol: 'R$',
+          name: 'Brazilian Real',
+        },
+      })
+    })
+
+    it('should return units data for valid country name (Brazil)', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country=Brazil'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toEqual({
+        unit: 'metric',
+        temperature: 'c',
+        timeFormat: '24h',
+        dateFormatExample: 'DD/MM/YYYY',
+        currency: {
+          code: 'BRL',
+          symbol: 'R$',
+          name: 'Brazilian Real',
+        },
+      })
+    })
+
+    it('should return units data for valid country code (United States)', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country=US'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toEqual({
+        unit: 'imperial',
+        temperature: 'f',
+        timeFormat: '12h',
+        dateFormatExample: 'MM/DD/YYYY',
+        currency: {
+          code: 'USD',
+          symbol: '$',
+          name: 'US Dollar',
+        },
+      })
+    })
+
+    it('should return units data for valid country name (United States)', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country=United States'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toEqual({
+        unit: 'imperial',
+        temperature: 'f',
+        timeFormat: '12h',
+        dateFormatExample: 'MM/DD/YYYY',
+        currency: {
+          code: 'USD',
+          symbol: '$',
+          name: 'US Dollar',
+        },
+      })
+    })
+
+    it('should return US data as fallback for invalid country', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country=INVALID'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toEqual({
+        unit: 'imperial',
+        temperature: 'f',
+        timeFormat: '12h',
+        dateFormatExample: 'MM/DD/YYYY',
+        currency: {
+          code: 'USD',
+          symbol: '$',
+          name: 'US Dollar',
+        },
+      })
+    })
+
+    it('should return 400 for empty country parameter', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units?country='))
+      expect(response.status).toBe(400)
+
+      const data = await response.text()
+      expect(data).toBe('Country parameter is required')
+    })
+
+    it('should return units-options data', async () => {
+      const response = await app.handle(new Request('http://localhost/v1/units-options'))
+      expect(response.status).toBe(200)
+
+      const data = await response.json()
+      expect(data).toHaveProperty('units')
+      expect(data).toHaveProperty('temperature')
+      expect(data).toHaveProperty('timeFormat')
+      expect(data).toHaveProperty('dateFormats')
+      expect(data).toHaveProperty('currencies')
+
+      // Verify structure of units options
+      expect(Array.isArray(data.units)).toBe(true)
+      expect(data.units).toContain('metric')
+      expect(data.units).toContain('imperial')
+
+      expect(Array.isArray(data.temperature)).toBe(true)
+      expect(data.temperature).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ symbol: 'c', name: 'Celsius' }),
+          expect.objectContaining({ symbol: 'f', name: 'Fahrenheit' }),
+        ]),
+      )
+
+      expect(Array.isArray(data.timeFormat)).toBe(true)
+      expect(data.timeFormat).toContain('12h')
+      expect(data.timeFormat).toContain('24h')
+
+      expect(Array.isArray(data.dateFormats)).toBe(true)
+      expect(data.dateFormats.length).toBeGreaterThan(0)
+      expect(data.dateFormats[0]).toHaveProperty('format')
+      expect(data.dateFormats[0]).toHaveProperty('example')
+
+      expect(Array.isArray(data.currencies)).toBe(true)
+      expect(data.currencies.length).toBeGreaterThan(0)
+      expect(data.currencies[0]).toHaveProperty('code')
+      expect(data.currencies[0]).toHaveProperty('symbol')
+      expect(data.currencies[0]).toHaveProperty('name')
+    })
+  })
+})

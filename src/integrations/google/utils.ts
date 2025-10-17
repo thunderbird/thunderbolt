@@ -1,5 +1,5 @@
 import { refreshAccessToken } from '@/lib/auth'
-import { getSetting, updateSetting } from '@/lib/dal'
+import { getSettings, updateSetting } from '@/dal'
 import type { DraftEmailParams } from './tools'
 
 // =============================================================================
@@ -127,7 +127,8 @@ export const getGoogleCredentials = async (): Promise<{
   refresh_token?: string
   expires_at?: number
 }> => {
-  const credentialsStr = await getSetting('integrations_google_credentials')
+  const settings = await getSettings({ integrations_google_credentials: String })
+  const credentialsStr = settings.integrationsGoogleCredentials
   if (!credentialsStr) throw new Error('Google integration not connected')
 
   try {

@@ -10,13 +10,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { modelsTable } from '@/db/tables'
 import { DatabaseSingleton } from '@/db/singleton'
+import { modelsTable } from '@/db/tables'
 import type { Model } from '@/types'
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter', 'flower']),
+    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     url: z.string().optional(),
@@ -39,8 +39,8 @@ const formSchema = z
       if (data.provider === 'custom') {
         return true // API key is optional for custom provider
       }
-      if (data.provider === 'thunderbolt' || data.provider === 'flower') {
-        return true // API key optional for thunderbolt and flower
+      if (data.provider === 'thunderbolt') {
+        return true // API key optional for thunderbolt
       }
       return data.apiKey !== undefined && data.apiKey.length > 0
     },
@@ -92,6 +92,8 @@ export default function NewModelPage() {
       isConfidential: 0,
       startWithReasoning: 0,
       contextWindow: null,
+      deletedAt: null,
+      defaultHash: null, // User-created, not based on a default
     })
   }
 
@@ -115,7 +117,6 @@ export default function NewModelPage() {
                         <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
                         <SelectItem value="openai">OpenAI</SelectItem>
                         <SelectItem value="openrouter">OpenRouter</SelectItem>
-                        <SelectItem value="flower">Flower</SelectItem>
                         <SelectItem value="custom">Custom</SelectItem>
                       </SelectContent>
                     </Select>

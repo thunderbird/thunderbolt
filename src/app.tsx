@@ -21,7 +21,7 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { initPosthog, PostHogProvider } from '@/lib/analytics'
-import { seedModels, seedPrompts, seedSettings, seedTasks } from '@/lib/seed'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
 import { default as Settings } from '@/settings/index'
@@ -37,7 +37,7 @@ import { ObjectViewProvider } from './components/chat/object-view-provider'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import MessageSimulatorPage from './devtools/message-simulator'
-import { useBooleanSetting } from './hooks/use-setting'
+import { useSettings } from './hooks/use-settings'
 import Layout from './layout'
 import { createAppDir, resetAppDir } from './lib/fs'
 import { MCPProvider } from './lib/mcp-provider'
@@ -67,7 +67,9 @@ function AppContent({ initData }: { initData: InitData }) {
 function AppRoutes(_: { initData: InitData }) {
   usePageTracking()
 
-  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const { experimentalFeatureTasks } = useSettings({
+    experimental_feature_tasks: Boolean,
+  })
 
   return (
     <Routes>
@@ -76,7 +78,7 @@ function AppRoutes(_: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to="/chats/new" replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          {isTasksEnabled && <Route path="tasks" element={<TasksPage />} />}
+          {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
           <Route path="automations" element={<AutomationsPage />} />
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>
@@ -109,11 +111,7 @@ const init = async (): Promise<InitData> => {
   })
 
   await migrate(db)
-
-  await seedModels()
-  await seedSettings()
-  await seedTasks()
-  await seedPrompts()
+  await reconcileDefaults(db)
 
   const tray = await TrayManager.initIfSupported()
 

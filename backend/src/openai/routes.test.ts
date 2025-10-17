@@ -14,7 +14,7 @@ describe('OpenAI Routes', () => {
 
   // Mock OpenAI client
   const mockCreateCompletion = mock(() => Promise.resolve({}))
-  
+
   const mockOpenAIClient = {
     chat: {
       completions: {
@@ -47,9 +47,7 @@ describe('OpenAI Routes', () => {
     // Mock dependencies
     getOpenAISpy = spyOn(openaiClient, 'getOpenAI').mockReturnValue(mockOpenAIClient as any)
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
-    createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(
-      createMockSSEStream(),
-    )
+    createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
 
     app = new Elysia().use(createOpenAIRoutes())
   })
@@ -233,6 +231,7 @@ describe('OpenAI Routes', () => {
 
     it('should validate all supported models', () => {
       const expectedModels = [
+        'gpt-oss-120b',
         'qwen3-235b-a22b-instruct-2507',
         'qwen3-235b-a22b-thinking-2507',
         'kimi-k2-instruct',
@@ -293,4 +292,3 @@ describe('OpenAI Routes', () => {
     })
   })
 })
-

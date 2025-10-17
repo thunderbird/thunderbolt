@@ -1,3 +1,5 @@
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { NavLink } from '@/components/ui/nav-link'
@@ -15,18 +17,19 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { chatThreadsTable } from '@/db/tables'
+import { getAllChatThreads } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
+import { chatThreadsTable } from '@/db/tables'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getAllChatThreads } from '@/lib/dal'
+import { useSettings } from '@/hooks/use-settings'
+import { trackEvent } from '@/lib/analytics'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import {
   ArrowLeft,
-  Bot,
   CheckSquare,
+  Cpu,
   Flame,
   Loader2,
   Lock,
@@ -41,9 +44,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { DeleteChatDialog, type DeleteChatDialogRef } from '@/components/delete-chat-dialog'
-import { trackEvent } from '@/lib/analytics'
-import { useBooleanSetting } from '@/hooks/use-setting'
 
 export default function ChatSidebar() {
   const navigate = useNavigate()
@@ -65,7 +65,9 @@ export default function ChatSidebar() {
   const [showSearch, setShowSearch] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [isTasksEnabled] = useBooleanSetting('experimental_feature_tasks')
+  const { experimentalFeatureTasks } = useSettings({
+    experimental_feature_tasks: false,
+  })
 
   useEffect(() => {
     if (showSearch && searchInputRef.current) {
@@ -205,20 +207,20 @@ export default function ChatSidebar() {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    onClick={() => handleSettingsNavigation('/settings/models')}
-                    className="cursor-pointer"
-                  >
-                    <Bot className="size-4" />
-                    <span>Models</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
                     onClick={() => handleSettingsNavigation('/settings/integrations')}
                     className="cursor-pointer"
                   >
                     <Plug className="size-4" />
                     <span>Integrations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => handleSettingsNavigation('/settings/models')}
+                    className="cursor-pointer"
+                  >
+                    <Cpu className="size-4" />
+                    <span>Models</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -268,7 +270,7 @@ export default function ChatSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {isTasksEnabled && (
+              {experimentalFeatureTasks.value && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <NavLink to="/tasks">

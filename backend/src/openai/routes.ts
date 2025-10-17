@@ -5,6 +5,7 @@ import { Elysia } from 'elysia'
 import { getOpenAI } from './client'
 
 export const supportedModels = [
+  'gpt-oss-120b',
   'qwen3-235b-a22b-instruct-2507',
   'qwen3-235b-a22b-thinking-2507',
   'kimi-k2-instruct',
@@ -68,4 +69,3 @@ export const createOpenAIRoutes = () => {
     }
   })
 }
-

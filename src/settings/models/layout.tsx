@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
-import { getAllModels } from '@/lib/dal'
+import { getAllModels } from '@/dal'
 
 export default function ModelsLayout() {
   const navigate = useNavigate()

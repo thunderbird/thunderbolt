@@ -9,7 +9,7 @@ NC := \033[0m # No Color
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  make setup          - Initialize submodules and install all dependencies"
+	@echo "  make setup          - Install frontend and backend dependencies"
 	@echo "  make install        - Install frontend dependencies"
 	@echo "  make run            - Start both backend and frontend development servers"
 	@echo "  make dev            - Alias for 'make run'"
@@ -18,17 +18,15 @@ help:
 	@echo "  make build-android  - Build Tauri Android app"
 	@echo "  make build-ios      - Build Tauri iOS app"
 	@echo "  make clean          - Clean build artifacts"
-	@echo "  make format         - Format frontend (JS/TS), and Rust code"
-	@echo "  make format-check   - Check formatting for frontend, and Rust code"
+	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
+	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
 
-# Setup project - initialize submodules and install all dependencies
+# Setup project - install frontend and backend dependencies
 setup:
-	@echo "$(BLUE)→ Initializing git submodules...$(NC)"
-	git submodule update --init --recursive
 	@echo "$(BLUE)→ Installing frontend dependencies...$(NC)"
 	bun install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
-	cd backend && uv sync --frozen
+	cd backend && bun install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies
@@ -80,6 +78,8 @@ lint-fix:
 format:
 	@echo "$(BLUE)→ Formatting frontend code...$(NC)"
 	bun run format
+	@echo "$(BLUE)→ Formatting backend code...$(NC)"
+	cd backend && bun run format
 	@echo "$(BLUE)→ Formatting Rust code...$(NC)"
 	bun run format:rust
 	@echo "$(GREEN)✓ Formatting complete!$(NC)"
@@ -87,10 +87,8 @@ format:
 format-check:
 	@echo "$(BLUE)→ Checking frontend formatting...$(NC)"
 	bun run format-check
-	@echo "$(BLUE)→ Checking Python formatting...$(NC)"
-	cd backend && uv run ruff format --check . && cd ..
-	@echo "$(BLUE)→ Checking Python import sorting...$(NC)"
-	cd backend && uv run ruff check . && cd ..
+	@echo "$(BLUE)→ Checking backend formatting...$(NC)"
+	cd backend && bun run format-check
 	@echo "$(BLUE)→ Checking Rust formatting...$(NC)"
 	bun run format:rust-check
 	@echo "$(GREEN)✓ Format check complete!$(NC)"
@@ -104,7 +102,7 @@ test:
 	@echo "$(BLUE)→ Running frontend tests...$(NC)"
 	@bun test || echo "$(YELLOW)  No frontend tests found$(NC)"
 	@echo "$(BLUE)→ Running backend tests...$(NC)"
-	@cd backend && uv run pytest -v
+	@cd backend && bun test
 
 # Run all checks
 check:
@@ -121,7 +119,7 @@ run:
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
 	@# Start backend in background and frontend in foreground
-	cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
+	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
 	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
 	sleep 2; \

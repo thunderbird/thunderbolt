@@ -83,8 +83,6 @@ describe('Config Settings', () => {
       expect(() => {
         const testEnv = {
           fireworksApiKey: '',
-          flowerMgmtKey: '',
-          flowerProjId: '',
           exaApiKey: '',
           monitoringToken: '',
           googleClientId: '',

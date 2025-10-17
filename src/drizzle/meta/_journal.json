@@ -57,6 +57,13 @@
       "when": 1760542615522,
       "tag": "0007_mighty_hannibal_king",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1760559951046,
+      "tag": "0008_clever_warstar",
+      "breakpoints": true
     }
   ]
 }

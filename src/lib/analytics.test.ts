@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { initPosthog, sanitizeUrl } from './analytics'
 
 const mockKyGet = mock()
+const mockKyPost = mock()
 const mockKyJson = mock()
 const mockPosthogInit = mock()
 let capturedOptions: any = null
@@ -9,6 +11,7 @@ let capturedOptions: any = null
 mock.module('ky', () => ({
   default: {
     get: mockKyGet,
+    post: mockKyPost,
   },
 }))
 
@@ -26,9 +29,13 @@ mock.module('@/lib/config', () => ({
   getCloudUrl: async () => 'http://cloud.example',
 }))
 
-mock.module('@/lib/dal', () => ({
-  getBooleanSetting: async () => false,
-}))
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 describe('analytics sanitizeUrl', () => {
   it('replaces dynamic chat IDs with route params for pathnames', () => {
@@ -52,9 +59,12 @@ describe('analytics before_send sanitization', () => {
   beforeEach(() => {
     capturedOptions = null
     mockKyGet.mockReset()
+    mockKyPost.mockReset()
     mockKyJson.mockReset()
     mockPosthogInit.mockReset()
     mockKyGet.mockReturnValue({ json: mockKyJson })
+    // Ensure a stable ky.post shape for any accidental use during this file's run
+    mockKyPost.mockReturnValue({ json: mockKyJson })
     mockKyJson.mockResolvedValue({ posthog_api_key: 'test-key' })
   })
 

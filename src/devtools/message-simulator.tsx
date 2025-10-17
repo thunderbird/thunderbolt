@@ -14,7 +14,7 @@ import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
-import { createDefaultMiddleware } from '@/ai/middleware/default'
+import { extractReasoningMiddleware } from 'ai'
 import THINK_TAGS_SSE_CONTENT from '../ai/streaming/sse-logs/001-think-tags.sse?raw'
 import REASONING_PROPERTY_SSE_CONTENT from '../ai/streaming/sse-logs/002-reasoning-property.sse?raw'
 import MALFORMED_TOOL_CALL_THINK_SSE_CONTENT from '../ai/streaming/sse-logs/003-malformed-tool-call-think.sse?raw'
@@ -95,7 +95,12 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
         const baseModel = provider('test-model')
         const wrappedModel = wrapLanguageModel({
           model: baseModel,
-          middleware: createDefaultMiddleware(metadata.start_with_reasoning ?? false),
+          middleware: [
+            extractReasoningMiddleware({
+              tagName: 'think',
+              startWithReasoning: metadata.start_with_reasoning ?? false,
+            }),
+          ],
         })
 
         const result = streamText({

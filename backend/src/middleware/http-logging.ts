@@ -16,7 +16,7 @@ export const createHttpLoggingMiddleware = () => {
     })
     .onAfterHandle((ctx) => {
       const url = new URL(ctx.request.url)
-      
+
       // Skip health/static and most PostHog endpoints (except config)
       if (url.pathname === '/v1/health' || url.pathname.startsWith('/static/')) {
         return
@@ -51,7 +51,7 @@ export const createHttpLoggingMiddleware = () => {
       const httpVersion = 'HTTP/1.1'
       const statusText = statusTextMap[String(status)] || ''
       const rt = responseTime !== undefined ? ` ${responseTime}ms` : ''
-      
+
       // Apache Common Log format with response time
       const logLine = `${client} - "${ctx.request.method} ${url.pathname} ${httpVersion}" ${status}${statusText ? ` ${statusText}` : ''}${rt}`
 
@@ -81,11 +81,5 @@ function extractClientAddress(headers: Headers): string | undefined {
   }
 
   // Check other common headers
-  return (
-    headers.get('cf-connecting-ip') ||
-    headers.get('true-client-ip') ||
-    headers.get('x-real-ip') ||
-    undefined
-  )
+  return headers.get('cf-connecting-ip') || headers.get('true-client-ip') || headers.get('x-real-ip') || undefined
 }
-

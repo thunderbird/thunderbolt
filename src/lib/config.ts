@@ -1,4 +1,4 @@
-import { getSetting } from '@/lib/dal'
+import { getSettings } from '@/dal'
 
 /**
  * Get the default cloud URL from environment variables or fallback to localhost
@@ -12,5 +12,6 @@ export const getDefaultCloudUrl = (): string => {
  * Get the cloud URL from settings or fallback to default
  */
 export const getCloudUrl = async (): Promise<string> => {
-  return (await getSetting('cloud_url', getDefaultCloudUrl()))!
+  const settings = await getSettings({ cloud_url: getDefaultCloudUrl() })
+  return settings.cloudUrl
 }

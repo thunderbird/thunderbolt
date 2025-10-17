@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
+  extractReasoningMiddleware,
   readUIMessageStream,
   simulateReadableStream,
   streamText,
@@ -7,7 +8,6 @@ import {
   type ToolSet,
   type UIMessage,
 } from 'ai'
-import { createDefaultMiddleware } from '../middleware/default'
 
 type SimulatedFetchOptions = {
   initialDelayInMs?: number
@@ -199,7 +199,12 @@ export const sseToUIMessage = async (
 
   const wrappedModel = wrapLanguageModel({
     model: baseModel,
-    middleware: createDefaultMiddleware(options.startWithReasoning ?? false),
+    middleware: [
+      extractReasoningMiddleware({
+        tagName: 'think',
+        startWithReasoning: options.startWithReasoning ?? false,
+      }),
+    ],
   })
 
   const result = streamText({

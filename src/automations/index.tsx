@@ -1,3 +1,4 @@
+import { ModificationIndicator } from '@/components/modification-indicator'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,11 +15,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { deleteAutomation, getAllPrompts, resetAutomationToDefault, runAutomation } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
-import { promptsTable, triggersTable } from '@/db/tables'
-import { useBooleanSetting } from '@/hooks/use-setting'
+import { triggersTable } from '@/db/tables'
+import { defaultAutomations } from '@/defaults/automations'
+import { isAutomationModified } from '@/defaults/utils'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/analytics'
-import { getAllPrompts } from '@/lib/dal'
 import { cn } from '@/lib/utils'
 import type { Prompt, Trigger } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,11 +30,8 @@ import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
-import { runAutomation } from './runner'
 
 export default function AutomationsPage() {
-  const db = DatabaseSingleton.instance.db
-
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -46,15 +46,12 @@ export default function AutomationsPage() {
     placeholderData: (previousData) => previousData,
   })
 
-  const [triggersEnabled] = useBooleanSetting('is_triggers_enabled', false)
+  const { isTriggersEnabled } = useSettings({
+    is_triggers_enabled: false,
+  })
 
   const deletePromptMutation = useMutation({
-    mutationFn: async (promptId: string) => {
-      // Delete triggers first (due to foreign key)
-      await db.delete(triggersTable).where(eq(triggersTable.promptId, promptId))
-      // Then delete the prompt
-      await db.delete(promptsTable).where(eq(promptsTable.id, promptId))
-    },
+    mutationFn: deleteAutomation,
     onSuccess: () => {
       trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
@@ -66,7 +63,8 @@ export default function AutomationsPage() {
     try {
       const prompt = prompts.find((p) => p.id === promptId)
 
-      await runAutomation(promptId, navigate)
+      const threadId = await runAutomation(promptId)
+      navigate(`/chats/${threadId}`)
       trackEvent('automation_run', {
         automation_id: promptId,
         model: prompt?.modelId,
@@ -85,6 +83,16 @@ export default function AutomationsPage() {
   const handleDeletePrompt = (promptId: string) => {
     setDeletingPromptId(promptId)
     trackEvent('automation_delete_clicked', { automation_id: promptId })
+  }
+
+  const handleResetPrompt = async (promptId: string) => {
+    const defaultAutomation = defaultAutomations.find((d) => d.id === promptId)
+    if (defaultAutomation) {
+      await resetAutomationToDefault(promptId, defaultAutomation)
+      // TODO: Add 'automation_reset_to_default' to EventType
+      // trackEvent('automation_reset_to_default', { automation_id: promptId })
+      queryClient.invalidateQueries({ queryKey: ['prompts'] })
+    }
   }
 
   return (
@@ -158,10 +166,11 @@ export default function AutomationsPage() {
                   <PromptCard
                     key={prompt.id}
                     prompt={prompt}
-                    triggersEnabled={triggersEnabled}
+                    triggersEnabled={isTriggersEnabled.value}
                     onRun={handleRunPrompt}
                     onEdit={handleEditPrompt}
                     onDelete={handleDeletePrompt}
+                    onReset={handleResetPrompt}
                   />
                 ))}
               </div>
@@ -222,9 +231,10 @@ interface PromptCardProps {
   onRun: (promptId: string) => void
   onEdit: (prompt: Prompt) => void
   onDelete: (promptId: string) => void
+  onReset: (promptId: string) => void
 }
 
-const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: PromptCardProps) => {
+const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onReset }: PromptCardProps) => {
   const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
@@ -273,9 +283,19 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: P
       <CardContent className="p-4 flex flex-col flex-1">
         {/* Header with title and toggle */}
         <div className="flex items-center justify-between mb-8">
-          {/* Left: Title */}
-          <div className="flex items-center flex-1 min-w-0 mr-6">
-            <h3 className="text-lg font-semibold text-foreground truncate">{prompt.title || 'Untitled Automation'}</h3>
+          {/* Left: Title with reset indicator */}
+          <div className="flex-1 min-w-0 mr-6">
+            <ModificationIndicator
+              as="h3"
+              className="text-lg font-semibold text-foreground truncate"
+              hasModifications={isAutomationModified(prompt)}
+              onReset={() => onReset(prompt.id)}
+              customMessage="You've customized this automation."
+              ariaLabel="Modified automation"
+              requireConfirmation
+            >
+              {prompt.title || 'Untitled Automation'}
+            </ModificationIndicator>
           </div>
 
           {/* Right: Toggle - only show if triggers are enabled */}
@@ -350,16 +370,18 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete }: P
               </Tooltip>
             </TooltipProvider>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </ButtonGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Delete Automation</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {!prompt.defaultHash && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </ButtonGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete Automation</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </ButtonGroup>
         </div>
       </CardContent>

@@ -1,0 +1,2840 @@
+{
+  "AC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SHP",
+      "symbol": "SHP",
+      "name": "St. Helena Pound"
+    }
+  },
+  "AD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "AE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AED",
+      "symbol": "AED",
+      "name": "United Arab Emirates Dirham"
+    }
+  },
+  "AF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AFN",
+      "symbol": "AFN",
+      "name": "Afghan Afghani"
+    }
+  },
+  "AG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "AI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "AL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ALL",
+      "symbol": "ALL",
+      "name": "Albanian Lek"
+    }
+  },
+  "AM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AMD",
+      "symbol": "AMD",
+      "name": "Armenian Dram"
+    }
+  },
+  "AO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AOA",
+      "symbol": "AOA",
+      "name": "Angolan Kwanza"
+    }
+  },
+  "AQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "AR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ARS",
+      "symbol": "ARS",
+      "name": "Argentine Peso"
+    }
+  },
+  "AS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "AT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "AU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "AW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AWG",
+      "symbol": "AWG",
+      "name": "Aruban Florin"
+    }
+  },
+  "AX": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "AZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AZN",
+      "symbol": "AZN",
+      "name": "Azerbaijani Manat"
+    }
+  },
+  "BA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BAM",
+      "symbol": "BAM",
+      "name": "Bosnia-Herzegovina Convertible Mark"
+    }
+  },
+  "BB": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BBD",
+      "symbol": "BBD",
+      "name": "Barbadian Dollar"
+    }
+  },
+  "BD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BDT",
+      "symbol": "BDT",
+      "name": "Bangladeshi Taka"
+    }
+  },
+  "BE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "BF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "BG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BGN",
+      "symbol": "BGN",
+      "name": "Bulgarian Lev"
+    }
+  },
+  "BH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BHD",
+      "symbol": "BHD",
+      "name": "Bahraini Dinar"
+    }
+  },
+  "BI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BIF",
+      "symbol": "BIF",
+      "name": "Burundian Franc"
+    }
+  },
+  "BJ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "BL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "BM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BMD",
+      "symbol": "BMD",
+      "name": "Bermudan Dollar"
+    }
+  },
+  "BN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BND",
+      "symbol": "BND",
+      "name": "Brunei Dollar"
+    }
+  },
+  "BO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BOB",
+      "symbol": "BOB",
+      "name": "Bolivian Boliviano"
+    }
+  },
+  "BQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "BR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BRL",
+      "symbol": "R$",
+      "name": "Brazilian Real"
+    }
+  },
+  "BS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BSD",
+      "symbol": "BSD",
+      "name": "Bahamian Dollar"
+    }
+  },
+  "BT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "INR",
+      "symbol": "₹",
+      "name": "Indian Rupee"
+    }
+  },
+  "BV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NOK",
+      "symbol": "NOK",
+      "name": "Norwegian Krone"
+    }
+  },
+  "BW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BWP",
+      "symbol": "BWP",
+      "name": "Botswanan Pula"
+    }
+  },
+  "BY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BYN",
+      "symbol": "BYN",
+      "name": "Belarusian Ruble"
+    }
+  },
+  "BZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "BZD",
+      "symbol": "BZD",
+      "name": "Belize Dollar"
+    }
+  },
+  "CA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CAD",
+      "symbol": "CA$",
+      "name": "Canadian Dollar"
+    }
+  },
+  "CC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "CD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CDF",
+      "symbol": "CDF",
+      "name": "Congolese Franc"
+    }
+  },
+  "CF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "CG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "CH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CHF",
+      "symbol": "CHF",
+      "name": "Swiss Franc"
+    }
+  },
+  "CI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "CK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NZD",
+      "symbol": "NZ$",
+      "name": "New Zealand Dollar"
+    }
+  },
+  "CL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CLP",
+      "symbol": "CLP",
+      "name": "Chilean Peso"
+    }
+  },
+  "CM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "CN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CNY",
+      "symbol": "CN¥",
+      "name": "Chinese Yuan"
+    }
+  },
+  "CO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "COP",
+      "symbol": "COP",
+      "name": "Colombian Peso"
+    }
+  },
+  "CP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "CQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "CR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CRC",
+      "symbol": "CRC",
+      "name": "Costa Rican Colón"
+    }
+  },
+  "CU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CUP",
+      "symbol": "CUP",
+      "name": "Cuban Peso"
+    }
+  },
+  "CV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CVE",
+      "symbol": "CVE",
+      "name": "Cape Verdean Escudo"
+    }
+  },
+  "CW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCG",
+      "symbol": "Cg.",
+      "name": "Caribbean guilder"
+    }
+  },
+  "CX": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "CY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "CZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CZK",
+      "symbol": "CZK",
+      "name": "Czech Koruna"
+    }
+  },
+  "DE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "DG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "DJ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DJF",
+      "symbol": "DJF",
+      "name": "Djiboutian Franc"
+    }
+  },
+  "DK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DKK",
+      "symbol": "DKK",
+      "name": "Danish Krone"
+    }
+  },
+  "DM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "DO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DOP",
+      "symbol": "DOP",
+      "name": "Dominican Peso"
+    }
+  },
+  "DZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DZD",
+      "symbol": "DZD",
+      "name": "Algerian Dinar"
+    }
+  },
+  "EA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "EC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "EE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "EG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EGP",
+      "symbol": "EGP",
+      "name": "Egyptian Pound"
+    }
+  },
+  "EH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MAD",
+      "symbol": "MAD",
+      "name": "Moroccan Dirham"
+    }
+  },
+  "ER": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ERN",
+      "symbol": "ERN",
+      "name": "Eritrean Nakfa"
+    }
+  },
+  "ES": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "ET": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ETB",
+      "symbol": "ETB",
+      "name": "Ethiopian Birr"
+    }
+  },
+  "FI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "FJ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "FJD",
+      "symbol": "FJD",
+      "name": "Fijian Dollar"
+    }
+  },
+  "FK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "FKP",
+      "symbol": "FKP",
+      "name": "Falkland Islands Pound"
+    }
+  },
+  "FM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "FO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DKK",
+      "symbol": "DKK",
+      "name": "Danish Krone"
+    }
+  },
+  "FR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "GA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "GB": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "GD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "GE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GEL",
+      "symbol": "GEL",
+      "name": "Georgian Lari"
+    }
+  },
+  "GF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "GG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "GH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GHS",
+      "symbol": "GHS",
+      "name": "Ghanaian Cedi"
+    }
+  },
+  "GI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GIP",
+      "symbol": "GIP",
+      "name": "Gibraltar Pound"
+    }
+  },
+  "GL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "DKK",
+      "symbol": "DKK",
+      "name": "Danish Krone"
+    }
+  },
+  "GM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GMD",
+      "symbol": "GMD",
+      "name": "Gambian Dalasi"
+    }
+  },
+  "GN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GNF",
+      "symbol": "GNF",
+      "name": "Guinean Franc"
+    }
+  },
+  "GP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "GQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "GR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "GS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "GT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GTQ",
+      "symbol": "GTQ",
+      "name": "Guatemalan Quetzal"
+    }
+  },
+  "GU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "GW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "GY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GYD",
+      "symbol": "GYD",
+      "name": "Guyanaese Dollar"
+    }
+  },
+  "HK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "HKD",
+      "symbol": "HK$",
+      "name": "Hong Kong Dollar"
+    }
+  },
+  "HM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "HN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "HNL",
+      "symbol": "HNL",
+      "name": "Honduran Lempira"
+    }
+  },
+  "HR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "HT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "HU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "HUF",
+      "symbol": "HUF",
+      "name": "Hungarian Forint"
+    }
+  },
+  "IC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "ID": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "IDR",
+      "symbol": "IDR",
+      "name": "Indonesian Rupiah"
+    }
+  },
+  "IE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "IL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ILS",
+      "symbol": "₪",
+      "name": "Israeli New Shekel"
+    }
+  },
+  "IM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "IN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "INR",
+      "symbol": "₹",
+      "name": "Indian Rupee"
+    }
+  },
+  "IO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "IQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "IQD",
+      "symbol": "IQD",
+      "name": "Iraqi Dinar"
+    }
+  },
+  "IR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "IRR",
+      "symbol": "IRR",
+      "name": "Iranian Rial"
+    }
+  },
+  "IS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ISK",
+      "symbol": "ISK",
+      "name": "Icelandic Króna"
+    }
+  },
+  "IT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "JE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "JM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "JMD",
+      "symbol": "JMD",
+      "name": "Jamaican Dollar"
+    }
+  },
+  "JO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "JOD",
+      "symbol": "JOD",
+      "name": "Jordanian Dinar"
+    }
+  },
+  "JP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "JPY",
+      "symbol": "¥",
+      "name": "Japanese Yen"
+    }
+  },
+  "KE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KES",
+      "symbol": "KES",
+      "name": "Kenyan Shilling"
+    }
+  },
+  "KG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KGS",
+      "symbol": "KGS",
+      "name": "Kyrgystani Som"
+    }
+  },
+  "KH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KHR",
+      "symbol": "KHR",
+      "name": "Cambodian Riel"
+    }
+  },
+  "KI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "KM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KMF",
+      "symbol": "KMF",
+      "name": "Comorian Franc"
+    }
+  },
+  "KN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "KP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KPW",
+      "symbol": "KPW",
+      "name": "North Korean Won"
+    }
+  },
+  "KR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KRW",
+      "symbol": "₩",
+      "name": "South Korean Won"
+    }
+  },
+  "KW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KWD",
+      "symbol": "KWD",
+      "name": "Kuwaiti Dinar"
+    }
+  },
+  "KY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KYD",
+      "symbol": "KYD",
+      "name": "Cayman Islands Dollar"
+    }
+  },
+  "KZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "KZT",
+      "symbol": "KZT",
+      "name": "Kazakhstani Tenge"
+    }
+  },
+  "LA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "LAK",
+      "symbol": "LAK",
+      "name": "Laotian Kip"
+    }
+  },
+  "LB": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "LBP",
+      "symbol": "LBP",
+      "name": "Lebanese Pound"
+    }
+  },
+  "LC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "LI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "CHF",
+      "symbol": "CHF",
+      "name": "Swiss Franc"
+    }
+  },
+  "LK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "LKR",
+      "symbol": "LKR",
+      "name": "Sri Lankan Rupee"
+    }
+  },
+  "LR": {
+    "unit": "imperial",
+    "temperature": "f",
+    "timeFormat": "12h",
+    "dateFormatExample": "MM/DD/YYYY",
+    "currency": {
+      "code": "LRD",
+      "symbol": "LRD",
+      "name": "Liberian Dollar"
+    }
+  },
+  "LS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "LSL",
+      "symbol": "LSL",
+      "name": "Lesotho Loti"
+    }
+  },
+  "LT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "LU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "LV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "LY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "LYD",
+      "symbol": "LYD",
+      "name": "Libyan Dinar"
+    }
+  },
+  "MA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MAD",
+      "symbol": "MAD",
+      "name": "Moroccan Dirham"
+    }
+  },
+  "MC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "MD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MDL",
+      "symbol": "MDL",
+      "name": "Moldovan Leu"
+    }
+  },
+  "ME": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "MF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "MG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MGA",
+      "symbol": "MGA",
+      "name": "Malagasy Ariary"
+    }
+  },
+  "MH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "MK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MKD",
+      "symbol": "MKD",
+      "name": "Macedonian Denar"
+    }
+  },
+  "ML": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "MM": {
+    "unit": "imperial",
+    "temperature": "f",
+    "timeFormat": "12h",
+    "dateFormatExample": "MM/DD/YYYY",
+    "currency": {
+      "code": "MMK",
+      "symbol": "MMK",
+      "name": "Myanmar Kyat"
+    }
+  },
+  "MN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MNT",
+      "symbol": "MNT",
+      "name": "Mongolian Tugrik"
+    }
+  },
+  "MO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MOP",
+      "symbol": "MOP",
+      "name": "Macanese Pataca"
+    }
+  },
+  "MP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "MQ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "MR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MRU",
+      "symbol": "MRU",
+      "name": "Mauritanian Ouguiya"
+    }
+  },
+  "MS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "MT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "MU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MUR",
+      "symbol": "MUR",
+      "name": "Mauritian Rupee"
+    }
+  },
+  "MV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MVR",
+      "symbol": "MVR",
+      "name": "Maldivian Rufiyaa"
+    }
+  },
+  "MW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MWK",
+      "symbol": "MWK",
+      "name": "Malawian Kwacha"
+    }
+  },
+  "MX": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MXN",
+      "symbol": "MX$",
+      "name": "Mexican Peso"
+    }
+  },
+  "MY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MYR",
+      "symbol": "MYR",
+      "name": "Malaysian Ringgit"
+    }
+  },
+  "MZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "MZN",
+      "symbol": "MZN",
+      "name": "Mozambican Metical"
+    }
+  },
+  "NA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ZAR",
+      "symbol": "ZAR",
+      "name": "South African Rand"
+    }
+  },
+  "NC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XPF",
+      "symbol": "CFPF",
+      "name": "CFP Franc"
+    }
+  },
+  "NE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "NF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "NG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NGN",
+      "symbol": "NGN",
+      "name": "Nigerian Naira"
+    }
+  },
+  "NI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NIO",
+      "symbol": "NIO",
+      "name": "Nicaraguan Córdoba"
+    }
+  },
+  "NL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "NO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NOK",
+      "symbol": "NOK",
+      "name": "Norwegian Krone"
+    }
+  },
+  "NP": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NPR",
+      "symbol": "NPR",
+      "name": "Nepalese Rupee"
+    }
+  },
+  "NR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "NU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NZD",
+      "symbol": "NZ$",
+      "name": "New Zealand Dollar"
+    }
+  },
+  "NZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NZD",
+      "symbol": "NZ$",
+      "name": "New Zealand Dollar"
+    }
+  },
+  "OM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "OMR",
+      "symbol": "OMR",
+      "name": "Omani Rial"
+    }
+  },
+  "PA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "PE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PEN",
+      "symbol": "PEN",
+      "name": "Peruvian Sol"
+    }
+  },
+  "PF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XPF",
+      "symbol": "CFPF",
+      "name": "CFP Franc"
+    }
+  },
+  "PG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PGK",
+      "symbol": "PGK",
+      "name": "Papua New Guinean Kina"
+    }
+  },
+  "PH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PHP",
+      "symbol": "₱",
+      "name": "Philippine Peso"
+    }
+  },
+  "PK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PKR",
+      "symbol": "PKR",
+      "name": "Pakistani Rupee"
+    }
+  },
+  "PL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PLN",
+      "symbol": "PLN",
+      "name": "Polish Zloty"
+    }
+  },
+  "PM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "PN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NZD",
+      "symbol": "NZ$",
+      "name": "New Zealand Dollar"
+    }
+  },
+  "PR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "PS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "JOD",
+      "symbol": "JOD",
+      "name": "Jordanian Dinar"
+    }
+  },
+  "PT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "PW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "PY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "PYG",
+      "symbol": "PYG",
+      "name": "Paraguayan Guarani"
+    }
+  },
+  "QA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "QAR",
+      "symbol": "QAR",
+      "name": "Qatari Riyal"
+    }
+  },
+  "RE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "RO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "RON",
+      "symbol": "RON",
+      "name": "Romanian Leu"
+    }
+  },
+  "RS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "RSD",
+      "symbol": "RSD",
+      "name": "Serbian Dinar"
+    }
+  },
+  "RU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "RUB",
+      "symbol": "RUB",
+      "name": "Russian Ruble"
+    }
+  },
+  "RW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "RWF",
+      "symbol": "RWF",
+      "name": "Rwandan Franc"
+    }
+  },
+  "SA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SAR",
+      "symbol": "SAR",
+      "name": "Saudi Riyal"
+    }
+  },
+  "SB": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SBD",
+      "symbol": "SBD",
+      "name": "Solomon Islands Dollar"
+    }
+  },
+  "SC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SCR",
+      "symbol": "SCR",
+      "name": "Seychellois Rupee"
+    }
+  },
+  "SD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SDG",
+      "symbol": "SDG",
+      "name": "Sudanese Pound"
+    }
+  },
+  "SE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SEK",
+      "symbol": "SEK",
+      "name": "Swedish Krona"
+    }
+  },
+  "SG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SGD",
+      "symbol": "SGD",
+      "name": "Singapore Dollar"
+    }
+  },
+  "SH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SHP",
+      "symbol": "SHP",
+      "name": "St. Helena Pound"
+    }
+  },
+  "SI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "SJ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NOK",
+      "symbol": "NOK",
+      "name": "Norwegian Krone"
+    }
+  },
+  "SK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "SL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SLE",
+      "symbol": "SLE",
+      "name": "Sierra Leonean Leone"
+    }
+  },
+  "SM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "SN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "SO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SOS",
+      "symbol": "SOS",
+      "name": "Somali Shilling"
+    }
+  },
+  "SR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SRD",
+      "symbol": "SRD",
+      "name": "Surinamese Dollar"
+    }
+  },
+  "SS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SSP",
+      "symbol": "SSP",
+      "name": "South Sudanese Pound"
+    }
+  },
+  "ST": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "STN",
+      "symbol": "STN",
+      "name": "São Tomé & Príncipe Dobra"
+    }
+  },
+  "SV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "SX": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCG",
+      "symbol": "Cg.",
+      "name": "Caribbean guilder"
+    }
+  },
+  "SY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SYP",
+      "symbol": "SYP",
+      "name": "Syrian Pound"
+    }
+  },
+  "SZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "SZL",
+      "symbol": "SZL",
+      "name": "Swazi Lilangeni"
+    }
+  },
+  "TA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "GBP",
+      "symbol": "£",
+      "name": "British Pound"
+    }
+  },
+  "TC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "TD": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XAF",
+      "symbol": "FCFA",
+      "name": "Central African CFA Franc"
+    }
+  },
+  "TF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "TG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XOF",
+      "symbol": "F CFA",
+      "name": "West African CFA Franc"
+    }
+  },
+  "TH": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "THB",
+      "symbol": "THB",
+      "name": "Thai Baht"
+    }
+  },
+  "TJ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TJS",
+      "symbol": "TJS",
+      "name": "Tajikistani Somoni"
+    }
+  },
+  "TK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "NZD",
+      "symbol": "NZ$",
+      "name": "New Zealand Dollar"
+    }
+  },
+  "TL": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "TM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TMT",
+      "symbol": "TMT",
+      "name": "Turkmenistani Manat"
+    }
+  },
+  "TN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TND",
+      "symbol": "TND",
+      "name": "Tunisian Dinar"
+    }
+  },
+  "TO": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TOP",
+      "symbol": "TOP",
+      "name": "Tongan Paʻanga"
+    }
+  },
+  "TR": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TRY",
+      "symbol": "TRY",
+      "name": "Turkish Lira"
+    }
+  },
+  "TT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TTD",
+      "symbol": "TTD",
+      "name": "Trinidad & Tobago Dollar"
+    }
+  },
+  "TV": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "AUD",
+      "symbol": "A$",
+      "name": "Australian Dollar"
+    }
+  },
+  "TW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TWD",
+      "symbol": "NT$",
+      "name": "New Taiwan Dollar"
+    }
+  },
+  "TZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "TZS",
+      "symbol": "TZS",
+      "name": "Tanzanian Shilling"
+    }
+  },
+  "UA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "UAH",
+      "symbol": "UAH",
+      "name": "Ukrainian Hryvnia"
+    }
+  },
+  "UG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "UGX",
+      "symbol": "UGX",
+      "name": "Ugandan Shilling"
+    }
+  },
+  "UM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "US": {
+    "unit": "imperial",
+    "temperature": "f",
+    "timeFormat": "12h",
+    "dateFormatExample": "MM/DD/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "UY": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "UYU",
+      "symbol": "UYU",
+      "name": "Uruguayan Peso"
+    }
+  },
+  "UZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "UZS",
+      "symbol": "UZS",
+      "name": "Uzbekistani Som"
+    }
+  },
+  "VA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "VC": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XCD",
+      "symbol": "EC$",
+      "name": "East Caribbean Dollar"
+    }
+  },
+  "VE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "VES",
+      "symbol": "VES",
+      "name": "Venezuelan Bolívar"
+    }
+  },
+  "VG": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "VI": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "VN": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "VND",
+      "symbol": "₫",
+      "name": "Vietnamese Dong"
+    }
+  },
+  "VU": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "VUV",
+      "symbol": "VUV",
+      "name": "Vanuatu Vatu"
+    }
+  },
+  "WF": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "XPF",
+      "symbol": "CFPF",
+      "name": "CFP Franc"
+    }
+  },
+  "WS": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "WST",
+      "symbol": "WST",
+      "name": "Samoan Tala"
+    }
+  },
+  "XK": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "YE": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "YER",
+      "symbol": "YER",
+      "name": "Yemeni Rial"
+    }
+  },
+  "YT": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "EUR",
+      "symbol": "€",
+      "name": "Euro"
+    }
+  },
+  "ZA": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ZAR",
+      "symbol": "ZAR",
+      "name": "South African Rand"
+    }
+  },
+  "ZM": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "12h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "ZMW",
+      "symbol": "ZMW",
+      "name": "Zambian Kwacha"
+    }
+  },
+  "ZW": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  },
+  "ZZ": {
+    "unit": "metric",
+    "temperature": "c",
+    "timeFormat": "24h",
+    "dateFormatExample": "DD/MM/YYYY",
+    "currency": {
+      "code": "USD",
+      "symbol": "$",
+      "name": "US Dollar"
+    }
+  }
+}

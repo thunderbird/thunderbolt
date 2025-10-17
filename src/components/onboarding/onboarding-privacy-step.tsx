@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Shield, Lock, Eye, Database } from 'lucide-react'
 import { OnboardingFooter } from './onboarding-footer'

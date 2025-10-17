@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSettings } from './use-settings'
 
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 5
 const FIRST_STEP = 1
 
 type OnboardingNavigationReturn = {
@@ -18,18 +19,35 @@ type OnboardingNavigationReturn = {
  * Custom hook for managing onboarding step navigation
  */
 export const useOnboardingNavigation = (): OnboardingNavigationReturn => {
+  const { onboardingCurrentStep } = useSettings({
+    onboarding_current_step: '1',
+  })
+
   const [currentStep, setCurrentStep] = useState(FIRST_STEP)
 
-  const handleNext = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, TOTAL_STEPS))
+  useEffect(() => {
+    const savedStep = parseInt(onboardingCurrentStep.value || '1', 10)
+    if (savedStep >= FIRST_STEP && savedStep <= TOTAL_STEPS) {
+      setCurrentStep(savedStep)
+    }
+  }, [onboardingCurrentStep.value])
+
+  const handleNext = async () => {
+    const newStep = Math.min(currentStep + 1, TOTAL_STEPS)
+    setCurrentStep(newStep)
+    await onboardingCurrentStep.setValue(String(newStep))
   }
 
-  const handleBack = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, FIRST_STEP))
+  const handleBack = async () => {
+    const newStep = Math.max(currentStep - 1, FIRST_STEP)
+    setCurrentStep(newStep)
+    await onboardingCurrentStep.setValue(String(newStep))
   }
 
-  const handleSkip = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, TOTAL_STEPS))
+  const handleSkip = async () => {
+    const newStep = Math.min(currentStep + 1, TOTAL_STEPS)
+    setCurrentStep(newStep)
+    await onboardingCurrentStep.setValue(String(newStep))
   }
 
   const canGoBack = currentStep > FIRST_STEP

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -12,6 +12,7 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { useSettings } from '@/hooks/use-settings'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { extractCountryFromLocation } from '@/lib/country-utils'
+import { OnboardingFooter } from './onboarding-footer'
 
 const locationFormSchema = z
   .object({
@@ -34,37 +35,30 @@ const locationFormSchema = z
 
 type LocationFormData = z.infer<typeof locationFormSchema>
 
-type OnboardingStep4Props = {
-  onComplete: () => void
+type OnboardingLocationStepProps = {
+  onNext: () => void
+  onSkip: () => void
   onBack: () => void
 }
 
-export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4Props) {
+export default function OnboardingLocationStep({ onNext, onSkip, onBack }: OnboardingLocationStepProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const locationSearch = useLocationSearch()
   const { fetchCountryUnits } = useCountryUnits()
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const {
-    locationName,
-    locationLat,
-    locationLng,
-    userHasCompletedOnboarding,
-    distanceUnit,
-    temperatureUnit,
-    dateFormat,
-    timeFormat,
-    currency,
-  } = useSettings({
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    user_has_completed_onboarding: false,
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
-    time_format: '12h',
-    currency: 'USD',
-  })
+  const { locationName, locationLat, locationLng, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency } =
+    useSettings({
+      location_name: '',
+      location_lat: '',
+      location_lng: '',
+      distance_unit: 'imperial',
+      temperature_unit: 'f',
+      date_format: 'MM/DD/YYYY',
+      time_format: '12h',
+      currency: 'USD',
+    })
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationFormSchema),
@@ -81,6 +75,15 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
     form.setValue('locationLng', location.coordinates.lng)
     locationSearch.setOpen(false)
   }
+
+  useEffect(() => {
+    if (buttonRef.current) {
+      buttonRef.current.click()
+    }
+    if (searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [])
 
   const onSubmit = async (values: LocationFormData) => {
     setIsSubmitting(true)
@@ -106,14 +109,12 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
       }
     }
 
-    // Mark onboarding as completed
-    await userHasCompletedOnboarding.setValue(true)
     setIsSubmitting(false)
-    onComplete()
+    onNext()
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
       <div className="text-center space-y-4">
         <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
           <MapPin className="w-8 h-8 text-primary" />
@@ -125,7 +126,7 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-3">
           <FormField
             control={form.control}
             name="locationName"
@@ -144,6 +145,7 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
+                        ref={buttonRef}
                         variant="outline"
                         role="combobox"
                         aria-expanded={locationSearch.open}
@@ -162,6 +164,7 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
                   >
                     <Command>
                       <CommandInput
+                        ref={searchInputRef}
                         placeholder="Search for locations..."
                         value={locationSearch.searchQuery}
                         onValueChange={locationSearch.setSearchQuery}
@@ -201,14 +204,13 @@ export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4P
             )}
           />
 
-          <div className="space-y-3 pt-4">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Setting up...' : 'Complete Setup'}
-            </Button>
-            <Button onClick={onBack} variant="ghost" className="w-full">
-              Back
-            </Button>
-          </div>
+          <OnboardingFooter
+            onBack={onBack}
+            onSkip={onSkip}
+            onContinue={form.handleSubmit(onSubmit)}
+            continueText={isSubmitting ? 'Setting up...' : 'Complete Setup'}
+            continueDisabled={isSubmitting}
+          />
         </form>
       </Form>
     </div>

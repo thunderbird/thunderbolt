@@ -88,6 +88,11 @@ export default function OnboardingStep1({ onCompleteStep1 }: OnboardingStep1Prop
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div className="text-center space-y-4">
+          <h2 className="text-2xl font-bold">Welcome to Thunderbolt!</h2>
+          <p className="text-muted-foreground">Let's personalize your experience by telling us a bit about yourself.</p>
+        </div>
+
         <div className="space-y-4">
           <FormField
             control={form.control}

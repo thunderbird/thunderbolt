@@ -18,7 +18,6 @@ export default function OnboardingDialog() {
   }, [userHasCompletedOnboarding.value, userHasCompletedOnboarding.isLoading])
 
   const handleCompleteStep1 = () => {
-    userHasCompletedOnboarding.setValue(true)
     setCurrentStep(2)
   }
 
@@ -38,10 +37,15 @@ export default function OnboardingDialog() {
 
   return (
     <ResponsiveModal open={isOpen} onOpenChange={handleOpenChange}>
-      <ResponsiveModalContent className="sm:max-w-[500px] p-0">
-        <div className="px-6 pb-6 pt-5">
+      <ResponsiveModalContent className={`sm:max-w-[500px] p-0 ${currentStep === 1 ? '[&>button]:hidden' : ''}`}>
+        <div className="px-6 pb-6 pt-6">
           {currentStep === 1 && <OnboardingStep1 onCompleteStep1={handleCompleteStep1} />}
           {currentStep === 2 && <OnboardingStep2 onBack={handleBack} onClose={handleClose} />}
+        </div>
+
+        <div className="flex justify-center gap-2 pb-6">
+          <div className={`h-2 w-2 rounded-full ${currentStep >= 1 ? 'bg-primary' : 'bg-muted'}`} />
+          <div className={`h-2 w-2 rounded-full ${currentStep >= 2 ? 'bg-primary' : 'bg-muted'}`} />
         </div>
       </ResponsiveModalContent>
     </ResponsiveModal>

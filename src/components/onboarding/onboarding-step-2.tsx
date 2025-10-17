@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button'
-import { useSettings } from '@/hooks/use-settings'
 
 type OnboardingStep2Props = {
   onBack: () => void
@@ -7,15 +6,12 @@ type OnboardingStep2Props = {
 }
 
 export default function OnboardingStep2({ onBack, onClose }: OnboardingStep2Props) {
-  const { preferredName } = useSettings({
-    preferred_name: '',
-  })
   return (
     <div className="space-y-6">
       <div className="text-center space-y-4">
-        <h2 className="text-2xl font-bold">You're All Set{preferredName.value ? `, ${preferredName.value}` : ''}!</h2>
+        <h2 className="text-2xl font-bold">Setup Complete</h2>
         <p className="text-muted-foreground">
-          You've completed the initial setup. Here are some quick tips to get the most out of Thunderbolt.
+          You're ready to start using Thunderbolt! Here are some tips to help you get started.
         </p>
       </div>
 

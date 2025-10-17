@@ -141,6 +141,13 @@ export const defaultSettingIntegrationsProIsEnabled: Setting = {
   defaultHash: null,
 }
 
+export const defaultSettingUserHasCompletedOnboarding: Setting = {
+  key: 'user_has_completed_onboarding',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+}
+
 /**
  * Array of all default settings for iteration
  */
@@ -162,4 +169,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingTimeFormat,
   defaultSettingCurrency,
   defaultSettingIntegrationsProIsEnabled,
+  defaultSettingUserHasCompletedOnboarding,
 ] as const

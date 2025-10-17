@@ -1,0 +1,216 @@
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { cn } from '@/lib/utils'
+import { ChevronsUpDown, MapPin } from 'lucide-react'
+import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
+import { useSettings } from '@/hooks/use-settings'
+import { useCountryUnits } from '@/hooks/use-country-units'
+import { extractCountryFromLocation } from '@/lib/country-utils'
+
+const locationFormSchema = z
+  .object({
+    locationName: z.string().min(1, { message: 'Location is required.' }),
+    locationLat: z.number().optional(),
+    locationLng: z.number().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.locationName && data.locationName.length > 0) {
+        return data.locationLat !== undefined && data.locationLng !== undefined
+      }
+      return true
+    },
+    {
+      message: 'Please select a location from the dropdown to get coordinates.',
+      path: ['locationName'],
+    },
+  )
+
+type LocationFormData = z.infer<typeof locationFormSchema>
+
+type OnboardingStep4Props = {
+  onComplete: () => void
+  onBack: () => void
+}
+
+export default function OnboardingStep4({ onComplete, onBack }: OnboardingStep4Props) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const locationSearch = useLocationSearch()
+  const { fetchCountryUnits } = useCountryUnits()
+
+  const {
+    locationName,
+    locationLat,
+    locationLng,
+    userHasCompletedOnboarding,
+    distanceUnit,
+    temperatureUnit,
+    dateFormat,
+    timeFormat,
+    currency,
+  } = useSettings({
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    user_has_completed_onboarding: false,
+    distance_unit: 'imperial',
+    temperature_unit: 'f',
+    date_format: 'MM/DD/YYYY',
+    time_format: '12h',
+    currency: 'USD',
+  })
+
+  const form = useForm<LocationFormData>({
+    resolver: zodResolver(locationFormSchema),
+    defaultValues: {
+      locationName: '',
+      locationLat: undefined,
+      locationLng: undefined,
+    },
+  })
+
+  const handleSelectLocation = (location: LocationData) => {
+    form.setValue('locationName', location.name)
+    form.setValue('locationLat', location.coordinates.lat)
+    form.setValue('locationLng', location.coordinates.lng)
+    locationSearch.setOpen(false)
+  }
+
+  const onSubmit = async (values: LocationFormData) => {
+    setIsSubmitting(true)
+
+    // Save location data
+    await Promise.all([
+      locationName.setValue(values.locationName),
+      locationLat.setValue(String(values.locationLat)),
+      locationLng.setValue(String(values.locationLng)),
+    ])
+
+    const country = extractCountryFromLocation(values.locationName)
+    if (country) {
+      const countryUnitsData = await fetchCountryUnits(country)
+      if (countryUnitsData) {
+        await Promise.all([
+          distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true }),
+          temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true }),
+          dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true }),
+          timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true }),
+          currency.setValue(countryUnitsData.currency.code, { recomputeHash: true }),
+        ])
+      }
+    }
+
+    // Mark onboarding as completed
+    await userHasCompletedOnboarding.setValue(true)
+    setIsSubmitting(false)
+    onComplete()
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center space-y-4">
+        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+          <MapPin className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold">Where are you located?</h2>
+        <p className="text-muted-foreground">
+          This helps us personalize your experience with local settings and features.
+        </p>
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="locationName"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Location</FormLabel>
+                <Popover
+                  open={locationSearch.open}
+                  onOpenChange={(newOpen) => {
+                    locationSearch.setOpen(newOpen)
+                    if (!newOpen) {
+                      locationSearch.clearSearch()
+                    }
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={locationSearch.open}
+                        className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
+                      >
+                        {field.value || 'Select location...'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="p-0 w-[--radix-popover-trigger-width]"
+                    side="bottom"
+                    align="start"
+                    sideOffset={4}
+                  >
+                    <Command>
+                      <CommandInput
+                        placeholder="Search for locations..."
+                        value={locationSearch.searchQuery}
+                        onValueChange={locationSearch.setSearchQuery}
+                      />
+                      <CommandList>
+                        {locationSearch.searchQuery.trim().length > 0 && locationSearch.isSearching && (
+                          <div className="py-6 text-center text-sm">
+                            <div className="inline-flex items-center gap-2">
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                              Searching...
+                            </div>
+                          </div>
+                        )}
+                        {locationSearch.searchQuery.trim().length > 0 &&
+                          !locationSearch.isSearching &&
+                          locationSearch.locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
+                        {!locationSearch.isSearching && locationSearch.locations.length > 0 && (
+                          <CommandGroup>
+                            {locationSearch.locations.map((location) => (
+                              <CommandItem
+                                key={`${location.coordinates.lat}-${location.coordinates.lng}`}
+                                value={location.name}
+                                onSelect={() => handleSelectLocation(location)}
+                                className="pl-2"
+                              >
+                                {location.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <div className="space-y-3 pt-4">
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Setting up...' : 'Complete Setup'}
+            </Button>
+            <Button onClick={onBack} variant="ghost" className="w-full">
+              Back
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
+  )
+}

@@ -6,7 +6,7 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { trackEvent } from '@/lib/analytics'
 import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
-import { countryUnitsResponseSchema } from '@/schemas/api'
+import { extractCountryFromLocation } from '@/lib/country-utils'
 import type { CountryUnitsData } from '@/types'
 import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
@@ -34,7 +34,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
-import { useQueryClient } from '@tanstack/react-query'
 import { usePostHog } from 'posthog-js/react'
 
 interface LocationData {
@@ -107,7 +106,7 @@ export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { open, searchQuery, locations, isSearching, isResetting, localizationDialogOpen, pendingCountryUnits } = state
 
-  const queryClient = useQueryClient()
+  const { fetchCountryUnits } = useCountryUnits()
 
   // Localization dropdown states
   const {
@@ -288,7 +287,7 @@ export default function PreferencesSettingsPage() {
     const wasSet = !!locationName.value
 
     // Get current country to compare
-    const currentCountry = locationName.value ? locationName.value.split(',').pop()?.trim() : null
+    const currentCountry = extractCountryFromLocation(locationName.value || '')
     const newCountry = location.country
 
     await Promise.all([
@@ -305,26 +304,7 @@ export default function PreferencesSettingsPage() {
 
     // If country changed, ask user if they want to update localization settings
     if (currentCountry !== newCountry) {
-      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
-      const countryUnitsData = await queryClient
-        .fetchQuery({
-          queryKey: ['country-units', newCountry],
-          queryFn: async (): Promise<CountryUnitsData> => {
-            const cloudUrl = await getCloudUrl()
-            const response = await ky
-              .get(`${cloudUrl}/units`, {
-                searchParams: { country: newCountry },
-              })
-              .json()
-            return countryUnitsResponseSchema.parse(response)
-          },
-          staleTime: 24 * 60 * 60 * 1000,
-        })
-        .catch((error) => {
-          console.error('Error fetching country units:', error)
-          return null
-        })
-
+      const countryUnitsData = await fetchCountryUnits(newCountry)
       if (countryUnitsData) {
         dispatch({ type: 'OPEN_LOCALIZATION_DIALOG', payload: countryUnitsData })
       }
@@ -394,29 +374,10 @@ export default function PreferencesSettingsPage() {
 
     // If user has a location set, reset to that country's defaults
     if (locationName.value) {
-      const country = locationName.value.split(',').pop()?.trim()
+      const country = extractCountryFromLocation(locationName.value)
       if (!country) return
 
-      // Use queryClient.fetchQuery to leverage cache (same pattern as useCountryUnits)
-      const countryUnitsData = await queryClient
-        .fetchQuery({
-          queryKey: ['country-units', country],
-          queryFn: async (): Promise<CountryUnitsData> => {
-            const cloudUrl = await getCloudUrl()
-            const response = await ky
-              .get(`${cloudUrl}/units`, {
-                searchParams: { country },
-              })
-              .json()
-            return countryUnitsResponseSchema.parse(response)
-          },
-          staleTime: 24 * 60 * 60 * 1000,
-        })
-        .catch((error) => {
-          console.error('Error fetching country units:', error)
-          return null
-        })
-
+      const countryUnitsData = await fetchCountryUnits(country)
       if (!countryUnitsData) return
 
       // Get the value from countryUnitsData using the dataKey

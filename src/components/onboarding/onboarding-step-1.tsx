@@ -1,195 +1,85 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { cn } from '@/lib/utils'
-import { ChevronsUpDown } from 'lucide-react'
-import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
-import { useSettings } from '@/hooks/use-settings'
-
-const step1FormSchema = z
-  .object({
-    preferredName: z.string().min(1, { message: 'Name is required.' }),
-    locationName: z.string().min(1, { message: 'Location is required.' }),
-    locationLat: z.number().optional(),
-    locationLng: z.number().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.locationName && data.locationName.length > 0) {
-        return data.locationLat !== undefined && data.locationLng !== undefined
-      }
-      return true
-    },
-    {
-      message: 'Please select a location from the dropdown to get coordinates.',
-      path: ['locationName'],
-    },
-  )
-
-type Step1FormData = z.infer<typeof step1FormSchema>
+import { Checkbox } from '@/components/ui/checkbox'
+import { Shield, Lock, Eye, Database } from 'lucide-react'
 
 type OnboardingStep1Props = {
-  onCompleteStep1: () => void
+  onNext: () => void
 }
 
-export default function OnboardingStep1({ onCompleteStep1 }: OnboardingStep1Props) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const locationSearch = useLocationSearch()
-
-  const { preferredName, locationName, locationLat, locationLng, userHasCompletedOnboarding } = useSettings({
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    user_has_completed_onboarding: false,
-  })
-
-  const form = useForm<Step1FormData>({
-    resolver: zodResolver(step1FormSchema),
-    defaultValues: {
-      preferredName: '',
-      locationName: '',
-      locationLat: undefined,
-      locationLng: undefined,
-    },
-  })
-
-  const handleSelectLocation = (location: LocationData) => {
-    form.setValue('locationName', location.name)
-    form.setValue('locationLat', location.coordinates.lat)
-    form.setValue('locationLng', location.coordinates.lng)
-    locationSearch.setOpen(false)
-  }
-
-  const onSubmit = async (values: Step1FormData) => {
-    setIsSubmitting(true)
-    try {
-      await Promise.all([
-        preferredName.setValue(values.preferredName),
-        locationName.setValue(values.locationName),
-        locationLat.setValue(String(values.locationLat)),
-        locationLng.setValue(String(values.locationLng)),
-        userHasCompletedOnboarding.setValue(true),
-      ])
-      onCompleteStep1()
-    } catch (error) {
-      console.error('Error saving onboarding data:', error)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+export default function OnboardingStep1({ onNext }: OnboardingStep1Props) {
+  const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="text-center space-y-4">
-          <h2 className="text-2xl font-bold">Welcome to Thunderbolt!</h2>
-          <p className="text-muted-foreground">Let's personalize your experience by telling us a bit about yourself.</p>
+    <div className="space-y-6">
+      <div className="text-center space-y-4">
+        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+          <Shield className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold">Privacy & Security First</h2>
+        <p className="text-muted-foreground">Your privacy is our priority. Here's how we protect your data.</p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+          <Lock className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="font-medium">On-Device Processing</h3>
+            <p className="text-sm text-muted-foreground">
+              Your conversations and data are processed locally on your device, not sent to external servers.
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <FormField
-            control={form.control}
-            name="preferredName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>What should we call you?</FormLabel>
-                <FormControl>
-                  <Input placeholder="Enter your name" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+          <Eye className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="font-medium">No Data Collection</h3>
+            <p className="text-sm text-muted-foreground">
+              We don't collect, store, or share your personal information with third parties.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+          <Database className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="font-medium">Local Storage</h3>
+            <p className="text-sm text-muted-foreground">
+              All your data is stored securely on your device using industry-standard encryption.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="terms-agreement"
+            checked={agreedToTerms}
+            onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+            className="mt-1"
           />
-
-          <FormField
-            control={form.control}
-            name="locationName"
-            render={({ field }) => (
-              <FormItem className="flex flex-col">
-                <FormLabel>Where are you located?</FormLabel>
-                <Popover
-                  open={locationSearch.open}
-                  onOpenChange={(newOpen) => {
-                    locationSearch.setOpen(newOpen)
-                    if (!newOpen) {
-                      locationSearch.clearSearch()
-                    }
-                  }}
-                >
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={locationSearch.open}
-                        className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
-                      >
-                        {field.value || 'Select location...'}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="p-0 w-[--radix-popover-trigger-width]"
-                    side="bottom"
-                    align="start"
-                    sideOffset={4}
-                  >
-                    <Command>
-                      <CommandInput
-                        placeholder="Search for locations..."
-                        value={locationSearch.searchQuery}
-                        onValueChange={locationSearch.setSearchQuery}
-                      />
-                      <CommandList>
-                        {locationSearch.searchQuery.trim().length > 0 && locationSearch.isSearching && (
-                          <div className="py-6 text-center text-sm">
-                            <div className="inline-flex items-center gap-2">
-                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                              Searching...
-                            </div>
-                          </div>
-                        )}
-                        {locationSearch.searchQuery.trim().length > 0 &&
-                          !locationSearch.isSearching &&
-                          locationSearch.locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
-                        {!locationSearch.isSearching && locationSearch.locations.length > 0 && (
-                          <CommandGroup>
-                            {locationSearch.locations.map((location) => (
-                              <CommandItem
-                                key={`${location.coordinates.lat}-${location.coordinates.lng}`}
-                                value={location.name}
-                                onSelect={() => handleSelectLocation(location)}
-                                className="pl-2"
-                              >
-                                {location.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        )}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <label htmlFor="terms-agreement" className="text-sm text-muted-foreground">
+            I agree to the{' '}
+            <a
+              href="https://www.thunderbird.net/en-US/privacy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline hover:no-underline"
+            >
+              Privacy Policy
+            </a>{' '}
+            and understand how my data is handled.
+          </label>
         </div>
+      </div>
 
-        <div className="pt-4">
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving...' : 'Continue'}
-          </Button>
-        </div>
-      </form>
-    </Form>
+      <div className="pt-4">
+        <Button onClick={onNext} className="w-full" disabled={!agreedToTerms}>
+          I Agree & Continue
+        </Button>
+      </div>
+    </div>
   )
 }

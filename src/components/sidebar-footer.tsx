@@ -21,11 +21,15 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 
-export function SidebarFooter() {
+type SidebarFooterProps = {
+  className?: string
+}
+
+export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { isMobile } = useSidebar()
 
   return (
-    <ShadcnSidebarFooter>
+    <ShadcnSidebarFooter className={className}>
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>

@@ -24,7 +24,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-12 border-b border-border flex items-center justify-between px-2">
+    <div className="h-12 border-b border-border flex items-center justify-between px-2 flex-shrink-0">
       <div
         className="flex items-center gap-2 h-8 px-2 relative flex-1"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}

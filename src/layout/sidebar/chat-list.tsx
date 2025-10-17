@@ -32,9 +32,9 @@ export const ChatList = ({
 }: ChatListProps) => {
   return (
     <>
-      <SidebarGroup className="flex-1 flex flex-col">
+      <SidebarGroup className="flex-1 flex flex-col min-h-0">
         {!isCollapsed && (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
               isCollapsed={isCollapsed}
@@ -46,7 +46,7 @@ export const ChatList = ({
           </div>
         )}
         <div
-          className={`transition-all duration-300 ease-in-out ${
+          className={`transition-all duration-300 ease-in-out flex-shrink-0 ${
             showSearch && !isCollapsed ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0 overflow-hidden'
           }`}
         >
@@ -58,7 +58,7 @@ export const ChatList = ({
             onChange={(e) => onSearchQueryChange(e.target.value)}
           />
         </div>
-        <SidebarMenu className="mt-2 flex-1 min-h-0">
+        <SidebarMenu className="mt-2 flex-1 min-h-0 overflow-auto">
           {isCollapsed && (
             <>
               <SidebarMenuItem>

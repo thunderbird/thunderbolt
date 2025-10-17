@@ -64,10 +64,10 @@ export const ChatSidebarContent = ({
   const location = useLocation()
 
   return (
-    <SidebarContent className="flex flex-col h-full">
+    <SidebarContent className="flex flex-col h-full overflow-hidden">
       <SidebarHeader onToggle={toggleSidebar} />
 
-      <SidebarGroup>
+      <SidebarGroup className="flex-shrink-0">
         <SidebarGroupContent>
           <SidebarMenu>
             <NavigationMenu
@@ -81,7 +81,7 @@ export const ChatSidebarContent = ({
         </SidebarGroupContent>
       </SidebarGroup>
 
-      <SidebarSeparator className="m-0" />
+      <SidebarSeparator className="m-0 flex-shrink-0" />
 
       <ChatList
         chatThreads={chatThreads}
@@ -101,7 +101,7 @@ export const ChatSidebarContent = ({
         onSearchQueryChange={onSearchQueryChange}
       />
 
-      <SidebarFooter />
+      <SidebarFooter className="flex-shrink-0" />
     </SidebarContent>
   )
 }

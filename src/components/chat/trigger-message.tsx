@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils'
 import { Zap } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 import { StreamingMarkdown } from './streaming-markdown'
+import TimelineMessage from './timeline-message'
 
 interface TriggerMessageProps {
   /** The title of the automation that triggered the chat */
@@ -21,21 +22,7 @@ interface TriggerMessageProps {
  */
 export const TriggerMessage = ({ title, prompt, isDeleted = false, className }: TriggerMessageProps) => (
   <div className={cn('flex flex-col items-center w-full', className)}>
-    {/* Timeline marker and label */}
-    <div className="flex flex-col items-center select-none">
-      {/* Timeline bullet */}
-      <span className="w-3 h-3 rounded-full bg-secondary" />
-
-      {/* Vertical line above the text */}
-      <span className="h-6 w-px bg-secondary mb-2" />
-
-      {/* Label */}
-      <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Triggered by automation</div>
-
-      {/* Vertical line that runs directly into the accordion */}
-      <span className="h-6 w-px bg-secondary" />
-    </div>
-
+    <TimelineMessage>Triggered by automation</TimelineMessage>
     {/* Automation title & prompt */}
     {prompt ? (
       <Expandable

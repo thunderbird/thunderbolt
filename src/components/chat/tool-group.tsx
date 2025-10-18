@@ -4,14 +4,12 @@ import { motion } from 'framer-motion'
 import { useObjectView } from './object-view-provider'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
-import { cn, getMessagePartOutput, splitPartType } from '@/lib/utils'
+import { getMessagePartOutput, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
-
-import { useMemo } from 'react'
 import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useThinkingPopover } from '@/hooks/use-thinking-popover'
 
 type UseToolGroupStateParams = {
   tools: ToolUIPart[]
@@ -93,35 +91,19 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
     hasTextInMessage,
   })
 
-  // Memoize the streaming reasoning part to prevent unnecessary re-renders
-  const streamingReasoningData = useMemo(() => {
-    const index = parts.findIndex((part) => part.type === 'reasoning' && part.state === 'streaming')
-    return {
-      index,
-      part: index !== -1 ? (parts[index] as ReasoningUIPart) : undefined,
-    }
-  }, [parts])
-
-  const { index: streamingReasoningIndex, part: streamingReasoningPart } = streamingReasoningData
-
-  const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
-    dependencies: [streamingReasoningPart?.text],
-    isStreaming: !!streamingReasoningPart,
-    smooth: false, // Disable smooth scrolling during streaming to reduce lag
+  const { isPopoverOpen, displayReasoningPart, popoverStyle } = useThinkingPopover({
+    parts,
+    minimumDisplayTime: 3000,
   })
 
-  const isMobile = useIsMobile()
-
-  // Memoize the left position calculation to prevent style recalculations
-  const popoverStyle = useMemo(
-    () => ({
-      marginLeft: isMobile ? '0' : `calc(${streamingReasoningIndex * 32}px + 4px)`,
-    }),
-    [streamingReasoningIndex, isMobile],
-  )
+  const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
+    dependencies: [displayReasoningPart?.text],
+    isStreaming: displayReasoningPart?.state === 'streaming',
+    smooth: false,
+  })
 
   return (
-    <Popover open={streamingReasoningIndex >= 0}>
+    <Popover open={isPopoverOpen}>
       <PopoverAnchor>
         <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
           {parts.map((part, index) => {
@@ -188,10 +170,17 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
           )}
         </div>
       </PopoverAnchor>
-      <PopoverContent align="start" side="bottom" className={cn('PopoverContent max-w-md')} style={popoverStyle}>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        className="PopoverContent max-w-md transition-[margin] duration-300 ease-in-out"
+        style={popoverStyle}
+      >
         <div className="max-h-40 overflow-scroll" ref={scrollContainerRef} {...scrollHandlers}>
           <p className="font-medium">Thinking</p>
-          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{streamingReasoningPart?.text}</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">
+            {displayReasoningPart?.text || ''}
+          </p>
           <div ref={scrollTargetRef} />
         </div>
       </PopoverContent>

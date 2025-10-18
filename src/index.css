@@ -96,6 +96,17 @@
   }
 }
 
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @utility animate-accordion-down {
   animation: accordion-down 0.2s ease-out;
 }
@@ -153,4 +164,5 @@ body {
 .PopoverContent {
   width: var(--radix-popover-trigger-width);
   max-height: var(--radix-popover-content-available-height);
+  animation: scaleIn 0.5s ease-out;
 }

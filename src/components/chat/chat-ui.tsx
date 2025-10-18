@@ -325,6 +325,7 @@ export default function ChatUI({
           >
             <PromptInput
               ref={formRef}
+              chatThread={chatThread}
               value={input}
               onChange={(value: string) => setInput(value)}
               placeholder="Say something..."

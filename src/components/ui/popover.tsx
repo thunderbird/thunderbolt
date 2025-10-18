@@ -1,4 +1,4 @@
-import { type ComponentProps } from 'react'
+import { Fragment, type ComponentProps } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 
 import { cn } from '@/lib/utils'
@@ -12,13 +12,16 @@ function PopoverTrigger({ ...props }: ComponentProps<typeof PopoverPrimitive.Tri
 }
 
 function PopoverContent({
+  disablePortal = false,
   className,
   align = 'center',
   sideOffset = 4,
   ...props
-}: ComponentProps<typeof PopoverPrimitive.Content>) {
+}: ComponentProps<typeof PopoverPrimitive.Content> & { disablePortal?: boolean }) {
+  const Container = disablePortal ? Fragment : PopoverPrimitive.Portal
+
   return (
-    <PopoverPrimitive.Portal>
+    <Container>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}
@@ -29,7 +32,7 @@ function PopoverContent({
         )}
         {...props}
       />
-    </PopoverPrimitive.Portal>
+    </Container>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useIsMobile } from './use-mobile'
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 
@@ -31,31 +31,44 @@ export const useThinkingPopover = ({ parts, minimumDisplayTime = 3000 }: UseThin
   const displayReasoningPart = cachedReasoningIndex >= 0 ? (parts[cachedReasoningIndex] as ReasoningUIPart) : null
 
   // Smooth animation for popover positioning
-  const animateToIndex = (targetIndex: number) => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current)
-    }
-
-    const startIndex = animatedIndex
-    const startTime = performance.now()
-    const duration = 200
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime
-      const progress = Math.min(elapsed / duration, 1)
-
-      const easeOutCubic = 1 - Math.pow(1 - progress, 3)
-      const currentIndex = startIndex + (targetIndex - startIndex) * easeOutCubic
-
-      setAnimatedIndex(currentIndex)
-
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animate)
+  const animateToIndex = useCallback(
+    (targetIndex: number) => {
+      // Skip animation if already at target or very close
+      if (Math.abs(animatedIndex - targetIndex) < 0.1) {
+        setAnimatedIndex(targetIndex)
+        return
       }
-    }
 
-    rafRef.current = requestAnimationFrame(animate)
-  }
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+      }
+
+      const startIndex = animatedIndex
+      const startTime = performance.now()
+      const duration = 150 // Reduced from 200ms
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime
+        const progress = Math.min(elapsed / duration, 1)
+
+        // Use simpler easing to reduce computation
+        const easeOutQuad = 1 - (1 - progress) * (1 - progress)
+        const currentIndex = startIndex + (targetIndex - startIndex) * easeOutQuad
+
+        setAnimatedIndex(currentIndex)
+
+        if (progress < 1) {
+          rafRef.current = requestAnimationFrame(animate)
+        } else {
+          // Ensure we end exactly at target
+          setAnimatedIndex(targetIndex)
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(animate)
+    },
+    [animatedIndex],
+  )
 
   // Handle popover state and animation
   useEffect(() => {
@@ -81,7 +94,6 @@ export const useThinkingPopover = ({ parts, minimumDisplayTime = 3000 }: UseThin
       }
     }
 
-    // Cleanup on unmount
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)

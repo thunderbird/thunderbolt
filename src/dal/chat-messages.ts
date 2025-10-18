@@ -3,6 +3,7 @@ import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import { getChatThread } from './chat-threads'
 
 /**
  * Gets a single chat message by ID
@@ -57,7 +58,7 @@ export const saveMessagesWithContextUpdate = async (
   const db = DatabaseSingleton.instance.db
 
   // Verify thread exists
-  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
+  const thread = await getChatThread(threadId)
   if (!thread) {
     throw new Error('Thread not found')
   }

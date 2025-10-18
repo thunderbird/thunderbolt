@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatThreadsTable } from '../db/tables'
+import { type ChatThread } from '@/types'
 
 /**
  * Gets all chat threads ordered by creation date
@@ -21,22 +22,26 @@ export const getChatThread = async (id: string) => {
 /**
  * Create a new chat thread
  */
-export const createChatThread = async (id: string) => {
+export const createChatThread = async (data: Partial<ChatThread> & Required<Pick<ChatThread, 'id'>>) => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(chatThreadsTable).values({ id, title: 'New Chat' })
+  await db.insert(chatThreadsTable).values(data)
 }
 
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID
  */
-export const getOrCreateChatThread = async (id: string) => {
+export const getOrCreateChatThread = async (id: string, isEncrypted: boolean) => {
   const thread = await getChatThread(id)
 
   if (thread?.id) {
     return thread
   }
 
-  await createChatThread(id)
+  await createChatThread({
+    id,
+    title: 'New Chat',
+    isEncrypted: isEncrypted ? 1 : 0,
+  })
 
   return await getChatThread(id)
 }

@@ -189,7 +189,7 @@ export default function ChatUI({
     // Clear the input immediately for responsive UX
     setInput('')
 
-    await chatHelpers.sendMessage({ text: textToSend })
+    await chatHelpers.sendMessage({ text: textToSend, metadata: { modelId: selectedModelId } })
 
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()

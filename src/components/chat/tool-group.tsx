@@ -93,7 +93,6 @@ export const ToolGroup = ({ tools, parts, isStreaming, isLastPartInMessage, hasT
 
   const { isPopoverOpen, displayReasoningPart, popoverStyle } = useThinkingPopover({
     parts,
-    minimumDisplayTime: 3000,
   })
 
   const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({

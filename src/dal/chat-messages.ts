@@ -26,22 +26,18 @@ export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> 
   return chatMessages
 }
 
-export const getLastMessage = async (
-  threadId: string,
-): Promise<Pick<ChatMessage, 'id' | 'chatThreadId' | 'modelId'> | undefined> => {
+export const getLastMessage = async (threadId: string): Promise<ChatMessage | null> => {
   const db = DatabaseSingleton.instance.db
 
-  return await db
-    .select({
-      id: chatMessagesTable.id,
-      chatThreadId: chatMessagesTable.chatThreadId,
-      modelId: chatMessagesTable.modelId,
-    })
+  const lastMessage = await db
+    .select()
     .from(chatMessagesTable)
     .where(eq(chatMessagesTable.chatThreadId, threadId))
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)
     .get()
+
+  return lastMessage ?? null
 }
 
 /**

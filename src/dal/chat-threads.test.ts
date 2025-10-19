@@ -30,7 +30,7 @@ describe('Chat Threads DAL', () => {
     it('should create a new chat thread with the provided ID', async () => {
       const threadId = uuidv7()
 
-      await createChatThread(threadId)
+      await createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -43,8 +43,8 @@ describe('Chat Threads DAL', () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
 
-      await createChatThread(threadId1)
-      await createChatThread(threadId2)
+      await createChatThread({ id: threadId1, title: 'New Chat', isEncrypted: 0 })
+      await createChatThread({ id: threadId2, title: 'New Chat', isEncrypted: 0 })
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -56,10 +56,10 @@ describe('Chat Threads DAL', () => {
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
 
-      await createChatThread(threadId)
+      await createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })
 
       // Should throw due to UNIQUE constraint
-      await expect(createChatThread(threadId)).rejects.toThrow()
+      await expect(createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })).rejects.toThrow()
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -132,7 +132,7 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
       })
 
-      const thread = await getOrCreateChatThread(threadId)
+      const thread = await getOrCreateChatThread(threadId, false)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('Existing Thread')
@@ -145,7 +145,7 @@ describe('Chat Threads DAL', () => {
     it('should create and return new thread when it does not exist', async () => {
       const threadId = uuidv7()
 
-      const thread = await getOrCreateChatThread(threadId)
+      const thread = await getOrCreateChatThread(threadId, false)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('New Chat')
@@ -160,8 +160,8 @@ describe('Chat Threads DAL', () => {
     it('should handle multiple calls with same ID consistently', async () => {
       const threadId = uuidv7()
 
-      const thread1 = await getOrCreateChatThread(threadId)
-      const thread2 = await getOrCreateChatThread(threadId)
+      const thread1 = await getOrCreateChatThread(threadId, false)
+      const thread2 = await getOrCreateChatThread(threadId, false)
 
       expect(thread1?.id).toBe(threadId)
       expect(thread2?.id).toBe(threadId)
@@ -178,8 +178,8 @@ describe('Chat Threads DAL', () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
 
-      const thread1 = await getOrCreateChatThread(threadId1)
-      const thread2 = await getOrCreateChatThread(threadId2)
+      const thread1 = await getOrCreateChatThread(threadId1, false)
+      const thread2 = await getOrCreateChatThread(threadId2, false)
 
       expect(thread1?.id).toBe(threadId1)
       expect(thread2?.id).toBe(threadId2)

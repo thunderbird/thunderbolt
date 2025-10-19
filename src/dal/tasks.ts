@@ -38,7 +38,7 @@ export const getIncompleteTasksCount = async (): Promise<number> => {
 /**
  * Update a task (preserves defaultHash for modification tracking)
  */
-export const updateTask = async (id: string, updates: Partial<Task>) => {
+export const updateTask = async (id: string, updates: Partial<Task>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }

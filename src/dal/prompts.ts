@@ -57,7 +57,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
 /**
  * Update an automation/prompt (preserves defaultHash for modification tracking)
  */
-export const updateAutomation = async (id: string, updates: Partial<Prompt>) => {
+export const updateAutomation = async (id: string, updates: Partial<Prompt>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
@@ -67,7 +67,7 @@ export const updateAutomation = async (id: string, updates: Partial<Prompt>) => 
 /**
  * Reset an automation to its default state
  */
-export const resetAutomationToDefault = async (id: string, defaultAutomation: Prompt) => {
+export const resetAutomationToDefault = async (id: string, defaultAutomation: Prompt): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultAutomation
   await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
@@ -76,7 +76,7 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
 /**
  * Delete an automation (soft delete) and its associated triggers
  */
-export const deleteAutomation = async (id: string) => {
+export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Import locally to avoid circular dependency
   const { triggersTable } = await import('../db/tables')

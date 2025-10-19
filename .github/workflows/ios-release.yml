@@ -102,6 +102,13 @@ jobs:
           # macOS sed requires an empty backup suffix
           sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
+          # Update iOS project.yml version if it exists
+          if [ -f "src-tauri/gen/apple/project.yml" ]; then
+            sed -i '' "s/CFBundleShortVersionString: .*/CFBundleShortVersionString: $VERSION/" src-tauri/gen/apple/project.yml
+            sed -i '' "s/CFBundleVersion: .*/CFBundleVersion: \"$VERSION\"/" src-tauri/gen/apple/project.yml
+            echo "✅ Updated iOS project.yml to $VERSION"
+          fi
+
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
         with:

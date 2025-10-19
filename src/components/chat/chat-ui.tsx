@@ -179,6 +179,13 @@ export default function ChatUI({
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
 
+    // Validate encryption state
+    if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
+      throw new Error(
+        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
+      )
+    }
+
     if (isOverflowing) {
       setShowOverflowModal(true)
       trackEvent('chat_send_prompt_overflow', {

@@ -4,10 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Platform for the release (ios, android, desktop)'
-        required: true
+        description: 'Platform for the release (all, ios, android, desktop)'
+        required: false
         type: choice
+        default: 'all'
         options:
+          - all
           - ios
           - android
           - desktop
@@ -28,9 +30,10 @@ on:
   workflow_call:
     inputs:
       platform:
-        description: 'Platform for the release (ios, android, desktop)'
-        required: true
+        description: 'Platform for the release (all, ios, android, desktop)'
+        required: false
         type: string
+        default: 'all'
       version:
         description: 'Explicit version to set (e.g., 1.2.3). Overrides detection.'
         required: false
@@ -67,137 +70,50 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-      - name: Get current version
-        id: current_version
+      - name: Run create-release script
         run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $CURRENT_VERSION"
+          # Build arguments for the script
+          ARGS="--push"
 
-      - name: Auto-detect version type
-        id: auto_detect
-        if: ${{ inputs.version_type == 'auto' }}
-        run: |
-          # Get commits since last tag or from beginning
-          if [ -z "$(git tag -l)" ]; then
-            echo "🆕 First-time release detected"
-            COMMITS=$(git log --pretty=format:"%s" --reverse)
+          if [ -n "${{ inputs.version }}" ]; then
+            ARGS="$ARGS --version ${{ inputs.version }}"
           else
-            COMMITS=$(git log --pretty=format:"%s" --reverse)
+            ARGS="$ARGS --type ${{ inputs.version_type }}"
           fi
 
-          # Simple detection logic
-          if echo "$COMMITS" | grep -qiE "(breaking|!|BREAKING)"; then
-            VERSION_TYPE="major"
-            echo "🔴 Breaking changes detected - major version bump"
-          elif echo "$COMMITS" | grep -qiE "^(feat|feature|add)"; then
-            VERSION_TYPE="minor"
-            echo "🟡 New features detected - minor version bump"
-          else
-            VERSION_TYPE="patch"
-            echo "🟢 Bug fixes and maintenance - patch version bump"
+          if [ -n "${{ inputs.platform }}" ]; then
+            ARGS="$ARGS --platform ${{ inputs.platform }}"
           fi
 
-          echo "detected_version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+          echo "Running: bun run scripts/create-release.ts $ARGS"
+          bun run scripts/create-release.ts $ARGS
 
-      - name: Calculate new version
+      - name: Extract outputs
         id: version
         run: |
-          CURRENT_VERSION="${{ steps.current_version.outputs.current_version }}"
-
-          # If an explicit version was provided, use it and mark as explicit
-          if [ -n "${{ inputs.version }}" ]; then
-            NEW_VERSION="${{ inputs.version }}"
-            VERSION_TYPE="explicit"
-            echo "Using explicit version: $NEW_VERSION"
-          else
-            # Use auto-detected or manual version type
-            if [ "${{ inputs.version_type }}" == "auto" ]; then
-              VERSION_TYPE="${{ steps.auto_detect.outputs.detected_version_type }}"
-            else
-              VERSION_TYPE="${{ inputs.version_type }}"
-            fi
-
-            # Parse and bump version
-            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
-
-            case "$VERSION_TYPE" in
-              "major")
-                NEW_VERSION="$((major + 1)).0.0"
-                ;;
-              "minor")
-                NEW_VERSION="$major.$((minor + 1)).0"
-                ;;
-              "patch")
-                NEW_VERSION="$major.$minor.$((patch + 1))"
-                ;;
-              *)
-                echo "❌ Invalid version type: $VERSION_TYPE"
-                exit 1
-                ;;
-            esac
-          fi
-
+          # Get the version from package.json (which was just updated)
+          NEW_VERSION=$(node -p "require('./package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
-          echo "Version bump: $CURRENT_VERSION → $NEW_VERSION ($VERSION_TYPE)"
+          echo "📦 Version: $NEW_VERSION"
 
-      - name: Create platform-specific tag
+      - name: Extract tag name
         id: tag
         run: |
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
           PLATFORM="${{ inputs.platform }}"
-          TAG_NAME="v$NEW_VERSION-$PLATFORM-rc"
+
+          # Determine tag name based on platform
+          if [ "$PLATFORM" == "all" ]; then
+            TAG_NAME="v$NEW_VERSION"
+          else
+            TAG_NAME="v$NEW_VERSION-$PLATFORM-rc"
+          fi
+
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Creating tag: $TAG_NAME"
-
-      - name: Update package.json version
-        run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$NEW_VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-      - name: Update Cargo.toml version
-        run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
-
-      - name: Create version commit
-        run: |
-          set -e
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
-
-          git add package.json src-tauri/Cargo.toml
-
-          if git diff --cached --quiet; then
-            echo "No file changes to commit; skipping commit."
-          else
-            git commit -m "chore: bump version to $NEW_VERSION for ${{ inputs.platform }} release"
-          fi
-
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag $TAG_NAME already exists; skipping tag creation."
-          else
-            git tag "$TAG_NAME"
-          fi
-
-      - name: Push changes
-        run: |
-          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
-          # Push commit if any; ignore if nothing to push
-          git push origin HEAD || echo "No commit to push"
-          # Push tag; ignore if already pushed
-          git push origin "$TAG_NAME" || echo "Tag already pushed or unchanged"
+          echo "🏷️  Tag: $TAG_NAME"
 
       - name: Generate changelog
         id: changelog
@@ -223,23 +139,49 @@ jobs:
           # Decode the changelog
           CHANGELOG=$(echo "${{ steps.changelog.outputs.changelog_b64 }}" | base64 -d)
 
+          PLATFORM="${{ inputs.platform }}"
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          VERSION="${{ steps.version.outputs.new_version }}"
+          VERSION_TYPE="${{ steps.version.outputs.version_type }}"
+
           # Create release using GitHub CLI
-          gh release create "${{ steps.tag.outputs.tag_name }}" \
-            --title "Release ${{ steps.tag.outputs.tag_name }}" \
-            --notes "## Release Candidate ${{ steps.tag.outputs.tag_name }}
+          if [ "$PLATFORM" == "all" ]; then
+            # Unified release for all platforms
+            gh release create "$TAG_NAME" \
+              --title "Release $TAG_NAME" \
+              --notes "## Release $TAG_NAME
 
-          This is a release candidate for ${{ inputs.platform }} platform.
+          - Version: $VERSION
+          - Version type: $VERSION_TYPE
 
-          - Version: ${{ steps.version.outputs.new_version }}
-          - Platform: ${{ inputs.platform }}
-          - Version type: ${{ steps.version.outputs.version_type }}
+          ## Changelog
+          $CHANGELOG
+
+          ### Platform Builds
+          - ✅ Desktop: Building via CI
+          - ✅ iOS: Building and deploying to TestFlight
+          - ✅ Android: Building and deploying to Play Store (Internal)" \
+              --draft \
+              --prerelease
+          else
+            # Platform-specific RC release
+            gh release create "$TAG_NAME" \
+              --title "Release Candidate $TAG_NAME" \
+              --notes "## Release Candidate $TAG_NAME
+
+          This is a release candidate for $PLATFORM platform.
+
+          - Version: $VERSION
+          - Platform: $PLATFORM
+          - Version type: $VERSION_TYPE
 
           ## Changelog
           $CHANGELOG
 
           ### Next Steps
           After successful build and testing, the final release will be created." \
-            --draft \
-            --prerelease
+              --draft \
+              --prerelease
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

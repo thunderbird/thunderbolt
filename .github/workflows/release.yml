@@ -4,19 +4,48 @@ run-name: Release triggered by ${{ github.actor }}
 on:
   push:
     branches:
-      - main
+      - release
       - 'ci-*' # Matches ci-test, ci-release-automation, etc.
     tags:
       - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
+        required: false
+        type: string
+      version_type:
+        description: 'Type of version bump (auto, patch, minor, major)'
+        required: false
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - patch
+          - minor
+          - major
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
+  version_bump:
+    name: Version Bump
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/version-bump.yml
+    secrets: inherit
+    with:
+      platform: 'all'
+      version: ${{ inputs.version }}
+      version_type: ${{ inputs.version_type }}
+
   validate_version:
     name: Validate Version Files
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}
@@ -89,36 +118,63 @@ jobs:
 
           if [ "$VALIDATION_FAILED" = true ]; then
             echo ""
-            echo "💡 Tip: Use 'gh workflow run create-version-tag.yml -f version=$TAG_VERSION' to update all version files"
+            echo "💡 Tip: Use the workflow_dispatch event to automatically bump versions"
             exit 1
           fi
 
           echo "✅ All version numbers validated successfully"
 
+  determine_version:
+    name: Determine Version
+    needs: [version_bump, validate_version]
+    if: always() && (needs.version_bump.result == 'success' || needs.validate_version.result == 'success')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set_version.outputs.version }}
+      is_tag: ${{ steps.set_version.outputs.is_tag }}
+
+    steps:
+      - name: Set version output
+        id: set_version
+        run: |
+          if [ "${{ needs.version_bump.result }}" == "success" ]; then
+            # Version bump workflow ran (workflow_dispatch)
+            VERSION="${{ needs.version_bump.outputs.new_version }}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "📦 Using bumped version: $VERSION"
+          else
+            # Validate version workflow ran (tag push)
+            VERSION="${{ needs.validate_version.outputs.version }}"
+            IS_TAG="${{ needs.validate_version.outputs.is_tag }}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=$IS_TAG" >> $GITHUB_OUTPUT
+            echo "📦 Using validated version: $VERSION (is_tag: $IS_TAG)"
+          fi
+
   desktop:
     name: Desktop Release
-    needs: validate_version
-    if: needs.validate_version.outputs.is_tag == 'true'
+    needs: determine_version
+    if: needs.determine_version.outputs.is_tag == 'true'
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
-      version: ${{ needs.validate_version.outputs.version }}
+      version: ${{ needs.determine_version.outputs.version }}
 
   ios:
     name: iOS Release
-    needs: validate_version
-    if: needs.validate_version.outputs.is_tag == 'true'
+    needs: determine_version
+    if: needs.determine_version.outputs.is_tag == 'true'
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
-      version: ${{ needs.validate_version.outputs.version }}
+      version: ${{ needs.determine_version.outputs.version }}
 
-  # Future: Add Android here
-  # android:
-  #   name: Android Release
-  #   needs: validate_version
-  #   if: needs.validate_version.outputs.is_tag == 'true'
-  #   uses: ./.github/workflows/android-release.yml
-  #   secrets: inherit
-  #   with:
-  #     version: ${{ needs.validate_version.outputs.version }}
+  android:
+    name: Android Release
+    needs: determine_version
+    if: needs.determine_version.outputs.is_tag == 'true'
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.determine_version.outputs.version }}

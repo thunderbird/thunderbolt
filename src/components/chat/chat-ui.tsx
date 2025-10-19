@@ -26,7 +26,7 @@ interface ChatUIProps {
   selectedModelId?: string
   onModelChange: (model: string | null) => void
   triggerAutomation?: AutomationRun | null
-  chatThreadId?: string
+  chatThreadId: string
 }
 
 interface SuggestionButtonProps {
@@ -94,9 +94,9 @@ export default function ChatUI({
     onOverflow: () => setShowOverflowModal(true),
   })
 
-  const { data: chatThread } = useQuery({
+  const { data: chatThread = null } = useQuery({
     queryKey: ['chatThreads', chatThreadId],
-    queryFn: async () => (await getChatThread(chatThreadId ?? '')) ?? null,
+    queryFn: () => getChatThread(chatThreadId),
   })
 
   // Extract prompt from the first message (automation prompt) for trigger display

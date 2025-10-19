@@ -1,15 +1,13 @@
 import { getModel, getChatMessages, getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { chatThreadsTable } from '@/db/tables'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import Chat from './chat'
+import { updateChatThread } from '@/dal/chat-threads'
 
 export default function ChatDetailPage() {
   const params = useParams()
@@ -19,7 +17,6 @@ export default function ChatDetailPage() {
     [params.chatThreadId],
   )
 
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
@@ -34,7 +31,7 @@ export default function ChatDetailPage() {
     if (!textContent) return
 
     const title = await generateTitle(textContent)
-    await db.update(chatThreadsTable).set({ title }).where(eq(chatThreadsTable.id, threadId))
+    await updateChatThread(threadId, { title })
     queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 

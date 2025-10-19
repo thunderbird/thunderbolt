@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 import { type ChatThread } from '@/layout/sidebar/types'
 
 interface PromptInputProps {
-  chatThread?: ChatThread | null
+  chatThread: ChatThread | null
   value: string
   onChange: (value: string) => void
   placeholder?: string

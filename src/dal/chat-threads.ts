@@ -28,6 +28,14 @@ export const createChatThread = async (data: Partial<ChatThread> & Required<Pick
   await db.insert(chatThreadsTable).values(data)
 }
 
+export const updateChatThread = async (
+  id: string,
+  data: Partial<Omit<ChatThread, 'id' | 'isEncrypted'>>,
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
+}
+
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID
  */

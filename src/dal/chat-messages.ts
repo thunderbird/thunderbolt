@@ -1,9 +1,9 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
-import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { getChatThread } from './chat-threads'
+import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
  * Gets a single chat message by ID
@@ -90,10 +90,7 @@ export const saveMessagesWithContextUpdate = async (
   const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
   if (metadata?.usage?.totalTokens) {
-    await db
-      .update(chatThreadsTable)
-      .set({ contextSize: metadata.usage.totalTokens })
-      .where(eq(chatThreadsTable.id, threadId))
+    await updateChatThread(threadId, { contextSize: metadata.usage.totalTokens })
   }
 
   return dbChatMessages

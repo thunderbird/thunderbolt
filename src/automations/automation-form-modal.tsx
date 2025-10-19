@@ -305,6 +305,7 @@ export default function AutomationFormModal({
               {/* Main Content - Prompt Input */}
               <CardHeader className="px-6 pb-0 pt-2">
                 <PromptInput
+                  chatThread={null}
                   value={promptText}
                   onChange={handlePromptChange}
                   placeholder="Enter your prompt here..."

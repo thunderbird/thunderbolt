@@ -26,7 +26,7 @@
     /* Types */
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["src"],
+  "include": ["src", "./matchers.d.ts"],
   "exclude": ["src/db/bundle-migrations.ts", "src/drizzle/_migrations.ts"],
   "references": [
     {

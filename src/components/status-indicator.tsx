@@ -44,6 +44,7 @@ const stateClasses: Record<StatusState, string> = {
 export const StatusIndicator: FC<StatusIndicatorProps> = ({ status, size = 'md', className }) => {
   return (
     <span
+      data-testid="status-indicator"
       className={cn('inline-block rounded-full flex-shrink-0', sizeClasses[size], stateClasses[status], className)}
     />
   )

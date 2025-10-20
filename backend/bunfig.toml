@@ -2,3 +2,6 @@
 # The instrumentation file must be preloaded to ensure OpenTelemetry SDK
 # is initialized before any instrumented modules are imported
 preload = ["./src/config/instrumentation.ts"]
+
+[test]
+preload = ["../test-setup.ts"]

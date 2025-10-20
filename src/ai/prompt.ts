@@ -37,7 +37,7 @@ export const createPrompt = ({ preferredName, location, localization }: PromptPa
       ? `The user's location is ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}.`
       : 'The user has not provided a location. Please ask the user for their location before using any location-based tools.',
 
-    `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.dateFormat}, ${localization.timeFormat}, ${localization.currency}. Always convert tool data to match these preferences.`,
+    `The user prefers ${localization.distanceUnit} for distance, ${localization.temperatureUnit} for temperature, ${localization.dateFormat} for dates, ${localization.timeFormat} for time, and ${localization.currency} for currency.`,
 
     // —— Instructions ——
     `**Using Tools:**`,

@@ -24,7 +24,7 @@ export const defaultAutomationDailyBrief: Prompt = {
 
 1. If you know my location, check today's weather for my location. I only need to know the weather for today. If not, skip this section.
 
-2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list.
+2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list. Do not include link previews.
 
 3. If you have access to email tools, check my inbox and give me a summary of what has come on over the last 24 hours, focusing on what looks most important. If not, skip this section.
 

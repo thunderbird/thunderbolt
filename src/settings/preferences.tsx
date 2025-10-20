@@ -1,14 +1,12 @@
 import { useCountryUnits } from '@/hooks/use-country-units'
-import { useDebounce } from '@/hooks/use-debounce'
+import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { trackEvent } from '@/lib/analytics'
-import { getCloudUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import type { CountryUnitsData } from '@/types'
-import ky from 'ky'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef, useState } from 'react'
 
@@ -36,42 +34,19 @@ import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
 import { usePostHog } from 'posthog-js/react'
 
-interface LocationData {
-  name: string
-  city: string
-  country: string
-  coordinates: {
-    lat: number
-    lng: number
-  }
-}
-
 type PreferencesState = {
-  open: boolean
-  searchQuery: string
-  locations: LocationData[]
-  isSearching: boolean
   isResetting: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
 
 type PreferencesAction =
-  | { type: 'SET_OPEN'; payload: boolean }
-  | { type: 'SET_SEARCH_QUERY'; payload: string }
-  | { type: 'SET_LOCATIONS'; payload: LocationData[] }
-  | { type: 'SET_IS_SEARCHING'; payload: boolean }
   | { type: 'SET_IS_RESETTING'; payload: boolean }
-  | { type: 'CLEAR_LOCATION_SEARCH' }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
 
 const initialState: PreferencesState = {
-  open: false,
-  searchQuery: '',
-  locations: [],
-  isSearching: false,
   isResetting: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
@@ -79,18 +54,8 @@ const initialState: PreferencesState = {
 
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
   switch (action.type) {
-    case 'SET_OPEN':
-      return { ...state, open: action.payload }
-    case 'SET_SEARCH_QUERY':
-      return { ...state, searchQuery: action.payload }
-    case 'SET_LOCATIONS':
-      return { ...state, locations: action.payload }
-    case 'SET_IS_SEARCHING':
-      return { ...state, isSearching: action.payload }
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
-    case 'CLEAR_LOCATION_SEARCH':
-      return { ...state, searchQuery: '', locations: [] }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -104,7 +69,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { open, searchQuery, locations, isSearching, isResetting, localizationDialogOpen, pendingCountryUnits } = state
+  const { isResetting, localizationDialogOpen, pendingCountryUnits } = state
+  const locationSearch = useLocationSearch()
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -195,63 +161,6 @@ export default function PreferencesSettingsPage() {
     }
   }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency])
 
-  // Debounce the search query
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-
-  // Search for locations when debounced query changes
-  useEffect(() => {
-    const searchLocations = async () => {
-      // Early return if search query is too short
-      if (debouncedSearchQuery.trim().length <= 1) {
-        dispatch({ type: 'SET_LOCATIONS', payload: [] })
-        return
-      }
-
-      dispatch({ type: 'SET_IS_SEARCHING', payload: true })
-      try {
-        const cloudUrl = await getCloudUrl()
-
-        if (!cloudUrl) {
-          console.error('Cloud URL not configured')
-          dispatch({ type: 'SET_LOCATIONS', payload: [] })
-          return
-        }
-
-        const data = await ky
-          .get(`${cloudUrl}/locations`, {
-            searchParams: { query: debouncedSearchQuery },
-          })
-          .json<
-            Array<{
-              name: string
-              region: string
-              country: string
-              lat: number
-              lon: number
-            }>
-          >()
-        // Transform the WeatherAPI response to match our LocationData interface
-        const transformedLocations: LocationData[] = data.map((location) => ({
-          name: `${location.name}, ${location.region}, ${location.country}`,
-          city: location.name,
-          country: location.country,
-          coordinates: {
-            lat: location.lat,
-            lng: location.lon,
-          },
-        }))
-        dispatch({ type: 'SET_LOCATIONS', payload: transformedLocations })
-      } catch (error) {
-        console.error('Error searching locations:', error)
-        dispatch({ type: 'SET_LOCATIONS', payload: [] })
-      } finally {
-        dispatch({ type: 'SET_IS_SEARCHING', payload: false })
-      }
-    }
-
-    searchLocations()
-  }, [debouncedSearchQuery])
-
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
     if (!value && experimentalFeatureTasks.value) {
@@ -288,7 +197,7 @@ export default function PreferencesSettingsPage() {
 
     // Get current country to compare
     const currentCountry = extractCountryFromLocation(locationName.value || '')
-    const newCountry = location.country
+    const newCountry = extractCountryFromLocation(location.name)
 
     await Promise.all([
       locationName.setValue(location.name),
@@ -296,14 +205,14 @@ export default function PreferencesSettingsPage() {
       locationLng.setValue(String(location.coordinates.lng)),
     ])
 
-    dispatch({ type: 'SET_OPEN', payload: false })
+    locationSearch.setOpen(false)
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
       location_name: location.name,
     })
 
     // If country changed, ask user if they want to update localization settings
-    if (currentCountry !== newCountry) {
+    if (newCountry && currentCountry !== newCountry) {
       const countryUnitsData = await fetchCountryUnits(newCountry)
       if (countryUnitsData) {
         dispatch({ type: 'OPEN_LOCALIZATION_DIALOG', payload: countryUnitsData })
@@ -453,11 +362,11 @@ export default function PreferencesSettingsPage() {
               Location
             </ModificationIndicator>
             <Popover
-              open={open}
+              open={locationSearch.open}
               onOpenChange={(newOpen) => {
-                dispatch({ type: 'SET_OPEN', payload: newOpen })
+                locationSearch.setOpen(newOpen)
                 if (!newOpen) {
-                  dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
+                  locationSearch.clearSearch()
                 }
               }}
             >
@@ -465,7 +374,7 @@ export default function PreferencesSettingsPage() {
                 <Button
                   variant="outline"
                   role="combobox"
-                  aria-expanded={open}
+                  aria-expanded={locationSearch.open}
                   className={cn('w-full justify-between', !locationName.value && 'text-muted-foreground')}
                 >
                   {locationName.value || 'Select location...'}
@@ -481,11 +390,11 @@ export default function PreferencesSettingsPage() {
                 <Command>
                   <CommandInput
                     placeholder="Search for locations..."
-                    value={searchQuery}
-                    onValueChange={(value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value })}
+                    value={locationSearch.searchQuery}
+                    onValueChange={locationSearch.setSearchQuery}
                   />
                   <CommandList>
-                    {searchQuery.trim().length > 0 && isSearching && (
+                    {locationSearch.searchQuery.trim().length > 0 && locationSearch.isSearching && (
                       <div className="py-6 text-center text-sm">
                         <div className="inline-flex items-center gap-2">
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
@@ -493,12 +402,12 @@ export default function PreferencesSettingsPage() {
                         </div>
                       </div>
                     )}
-                    {searchQuery.trim().length > 0 && !isSearching && locations.length === 0 && (
-                      <CommandEmpty>No locations found.</CommandEmpty>
-                    )}
-                    {!isSearching && locations.length > 0 && (
+                    {locationSearch.searchQuery.trim().length > 0 &&
+                      !locationSearch.isSearching &&
+                      locationSearch.locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
+                    {!locationSearch.isSearching && locationSearch.locations.length > 0 && (
                       <CommandGroup>
-                        {locations.map((location) => (
+                        {locationSearch.locations.map((location) => (
                           <CommandItem
                             key={`${location.coordinates.lat}-${location.coordinates.lng}`}
                             value={location.name}

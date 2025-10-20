@@ -2,11 +2,8 @@ import { Mail, Calendar, HardDrive } from 'lucide-react'
 import { OnboardingFooter } from './onboarding-footer'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
-import { useState } from 'react'
-import { updateSetting } from '@/dal'
-import { isTauri } from '@/lib/platform'
-import { startOAuthFlow, type OAuthProvider } from '@/lib/auth'
-import { startOAuthFlowWebview } from '@/lib/oauth-webview'
+import { type OAuthProvider } from '@/lib/auth'
+import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 
 type OnboardingAuthStepProps = {
   onNext: () => void
@@ -21,56 +18,20 @@ export default function OnboardingAuthStep({
   onBack,
   providers = ['google'],
 }: OnboardingAuthStepProps) {
-  // Keep the button always active per request; do not lock UI while waiting
-  const [error, setError] = useState<string | null>(null)
-
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
+
+  const { connect, error } = useOAuthConnect({
+    onSuccess: onNext,
+    setPreferredName: true,
+  })
 
   const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'
   const TopIcon = provider === 'microsoft' ? MicrosoftLogo : GoogleLogo
   const storageServiceName = provider === 'microsoft' ? 'OneDrive' : 'Google Drive'
   const storageFeatureTitle = provider === 'microsoft' ? 'OneDrive Access' : 'Drive Access'
 
-  const handleConnect = async () => {
-    setError(null)
-
-    try {
-      const result = isTauri() ? await startOAuthFlowWebview(provider) : await startOAuthFlow(provider)
-
-      if (!result) {
-        // User canceled in desktop flow
-        return
-      }
-
-      const { tokens, userInfo } = result
-
-      const credentials = {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token || '',
-        expires_at: Date.now() + tokens.expires_in * 1000,
-        profile: {
-          email: userInfo.email,
-          name: userInfo.name,
-        },
-      }
-
-      // Persist credentials and enable the integration
-      await updateSetting(`integrations_${provider}_credentials`, JSON.stringify(credentials))
-      await updateSetting(`integrations_${provider}_is_enabled`, 'true')
-
-      if (userInfo.name) {
-        await updateSetting('preferred_name', userInfo.name)
-      }
-
-      onNext()
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Failed to complete authentication'
-      setError(message)
-    } finally {
-      // Intentionally no UI disabling; nothing to reset here
-    }
-  }
+  const handleConnect = () => connect(provider)
 
   return (
     <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">

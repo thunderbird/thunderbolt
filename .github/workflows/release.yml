@@ -5,9 +5,7 @@ on:
   push:
     branches:
       - release
-      - 'ci-*' # Matches ci-test, ci-release-automation, etc.
-    tags:
-      - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.
+
   workflow_dispatch:
     inputs:
       version:
@@ -49,7 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}
-      is_tag: ${{ steps.extract.outputs.is_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -66,13 +63,11 @@ jobs:
             # Extract just the semver part (1.2.3)
             VERSION=$(echo $VERSION | sed 's/-.*$//')
             echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=true" >> $GITHUB_OUTPUT
             echo "📌 Tag version: $VERSION"
           else
             # Not a tag, get current version from package.json
             VERSION=$(node -p "require('./package.json').version")
             echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=false" >> $GITHUB_OUTPUT
             echo "📦 Current version: $VERSION"
           fi
 
@@ -131,26 +126,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.set_version.outputs.version }}
-      is_tag: ${{ steps.set_version.outputs.is_tag }}
 
     steps:
       - name: Set version output
         id: set_version
         run: |
           if [ "${{ needs.version_bump.result }}" == "success" ]; then
-            # Version bump workflow ran (workflow_dispatch)
             VERSION="${{ needs.version_bump.outputs.new_version }}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=true" >> $GITHUB_OUTPUT
             echo "📦 Using bumped version: $VERSION"
           else
-            # Validate version workflow ran (tag push)
             VERSION="${{ needs.validate_version.outputs.version }}"
-            IS_TAG="${{ needs.validate_version.outputs.is_tag }}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=$IS_TAG" >> $GITHUB_OUTPUT
-            echo "📦 Using validated version: $VERSION (is_tag: $IS_TAG)"
+            echo "📦 Using validated version: $VERSION"
           fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   desktop:
     name: Desktop Release

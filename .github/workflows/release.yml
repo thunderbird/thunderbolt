@@ -155,7 +155,7 @@ jobs:
   desktop:
     name: Desktop Release
     needs: determine_version
-    if: needs.determine_version.result == 'success' && needs.determine_version.outputs.is_tag == 'true'
+    if: needs.determine_version.result == 'success'
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
@@ -164,7 +164,7 @@ jobs:
   ios:
     name: iOS Release
     needs: determine_version
-    if: needs.determine_version.result == 'success' && needs.determine_version.outputs.is_tag == 'true'
+    if: needs.determine_version.result == 'success'
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
@@ -173,7 +173,7 @@ jobs:
   android:
     name: Android Release
     needs: determine_version
-    if: needs.determine_version.result == 'success' && needs.determine_version.outputs.is_tag == 'true'
+    if: needs.determine_version.result == 'success'
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:

@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useSettings } from '@/hooks/use-settings'
 import { useOnboardingNavigation, TOTAL_STEPS } from '@/hooks/use-onboarding-navigation'
 import OnboardingPrivacyStep from './onboarding-privacy-step'
-import OnboardingGoogleStep from './onboarding-google-step'
+import OnboardingAuthStep from './onboarding-auth-step'
 import OnboardingNameStep from './onboarding-name-step'
 import OnboardingLocationStep from './onboarding-location-step'
 import OnboardingCelebrationStep from './onboarding-celebration-step'
@@ -36,9 +36,7 @@ export default function OnboardingDialog() {
           <div className="flex-1 px-6 py-6 flex flex-col justify-center min-h-0">
             <div className="w-full max-w-md mx-auto space-y-4 sm:min-h-[500px] sm:flex sm:flex-col sm:justify-center overflow-x-hidden">
               {currentStep === 1 && <OnboardingPrivacyStep onNext={handleNext} />}
-              {currentStep === 2 && (
-                <OnboardingGoogleStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />
-              )}
+              {currentStep === 2 && <OnboardingAuthStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />}
               {currentStep === 3 && <OnboardingNameStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />}
               {currentStep === 4 && (
                 <OnboardingLocationStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />

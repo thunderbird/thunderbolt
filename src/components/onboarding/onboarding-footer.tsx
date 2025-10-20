@@ -21,7 +21,7 @@ export const OnboardingFooter = ({
   showSkip = true,
 }: OnboardingFooterProps) => {
   return (
-    <div className="flex items-center justify-between pt-6 px-2 py-1">
+    <div className="flex items-center justify-between pt-6 py-1">
       <div>
         {showBack && onBack && (
           <Button onClick={onBack} variant="ghost" size="sm">

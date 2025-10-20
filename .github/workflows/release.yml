@@ -4,6 +4,16 @@ run-name: Release triggered by ${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Platform for the release (all, ios, android, desktop)'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - ios
+          - android
+          - desktop
       version:
         description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
         required: false
@@ -32,14 +42,14 @@ jobs:
     uses: ./.github/workflows/version-bump.yml
     secrets: inherit
     with:
-      platform: 'all'
+      platform: ${{ inputs.platform }}
       version: ${{ inputs.version }}
       version_type: ${{ inputs.version_type }}
 
   desktop:
     name: Desktop Release
     needs: version_bump
-    if: needs.version_bump.result == 'success'
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop')
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
@@ -48,7 +58,7 @@ jobs:
   ios:
     name: iOS Release
     needs: version_bump
-    if: needs.version_bump.result == 'success'
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios')
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
@@ -57,7 +67,7 @@ jobs:
   android:
     name: Android Release
     needs: version_bump
-    if: needs.version_bump.result == 'success'
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android')
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:

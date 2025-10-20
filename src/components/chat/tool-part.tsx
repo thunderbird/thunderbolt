@@ -3,6 +3,7 @@ import { splitPartType } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import type { ToolUIPart } from 'ai'
 import { Check, Loader2, X } from 'lucide-react'
+import { memo } from 'react'
 import { Expandable } from '../ui/expandable'
 
 export type ToolPartProps = {
@@ -32,7 +33,7 @@ const getOutput = (part: ToolUIPart) => {
   }
 }
 
-export const ToolPart = ({ part }: ToolPartProps) => {
+export const ToolPart = memo(({ part }: ToolPartProps) => {
   const { type, input, state } = part
   const [, toolName] = splitPartType(type)
 
@@ -75,4 +76,4 @@ export const ToolPart = ({ part }: ToolPartProps) => {
       </div>
     </Expandable>
   )
-}
+})

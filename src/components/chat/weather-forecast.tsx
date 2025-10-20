@@ -62,7 +62,7 @@ export const WeatherForecast = ({ location, days = [], temperature_unit }: Weath
               className={cn(
                 'items-center flex flex-row md:flex-col justify-between px-6 md:px-0 md:justify-center gap-1 py-6 cursor-pointer',
                 dayIndex > 0 ? 'border-t border-t-border border-l-0 md:border-t-0 md:border-l md:border-l-border' : '',
-                dayIndex === selectedDayIndex ? 'bg-accent' : '',
+                dayIndex === selectedDayIndex ? 'bg-secondary/60 dark:bg-secondary/40' : '',
               )}
               key={day.date}
               onClick={() => setSelectedDayIndex(dayIndex)}

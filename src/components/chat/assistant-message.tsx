@@ -1,21 +1,18 @@
-import {
-  filterMessageParts,
-  type GroupableUIPart,
-  type GroupedUIPart,
-  groupToolParts,
-  type ToolGroupUIPart,
-} from '@/lib/assistant-message'
+import { parseContentParts } from '@/ai/visual-parser'
+import { filterMessageParts, type GroupableUIPart, groupToolParts, type ToolGroupUIPart } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
-import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
-import { memo, type ReactNode } from 'react'
-import { DisplayToolHandler } from './display-tool-handler'
+import type { ThunderboltUIMessage } from '@/types'
+import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
+import { memo, type ReactNode, useMemo } from 'react'
 import { ReasoningPart } from './reasoning-part'
+import { StreamingMarkdown } from './streaming-markdown'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
-import { TextPart } from './text-part'
 import { ToolGroup } from './tool-group'
+import { ToolPart } from './tool-part'
+import { VisualRenderer } from './visual-renderer'
 
 interface AssistantMessageProps {
-  message: UIMessage
+  message: ThunderboltUIMessage
   isStreaming: boolean
 }
 
@@ -23,35 +20,28 @@ interface AssistantMessageProps {
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
 
 /**
- * Converts grouped message parts into React elements for rendering.
- * Handles different part types (reasoning, tools, text) and manages loading states.
- * @internal - Exported for testing only
+ * Mounts message parts into React elements
  */
-export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean) => {
-  const partElements: ReactNode[] = []
+export const mountMessageParts = (
+  groupedParts: (ReasoningUIPart | TextUIPart | ToolUIPart | ToolGroupUIPart)[],
+  isStreaming: boolean,
+): ReactNode[] => {
+  const elements: ReactNode[] = []
 
-  if (groupedParts.length === 0) {
-    // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming={true} />)
-  }
-
-  const hasTextPart = groupedParts.some((part) => {
+  groupedParts.forEach((part, partIndex) => {
     const [partType] = splitPartType(part.type)
-    return partType === 'text'
-  })
-
-  groupedParts.forEach((part, index) => {
-    const [partType] = splitPartType(part.type)
-    const isLastPart = index === groupedParts.length - 1
 
     switch (partType) {
       case 'reasoning':
-        partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
+        elements.push(<ReasoningPart key={`reasoning-${partIndex}`} part={part as ReasoningUIPart} />)
         break
       case 'group_tools': {
         const toolGroup = part as ToolGroupUIPart
-        partElements.push(
+        const hasTextPart = groupedParts.some((p) => splitPartType(p.type)[0] === 'text')
+        const isLastPart = partIndex === groupedParts.length - 1
+        elements.push(
           <ToolGroup
+            key={`tools-${partIndex}`}
             tools={toolGroup.tools}
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
@@ -61,15 +51,45 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
         break
       }
       case 'tool':
-        partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
+        elements.push(<ToolPart key={`tool-${partIndex}`} part={part as ToolUIPart} />)
         break
-      case 'text':
-        partElements.push(<TextPart part={part as TextUIPart} />)
+      case 'text': {
+        const textPart = part as TextUIPart
+        if (textPart.text) {
+          // Parse the text into content parts (text + visuals in order)
+          const contentParts = parseContentParts(textPart.text)
+
+          contentParts.forEach((contentPart, contentIndex) => {
+            if (contentPart.type === 'text') {
+              elements.push(
+                <div key={`text-${partIndex}-${contentIndex}`} className="p-4 rounded-md mr-auto w-full my-2">
+                  <StreamingMarkdown
+                    content={contentPart.content}
+                    isStreaming={textPart.state === 'streaming'}
+                    className="text-secondary-foreground leading-relaxed"
+                  />
+                </div>,
+              )
+            } else {
+              elements.push(
+                <div key={`visual-${partIndex}-${contentIndex}`} className={animationClasses}>
+                  <VisualRenderer visual={contentPart.visual} />
+                </div>,
+              )
+            }
+          })
+        }
         break
+      }
     }
   })
 
-  return partElements
+  // Show loading indicator if no parts yet
+  if (elements.length === 0) {
+    elements.push(<SyntheticLoadingPart key="loading" isStreaming={true} />)
+  }
+
+  return elements
 }
 
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
@@ -77,15 +97,16 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
 
   const groupedParts = groupToolParts(filteredParts)
 
-  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming)
+  // Build elements preserving the order of text and visuals
+  const allElements = useMemo(() => mountMessageParts(groupedParts, isStreaming), [groupedParts, isStreaming])
 
   return (
     <div>
-      {partElements.map((partElement, index) => (
-        // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
+      {allElements.map((element, index) => (
+        // Skip the animation on the *second* (index === 1) element so that it replaces the loading part *in-place* without an animation
         // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
         <div key={index} className={index === 1 ? '' : animationClasses}>
-          {partElement}
+          {element}
         </div>
       ))}
     </div>

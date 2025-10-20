@@ -87,7 +87,7 @@ export const defaultSettingLocationLng: Setting = {
 
 export const defaultSettingCloudUrl: Setting = {
   key: 'cloud_url',
-  value: null,
+  value: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
   updatedAt: null,
   defaultHash: null,
 }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
+import { describe, expect, it } from 'bun:test'
 import { filterMessageParts, groupToolParts } from './assistant-message'
 
 const createToolPart = (toolName: string): ToolUIPart =>

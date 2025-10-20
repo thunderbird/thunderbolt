@@ -114,7 +114,7 @@ export const OnboardingLocationStepWrapper = ({ onNext, onSkip, onBack }: Onboar
     }
   }, [])
 
-  const onSubmit = async (values: LocationFormData) => {
+  const onSubmit = async () => {
     setIsSubmitting(true)
     // Simulate saving
     await new Promise((resolve) => setTimeout(resolve, 1000))

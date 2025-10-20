@@ -36,7 +36,7 @@ export const OnboardingNameStepWrapper = ({ onNext, onSkip, onBack }: Onboarding
     }
   }, [])
 
-  const onSubmit = async (values: NameFormData) => {
+  const onSubmit = async () => {
     setIsSubmitting(true)
     // Simulate saving
     await new Promise((resolve) => setTimeout(resolve, 500))

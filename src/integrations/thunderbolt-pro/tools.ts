@@ -229,7 +229,9 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
 export const configs: ToolConfig[] = [
   {
     name: 'search',
-    description: 'Search the web and return relevant results.',
+    description: `Search the web and return relevant results.
+
+If the user's query is exploratory/recommendation-oriented (e.g., "top", "best", "recommend", "what to eat/do/buy", "where to", "resources for", "compare"), then after selecting the top sources you should render 1–3 previews using display-link_preview (unless the user asked for a compiled artifact like a brief/report).`,
     verb: 'searching for {query}',
     parameters: searchSchema,
     execute: search,
@@ -292,7 +294,16 @@ Use this tool whenever the user asks for a forecast that spans more than one day
   {
     name: 'display-link_preview',
     description: `Render the custom link preview component in the UI for one or more relevant webpages.
-Use this tool to visually display the title, description, and image for selected URLs after their content has been fetched.`,
+
+Primary use: Proactively enhance UX during exploratory research and source discovery (e.g., "research X", finding resources, product comparisons), where visually scanning sources is beneficial.
+
+Avoid: Compiled or automation outputs (daily briefs, reports, long-form docs, outlines, summaries) where the primary deliverable is text. Use plain links/citations instead.
+
+Guidelines:
+- Provide 1–3 highly relevant, de-duplicated URLs (ranked). Call this tool once per selected URL.
+- Prefer URLs whose content you have already fetched/validated.
+- Avoid duplicating the same list in text; optionally add one-line context per preview.
+- If the user asked for an answer plus sources, default to text with inline links; render previews only when browsing is clearly helpful.`,
     verb: 'Display link preview for {url}',
     parameters: linkPreviewSchema,
     execute: async (params: LinkPreviewParams) => params,

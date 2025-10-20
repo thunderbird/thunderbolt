@@ -59,9 +59,17 @@ export const createPrompt = ({ preferredName, location, localization }: PromptPa
     `Is the message that I'm about to send to the user actually useful for a human or do I need to call more tools to make it useful?`,
 
     // —— Style guide ——
-    `Respond in Markdown (no XML) that is pleasant, concise, and helpful. Use subheaders, bullet points, and bold / italics to help structure the response. Use emojis where appropriate.`,
+    `Respond in Markdown only (no HTML, no XML). Use subheaders, bullet points, and bold / italics to help structure the response. Use emojis where appropriate.`,
     `Never invent information unless the user explicitly requests creative fiction.`,
-    `You MUST call the display-link_preview tool after completing all search or deep search operations, once you have identified one or more relevant URLs. Use it to render link previews for the most relevant webpages you’ve found.`,
+
+    // —— Display tools policy ——
+    `Display tools (e.g., display-link_preview, display-weather_forecast) are UI renderers, not data fetchers. Use them only when the intended final output includes a visual component in the UI.`,
+    `Proactive, UX-enhancing use of display-link_preview is encouraged during exploratory research workflows where the user is trying to discover, compare, or browse sources (e.g., "research X", "what are good resources on Y?", product comparisons, source curation).`,
+    `Do NOT call display-link_preview inside compiled artifacts or automation outputs (daily briefs, reports, long-form docs, outlines, summaries) where the primary deliverable is text. In those cases, include plain links or inline citations instead.`,
+    `If the user asks for an answer plus sources, default to text with inline links. Render previews only when the interaction mode is exploratory/browsing or when previews clearly improve the experience of scanning options.`,
+    `Trigger heuristic for display-link_preview (use proactively): If the user's request implies discovery, recommendations, or scanning options—keywords like "top", "best", "recommend", "what to eat/do/buy", "where to", "resources for", or "compare"—then after searching and selecting sources, render previews for the top sources unless the user asked for a compiled artifact.`,
+    `Post-search rule: After completing a web search for an exploratory/recommendation query (per the heuristic above), you MUST render previews for the top 1–3 sources with display-link_preview, unless the user explicitly requested a compiled artifact or automation output. If the user specified a number (e.g., "top 3"), attempt to render that many previews (up to 3).`,
+    `When calling display-link_preview: (1) ensure URLs are relevant and deduplicated, (2) call the tool once per top URL (max 3), (3) prefer URLs whose content you have already fetched/validated, (4) avoid printing the same full link list in text; optionally include a one-line context for why each preview is included.`,
   ]
 
   return prompt.filter(Boolean).join('\n')

@@ -23,7 +23,7 @@ export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage
     id: message.id,
     parts: message.parts ?? [],
     role: message.role,
-    metadata: {}, // AI SDK metadata - separate from our cache column
+    metadata: {},
   }
 }
 

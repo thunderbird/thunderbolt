@@ -7,7 +7,7 @@ type OnboardingPrivacyStepProps = {
   onNext: () => void
 }
 
-export default function OnboardingPrivacyStep({ onNext }: OnboardingPrivacyStepProps) {
+export const OnboardingPrivacyStep = ({ onNext }: OnboardingPrivacyStepProps) => {
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   return (

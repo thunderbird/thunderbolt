@@ -20,7 +20,7 @@ type OnboardingNameStepProps = {
   onBack: () => void
 }
 
-export default function OnboardingNameStep({ onNext, onSkip, onBack }: OnboardingNameStepProps) {
+export const OnboardingNameStep = ({ onNext, onSkip, onBack }: OnboardingNameStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { preferredName } = useSettings({

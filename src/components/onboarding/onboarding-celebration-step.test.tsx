@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getSettings } from '@/dal/settings'
-import OnboardingCelebrationStep from './onboarding-celebration-step'
+import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 
 beforeAll(async () => {

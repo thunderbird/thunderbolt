@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { act } from 'react'
 import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
 import '@testing-library/jest-dom'
-import OnboardingNameStep from './onboarding-name-step'
+import { OnboardingNameStep } from './onboarding-name-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 

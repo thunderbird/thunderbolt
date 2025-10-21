@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getSettings } from '@/dal/settings'
-import OnboardingAuthStep from './onboarding-auth-step'
+import { OnboardingAuthStep } from './onboarding-auth-step'
 import { mockOAuthSuccess } from '@/test-utils/oauth'
 
 // Mock external dependencies

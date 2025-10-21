@@ -41,7 +41,7 @@ type OnboardingLocationStepProps = {
   onBack: () => void
 }
 
-export default function OnboardingLocationStep({ onNext, onSkip, onBack }: OnboardingLocationStepProps) {
+export const OnboardingLocationStep = ({ onNext, onSkip, onBack }: OnboardingLocationStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const locationSearch = useLocationSearch()
   const { fetchCountryUnits } = useCountryUnits()

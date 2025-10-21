@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useSettings } from '@/hooks/use-settings'
 import { useOnboardingNavigation, TOTAL_STEPS } from '@/hooks/use-onboarding-navigation'
-import OnboardingPrivacyStep from './onboarding-privacy-step'
-import OnboardingAuthStep from './onboarding-auth-step'
-import OnboardingNameStep from './onboarding-name-step'
-import OnboardingLocationStep from './onboarding-location-step'
-import OnboardingCelebrationStep from './onboarding-celebration-step'
+import { OnboardingPrivacyStep } from './onboarding-privacy-step'
+import { OnboardingAuthStep } from './onboarding-auth-step'
+import { OnboardingNameStep } from './onboarding-name-step'
+import { OnboardingLocationStep } from './onboarding-location-step'
+import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { StepIndicators } from './step-indicators'
 import { useLocation, useNavigate } from 'react-router'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
@@ -19,7 +19,7 @@ type LocationState = {
   }
 }
 
-export default function OnboardingDialog() {
+export const OnboardingDialog = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { userHasCompletedOnboarding } = useSettings({

@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { act } from 'react'
 import { vi, describe, it, beforeEach, expect } from 'vitest'
 import '@testing-library/jest-dom'
-import OnboardingPrivacyStep from './onboarding-privacy-step'
+import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 
 describe('OnboardingPrivacyStep', () => {
   const defaultProps = {

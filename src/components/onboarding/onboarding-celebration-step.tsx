@@ -7,7 +7,7 @@ type OnboardingCelebrationStepProps = {
   onComplete: () => void
 }
 
-export default function OnboardingCelebrationStep({ onComplete }: OnboardingCelebrationStepProps) {
+export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationStepProps) => {
   const [isCompleting, setIsCompleting] = useState(false)
   const { userHasCompletedOnboarding, onboardingCurrentStep } = useSettings({
     user_has_completed_onboarding: false,

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { render, waitFor } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import OnboardingDialog from './onboarding-dialog'
+import { OnboardingDialog } from './onboarding-dialog'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 
 // Mock React Router

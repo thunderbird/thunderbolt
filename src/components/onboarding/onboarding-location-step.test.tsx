@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import OnboardingLocationStep from './onboarding-location-step'
+import { OnboardingLocationStep } from './onboarding-location-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 
 // Mock external dependencies

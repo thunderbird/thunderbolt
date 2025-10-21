@@ -14,13 +14,13 @@ type OnboardingAuthStepProps = {
   isProcessing?: boolean
 }
 
-export default function OnboardingAuthStep({
+export const OnboardingAuthStep = ({
   onNext,
   onSkip,
   onBack,
   providers = ['google'],
   isProcessing = false,
-}: OnboardingAuthStepProps) {
+}: OnboardingAuthStepProps) => {
   const [isConnecting, setIsConnecting] = useState(false)
 
   // Determine which provider to use for this step (first in list)

@@ -85,7 +85,7 @@ const SidebarProvider = forwardRef<
     },
     ref,
   ) => {
-    const isMobile = useIsMobile()
+    const { isMobile } = useIsMobile()
     //* new state for sidebar width
     const [width, setWidth] = useState(defaultWidth)
     const [openMobile, setOpenMobile] = useState(false)

@@ -78,7 +78,7 @@ export default function ChatUI({
   const formRef = useRef<HTMLFormElement>(null)
   const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const navigate = useNavigate()
-  const isMobile = useIsMobile()
+  const { isMobile, isReady } = useIsMobile()
 
   const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
 
@@ -187,6 +187,10 @@ export default function ChatUI({
       </motion.div>
     </AnimatePresence>
   )
+
+  if (!isReady) {
+    return null
+  }
 
   return (
     <div

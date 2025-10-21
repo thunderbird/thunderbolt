@@ -16,7 +16,7 @@ type SidebarHeaderProps = {
 }
 
 export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
   const { state } = useSidebar()
   const [showExpandButton, setShowExpandButton] = useState(false)
 

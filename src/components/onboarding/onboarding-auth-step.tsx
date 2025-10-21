@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Mail, Calendar, HardDrive } from 'lucide-react'
 import { OnboardingFooter } from './onboarding-footer'
 import { GoogleLogo } from '@/components/ui/google-logo'
@@ -10,6 +11,7 @@ type OnboardingAuthStepProps = {
   onSkip: () => void
   onBack: () => void
   providers?: OAuthProvider[]
+  isProcessing?: boolean
 }
 
 export default function OnboardingAuthStep({
@@ -17,13 +19,17 @@ export default function OnboardingAuthStep({
   onSkip,
   onBack,
   providers = ['google'],
+  isProcessing = false,
 }: OnboardingAuthStepProps) {
+  const [isConnecting, setIsConnecting] = useState(false)
+
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
 
-  const { connect, error } = useOAuthConnect({
+  const { connect } = useOAuthConnect({
     onSuccess: onNext,
     setPreferredName: true,
+    returnContext: 'onboarding',
   })
 
   const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'
@@ -31,7 +37,12 @@ export default function OnboardingAuthStep({
   const storageServiceName = provider === 'microsoft' ? 'OneDrive' : 'Google Drive'
   const storageFeatureTitle = provider === 'microsoft' ? 'OneDrive Access' : 'Drive Access'
 
-  const handleConnect = () => connect(provider)
+  const handleConnect = () => {
+    setIsConnecting(true)
+    connect(provider)
+  }
+
+  const isLoading = isProcessing || isConnecting
 
   return (
     <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
@@ -81,14 +92,9 @@ export default function OnboardingAuthStep({
         onBack={onBack}
         onSkip={onSkip}
         onContinue={handleConnect}
-        continueText={`Connect ${providerName} Account`}
-        continueDisabled={false}
+        continueText={isLoading ? 'Connecting...' : `Connect ${providerName} Account`}
+        continueDisabled={isLoading}
       />
-      {error && (
-        <div className="px-2 pt-2">
-          <p className="text-sm text-destructive text-center">{error}</p>
-        </div>
-      )}
     </div>
   )
 }

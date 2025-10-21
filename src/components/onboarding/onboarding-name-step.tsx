@@ -40,6 +40,12 @@ export default function OnboardingNameStep({ onNext, onSkip, onBack }: Onboardin
     }
   }, [])
 
+  useEffect(() => {
+    if (preferredName.value && !preferredName.isLoading) {
+      form.setValue('preferredName', preferredName.value)
+    }
+  }, [preferredName.value, preferredName.isLoading, form])
+
   const onSubmit = async (values: NameFormData) => {
     setIsSubmitting(true)
     await preferredName.setValue(values.preferredName)

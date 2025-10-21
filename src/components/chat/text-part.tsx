@@ -1,8 +1,8 @@
-import { parseContentParts } from '@/ai/visual-parser'
+import { parseContentParts } from '@/ai/widget-parser'
 import { type TextUIPart } from 'ai'
 import { memo } from 'react'
 import { StreamingMarkdown } from './streaming-markdown'
-import { VisualRenderer } from './visual-renderer'
+import { WidgetRenderer } from './widget-renderer'
 
 interface TextPartProps {
   part: TextUIPart
@@ -32,8 +32,8 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
           )
         }
         return (
-          <div key={`visual-${index}`} className={animationClasses}>
-            <VisualRenderer visual={contentPart.visual} messageId={messageId} />
+          <div key={`widget-${index}`} className={animationClasses}>
+            <WidgetRenderer widget={contentPart.widget} messageId={messageId} />
           </div>
         )
       })}

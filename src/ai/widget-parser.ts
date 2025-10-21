@@ -1,18 +1,18 @@
-import type { Visual } from './visual-types'
+import type { Widget } from './widget-types'
 
-export type ContentPart = { type: 'text'; content: string } | { type: 'visual'; visual: Visual }
+export type ContentPart = { type: 'text'; content: string } | { type: 'widget'; widget: Widget }
 
 /**
- * Defines how to parse and validate a specific visual type
+ * Defines how to parse and validate a specific widget type
  */
-type VisualSpec = {
+type WidgetSpec = {
   tagName: string
-  parse: (attrs: Record<string, string>) => Visual | null
+  parse: (attrs: Record<string, string>) => Widget | null
 }
 
 /**
- * Registry of all supported visual types
- * To add a new visual type, just add a new spec to this array
+ * Registry of all supported widget types
+ * To add a new widget type, just add a new spec to this array
  *
  * Example:
  * {
@@ -20,7 +20,7 @@ type VisualSpec = {
  *   parse: (attrs) => {
  *     if (!attrs.symbol || !attrs.range) return null
  *     return {
- *       visual: 'stock-chart',
+ *       widget: 'stock-chart',
  *       args: {
  *         symbol: attrs.symbol.toUpperCase(),
  *         range: attrs.range,
@@ -30,7 +30,7 @@ type VisualSpec = {
  *   },
  * }
  */
-const visualSpecs: VisualSpec[] = [
+const widgetSpecs: WidgetSpec[] = [
   {
     tagName: 'weather-forecast',
     parse: (attrs) => {
@@ -38,7 +38,7 @@ const visualSpecs: VisualSpec[] = [
         return null
       }
       return {
-        visual: 'weather-forecast',
+        widget: 'weather-forecast',
         args: {
           location: attrs.location,
           region: attrs.region,
@@ -54,7 +54,7 @@ const visualSpecs: VisualSpec[] = [
         return null
       }
       return {
-        visual: 'link-preview',
+        widget: 'link-preview',
         args: {
           url: attrs.url,
         },
@@ -64,7 +64,7 @@ const visualSpecs: VisualSpec[] = [
 ]
 
 /**
- * Parses attributes from a visual tag's attribute string
+ * Parses attributes from a widget tag's attribute string
  * Example: 'location="Seattle" region="WA"' -> { location: 'Seattle', region: 'WA' }
  */
 const parseAttributes = (attributesStr: string): Record<string, string> => {
@@ -80,12 +80,17 @@ const parseAttributes = (attributesStr: string): Record<string, string> => {
 }
 
 /**
- * Creates a Visual object from tag name and attributes using the registry
+ * Creates a Widget object from namespaced tag name and attributes using the registry
  */
-const createVisual = (tagName: string, attrs: Record<string, string>): Visual | null => {
+const createWidget = (tagName: string, attrs: Record<string, string>): Widget | null => {
   const normalizedTagName = tagName.toLowerCase()
 
-  const spec = visualSpecs.find((s) => s.tagName === normalizedTagName)
+  const [namespace, componentName] = normalizedTagName.split(':')
+  if (namespace !== 'widget' || !componentName) {
+    return null
+  }
+
+  const spec = widgetSpecs.find((s) => s.tagName === componentName)
   if (!spec) {
     return null
   }
@@ -94,30 +99,30 @@ const createVisual = (tagName: string, attrs: Record<string, string>): Visual | 
 }
 
 /**
- * Parses custom visual tags from text and returns an ordered array of text and visual parts
- * This preserves the position where the LLM placed the visuals in the response
+ * Parses custom widget tags from text and returns an ordered array of text and widget parts
+ * This preserves the position where the LLM placed the widgets in the response
  *
- * Format: <visual-name attr="value" attr2="value2" />
- * Example: <weather-forecast location="Seattle" region="Washington" country="USA" />
+ * Format: <namespace:widget-name attr="value" attr2="value2" />
+ * Example: <widget:weather-forecast location="Seattle" region="Washington" country="USA" />
  */
 export const parseContentParts = (text: string): ContentPart[] => {
   const parts: ContentPart[] = []
 
-  // Match any self-closing tag with kebab-case naming
-  // Captures: tagName and attributes
-  const visualTagRegex = /<([a-z][a-z0-9-]*)\s+((?:[^/]|\/(?!>))+)\/>/gi
+  // Match any self-closing namespaced tag like widget:link-preview
+  // Captures: namespacedTagName and attributes
+  const widgetTagRegex = /<([a-z][a-z0-9-]*:[a-z][a-z0-9-]*)\s+((?:[^\/]|\/(?!>))+)\/>/gi
 
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  // Process each visual tag sequentially
-  while ((match = visualTagRegex.exec(text)) !== null) {
+  // Process each widget tag sequentially
+  while ((match = widgetTagRegex.exec(text)) !== null) {
     const matchIndex = match.index
     const fullTag = match[0]
     const tagName = match[1]
     const attributesStr = match[2]
 
-    // Add text before this visual if there is any
+    // Add text before this widget if there is any
     if (matchIndex > lastIndex) {
       const textBefore = text.slice(lastIndex, matchIndex).trim()
       if (textBefore) {
@@ -125,12 +130,12 @@ export const parseContentParts = (text: string): ContentPart[] => {
       }
     }
 
-    // Parse and create the visual
+    // Parse and create the widget
     const attrs = parseAttributes(attributesStr)
-    const visual = createVisual(tagName, attrs)
+    const widget = createWidget(tagName, attrs)
 
-    if (visual) {
-      parts.push({ type: 'visual', visual })
+    if (widget) {
+      parts.push({ type: 'widget', widget })
     }
 
     lastIndex = matchIndex + fullTag.length
@@ -140,10 +145,10 @@ export const parseContentParts = (text: string): ContentPart[] => {
   if (lastIndex < text.length) {
     let textAfter = text.slice(lastIndex).trim()
 
-    // Remove incomplete visual tags at the end (for streaming)
-    const incompleteVisualTagMatch = textAfter.match(/<[a-z][a-z0-9-]*(?:\s+[^>]*)?$/)
-    if (incompleteVisualTagMatch) {
-      textAfter = textAfter.slice(0, incompleteVisualTagMatch.index).trim()
+    // Remove incomplete widget tags at the end (for streaming)
+    const incompleteWidgetTagMatch = textAfter.match(/<[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)?(?:\s+[^>]*)?$/)
+    if (incompleteWidgetTagMatch) {
+      textAfter = textAfter.slice(0, incompleteWidgetTagMatch.index).trim()
     }
 
     if (textAfter) {

@@ -1,8 +1,8 @@
-import { LinkPreview, LinkPreviewSkeleton } from '@/components/chat/link-preview'
+import { LinkPreview, LinkPreviewSkeleton } from '@/components/widgets/link-preview'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/chat/link-preview',
+  title: 'components/widgets/link-preview',
   component: LinkPreview,
   parameters: {
     layout: 'centered',

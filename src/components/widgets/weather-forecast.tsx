@@ -2,9 +2,9 @@ import { useMessageCache } from '@/hooks/use-message-cache'
 import { getWeatherForecast } from '@/integrations/thunderbolt-pro/api'
 import { type WeatherForecastData } from '@/lib/weather-forecast'
 import { Skeleton } from '../ui/skeleton'
-import { WeatherForecast } from './weather-forecast'
+import { WeatherForecast } from '../chat/weather-forecast'
 
-type WeatherForecastVisualProps = {
+type WeatherForecastWidgetProps = {
   location: string
   region: string
   country: string
@@ -15,7 +15,7 @@ type WeatherForecastVisualProps = {
  * Wrapper component that fetches weather data and renders the WeatherForecast component
  * Always fetches 7 days of weather data
  */
-export const WeatherForecastVisual = ({ location, region, country, messageId }: WeatherForecastVisualProps) => {
+export const WeatherForecastWidget = ({ location, region, country, messageId }: WeatherForecastWidgetProps) => {
   const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
     messageId,
     cacheKey: ['weatherForecast', location, region, country],

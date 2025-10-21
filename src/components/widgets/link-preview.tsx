@@ -13,7 +13,7 @@ type LinkPreviewProps = {
   image: string | null
 }
 
-type LinkPreviewVisualProps = {
+type LinkPreviewWidgetProps = {
   url: string
   messageId: string
 }
@@ -38,7 +38,7 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
-export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) => {
+export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) => {
   const { cloudUrl } = useSettings({ cloud_url: String })
 
   // Use message cache hook - it handles checking cache and fetching if needed

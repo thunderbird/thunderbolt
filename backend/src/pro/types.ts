@@ -101,3 +101,17 @@ export const locationSearchResponseSchema = baseApiResponseSchema(z.string())
 
 export type LocationSearchRequest = z.infer<typeof locationSearchRequestSchema>
 export type LocationSearchResponse = z.infer<typeof locationSearchResponseSchema>
+
+/**
+ * Link preview request/response schemas
+ */
+export const linkPreviewDataSchema = z.object({
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  image: z.string().nullable(),
+})
+
+export const linkPreviewResponseSchema = baseApiResponseSchema(linkPreviewDataSchema)
+
+export type LinkPreviewData = z.infer<typeof linkPreviewDataSchema>
+export type LinkPreviewResponse = z.infer<typeof linkPreviewResponseSchema>

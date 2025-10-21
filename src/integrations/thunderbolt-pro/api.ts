@@ -22,6 +22,12 @@ export const fetchContentSchema = z
   })
   .strict()
 
+export const linkPreviewSchema = z
+  .object({
+    url: z.string().describe('URL to fetch preview metadata from'),
+  })
+  .strict()
+
 export const searchLocationSchema = z
   .object({
     query: z.string().describe('The location name to search for'),
@@ -43,6 +49,7 @@ export const weatherSchema = z
 
 export type SearchParams = z.infer<typeof searchSchema>
 export type FetchContentParams = z.infer<typeof fetchContentSchema>
+export type LinkPreviewParams = z.infer<typeof linkPreviewSchema>
 export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
@@ -72,6 +79,12 @@ export type FetchContentData = {
   author: string | null
   published_date: string | null
 } | null
+
+export type LinkPreviewData = {
+  title: string | null
+  description: string | null
+  image: string | null
+}
 
 /**
  * Search the web and return structured results with summaries and highlights
@@ -121,6 +134,28 @@ export const fetchContent = async (params: FetchContentParams): Promise<FetchCon
   } catch (error) {
     console.error('Fetch content error:', error)
     throw new Error(`Fetch content failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Fetch link preview metadata (title, description, image) from a URL
+ */
+export const fetchLinkPreview = async (params: LinkPreviewParams): Promise<LinkPreviewData> => {
+  try {
+    const cloudUrl = await getCloudUrl()
+    const response = await ky
+      .get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`, {
+        timeout: requestTimeout,
+      })
+      .json<{ data: LinkPreviewData | null; success: boolean; error?: string }>()
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Link preview failed')
+    }
+    return response.data
+  } catch (error) {
+    console.error('Link preview error:', error)
+    throw new Error(`Link preview failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 

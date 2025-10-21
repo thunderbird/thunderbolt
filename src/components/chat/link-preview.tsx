@@ -1,6 +1,6 @@
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
-import { fetchContent } from '@/integrations/thunderbolt-pro/api'
+import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
@@ -46,11 +46,11 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
     messageId,
     cacheKey: `linkPreviews.${url}`,
     fetchFn: async () => {
-      const content = await fetchContent({ url })
+      const preview = await fetchLinkPreview({ url })
       return {
-        title: content?.title || url,
-        description: content?.text || '',
-        image: content?.image || null,
+        title: preview.title || url,
+        description: preview.description || '',
+        image: preview.image,
       }
     },
   })

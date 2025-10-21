@@ -1,9 +1,8 @@
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
-import type { UIMessage } from 'ai'
+import type { UIDataTypes, UIMessage, UITools } from 'ai'
 import type { InferSelectModel } from 'drizzle-orm'
-import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type {
   chatMessagesTable,
@@ -15,6 +14,7 @@ import type {
   tasksTable,
   triggersTable,
 } from './db/tables'
+import { type PostHog } from 'posthog-js'
 
 export type InitData = {
   tray: TrayIcon | undefined
@@ -24,7 +24,7 @@ export type InitData = {
   posthogClient: PostHog | null
 }
 
-export type ThunderboltUIMessage = UIMessage<UIMessageMetadata>
+export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
 
@@ -63,7 +63,7 @@ export type AuthProviderBackendConfig = {
 }
 
 // Re-export types from schemas to maintain backward compatibility
-export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'
+export type { DateFormat, Currency, TemperatureUnit, UnitsOptionsData, CountryUnitsData } from './schemas/api'
 
 export type PreferencesSettings = {
   locationName: string

@@ -1,7 +1,7 @@
 import type { ToolConfig } from '@/types'
-import { Calendar, CloudSun, FileText, FolderSearch, Globe, Inbox, Mail, MailSearch, Search } from 'lucide-react'
 import { memoize } from './memoize'
 import { getAvailableTools } from './tools'
+import { Calendar, CloudSun, FileText, FolderSearch, Globe, Inbox, Mail, MailSearch, Search } from 'lucide-react'
 
 export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communication' | 'weather' | 'unknown'
 
@@ -151,6 +151,7 @@ const generateLoadingMessage = (toolName: string, category: ToolCategory, input?
 const getToolIcon = (toolName: string) => {
   switch (toolName) {
     case 'get_current_weather':
+    case 'get_weather_forecast':
       return CloudSun
 
     case 'search':

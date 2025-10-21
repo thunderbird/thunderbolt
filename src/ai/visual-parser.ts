@@ -34,7 +34,7 @@ const visualSpecs: VisualSpec[] = [
   {
     tagName: 'weather-forecast',
     parse: (attrs) => {
-      if (!attrs.location || !attrs.region || !attrs.country || !attrs.days) {
+      if (!attrs.location || !attrs.region || !attrs.country) {
         return null
       }
       return {
@@ -43,7 +43,6 @@ const visualSpecs: VisualSpec[] = [
           location: attrs.location,
           region: attrs.region,
           country: attrs.country,
-          days: parseInt(attrs.days, 10) || 7,
         },
       }
     },
@@ -99,7 +98,7 @@ const createVisual = (tagName: string, attrs: Record<string, string>): Visual | 
  * This preserves the position where the LLM placed the visuals in the response
  *
  * Format: <visual-name attr="value" attr2="value2" />
- * Example: <weather-forecast location="Seattle" region="Washington" country="USA" days="7" />
+ * Example: <weather-forecast location="Seattle" region="Washington" country="USA" />
  */
 export const parseContentParts = (text: string): ContentPart[] => {
   const parts: ContentPart[] = []

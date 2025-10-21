@@ -27,7 +27,7 @@ describe('parseContentParts', () => {
 
   describe('weather forecast visuals', () => {
     it('parses single weather forecast visual', () => {
-      const text = '<weather-forecast location="Seattle" region="WA" country="USA" days="7" />'
+      const text = '<weather-forecast location="Seattle" region="WA" country="USA" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -39,7 +39,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -47,7 +46,7 @@ describe('parseContentParts', () => {
     })
 
     it('parses weather forecast with text before', () => {
-      const text = 'Here is the weather: <weather-forecast location="Seattle" region="WA" country="USA" days="7" />'
+      const text = 'Here is the weather: <weather-forecast location="Seattle" region="WA" country="USA" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -60,7 +59,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -68,7 +66,7 @@ describe('parseContentParts', () => {
     })
 
     it('parses weather forecast with text after', () => {
-      const text = '<weather-forecast location="Seattle" region="WA" country="USA" days="7" /> Enjoy your day!'
+      const text = '<weather-forecast location="Seattle" region="WA" country="USA" /> Enjoy your day!'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -80,7 +78,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -89,8 +86,7 @@ describe('parseContentParts', () => {
     })
 
     it('parses weather forecast with text before and after', () => {
-      const text =
-        'Weather update: <weather-forecast location="Seattle" region="WA" country="USA" days="7" /> Stay warm!'
+      const text = 'Weather update: <weather-forecast location="Seattle" region="WA" country="USA" /> Stay warm!'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -103,7 +99,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -113,7 +108,7 @@ describe('parseContentParts', () => {
 
     it('parses multiple weather forecasts', () => {
       const text =
-        '<weather-forecast location="Seattle" region="WA" country="USA" days="7" /> and <weather-forecast location="Portland" region="OR" country="USA" days="5" />'
+        '<weather-forecast location="Seattle" region="WA" country="USA" /> and <weather-forecast location="Portland" region="OR" country="USA" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -125,7 +120,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -138,27 +132,6 @@ describe('parseContentParts', () => {
               location: 'Portland',
               region: 'OR',
               country: 'USA',
-              days: 5,
-            },
-          },
-        },
-      ])
-    })
-
-    it('defaults to 7 days for invalid days value', () => {
-      const text = '<weather-forecast location="Seattle" region="WA" country="USA" days="invalid" />'
-      const result = parseContentParts(text)
-
-      expect(result).toEqual([
-        {
-          type: 'visual',
-          visual: {
-            visual: 'weather-forecast',
-            args: {
-              location: 'Seattle',
-              region: 'WA',
-              country: 'USA',
-              days: 7,
             },
           },
         },
@@ -252,7 +225,7 @@ describe('parseContentParts', () => {
   describe('mixed visuals', () => {
     it('parses weather forecast and link preview in order', () => {
       const text =
-        'Weather: <weather-forecast location="Seattle" region="WA" country="USA" days="7" /> and link: <link-preview url="https://example.com" />'
+        'Weather: <weather-forecast location="Seattle" region="WA" country="USA" /> and link: <link-preview url="https://example.com" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -265,7 +238,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -284,7 +256,7 @@ describe('parseContentParts', () => {
 
     it('parses link preview and weather forecast in order', () => {
       const text =
-        '<link-preview url="https://example.com" /> then <weather-forecast location="Seattle" region="WA" country="USA" days="7" />'
+        '<link-preview url="https://example.com" /> then <weather-forecast location="Seattle" region="WA" country="USA" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -306,7 +278,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -315,7 +286,7 @@ describe('parseContentParts', () => {
 
     it('handles complex interleaving of text and visuals', () => {
       const text =
-        'Start <weather-forecast location="A" region="B" country="C" days="1" /> middle <link-preview url="https://x.com" /> more text <weather-forecast location="D" region="E" country="F" days="2" /> end'
+        'Start <weather-forecast location="A" region="B" country="C" /> middle <link-preview url="https://x.com" /> more text <weather-forecast location="D" region="E" country="F" /> end'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -324,7 +295,7 @@ describe('parseContentParts', () => {
           type: 'visual',
           visual: {
             visual: 'weather-forecast',
-            args: { location: 'A', region: 'B', country: 'C', days: 1 },
+            args: { location: 'A', region: 'B', country: 'C' },
           },
         },
         { type: 'text', content: 'middle' },
@@ -340,7 +311,7 @@ describe('parseContentParts', () => {
           type: 'visual',
           visual: {
             visual: 'weather-forecast',
-            args: { location: 'D', region: 'E', country: 'F', days: 2 },
+            args: { location: 'D', region: 'E', country: 'F' },
           },
         },
         { type: 'text', content: 'end' },
@@ -371,7 +342,7 @@ describe('parseContentParts', () => {
     })
 
     it('removes incomplete tag with complete attributes but missing close', () => {
-      const text = 'Some text <weather-forecast location="Seattle" region="WA" country="USA" days="7"'
+      const text = 'Some text <weather-forecast location="Seattle" region="WA" country="USA"'
       const result = parseContentParts(text)
 
       expect(result).toEqual([{ type: 'text', content: 'Some text' }])
@@ -385,7 +356,7 @@ describe('parseContentParts', () => {
     })
 
     it('preserves complete visuals before incomplete tag', () => {
-      const text = '<weather-forecast location="Seattle" region="WA" country="USA" days="7" /> Some text <link'
+      const text = '<weather-forecast location="Seattle" region="WA" country="USA" /> Some text <link'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -397,7 +368,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -420,7 +390,7 @@ describe('parseContentParts', () => {
 
     it('handles mix of registered and unregistered tags', () => {
       const text =
-        '<link-preview url="https://example.com" /> <unknown-tag x="y" /> <weather-forecast location="Seattle" region="WA" country="USA" days="7" />'
+        '<link-preview url="https://example.com" /> <unknown-tag x="y" /> <weather-forecast location="Seattle" region="WA" country="USA" />'
       const result = parseContentParts(text)
 
       // Only registered tags should be included
@@ -442,7 +412,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -470,7 +439,7 @@ describe('parseContentParts', () => {
 
     it('handles consecutive visuals without text between', () => {
       const text =
-        '<weather-forecast location="Seattle" region="WA" country="USA" days="7" /><link-preview url="https://example.com" />'
+        '<weather-forecast location="Seattle" region="WA" country="USA" /><link-preview url="https://example.com" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -482,7 +451,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -499,7 +467,7 @@ describe('parseContentParts', () => {
     })
 
     it('handles whitespace between tag and attributes', () => {
-      const text = '<weather-forecast  location="Seattle" region="WA" country="USA" days="7" />'
+      const text = '<weather-forecast  location="Seattle" region="WA" country="USA" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -511,7 +479,6 @@ describe('parseContentParts', () => {
               location: 'Seattle',
               region: 'WA',
               country: 'USA',
-              days: 7,
             },
           },
         },
@@ -545,11 +512,11 @@ describe('parseContentParts', () => {
 
     it('preserves order when visuals appear in different orders', () => {
       const text1 =
-        '<link-preview url="https://a.com" /> <weather-forecast location="Seattle" region="WA" country="USA" days="7" />'
+        '<link-preview url="https://a.com" /> <weather-forecast location="Seattle" region="WA" country="USA" />'
       const result1 = parseContentParts(text1)
 
       const text2 =
-        '<weather-forecast location="Seattle" region="WA" country="USA" days="7" /> <link-preview url="https://a.com" />'
+        '<weather-forecast location="Seattle" region="WA" country="USA" /> <link-preview url="https://a.com" />'
       const result2 = parseContentParts(text2)
 
       expect(result1[0].type).toBe('visual')

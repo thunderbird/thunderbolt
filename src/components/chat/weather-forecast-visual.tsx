@@ -8,19 +8,19 @@ type WeatherForecastVisualProps = {
   location: string
   region: string
   country: string
-  days: number
   messageId: string
 }
 
 /**
  * Wrapper component that fetches weather data and renders the WeatherForecast component
+ * Always fetches 7 days of weather data
  */
-export const WeatherForecastVisual = ({ location, region, country, days, messageId }: WeatherForecastVisualProps) => {
+export const WeatherForecastVisual = ({ location, region, country, messageId }: WeatherForecastVisualProps) => {
   const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
     messageId,
-    cacheKey: `weather.${location}.${region}.${country}.${days}`,
+    cacheKey: `weather.${location}.${region}.${country}.7`,
     fetchFn: async () => {
-      return getWeatherForecast({ location, region, country, days })
+      return getWeatherForecast({ location, region, country, days: 7 })
     },
   })
 

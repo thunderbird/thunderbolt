@@ -9,7 +9,6 @@ const WeatherForecastVisualSchema = z.object({
     location: z.string().describe('The city name'),
     region: z.string().describe('The state or region'),
     country: z.string().describe('The country'),
-    days: z.number().min(1).max(16).describe('Number of days to forecast (1-16)'),
   }),
 })
 

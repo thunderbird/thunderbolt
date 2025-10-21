@@ -1,5 +1,4 @@
-import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
-import type { WeatherForecastData } from '@/lib/weather-forecast'
+import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
@@ -30,13 +29,7 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
     .references(() => chatThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   modelId: text('model_id').references(() => modelsTable.id),
   parentId: text('parent_id').references((): any => chatMessagesTable.id, { onDelete: 'cascade' }),
-  cache: text('cache', { mode: 'json' }).$type<
-    Record<
-      string,
-      | LinkPreviewData // linkPreview/[url]
-      | WeatherForecastData // weatherForecast/[location]/[region]/[country]
-    >
-  >(),
+  cache: text('cache', { mode: 'json' }).$type<Record<string, WidgetCacheData>>(),
 })
 
 export const tasksTable = sqliteTable('tasks', {

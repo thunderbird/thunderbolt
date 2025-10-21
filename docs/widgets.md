@@ -30,12 +30,14 @@ src/widgets/
 ├── weather-forecast/
 │   ├── index.ts                          # Widget exports
 │   ├── instructions.ts                   # AI prompt instructions
+│   ├── schema.ts                         # Zod schema + parse function
 │   ├── weather-forecast.tsx              # Component implementation
 │   ├── weather-forecast.stories.tsx      # Storybook stories
 │   └── weather-forecast.test.ts          # Tests (when needed)
 └── link-preview/
     ├── index.ts                          # Widget exports
     ├── instructions.ts                   # AI prompt instructions
+    ├── schema.ts                         # Zod schema + parse function
     ├── link-preview.tsx                  # Component implementation
     ├── link-preview.stories.tsx          # Storybook stories
     └── link-preview.test.ts              # Tests (when needed)
@@ -48,10 +50,11 @@ This organization keeps everything related to a widget in one place, making it e
 - **Directory names**: Use kebab-case (e.g., `weather-forecast`, `link-preview`, `stock-chart`)
 - **Component files**: Match the directory name (e.g., `weather-forecast.tsx`)
 - **Instructions file**: Always named `instructions.ts`
-- **Index file**: Always named `index.ts` - exports component and instructions
+- **Schema file**: Always named `schema.ts` - contains Zod schema AND `parse` function
+- **Index file**: Always named `index.ts` - exports component, instructions, and schema
 - **Test files**: Match the component name with `.test.ts` suffix
 - **Story files**: Match the component name with `.stories.tsx` suffix
-- **Variable names**: Use `instructions` (lowercase, not `INSTRUCTIONS`)
+- **Variable names**: Use lowercase (e.g., `instructions`, `parse`, `widgetRegistry`)
 - **Export names**: Use descriptive PascalCase (e.g., `WeatherForecastWidget`, not `WeatherForecast`)
 
 ### Central Registry Pattern
@@ -79,6 +82,7 @@ export const widgetPrompts = [
 ```
 
 **Why array.join() instead of template literals?**
+
 - Cleaner and easier to edit
 - Clear visual separation between sections
 - Easy to add/remove widgets
@@ -295,7 +299,7 @@ The proxy automatically:
 
 ## Adding a New Widget
 
-Let's add a stock chart widget as an example. The process involves creating a new directory with all widget files, then registering it in the system.
+Let's add a stock chart widget as an example. **The entire process requires updating only ONE file** after creating your widget directory!
 
 ### Step 1: Create Widget Directory
 
@@ -321,54 +325,62 @@ Note: Use standard ticker symbols (AAPL, GOOGL, TSLA, etc.)`
 ```
 
 **Key principles for instructions:**
+
 - Use lowercase variable name `instructions` (not `INSTRUCTIONS`)
 - Keep instructions concise and clear
 - Provide concrete examples
 - Specify exact tag format
 
-### Step 3: Define the Type Schema
+### Step 3: Define the Schema (with Parser)
+
+Create `src/widgets/stock-chart/schema.ts`:
 
 ```typescript
-// src/ai/widget-types.ts
-const StockChartWidgetSchema = z.object({
+import { z } from 'zod'
+
+/**
+ * Zod schema for stock-chart widget
+ */
+export const schema = z.object({
   widget: z.literal('stock-chart'),
   args: z.object({
-    symbol: z.string().describe('Stock ticker symbol (e.g., AAPL)'),
+    symbol: z.string().min(1, 'Symbol is required'),
   }),
 })
 
-// Add to the union
-const _WidgetSchema = z.discriminatedUnion('widget', [
-  WeatherForecastWidgetSchema,
-  LinkPreviewWidgetSchema,
-  StockChartWidgetSchema, // Add here
-])
+export type StockChartWidget = z.infer<typeof schema>
 
-export type StockChartWidget = z.infer<typeof StockChartWidgetSchema>
-```
+/**
+ * Type of data cached by this widget
+ */
+export type CacheData = StockData
 
-### Step 2: Add Parser
+/**
+ * Parse function - transforms attributes into widget structure and validates
+ */
+export const parse = (attrs: Record<string, string>): StockChartWidget | null => {
+  if (!attrs.symbol?.trim()) {
+    return null
+  }
 
-```typescript
-// src/ai/widget-parser.ts
-const widgetSpecs: WidgetSpec[] = [
-  // ... existing specs
-  {
-    tagName: 'stock-chart',
-    parse: (attrs) => {
-      if (!attrs.symbol?.trim()) {
-        return null
-      }
-      return {
-        widget: 'stock-chart',
-        args: {
-          symbol: attrs.symbol.toUpperCase(),
-        },
-      }
+  const result = schema.safeParse({
+    widget: 'stock-chart',
+    args: {
+      symbol: attrs.symbol.toUpperCase(), // Transform here if needed
     },
-  },
-]
+  })
+
+  return result.success ? result.data : null
+}
 ```
+
+**Key points:**
+
+- Simple and readable - no fancy Zod tricks
+- Early validation for quick failure
+- Zod validates the transformed structure
+- Any transformations happen when building the args object
+- This eliminates the need for a separate `parser.ts` file
 
 ### Step 4: Create Widget Component
 
@@ -434,36 +446,66 @@ Create `src/widgets/stock-chart/index.ts`:
 ```typescript
 export { StockChartWidget } from './stock-chart'
 export { instructions } from './instructions'
+export { parse, schema } from './schema'
+export type { CacheData, StockChartWidget as StockChartWidgetType } from './schema'
 ```
 
-### Step 6: Register in Central Index
+### Step 6: ✨ Register in Central Registry (THE ONLY UPDATE NEEDED!)
 
-Update `src/widgets/index.ts`:
+Update `src/widgets/index.ts` - **This is the ONLY file you need to modify outside your widget folder!**
 
 ```typescript
-import { instructions as linkPreviewInstructions } from './link-preview'
-import { instructions as stockChartInstructions } from './stock-chart'
-import { instructions as weatherForecastInstructions } from './weather-forecast'
+import * as linkPreview from './link-preview'
+import * as stockChart from './stock-chart' // Add this import
+import * as weatherForecast from './weather-forecast'
 
+// Add your component to exports if needed
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
-export { StockChartWidget } from './stock-chart'
+export { StockChartWidget } from './stock-chart' // Add this
 export { WeatherForecastWidget } from './weather-forecast'
 
-export const widgetPrompts = [
-  '# Widget Components',
-  'Use these XML-like tags in your response to show rich widgets:',
-  '',
-  weatherForecastInstructions,
-  '',
-  linkPreviewInstructions,
-  '',
-  stockChartInstructions,
-].join('\n')
+// Add your widget to the registry - THIS AUTO-WIRES EVERYTHING!
+export const widgetRegistry = [
+  {
+    name: 'weather-forecast' as const,
+    instructions: weatherForecast.instructions,
+    schema: weatherForecast.schema,
+    parse: weatherForecast.parse,
+    component: weatherForecast.WeatherForecastWidget,
+  },
+  {
+    name: 'link-preview' as const,
+    instructions: linkPreview.instructions,
+    schema: linkPreview.schema,
+    parse: linkPreview.parse,
+    component: linkPreview.LinkPreviewWidget,
+  },
+  {
+    name: 'stock-chart' as const, // Add your widget here
+    instructions: stockChart.instructions,
+    schema: stockChart.schema,
+    parse: stockChart.parse,
+    component: stockChart.StockChartWidget,
+  },
+] as const
 ```
 
-**Note:** The `widgetPrompts` uses `array.join('\n')` for cleaner formatting and easier editing.
+**That's it!** The registry automatically wires:
 
-### Step 7: Add to Renderer
+- ✅ AI prompt instructions (via `widgetPrompts`)
+- ✅ Zod schema for type validation (via `widgetSchemas`)
+- ✅ Parser for tag parsing (via `widgetParsers`)
+- ✅ Component for rendering (via `widgetComponents`)
+
+No need to update `widget-types.ts`, `widget-parser.ts`, or `widget-renderer.tsx` manually!
+
+### Step 7: Add to Renderer (SKIP - Auto-wired!)
+
+~~You used to need to update widget-renderer.tsx, but this is now automatic!~~
+
+**The widget renderer automatically uses `widgetRegistry` to find and render your component.**
+
+### Step 8: Add Backend API (If Needed)
 
 ```typescript
 // src/components/chat/widget-renderer.tsx
@@ -481,7 +523,7 @@ export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) 
 })
 ```
 
-### Step 8: Create Backend API
+### Step 9: Create Backend API (If Needed)
 
 ```typescript
 // backend/src/pro/stock-data.ts
@@ -526,7 +568,7 @@ export const createStockDataRoutes = () => {
 }
 ```
 
-### Step 9: Add Frontend API Client
+### Step 10: Add Frontend API Client (If Needed)
 
 ```typescript
 // src/integrations/thunderbolt-pro/api.ts
@@ -546,7 +588,7 @@ export const getStockData = async (params: { symbol: string }) => {
 }
 ```
 
-### Step 10: Add Storybook Stories (Optional)
+### Step 11: Add Storybook Stories (Optional)
 
 Create `src/widgets/stock-chart/stock-chart.stories.tsx`:
 
@@ -574,7 +616,7 @@ export const AAPL: Story = {
 }
 ```
 
-### Step 11: Add Tests
+### Step 12: Add Tests
 
 ```typescript
 // src/ai/widget-parser.test.ts

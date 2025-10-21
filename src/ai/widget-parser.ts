@@ -1,3 +1,11 @@
+/**
+ * Widget tag parser
+ *
+ * This file auto-wires parsers from the widget registry.
+ * To add a new widget parser, update src/widgets/index.ts
+ */
+
+import { widgetParsers } from '@/widgets'
 import type { Widget } from './widget-types'
 
 export type ContentPart = { type: 'text'; content: string } | { type: 'widget'; widget: Widget }
@@ -11,57 +19,9 @@ type WidgetSpec = {
 }
 
 /**
- * Registry of all supported widget types
- * To add a new widget type, just add a new spec to this array
- *
- * Example:
- * {
- *   tagName: 'stock-chart',
- *   parse: (attrs) => {
- *     if (!attrs.symbol || !attrs.range) return null
- *     return {
- *       widget: 'stock-chart',
- *       args: {
- *         symbol: attrs.symbol.toUpperCase(),
- *         range: attrs.range,
- *         showVolume: attrs.showVolume === 'true',
- *       },
- *     }
- *   },
- * }
+ * Registry of all supported widget types - auto-loaded from widget registry
  */
-const widgetSpecs: WidgetSpec[] = [
-  {
-    tagName: 'weather-forecast',
-    parse: (attrs) => {
-      if (!attrs.location || !attrs.region || !attrs.country) {
-        return null
-      }
-      return {
-        widget: 'weather-forecast',
-        args: {
-          location: attrs.location,
-          region: attrs.region,
-          country: attrs.country,
-        },
-      }
-    },
-  },
-  {
-    tagName: 'link-preview',
-    parse: (attrs) => {
-      if (!attrs.url?.trim()) {
-        return null
-      }
-      return {
-        widget: 'link-preview',
-        args: {
-          url: attrs.url,
-        },
-      }
-    },
-  },
-]
+const widgetSpecs: WidgetSpec[] = widgetParsers
 
 /**
  * Parses attributes from a widget tag's attribute string

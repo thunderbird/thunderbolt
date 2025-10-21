@@ -27,7 +27,7 @@ export const searchRequestSchema = z.object({
 
 export type SearchRequest = z.infer<typeof searchRequestSchema>
 export type SearchResponse = {
-  data: SearchResult<{}>[]
+  data: SearchResult<{ summary: true; highlights: true }>[]
   success: boolean
   error?: string | null
 }
@@ -43,10 +43,10 @@ export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 
 /**
  * FetchContentResponse returns the raw SearchResult from Exa's getContents API.
- * The SearchResult includes properties like url, title, text, favicon, image, author, publishedDate, etc.
+ * The SearchResult includes properties like url, title, text, summary, highlights, favicon, image, author, publishedDate, etc.
  */
 export type FetchContentResponse = {
-  data: SearchResult<{}> | null
+  data: SearchResult<{ text: { maxCharacters: number }; summary: true }> | null
   success: boolean
   error?: string | null
 }

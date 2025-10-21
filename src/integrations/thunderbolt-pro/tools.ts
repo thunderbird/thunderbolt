@@ -12,6 +12,7 @@ import {
   type FetchContentParams,
   type SearchLocationParams,
   type SearchParams,
+  type SearchResultData,
   type WeatherParams,
 } from './api'
 
@@ -27,7 +28,7 @@ export {
   searchSchema,
   weatherSchema,
 }
-export type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams }
+export type { FetchContentParams, SearchLocationParams, SearchParams, SearchResultData, WeatherParams }
 
 /**
  * Tool configurations for Thunderbolt Pro
@@ -35,18 +36,14 @@ export type { FetchContentParams, SearchLocationParams, SearchParams, WeatherPar
 export const configs: ToolConfig[] = [
   {
     name: 'search',
-    description: `Search the web and return relevant results.
-
-After calling this tool and presenting results to the user, use <link-preview url="..." /> tags to show previews of the most relevant URLs (typically 1-3).`,
+    description: `Search the web and return relevant links.`,
     verb: 'searching for {query}',
     parameters: searchSchema,
     execute: search,
   },
   {
     name: 'fetch_content',
-    description: `Fetch and parse content from a webpage URL.
-
-After calling this tool to fetch a URL, include a <link-preview url="..." /> tag in your response to show a preview card of that content.`,
+    description: `Fetch and parse content from a webpage URL.`,
     verb: 'fetching {url}',
     parameters: fetchContentSchema,
     execute: fetchContent,

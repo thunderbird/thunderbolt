@@ -4,7 +4,7 @@ import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weath
 import ky from 'ky'
 import { z } from 'zod'
 
-const requestTimeout = 5000
+const requestTimeout = 10000
 
 /**
  * Schemas for the pro API
@@ -46,11 +46,27 @@ export type FetchContentParams = z.infer<typeof fetchContentSchema>
 export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
+export type SearchResultData = {
+  url: string
+  title: string | null
+  summary: string
+  highlights: string[]
+  highlightScores?: number[]
+  favicon: string | null
+  image: string | null
+  author: string | null
+  publishedDate: string | null
+  score?: number
+  id: string
+}
+
 export type FetchContentData = {
   url: string
   title: string | null
   text: string
   summary: string
+  highlights: string[]
+  highlightScores?: number[]
   favicon: string | null
   image: string | null
   author: string | null
@@ -58,9 +74,9 @@ export type FetchContentData = {
 } | null
 
 /**
- * Search the web and return formatted results
+ * Search the web and return structured results with summaries and highlights
  */
-export const search = async (params: SearchParams): Promise<string> => {
+export const search = async (params: SearchParams): Promise<SearchResultData[]> => {
   try {
     const cloudUrl = await getCloudUrl()
     const response = await ky
@@ -71,7 +87,7 @@ export const search = async (params: SearchParams): Promise<string> => {
           max_results: params.max_results || 10,
         },
       })
-      .json<{ data: string; success: boolean; error?: string }>()
+      .json<{ data: SearchResultData[]; success: boolean; error?: string }>()
     if (!response.success) {
       throw new Error(response.error || 'Search failed')
     }

@@ -22,7 +22,7 @@ export const defaultAutomationDailyBrief: Prompt = {
   modelId: defaultModelGptOss120b.id,
   prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
-1. If you know my location, check today's weather for my location. I only need to know the weather for today. If not, skip this section.
+1. If you know my location, show me the 7-day forecast. If not, skip this section.
 
 2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list. Do not include link previews.
 

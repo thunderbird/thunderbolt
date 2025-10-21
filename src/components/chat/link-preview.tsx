@@ -1,7 +1,6 @@
 import { useSettings } from '@/hooks/use-settings'
 import { fetchContent } from '@/integrations/thunderbolt-pro/api'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Skeleton } from '../ui/skeleton'
@@ -39,26 +38,15 @@ const useFetchLinkPreviewContent = (url: string) => {
 
 export const LinkPreviewSkeleton = () => {
   return (
-    <motion.div
-      className="my-4"
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{
-        scale: 1,
-        opacity: 1,
-      }}
-      exit={{
-        opacity: 0,
-      }}
-    >
-      <Card className="flex-row py-0 flex p-1 pr-2 gap-0">
-        <Skeleton className="rounded-lg h-20 w-20" />
-        <CardHeader className="flex-1 flex flex-col pl-4 my-2">
+    <div className="my-4">
+      <Card className="flex-row flex p-0 gap-0 rounded-lg overflow-hidden">
+        <Skeleton className="h-24 w-24 flex-shrink-0 rounded-none" />
+        <CardHeader className="flex-1 flex flex-col pl-4 py-4">
           <Skeleton className="h-5 w-3/4 mb-2" />
           <Skeleton className="h-2 w-full" />
-          <Skeleton className="h-2 w-2/3 mt-1" />
         </CardHeader>
       </Card>
-    </motion.div>
+    </div>
   )
 }
 
@@ -81,32 +69,28 @@ export const LinkPreviewVisual = ({ url }: LinkPreviewVisualProps) => {
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
   const [imageError, setImageError] = useState(false)
+  const showPlaceholder = !image || imageError
 
   return (
-    <motion.div
-      className="my-4"
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{
-        scale: 1,
-        opacity: 1,
-      }}
-    >
+    <div className="my-4">
       <a href={url} target="_blank" rel="noopener noreferrer">
-        <Card className="cursor-pointer flex-row flex p-0 hover:bg-border gap-0 rounded-lg overflow-hidden">
-          {!!image && !imageError && (
+        <Card className="cursor-pointer flex-row flex p-0 hover:bg-secondary gap-0 rounded-lg overflow-hidden">
+          {showPlaceholder ? (
+            <div className="h-24 w-24 bg-secondary/60 dark:bg-secondary/40 flex-shrink-0" />
+          ) : (
             <img
               src={image}
               alt={title ?? description ?? url}
-              className="h-20 w-20 object-cover"
+              className="h-24 w-24 object-cover flex-shrink-0"
               onError={() => setImageError(true)}
             />
           )}
           <CardHeader className="flex-1 flex flex-col pl-4 py-4">
             <CardTitle className="line-clamp-1">{title}</CardTitle>
-            {!!description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
+            {description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
           </CardHeader>
         </Card>
       </a>
-    </motion.div>
+    </div>
   )
 }

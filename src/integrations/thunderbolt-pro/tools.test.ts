@@ -94,7 +94,7 @@ describe('Thunderbolt Pro Tools', () => {
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/search',
         expect.objectContaining({
-          timeout: 5000,
+          timeout: 10000,
           json: {
             query: 'artificial intelligence',
             max_results: 10,
@@ -212,7 +212,7 @@ describe('Thunderbolt Pro Tools', () => {
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/fetch-content',
         expect.objectContaining({
-          timeout: 5000,
+          timeout: 10000,
           json: {
             url: 'https://example.com/article',
           },
@@ -307,7 +307,7 @@ describe('Thunderbolt Pro Tools', () => {
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/weather/current',
         expect.objectContaining({
-          timeout: 5000,
+          timeout: 10000,
           json: {
             location: 'New York',
             region: 'NY',
@@ -377,7 +377,7 @@ describe('Thunderbolt Pro Tools', () => {
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/weather/forecast',
         expect.objectContaining({
-          timeout: 5000,
+          timeout: 10000,
           json: {
             location: 'New York',
             region: 'NY',
@@ -499,7 +499,7 @@ describe('Thunderbolt Pro Tools', () => {
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/locations/search',
         expect.objectContaining({
-          timeout: 5000,
+          timeout: 10000,
           json: {
             query: 'New York',
             region: 'NY',

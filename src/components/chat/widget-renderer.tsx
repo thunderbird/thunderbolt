@@ -1,6 +1,5 @@
 import type { Widget } from '@/ai/widget-types'
-import { LinkPreviewWidget } from '@/components/widgets/link-preview'
-import { WeatherForecastWidget } from '@/components/widgets/weather-forecast'
+import { LinkPreviewWidget, WeatherForecastWidget } from '@/widgets'
 import { memo } from 'react'
 
 type WidgetRendererProps = {

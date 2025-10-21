@@ -38,7 +38,7 @@ const WeatherForecastWithToggle = ({
 }
 
 const meta = {
-  title: 'components/chat/weather-forecast',
+  title: 'widgets/weather-forecast',
   component: WeatherForecastWithToggle,
   parameters: {
     layout: 'centered',
@@ -108,7 +108,7 @@ const createWeatherData = (codes: number[], isDayTime: boolean = true): WeatherF
 // Basic stories
 export const Default: Story = {
   args: {
-    ...createWeatherData([0, 1, 2, 3, 61]),
+    ...createWeatherData([0, 1, 2, 3, 61, 63, 73]),
   },
 }
 
@@ -264,6 +264,28 @@ export const InteractiveDayNightToggle: Story = {
         precipitation_probability_max: 95,
         wind_speed_10m_max: 12.4,
       },
+      {
+        date: '2024-12-21',
+        weather_code: 45,
+        temperature_max: 17,
+        temperature_min: 9,
+        apparent_temperature_max: 16,
+        apparent_temperature_min: 10,
+        precipitation_sum: 0.5,
+        precipitation_probability_max: 25,
+        wind_speed_10m_max: 4.3,
+      },
+      {
+        date: '2024-12-22',
+        weather_code: 1,
+        temperature_max: 19,
+        temperature_min: 11,
+        apparent_temperature_max: 20,
+        apparent_temperature_min: 9,
+        precipitation_sum: 0,
+        precipitation_probability_max: 10,
+        wind_speed_10m_max: 3.8,
+      },
     ],
     temperature_unit: 'c',
     isDayTime: true,
@@ -321,6 +343,50 @@ export const NightModeDefault: Story = {
         precipitation_sum: 6.8,
         precipitation_probability_max: 75,
         wind_speed_10m_max: 7.2,
+      },
+      {
+        date: '2024-12-19',
+        weather_code: 73,
+        temperature_max: 16,
+        temperature_min: 8,
+        apparent_temperature_max: 14,
+        apparent_temperature_min: 10,
+        precipitation_sum: 10.5,
+        precipitation_probability_max: 85,
+        wind_speed_10m_max: 6.5,
+      },
+      {
+        date: '2024-12-20',
+        weather_code: 95,
+        temperature_max: 15,
+        temperature_min: 7,
+        apparent_temperature_max: 13,
+        apparent_temperature_min: 9,
+        precipitation_sum: 14.2,
+        precipitation_probability_max: 90,
+        wind_speed_10m_max: 11.8,
+      },
+      {
+        date: '2024-12-21',
+        weather_code: 45,
+        temperature_max: 17,
+        temperature_min: 9,
+        apparent_temperature_max: 16,
+        apparent_temperature_min: 10,
+        precipitation_sum: 0.3,
+        precipitation_probability_max: 20,
+        wind_speed_10m_max: 3.5,
+      },
+      {
+        date: '2024-12-22',
+        weather_code: 1,
+        temperature_max: 19,
+        temperature_min: 11,
+        apparent_temperature_max: 18,
+        apparent_temperature_min: 12,
+        precipitation_sum: 0,
+        precipitation_probability_max: 5,
+        wind_speed_10m_max: 2.9,
       },
     ],
     temperature_unit: 'c',

@@ -1,10 +1,10 @@
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
-import { Skeleton } from '../ui/skeleton'
 
 type LinkPreviewProps = {
   url: string

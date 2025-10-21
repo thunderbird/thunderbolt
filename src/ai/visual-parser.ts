@@ -140,10 +140,10 @@ export const parseContentParts = (text: string): ContentPart[] => {
   if (lastIndex < text.length) {
     let textAfter = text.slice(lastIndex).trim()
 
-    // Remove incomplete tags at the end (for streaming)
-    const incompleteTagMatch = textAfter.match(/<[^>]*$/)
-    if (incompleteTagMatch) {
-      textAfter = textAfter.slice(0, incompleteTagMatch.index).trim()
+    // Remove incomplete visual tags at the end (for streaming)
+    const incompleteVisualTagMatch = textAfter.match(/<[a-z][a-z0-9-]*(?:\s+[^>]*)?$/)
+    if (incompleteVisualTagMatch) {
+      textAfter = textAfter.slice(0, incompleteVisualTagMatch.index).trim()
     }
 
     if (textAfter) {

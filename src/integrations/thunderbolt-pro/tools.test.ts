@@ -82,7 +82,17 @@ describe('Thunderbolt Pro Tools', () => {
       }
 
       const mockResponse = {
-        data: 'Search results for artificial intelligence...',
+        data: [
+          {
+            url: 'https://example.com/ai',
+            title: 'AI Article',
+            favicon: 'https://example.com/favicon.ico',
+            image: 'https://example.com/image.jpg',
+            author: 'John Doe',
+            publishedDate: '2024-01-01',
+            id: '1',
+          },
+        ],
         success: true,
       }
 
@@ -90,7 +100,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       const result = await search(params)
 
-      expect(result).toBe('Search results for artificial intelligence...')
+      expect(result).toEqual(mockResponse.data)
       expect(mockPost).toHaveBeenCalledWith(
         'https://example.com/pro/search',
         expect.objectContaining({
@@ -110,7 +120,17 @@ describe('Thunderbolt Pro Tools', () => {
       }
 
       const mockResponse = {
-        data: 'Search results...',
+        data: [
+          {
+            url: 'https://example.com/test',
+            title: 'Test',
+            favicon: null,
+            image: null,
+            author: null,
+            publishedDate: null,
+            id: '1',
+          },
+        ],
         success: true,
       }
 
@@ -589,14 +609,14 @@ describe('Thunderbolt Pro Tools', () => {
       }
 
       const mockResponse = {
-        data: '',
+        data: [],
         success: true,
       }
 
       mockJson.mockResolvedValue(mockResponse)
 
       const result = await search(params)
-      expect(result).toBe('')
+      expect(result).toEqual([])
     })
 
     it('should handle very large responses', async () => {
@@ -605,7 +625,15 @@ describe('Thunderbolt Pro Tools', () => {
         max_results: 100,
       }
 
-      const largeData = 'x'.repeat(100000)
+      const largeData = Array.from({ length: 100 }, (_, i) => ({
+        url: `https://example.com/${i}`,
+        title: 'Title',
+        favicon: null,
+        image: null,
+        author: null,
+        publishedDate: null,
+        id: `${i}`,
+      }))
       const mockResponse = {
         data: largeData,
         success: true,
@@ -614,7 +642,7 @@ describe('Thunderbolt Pro Tools', () => {
       mockJson.mockResolvedValue(mockResponse)
 
       const result = await search(params)
-      expect(result).toBe(largeData)
+      expect(result).toEqual(largeData)
     })
   })
 })

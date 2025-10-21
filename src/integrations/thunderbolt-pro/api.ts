@@ -49,8 +49,8 @@ export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 export type SearchResultData = {
   url: string
   title: string | null
-  summary: string
-  highlights: string[]
+  summary?: string
+  highlights?: string[]
   highlightScores?: number[]
   favicon: string | null
   image: string | null
@@ -65,7 +65,7 @@ export type FetchContentData = {
   title: string | null
   text: string
   summary: string
-  highlights: string[]
+  highlights?: string[]
   highlightScores?: number[]
   favicon: string | null
   image: string | null

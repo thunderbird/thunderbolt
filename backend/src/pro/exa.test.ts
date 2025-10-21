@@ -20,12 +20,10 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Search service is not configured.')
         }
 
-        const response = await store.exaClient.searchAndContents(body.query, {
+        const response = await store.exaClient.search(body.query, {
           numResults: body.max_results,
           useAutoprompt: true,
           type: 'fast',
-          summary: true,
-          highlights: true,
         })
 
         return {
@@ -79,7 +77,7 @@ describe('Pro - Exa Plugin', () => {
     mockGetContents = mock(() => Promise.resolve({ results: [] }))
 
     const mockExaClient = {
-      searchAndContents: mockSearch,
+      search: mockSearch,
       getContents: mockGetContents,
     }
 
@@ -117,8 +115,6 @@ describe('Pro - Exa Plugin', () => {
         numResults: 10,
         useAutoprompt: true,
         type: 'fast',
-        summary: true,
-        highlights: true,
       })
     })
 
@@ -138,8 +134,6 @@ describe('Pro - Exa Plugin', () => {
         numResults: 5,
         useAutoprompt: true,
         type: 'fast',
-        summary: true,
-        highlights: true,
       })
     })
 
@@ -158,8 +152,6 @@ describe('Pro - Exa Plugin', () => {
         numResults: 10,
         useAutoprompt: true,
         type: 'fast',
-        summary: true,
-        highlights: true,
       })
     })
 

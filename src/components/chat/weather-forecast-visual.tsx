@@ -1,5 +1,6 @@
+import { useMessageCache } from '@/hooks/use-message-cache'
 import { getWeatherForecast } from '@/integrations/thunderbolt-pro/api'
-import { useQuery } from '@tanstack/react-query'
+import { type WeatherForecastData } from '@/lib/weather-forecast'
 import { Skeleton } from '../ui/skeleton'
 import { WeatherForecast } from './weather-forecast'
 
@@ -8,16 +9,19 @@ type WeatherForecastVisualProps = {
   region: string
   country: string
   days: number
+  messageId: string
 }
 
 /**
  * Wrapper component that fetches weather data and renders the WeatherForecast component
  */
-export const WeatherForecastVisual = ({ location, region, country, days }: WeatherForecastVisualProps) => {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['weather-forecast', location, region, country, days],
-    queryFn: () => getWeatherForecast({ location, region, country, days }),
-    staleTime: 1000 * 60 * 5, // 5 minutes - weather changes relatively quickly
+export const WeatherForecastVisual = ({ location, region, country, days, messageId }: WeatherForecastVisualProps) => {
+  const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
+    messageId,
+    cacheKey: `weather.${location}.${region}.${country}.${days}`,
+    fetchFn: async () => {
+      return getWeatherForecast({ location, region, country, days })
+    },
   })
 
   if (error) {
@@ -30,12 +34,16 @@ export const WeatherForecastVisual = ({ location, region, country, days }: Weath
     )
   }
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="w-full space-y-4 my-4">
         <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     )
+  }
+
+  if (!data) {
+    return null
   }
 
   return <WeatherForecast {...data} />

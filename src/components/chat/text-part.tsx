@@ -6,12 +6,13 @@ import { VisualRenderer } from './visual-renderer'
 
 interface TextPartProps {
   part: TextUIPart
+  messageId: string
 }
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
 
-export const TextPart = memo(({ part }: TextPartProps) => {
+export const TextPart = memo(({ part, messageId }: TextPartProps) => {
   if (!part.text) return null
 
   const contentParts = parseContentParts(part.text)
@@ -32,7 +33,7 @@ export const TextPart = memo(({ part }: TextPartProps) => {
         }
         return (
           <div key={`visual-${index}`} className={animationClasses}>
-            <VisualRenderer visual={contentPart.visual} />
+            <VisualRenderer visual={contentPart.visual} messageId={messageId} />
           </div>
         )
       })}

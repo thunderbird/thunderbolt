@@ -78,6 +78,12 @@ export const WithoutImage: Story = {
 }
 
 export const Loading: Story = {
+  args: {
+    url: 'https://example.com',
+    title: 'Loading...',
+    description: null,
+    image: null,
+  },
   render: () => <LinkPreviewSkeleton />,
   parameters: {
     docs: {

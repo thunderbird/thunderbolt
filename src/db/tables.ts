@@ -28,6 +28,9 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
     .references(() => chatThreadsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   modelId: text('model_id').references(() => modelsTable.id),
   parentId: text('parent_id').references((): any => chatMessagesTable.id, { onDelete: 'cascade' }),
+  cache: text('cache', { mode: 'json' }).$type<{
+    linkPreviews?: Record<string, { title: string; description: string; image: string | null }>
+  }>(),
 })
 
 export const tasksTable = sqliteTable('tasks', {

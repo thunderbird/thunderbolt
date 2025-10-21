@@ -23,7 +23,7 @@ export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage
     id: message.id,
     parts: message.parts ?? [],
     role: message.role,
-    metadata: {},
+    metadata: {}, // AI SDK metadata - separate from our cache column
   }
 }
 
@@ -42,6 +42,7 @@ export function convertUIMessageToDbChatMessage(
     chatThreadId,
     modelId: metadata?.modelId ?? null,
     parentId: parentId ?? null,
+    cache: null, // Cache is populated lazily by enrichment hooks
   }
 }
 

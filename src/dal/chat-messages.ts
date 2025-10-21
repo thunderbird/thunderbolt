@@ -1,8 +1,16 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import type { ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import type { ThunderboltUIMessage, UIMessageMetadata } from '../types'
+
+/**
+ * Gets a single chat message by ID
+ */
+export const getMessage = async (messageId: string) => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+}
 
 /**
  * Gets all chat messages for a specific thread
@@ -87,4 +95,44 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
   }
 
   return dbChatMessages
+}
+
+/**
+ * Updates a specific cache field for a message
+ * Uses JSON patch-like syntax for nested keys (e.g., "linkPreviews.https://example.com")
+ * Note: Only splits on the FIRST dot to avoid splitting URLs
+ */
+export const updateMessageCache = async (messageId: string, cachePath: string, value: unknown) => {
+  const db = DatabaseSingleton.instance.db
+
+  // Fetch current message
+  const message = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+
+  if (!message) {
+    throw new Error('Message not found')
+  }
+
+  // Split only on the first dot to handle URLs properly
+  // e.g., "linkPreviews.https://example.com" -> ["linkPreviews", "https://example.com"]
+  const firstDotIndex = cachePath.indexOf('.')
+
+  if (firstDotIndex === -1) {
+    // No nested path, just set at root level
+    const updatedCache = { ...(message.cache || {}), [cachePath]: value }
+    await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
+    return
+  }
+
+  const rootKey = cachePath.slice(0, firstDotIndex)
+  const subKey = cachePath.slice(firstDotIndex + 1)
+
+  // Create or update the nested structure
+  const updatedCache: Record<string, any> = { ...(message.cache || {}) }
+  if (!updatedCache[rootKey]) {
+    updatedCache[rootKey] = {}
+  }
+  updatedCache[rootKey] = { ...updatedCache[rootKey], [subKey]: value }
+
+  // Update the database
+  await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
 }

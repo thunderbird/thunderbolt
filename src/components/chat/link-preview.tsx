@@ -1,6 +1,6 @@
+import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchContent } from '@/integrations/thunderbolt-pro/api'
-import { useQuery } from '@tanstack/react-query'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card'
@@ -15,26 +15,13 @@ type LinkPreviewProps = {
 
 type LinkPreviewVisualProps = {
   url: string
+  messageId: string
 }
 
-const useFetchLinkPreviewContent = (url: string) => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['link-preview', url],
-    queryFn: async () => {
-      const content = await fetchContent({ url })
-      return {
-        description: content?.summary ?? '',
-        image: content?.image ?? '',
-        title: content?.title ?? '',
-        url,
-      }
-    },
-    enabled: !!url,
-    retry: false,
-    staleTime: 1000 * 60 * 60, // 1 hour - link previews are static
-  })
-
-  return { isLoading, content: data }
+type LinkPreviewMetadata = {
+  title: string
+  description: string
+  image: string | null
 }
 
 export const LinkPreviewSkeleton = () => {
@@ -51,21 +38,34 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
-export const LinkPreviewVisual = ({ url }: LinkPreviewVisualProps) => {
-  const { content, isLoading } = useFetchLinkPreviewContent(url)
+export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) => {
   const { cloudUrl } = useSettings({ cloud_url: String })
+
+  // Use message cache hook - it handles checking cache and fetching if needed
+  const { data, isLoading } = useMessageCache<LinkPreviewMetadata>({
+    messageId,
+    cacheKey: `linkPreviews.${url}`,
+    fetchFn: async () => {
+      const content = await fetchContent({ url })
+      return {
+        title: content?.title || url,
+        description: content?.summary || '',
+        image: content?.image || null,
+      }
+    },
+  })
 
   if (isLoading) {
     return <LinkPreviewSkeleton />
   }
 
-  if (!content) {
+  if (!data) {
     return null
   }
 
-  const imageUrl = content?.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${content?.image}` : null
+  const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${data.image}` : null
 
-  return <LinkPreview {...content} image={imageUrl} />
+  return <LinkPreview title={data.title} description={data.description} url={url} image={imageUrl} />
 }
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {

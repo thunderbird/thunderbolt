@@ -54,4 +54,9 @@ export const migrations: Migration[] = [
     name: '0008_clever_warstar.sql',
     sql: 'ALTER TABLE `models` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `models` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `prompts` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `prompts` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `settings` ADD `default_hash` text;--> statement-breakpoint\nALTER TABLE `tasks` ADD `default_hash` text;',
   },
+  {
+    hash: '0009_deep_the_hood',
+    name: '0009_deep_the_hood.sql',
+    sql: 'ALTER TABLE `chat_messages` ADD `cache` text;',
+  },
 ]

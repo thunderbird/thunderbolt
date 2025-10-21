@@ -28,7 +28,7 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
  * Handles different part types (reasoning, tools, text) and manages loading states.
  * @internal - Exported for testing only
  */
-export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean) => {
+export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean, messageId: string) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0) {
@@ -65,7 +65,7 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
         partElements.push(<ToolPart part={part as ToolUIPart} />)
         break
       case 'text':
-        partElements.push(<TextPart part={part as TextUIPart} />)
+        partElements.push(<TextPart part={part as TextUIPart} messageId={messageId} />)
         break
     }
   })
@@ -78,7 +78,7 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
 
   const groupedParts = groupToolParts(filteredParts)
 
-  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming)
+  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
 
   return (
     <div>

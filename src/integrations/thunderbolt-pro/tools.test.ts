@@ -1,5 +1,5 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import type { WeatherForecastData } from '@/lib/weather-forecast'
+import type { WeatherForecastData } from '@/widgets/weather-forecast'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
 import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'

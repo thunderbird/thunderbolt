@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { convertTemperature } from './weather-forecast'
+import { convertTemperature } from './lib'
 
 describe('convertTemperature', () => {
   it('should return the same temperature when source and target units are the same', () => {

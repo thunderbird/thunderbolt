@@ -1,6 +1,6 @@
 import { createParser } from '@/lib/create-parser'
-import { type WeatherForecastData } from '@/lib/weather-forecast'
 import { z } from 'zod'
+import type { WeatherForecastData } from './lib'
 
 /**
  * Zod schema for weather-forecast widget

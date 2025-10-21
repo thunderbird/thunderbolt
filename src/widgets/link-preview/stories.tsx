@@ -1,5 +1,5 @@
-import { LinkPreview, LinkPreviewSkeleton } from './link-preview'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { LinkPreview, LinkPreviewSkeleton } from './widget'
 
 const meta = {
   title: 'widgets/link-preview',

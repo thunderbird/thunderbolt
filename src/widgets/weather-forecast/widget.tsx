@@ -1,8 +1,8 @@
-import { WeatherForecast } from '@/components/chat/weather-forecast'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { getWeatherForecast } from '@/integrations/thunderbolt-pro/api'
-import { type WeatherForecastData } from '@/lib/weather-forecast'
+import { WeatherForecast } from './display'
+import type { WeatherForecastData } from './lib'
 
 type WeatherForecastWidgetProps = {
   location: string

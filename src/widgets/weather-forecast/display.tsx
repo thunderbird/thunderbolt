@@ -1,10 +1,10 @@
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
-import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from '@/lib/weather-forecast'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader } from '../ui/card'
-import { Skeleton } from '../ui/skeleton'
-import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group'
+import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from './lib'
 
 type WeatherForecastProps = WeatherForecastData
 

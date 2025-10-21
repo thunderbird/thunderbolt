@@ -1,7 +1,7 @@
-import { WeatherForecast } from '@/components/chat/weather-forecast'
-import { type WeatherForecastData } from '@/lib/weather-forecast'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { WeatherForecast } from './display'
+import { type WeatherForecastData } from './lib'
 
 // Wrapper component to handle day/night toggle
 const WeatherForecastWithToggle = ({

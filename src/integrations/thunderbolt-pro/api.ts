@@ -1,6 +1,6 @@
 import { getSettings } from '@/dal'
 import { getCloudUrl } from '@/lib/config'
-import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
+import { WeatherForecastDataSchema, type WeatherForecastData } from '@/widgets/weather-forecast'
 import ky from 'ky'
 import type {
   FetchContentData,

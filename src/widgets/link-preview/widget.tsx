@@ -90,16 +90,16 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
       <a href={url} target="_blank" rel="noopener noreferrer">
         <Card className="cursor-pointer flex-row flex p-0 gap-0 rounded-lg overflow-hidden relative group">
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 dark:group-hover:bg-white/5 pointer-events-none z-10" />
-          <div className="h-24 w-24 flex-shrink-0 relative">
+          <div className="h-24 w-24 flex-shrink-0 grid">
             {showPlaceholder ? (
               placeholder
             ) : (
               <>
-                {isImageLoading && <div className="absolute inset-0">{placeholder}</div>}
+                {isImageLoading && <div className="col-start-1 row-start-1">{placeholder}</div>}
                 <img
                   src={image}
                   alt={title ?? description ?? url}
-                  className="h-full w-full object-cover"
+                  className={`col-start-1 row-start-1 h-full w-full object-cover transition-opacity ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
                   onLoad={() => setIsImageLoading(false)}
                   onError={() => setImageError(true)}
                 />

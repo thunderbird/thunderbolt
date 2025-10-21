@@ -49,7 +49,7 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
       const content = await fetchContent({ url })
       return {
         title: content?.title || url,
-        description: content?.summary || '',
+        description: content?.text || '',
         image: content?.image || null,
       }
     },

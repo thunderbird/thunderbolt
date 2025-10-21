@@ -43,10 +43,10 @@ export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 
 /**
  * FetchContentResponse returns the raw SearchResult from Exa's getContents API.
- * The SearchResult includes properties like url, title, text, summary, favicon, image, author, publishedDate, etc.
+ * The SearchResult includes properties like url, title, text, favicon, image, author, publishedDate, etc.
  */
 export type FetchContentResponse = {
-  data: SearchResult<{ text: { maxCharacters: number }; summary: true }> | null
+  data: SearchResult<{ text: { maxCharacters: number } }> | null
   success: boolean
   error?: string | null
 }

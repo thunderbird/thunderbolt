@@ -55,16 +55,23 @@ export const exaPlugin = new Elysia({ name: 'exa' })
 
       const response = await store.exaClient.getContents([body.url], {
         livecrawlTimeout: 5_000,
-        summary: true,
+        // summary: true,
+        extras: { imageLinks: 1 },
         text: {
           maxCharacters: 5_000,
         },
       })
 
-      return {
-        data: response.results[0] || null,
-        success: true,
-      }
+      return response.results[0]
+        ? {
+            data: response.results[0],
+            success: true,
+          }
+        : {
+            data: null,
+            success: false,
+            error: 'No content found for the given URL.',
+          }
     },
     {
       body: t.Object({

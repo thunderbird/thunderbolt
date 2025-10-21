@@ -47,7 +47,7 @@ const createTestExaPlugin = (mockExaClient: any) => {
 
         const response = await store.exaClient.getContents([body.url], {
           livecrawlTimeout: 5_000,
-          summary: true,
+          extras: { imageLinks: 1 },
           text: {
             maxCharacters: 5_000,
           },
@@ -288,7 +288,7 @@ describe('Pro - Exa Plugin', () => {
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5_000,
-        summary: true,
+        extras: { imageLinks: 1 },
         text: {
           maxCharacters: 5_000,
         },
@@ -397,7 +397,7 @@ describe('Pro - Exa Plugin', () => {
         expect(response.status).toBe(200)
         expect(mockGetContents).toHaveBeenCalledWith([url], {
           livecrawlTimeout: 5_000,
-          summary: true,
+          extras: { imageLinks: 1 },
           text: {
             maxCharacters: 5_000,
           },

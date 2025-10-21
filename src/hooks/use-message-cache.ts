@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 type UseMessageCacheOptions<T> = {
   /** The message ID to update */
   messageId: string
-  /** Dot-notation path to the cache field (e.g., "linkPreviews.https://example.com") */
-  cacheKey: string
+  /** Array-based cache key (e.g., ['linkPreview', url] or ['weatherForecast', location, region]) - uses camelCase for namespace */
+  cacheKey: string[]
   /** Function to fetch the value if not cached */
   fetchFn: () => Promise<T>
 }
@@ -23,14 +23,16 @@ type UseMessageCacheOptions<T> = {
  * ```tsx
  * const { data, isLoading } = useMessageCache({
  *   messageId: message.id,
- *   cacheKey: `linkPreviews.${url}`,
+ *   cacheKey: ['linkPreview', url],
  *   fetchFn: () => fetchLinkPreview(url),
  * })
  * ```
  */
 export const useMessageCache = <T>({ messageId, cacheKey, fetchFn }: UseMessageCacheOptions<T>) => {
+  const storageKey = cacheKey.join('/')
+
   return useQuery({
-    queryKey: ['messageCache', messageId, cacheKey],
+    queryKey: ['messageCache', messageId, ...cacheKey],
     queryFn: async () => {
       // 1. Check DB for cached data
       const message = await getMessage(messageId)
@@ -39,29 +41,17 @@ export const useMessageCache = <T>({ messageId, cacheKey, fetchFn }: UseMessageC
         throw new Error(`Message ${messageId} not found`)
       }
 
-      // Navigate the cache path to check for cached value
-      // Only split on first dot to handle URLs properly
-      const firstDotIndex = cacheKey.indexOf('.')
+      // 2. Check if value is cached
+      const cache = message.cache as Record<string, unknown> | null | undefined
+      const cached = cache?.[storageKey]
 
-      let current: any = message.cache
-      if (firstDotIndex === -1) {
-        // No nested path
-        current = current?.[cacheKey]
-      } else {
-        // Split into root key and sub key
-        const rootKey = cacheKey.slice(0, firstDotIndex)
-        const subKey = cacheKey.slice(firstDotIndex + 1)
-        current = current?.[rootKey]?.[subKey]
-      }
-
-      // 2. If cached, return it
-      if (current !== undefined && current !== null) {
-        return current as T
+      if (cached !== undefined && cached !== null) {
+        return cached as T
       }
 
       // 3. Not cached - fetch and update DB
       const fetched = await fetchFn()
-      await updateMessageCache(messageId, cacheKey, fetched)
+      await updateMessageCache(messageId, storageKey, fetched)
 
       return fetched
     },

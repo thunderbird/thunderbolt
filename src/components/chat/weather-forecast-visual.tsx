@@ -18,7 +18,7 @@ type WeatherForecastVisualProps = {
 export const WeatherForecastVisual = ({ location, region, country, messageId }: WeatherForecastVisualProps) => {
   const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
     messageId,
-    cacheKey: `weather.${location}.${region}.${country}.7`,
+    cacheKey: ['weatherForecast', location, region, country],
     fetchFn: async () => {
       return getWeatherForecast({ location, region, country, days: 7 })
     },

@@ -44,7 +44,7 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
   // Use message cache hook - it handles checking cache and fetching if needed
   const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({
     messageId,
-    cacheKey: `linkPreviews.${url}`,
+    cacheKey: ['linkPreview', url],
     fetchFn: async () => {
       const preview = await fetchLinkPreview({ url })
       return {

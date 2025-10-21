@@ -104,10 +104,9 @@ export const saveMessagesWithContextUpdate = async (
 
 /**
  * Updates a specific cache field for a message
- * Uses JSON patch-like syntax for nested keys (e.g., "linkPreviews.https://example.com")
- * Note: Only splits on the FIRST dot to avoid splitting URLs
+ * Uses flat key-value storage with camelCase namespace (e.g., "linkPreview/https://example.com")
  */
-export const updateMessageCache = async (messageId: string, cachePath: string, value: unknown): Promise<void> => {
+export const updateMessageCache = async (messageId: string, cacheKey: string, value: unknown): Promise<void> => {
   const db = DatabaseSingleton.instance.db
 
   // Fetch current message
@@ -117,27 +116,7 @@ export const updateMessageCache = async (messageId: string, cachePath: string, v
     throw new Error('Message not found')
   }
 
-  // Split only on the first dot to handle URLs properly
-  // e.g., "linkPreviews.https://example.com" -> ["linkPreviews", "https://example.com"]
-  const firstDotIndex = cachePath.indexOf('.')
-
-  if (firstDotIndex === -1) {
-    // No nested path, just set at root level
-    const updatedCache = { ...(message.cache || {}), [cachePath]: value }
-    await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
-    return
-  }
-
-  const rootKey = cachePath.slice(0, firstDotIndex)
-  const subKey = cachePath.slice(firstDotIndex + 1)
-
-  // Create or update the nested structure
-  const updatedCache: Record<string, any> = { ...(message.cache || {}) }
-  if (!updatedCache[rootKey]) {
-    updatedCache[rootKey] = {}
-  }
-  updatedCache[rootKey] = { ...updatedCache[rootKey], [subKey]: value }
-
-  // Update the database
+  // Simple flat key-value storage
+  const updatedCache = { ...(message.cache || {}), [cacheKey]: value } as typeof message.cache
   await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
 }

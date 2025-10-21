@@ -70,7 +70,7 @@ export const parseContentParts = (text: string): ContentPart[] => {
 
   // Match any self-closing namespaced tag like widget:link-preview
   // Captures: namespacedTagName and attributes
-  const widgetTagRegex = /<([a-z][a-z0-9-]*:[a-z][a-z0-9-]*)\s+((?:[^\/]|\/(?!>))+)\/>/gi
+  const widgetTagRegex = /<([a-z][a-z0-9-]*:[a-z][a-z0-9-]*)\s+((?:[^/]|\/(?!>))+)\/>/gi
 
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -106,7 +106,7 @@ export const parseContentParts = (text: string): ContentPart[] => {
     let textAfter = text.slice(lastIndex).trim()
 
     // Remove incomplete widget tags at the end (for streaming)
-    const incompleteWidgetTagMatch = textAfter.match(/<[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)?(?:\s+[^>]*)?$/)
+    const incompleteWidgetTagMatch = textAfter.match(/<widget:[a-z0-9-]*(?:\s+[^>]*)?$/)
     if (incompleteWidgetTagMatch) {
       textAfter = textAfter.slice(0, incompleteWidgetTagMatch.index).trim()
     }

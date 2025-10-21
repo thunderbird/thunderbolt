@@ -76,7 +76,16 @@ export const createLinkPreviewRoutes = () => {
 
       // Extract the target URL from the path (everything after /link-preview/)
       const pathParts = url.pathname.split('/link-preview/')
-      const pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
+      let pathOnly: string
+      try {
+        pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
+      } catch {
+        return {
+          data: null,
+          success: false,
+          error: 'Invalid URL encoding',
+        }
+      }
       const targetUrl = pathOnly + url.search
 
       if (!targetUrl) {

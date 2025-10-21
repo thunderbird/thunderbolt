@@ -207,6 +207,20 @@ describe('Link Preview Routes', () => {
       expect(body.error).toBe('Invalid URL provided')
     })
 
+    it('should return error when URL has malformed encoding', async () => {
+      // This URL has a % not followed by valid hex digits, which will cause decodeURIComponent to throw
+      const malformedUrl = 'https://example.com/%ZZ'
+
+      const response = await app.handle(new Request(`http://localhost/link-preview/${malformedUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(false)
+      expect(body.error).toBe('Invalid URL encoding')
+    })
+
     it('should handle URL-encoded target URLs', async () => {
       const targetUrl = 'https://example.com/page?v=2'
       const encodedTargetUrl = encodeURIComponent(targetUrl)

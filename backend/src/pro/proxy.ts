@@ -25,7 +25,17 @@ export const createProxyRoutes = () => {
       // Extract the target URL from the path (everything after /proxy/)
       // Remove the prefix path to get the target URL
       const pathParts = url.pathname.split('/proxy/')
-      const pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
+      let pathOnly: string
+      try {
+        pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
+      } catch {
+        ctx.set.status = 400
+        return new Response('Invalid URL encoding', {
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        })
+      }
       const targetUrl = pathOnly + url.search
 
       if (!targetUrl) {

@@ -139,6 +139,19 @@ describe('Proxy Routes', () => {
       expect(body).toBe('Invalid URL provided')
     })
 
+    it('should return 400 when URL has malformed encoding', async () => {
+      // This URL has a % not followed by valid hex digits, which will cause decodeURIComponent to throw
+      const malformedUrl = 'https://example.com/%ZZ'
+
+      const response = await app.handle(new Request(`http://localhost/proxy/${malformedUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const body = await response.text()
+      expect(body).toBe('Invalid URL encoding')
+    })
+
     it('should handle URL-encoded target URLs', async () => {
       const targetUrl = 'https://example.com/favicon.ico?v=2'
       const encodedTargetUrl = encodeURIComponent(targetUrl)

@@ -214,5 +214,32 @@ describe('Utils - Streaming', () => {
       }
       expect(chunks[chunks.length - 1]).toBe('data: [DONE]\n\n')
     })
+
+    it('should handle client disconnection gracefully', async () => {
+      const mockAbort = jest.fn()
+      const mockChunks = [
+        { id: 'chunk1', choices: [{ delta: { content: 'First' } }] },
+        { id: 'chunk2', choices: [{ delta: { content: 'Second' } }] },
+        { id: 'chunk3', choices: [{ delta: { content: 'Third' } }] },
+      ]
+
+      const mockCompletion = {
+        ...createMockCompletion(mockChunks),
+        controller: { abort: mockAbort },
+      }
+
+      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const reader = stream.getReader()
+
+      // Read first chunk
+      await reader.read()
+
+      // Cancel the stream (simulating client disconnect)
+      await reader.cancel()
+
+      // Verify abort was called on the OpenAI stream
+      expect(mockAbort).toHaveBeenCalled()
+      expect(mockConsoleError).not.toHaveBeenCalled()
+    })
   })
 })

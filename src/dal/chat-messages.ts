@@ -2,12 +2,12 @@ import { desc, eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
-import type { ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 
 /**
  * Gets a single chat message by ID
  */
-export const getMessage = async (messageId: string) => {
+export const getMessage = async (messageId: string): Promise<ChatMessage | undefined> => {
   const db = DatabaseSingleton.instance.db
   return await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
 }
@@ -15,7 +15,7 @@ export const getMessage = async (messageId: string) => {
 /**
  * Gets all chat messages for a specific thread
  */
-export const getChatMessages = async (threadId: string) => {
+export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
   const chatMessages = await db
     .select()
@@ -25,7 +25,9 @@ export const getChatMessages = async (threadId: string) => {
   return chatMessages
 }
 
-export const getLastMessage = async (threadId: string) => {
+export const getLastMessage = async (
+  threadId: string,
+): Promise<Pick<ChatMessage, 'id' | 'chatThreadId' | 'modelId'> | undefined> => {
   const db = DatabaseSingleton.instance.db
 
   return await db
@@ -48,7 +50,10 @@ export const getLastMessage = async (threadId: string) => {
  * @returns The saved database messages
  * @throws Error if thread is not found
  */
-export const saveMessagesWithContextUpdate = async (threadId: string, messages: ThunderboltUIMessage[]) => {
+export const saveMessagesWithContextUpdate = async (
+  threadId: string,
+  messages: ThunderboltUIMessage[],
+): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
 
   // Verify thread exists
@@ -102,7 +107,7 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
  * Uses JSON patch-like syntax for nested keys (e.g., "linkPreviews.https://example.com")
  * Note: Only splits on the FIRST dot to avoid splitting URLs
  */
-export const updateMessageCache = async (messageId: string, cachePath: string, value: unknown) => {
+export const updateMessageCache = async (messageId: string, cachePath: string, value: unknown): Promise<void> => {
   const db = DatabaseSingleton.instance.db
 
   // Fetch current message

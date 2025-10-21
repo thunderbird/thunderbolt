@@ -6,6 +6,20 @@ import type { LinkPreviewResponse } from './types'
 const TIMEOUT_MS = 2000
 
 /**
+ * Decodes HTML entities in a string
+ */
+const decodeHtmlEntities = (text: string): string => {
+  return text
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&') // Must be last to avoid double-decoding
+}
+
+/**
  * Extracts Open Graph metadata from HTML content
  */
 const extractMetadata = (html: string, url: string) => {
@@ -34,8 +48,8 @@ const extractMetadata = (html: string, url: string) => {
   const description = ogDescMatch?.[1] || metaDescMatch?.[1] || null
 
   return {
-    title,
-    description,
+    title: title ? decodeHtmlEntities(title) : null,
+    description: description ? decodeHtmlEntities(description) : null,
     image,
   }
 }
@@ -92,7 +106,11 @@ export const createLinkPreviewRoutes = () => {
         const response = await fetch(targetUrl, {
           method: 'GET',
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; ThunderboltBot/1.0)',
+            // Use a realistic user agent to avoid Forbidden errors
+            'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
           },
           signal: controller.signal,
         })

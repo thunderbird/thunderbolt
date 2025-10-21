@@ -42,7 +42,7 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
   const { cloudUrl } = useSettings({ cloud_url: String })
 
   // Use message cache hook - it handles checking cache and fetching if needed
-  const { data, isLoading } = useMessageCache<LinkPreviewMetadata>({
+  const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({
     messageId,
     cacheKey: `linkPreviews.${url}`,
     fetchFn: async () => {
@@ -59,8 +59,14 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
     return <LinkPreviewSkeleton />
   }
 
+  // Show error state with error message as description
+  if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load preview'
+    return <LinkPreview title={url} description={errorMessage} url={url} image={null} />
+  }
+
   if (!data) {
-    return null
+    return <LinkPreview title={url} description="Failed to load preview" url={url} image={null} />
   }
 
   const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}` : null

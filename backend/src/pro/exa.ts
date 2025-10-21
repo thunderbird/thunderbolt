@@ -57,9 +57,10 @@ export const exaPlugin = new Elysia({ name: 'exa' })
         livecrawlTimeout: 5_000,
         // summary: true,
         extras: { imageLinks: 1 },
-        text: {
-          maxCharacters: 5_000,
-        },
+        text: true,
+        // text: {
+        //   maxCharacters: 5_000,
+        // },
       })
 
       return {

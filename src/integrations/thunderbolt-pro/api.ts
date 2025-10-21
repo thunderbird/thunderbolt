@@ -155,7 +155,7 @@ export const fetchLinkPreview = async (params: LinkPreviewParams): Promise<LinkP
     return response.data
   } catch (error) {
     console.error('Link preview error:', error)
-    throw new Error(`Link preview failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    throw new Error(error instanceof Error ? error.message : 'Unknown error')
   }
 }
 

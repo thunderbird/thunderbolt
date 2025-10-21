@@ -67,5 +67,6 @@ export const useMessageCache = <T>({ messageId, cacheKey, fetchFn }: UseMessageC
     },
     staleTime: Infinity, // Once fetched, never refetch
     gcTime: Infinity, // Keep in cache forever
+    retry: false, // Don't retry on failure
   })
 }

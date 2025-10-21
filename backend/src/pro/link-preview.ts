@@ -3,8 +3,6 @@ import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import type { LinkPreviewResponse } from './types'
 
-const TIMEOUT_MS = 2000
-
 /**
  * Decodes HTML entities in a string
  */
@@ -110,7 +108,7 @@ export const createLinkPreviewRoutes = () => {
       try {
         // Fetch with timeout
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
+        const timeoutId = setTimeout(() => controller.abort(), 2_000)
 
         const response = await fetch(targetUrl, {
           method: 'GET',

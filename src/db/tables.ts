@@ -1,4 +1,4 @@
-import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/api'
+import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
 import type { WeatherForecastData } from '@/lib/weather-forecast'
 import type { UIMessage } from 'ai'
 import { sql } from 'drizzle-orm'

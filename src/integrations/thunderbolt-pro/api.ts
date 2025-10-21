@@ -2,89 +2,18 @@ import { getSettings } from '@/dal'
 import { getCloudUrl } from '@/lib/config'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/lib/weather-forecast'
 import ky from 'ky'
-import { z } from 'zod'
+import type {
+  FetchContentData,
+  FetchContentParams,
+  LinkPreviewData,
+  LinkPreviewParams,
+  SearchLocationParams,
+  SearchParams,
+  SearchResultData,
+  WeatherParams,
+} from './schemas'
 
 const requestTimeout = 10000
-
-/**
- * Schemas for the pro API
- */
-export const searchSchema = z
-  .object({
-    query: z.string().describe('The search query string'),
-    max_results: z.number().describe('Maximum number of results to return'),
-  })
-  .strict()
-
-export const fetchContentSchema = z
-  .object({
-    url: z.string().describe('Webpage URL to fetch content from'),
-  })
-  .strict()
-
-export const linkPreviewSchema = z
-  .object({
-    url: z.string().describe('URL to fetch preview metadata from'),
-  })
-  .strict()
-
-export const searchLocationSchema = z
-  .object({
-    query: z.string().describe('The location name to search for'),
-    region: z.string().describe("The location's state or region."),
-    country: z.string().describe("The location's country."),
-  })
-  .strict()
-
-export const weatherSchema = z
-  .object({
-    location: z
-      .string()
-      .describe('The location name to get weather for. Only include the city name, not the state or country.'),
-    region: z.string().describe("The location's state or region."),
-    country: z.string().describe("The location's country."),
-    days: z.number().describe('Number of days to forecast (1-16)'),
-  })
-  .strict()
-
-export type SearchParams = z.infer<typeof searchSchema>
-export type FetchContentParams = z.infer<typeof fetchContentSchema>
-export type LinkPreviewParams = z.infer<typeof linkPreviewSchema>
-export type WeatherParams = z.infer<typeof weatherSchema>
-export type SearchLocationParams = z.infer<typeof searchLocationSchema>
-
-export type SearchResultData = {
-  url: string
-  title: string | null
-  summary?: string
-  highlights?: string[]
-  highlightScores?: number[]
-  favicon: string | null
-  image: string | null
-  author: string | null
-  publishedDate: string | null
-  score?: number
-  id: string
-}
-
-export type FetchContentData = {
-  url: string
-  title: string | null
-  text: string
-  summary: string
-  highlights?: string[]
-  highlightScores?: number[]
-  favicon: string | null
-  image: string | null
-  author: string | null
-  published_date: string | null
-} | null
-
-export type LinkPreviewData = {
-  title: string | null
-  description: string | null
-  image: string | null
-}
 
 /**
  * Search the web and return structured results with summaries and highlights

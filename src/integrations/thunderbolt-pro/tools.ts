@@ -1,11 +1,7 @@
 import type { ToolConfig } from '@/types'
+import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './api'
 import {
-  fetchContent,
   fetchContentSchema,
-  getCurrentWeather,
-  getWeatherForecast,
-  search,
-  searchLocations,
   searchLocationSchema,
   searchSchema,
   weatherSchema,
@@ -14,7 +10,7 @@ import {
   type SearchParams,
   type SearchResultData,
   type WeatherParams,
-} from './api'
+} from './schemas'
 
 // Re-export everything from api for backward compatibility
 export {

@@ -13,7 +13,7 @@ const createToolPart = (toolName: string): ToolUIPart =>
 
 describe('assistant-message utilities', () => {
   describe('groupToolParts', () => {
-    it('groups consecutive non-display tool parts into a single group entry', () => {
+    it('groups consecutive tool parts into a single group entry', () => {
       const toolAlpha = createToolPart('alpha')
       const toolBeta = createToolPart('beta')
       const textPart: TextUIPart = { type: 'text', text: 'hello' }
@@ -30,24 +30,23 @@ describe('assistant-message utilities', () => {
       expect(grouped[1]).toBe(textPart)
     })
 
-    it('flushes groups when encountering non-tool or display-only tools', () => {
-      const displayTool = createToolPart('display-panel')
-      const regularTool = createToolPart('gamma')
-      const trailingTool = createToolPart('delta')
+    it('flushes groups when encountering non-tool parts', () => {
+      const toolAlpha = createToolPart('alpha')
+      const toolBeta = createToolPart('beta')
       const reasoningPart: ReasoningUIPart = { type: 'reasoning', text: 'because' }
+      const toolGamma = createToolPart('gamma')
 
-      const grouped = groupToolParts([displayTool, regularTool, reasoningPart, trailingTool])
+      const grouped = groupToolParts([toolAlpha, toolBeta, reasoningPart, toolGamma])
 
-      expect(grouped).toHaveLength(4)
-      expect(grouped[0]).toBe(displayTool)
-      expect(grouped[1]).toEqual({
+      expect(grouped).toHaveLength(3)
+      expect(grouped[0]).toEqual({
         type: 'group_tools',
-        tools: [regularTool],
+        tools: [toolAlpha, toolBeta],
       })
-      expect(grouped[2]).toBe(reasoningPart)
-      expect(grouped[3]).toEqual({
+      expect(grouped[1]).toBe(reasoningPart)
+      expect(grouped[2]).toEqual({
         type: 'group_tools',
-        tools: [trailingTool],
+        tools: [toolGamma],
       })
     })
   })

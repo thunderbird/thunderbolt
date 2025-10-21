@@ -25,7 +25,7 @@ export const createProxyRoutes = () => {
       // Extract the target URL from the path (everything after /proxy/)
       // Remove the prefix path to get the target URL
       const pathParts = url.pathname.split('/proxy/')
-      const pathOnly = pathParts[pathParts.length - 1]
+      const pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
       const targetUrl = pathOnly + url.search
 
       if (!targetUrl) {

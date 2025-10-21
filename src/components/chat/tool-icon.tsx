@@ -1,9 +1,9 @@
-import { getCloudUrl } from '@/lib/config'
+import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
 
 type ToolIconProps = {
@@ -38,7 +38,7 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
  */
 export const getProxiedFaviconUrl = (faviconUrl: string, cloudUrl: string): string => {
   if (!cloudUrl) return faviconUrl
-  return `${cloudUrl}/pro/proxy/${faviconUrl}`
+  return `${cloudUrl}/pro/proxy/${encodeURIComponent(faviconUrl)}`
 }
 
 /**
@@ -46,17 +46,13 @@ export const getProxiedFaviconUrl = (faviconUrl: string, cloudUrl: string): stri
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const [cloudUrl, setCloudUrl] = useState<string>('')
-
-  useEffect(() => {
-    getCloudUrl().then(setCloudUrl)
-  }, [])
+  const { cloudUrl } = useSettings({ cloud_url: String })
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))
   }
 
-  if (!toolOutput || isLoading || isError) {
+  if (!toolOutput || isLoading || isError || !cloudUrl.value) {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }
   }
 
@@ -66,7 +62,7 @@ const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolea
       return { favicon: null, originalFaviconUrl, handleFaviconError }
     }
 
-    const favicon = getProxiedFaviconUrl(originalFaviconUrl, cloudUrl)
+    const favicon = getProxiedFaviconUrl(originalFaviconUrl, cloudUrl.value)
     return { favicon, originalFaviconUrl, handleFaviconError }
   } catch {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }

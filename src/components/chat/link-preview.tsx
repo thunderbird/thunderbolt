@@ -63,7 +63,7 @@ export const LinkPreviewVisual = ({ url, messageId }: LinkPreviewVisualProps) =>
     return null
   }
 
-  const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${data.image}` : null
+  const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}` : null
 
   return <LinkPreview title={data.title} description={data.description} url={url} image={imageUrl} />
 }

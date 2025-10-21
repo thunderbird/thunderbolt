@@ -62,16 +62,10 @@ export const exaPlugin = new Elysia({ name: 'exa' })
         },
       })
 
-      return response.results[0]
-        ? {
-            data: response.results[0],
-            success: true,
-          }
-        : {
-            data: null,
-            success: false,
-            error: 'No content found for the given URL.',
-          }
+      return {
+        data: response.results[0] || null,
+        success: true,
+      }
     },
     {
       body: t.Object({

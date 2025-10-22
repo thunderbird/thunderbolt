@@ -45,7 +45,7 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
   }
 
   const handleOpenExternal = async () => {
-    if (!config?.url) return
+    if (!config.url) return
     try {
       const { openUrl } = await import('@tauri-apps/plugin-opener')
       await openUrl(config.url)

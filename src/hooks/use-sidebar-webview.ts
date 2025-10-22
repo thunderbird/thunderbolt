@@ -8,11 +8,6 @@ export type SidebarWebviewConfig = {
   onClose?: () => void
 }
 
-type WebviewState = {
-  webview: Webview | null
-  isInitialized: boolean
-}
-
 /**
  * Hook to manage a single webview positioned in a sidebar container
  *
@@ -24,21 +19,14 @@ export const useSidebarWebview = (
   config: SidebarWebviewConfig | null,
   containerRef: React.RefObject<HTMLElement | null>,
 ) => {
-  const [webviewState, setWebviewState] = useState<WebviewState>({
-    webview: null,
-    isInitialized: false,
-  })
+  const [isInitialized, setIsInitialized] = useState(false)
+  const webviewRef = useRef<Webview | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const animationFrameRef = useRef<number | undefined>(undefined)
   const windowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
 
   useEffect(() => {
     if (!config || !containerRef.current) {
-      // Cleanup previous webview if config becomes null
-      if (webviewState.webview) {
-        webviewState.webview.close().catch(console.error)
-        setWebviewState({ webview: null, isInitialized: false })
-      }
       return
     }
 
@@ -52,8 +40,7 @@ export const useSidebarWebview = (
 
       const rect = containerRef.current.getBoundingClientRect()
 
-      // The containerRef is the whole panel, we need to account for the 48px header
-      const previewHeaderHeight = 48
+      const previewHeaderHeight = 48 // Header height
       const coordinateOffset = 28 // Empirical offset for title bar/chrome
       const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
@@ -107,6 +94,7 @@ export const useSidebarWebview = (
           y: webviewTop,
           width: Math.floor(rect.width),
           height: webviewHeight,
+          incognito: true, // Use incognito mode for privacy and to prevent keychain access for WebCrypto API
         }
 
         const webviewLabel = `sidebar-webview-${Date.now()}`
@@ -122,10 +110,8 @@ export const useSidebarWebview = (
           return
         }
 
-        setWebviewState({
-          webview,
-          isInitialized: true,
-        })
+        webviewRef.current = webview
+        setIsInitialized(true)
 
         // Set up ResizeObserver to track container size changes
         resizeObserverRef.current = new ResizeObserver(() => {
@@ -171,14 +157,17 @@ export const useSidebarWebview = (
       if (webview) {
         webview.close().catch(console.error)
       }
+      webviewRef.current = null
+      setIsInitialized(false)
     }
   }, [config?.url]) // Re-initialize if URL changes
 
   const closeWebview = async () => {
-    if (webviewState.webview) {
+    if (webviewRef.current) {
       try {
-        await webviewState.webview.close()
-        setWebviewState({ webview: null, isInitialized: false })
+        await webviewRef.current.close()
+        webviewRef.current = null
+        setIsInitialized(false)
         if (config?.onClose) {
           config.onClose()
         }
@@ -189,7 +178,8 @@ export const useSidebarWebview = (
   }
 
   return {
-    ...webviewState,
+    webview: webviewRef.current,
+    isInitialized,
     closeWebview,
   }
 }

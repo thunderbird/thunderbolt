@@ -1,5 +1,5 @@
 import type { SidebarWebviewConfig } from '@/hooks/use-sidebar-webview'
-import { createContext, type ReactNode, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 
 type PreviewContextType = {
   previewConfig: SidebarWebviewConfig | null
@@ -19,18 +19,18 @@ const PreviewContext = createContext<PreviewContextType | undefined>(undefined)
 export const PreviewProvider = ({ children }: { children: ReactNode }) => {
   const [previewConfig, setPreviewConfig] = useState<SidebarWebviewConfig | null>(null)
 
-  const showPreview = (url: string) => {
+  const showPreview = useCallback((url: string) => {
     setPreviewConfig({
       url,
       onClose: () => {
         setPreviewConfig(null)
       },
     })
-  }
+  }, [])
 
-  const closePreview = () => {
+  const closePreview = useCallback(() => {
     setPreviewConfig(null)
-  }
+  }, [])
 
   return (
     <PreviewContext.Provider

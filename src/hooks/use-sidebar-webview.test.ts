@@ -1,19 +1,24 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { renderHook, waitFor } from '@testing-library/react'
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { type RefObject } from 'react'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
 
-// Set up happy-dom global environment
-GlobalRegistrator.register()
-
 beforeAll(() => {
+  // Set up happy-dom global environment
+  GlobalRegistrator.register()
+
   // Mock ResizeObserver for testing
   global.ResizeObserver = class ResizeObserver {
     observe() {}
     unobserve() {}
     disconnect() {}
   }
+})
+
+afterAll(() => {
+  // Clean up happy-dom global environment to prevent pollution
+  GlobalRegistrator.unregister()
 })
 
 // Mock Tauri APIs

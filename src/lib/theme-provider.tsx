@@ -74,6 +74,8 @@ export function ThemeProvider({
     }
 
     root.classList.add(theme)
+
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#fff')
   }, [theme])
 
   useEffect(() => {

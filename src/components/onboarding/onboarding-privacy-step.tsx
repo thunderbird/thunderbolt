@@ -21,24 +21,24 @@ export const OnboardingPrivacyStep = ({ onNext }: OnboardingPrivacyStepProps) =>
       </div>
 
       <div className="space-y-4 sm:space-y-6 pt-3">
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <Lock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <Lock className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">On-Device Processing</h3>
             <p className="text-xs text-muted-foreground">Data processed locally, not sent to external servers.</p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <Eye className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <Eye className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">No Data Collection</h3>
             <p className="text-xs text-muted-foreground">We don't collect or share your personal information.</p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <Database className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <Database className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">Local Storage</h3>
             <p className="text-xs text-muted-foreground">All data stored securely on your device.</p>

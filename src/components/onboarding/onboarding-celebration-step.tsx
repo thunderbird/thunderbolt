@@ -35,9 +35,9 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
           </div>
         </div>
 
-        <div className="space-y-4 sm:space-y-6 text-left max-w-md mx-auto pt-3">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-            <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="sm:space-y-6 max-w-md mx-auto pt-3">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+            <Sparkles className="w-5 h-5 flex-shrink-0" />
             <div>
               <h3 className="font-medium text-sm">You're Ready to Go!</h3>
               <p className="text-xs text-muted-foreground">
@@ -47,8 +47,8 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
             </div>
           </div>
 
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-            <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
             <div>
               <h3 className="font-medium text-sm">Privacy Protected</h3>
               <p className="text-xs text-muted-foreground">

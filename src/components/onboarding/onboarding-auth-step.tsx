@@ -53,8 +53,8 @@ export const OnboardingAuthStep = ({
       </div>
 
       <div className="space-y-4 sm:space-y-6 pt-3">
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <Calendar className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <Calendar className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">Calendar Access</h3>
             <p className="text-xs text-muted-foreground">
@@ -63,8 +63,8 @@ export const OnboardingAuthStep = ({
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <Mail className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <Mail className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">Email Integration</h3>
             <p className="text-xs text-muted-foreground">
@@ -74,7 +74,7 @@ export const OnboardingAuthStep = ({
         </div>
 
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <HardDrive className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+          <HardDrive className="w-5 h-5 flex-shrink-0" />
           <div>
             <h3 className="font-medium text-sm">{storageFeatureTitle}</h3>
             <p className="text-xs text-muted-foreground">

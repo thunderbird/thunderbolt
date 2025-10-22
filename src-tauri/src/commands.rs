@@ -1,13 +1,12 @@
 use anyhow::Result;
 use serde::Serialize;
 use tauri::command;
+use tauri::Manager;
 
 #[cfg(feature = "bridge")]
 use crate::state::AppState;
 #[cfg(feature = "bridge")]
 use serde_json;
-#[cfg(feature = "bridge")]
-use tauri::Manager;
 #[cfg(feature = "bridge")]
 use tokio::sync::Mutex;
 
@@ -146,4 +145,124 @@ pub fn capabilities() -> Capabilities {
         libsql: LIBSQL_ENABLED,
         native_fetch: NATIVE_FETCH_ENABLED,
     }
+}
+
+/// Creates a webview with non-persistent storage to prevent keychain access prompts.
+/// This uses a combination of incognito mode and data store identifier to ensure
+/// WebCrypto operations don't trigger keychain access on macOS.
+#[command]
+pub async fn create_sidebar_webview(
+    app_handle: tauri::AppHandle,
+    label: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
+
+    // Generate a unique data store identifier for this webview
+    // Using a random identifier ensures each webview has its own ephemeral storage
+    let data_store_id: [u8; 16] = {
+        use std::collections::hash_map::RandomState;
+        use std::hash::{BuildHasher, Hash, Hasher};
+
+        let hasher_builder = RandomState::new();
+        let mut hasher = hasher_builder.build_hasher();
+        label.hash(&mut hasher);
+        std::time::SystemTime::now().hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Convert hash to 16-byte array
+        let mut id = [0u8; 16];
+        id[0..8].copy_from_slice(&hash.to_le_bytes());
+        id[8..16].copy_from_slice(&hash.to_be_bytes());
+        id
+    };
+
+    // JavaScript to disable WebCrypto API to prevent keychain access
+    // This is injected before any page scripts run
+    let disable_webcrypto_script = r#"
+        (function() {
+            if (window.crypto && window.crypto.subtle) {
+                // Replace crypto.subtle with a non-functional stub
+                Object.defineProperty(window.crypto, 'subtle', {
+                    get: function() {
+                        console.warn('WebCrypto API has been disabled in this webview to prevent keychain access prompts');
+                        return undefined;
+                    },
+                    configurable: false
+                });
+            }
+        })();
+    "#;
+
+    WebviewWindowBuilder::new(
+        &app_handle,
+        &label,
+        WebviewUrl::External(url.parse().map_err(|e| format!("Invalid URL: {e}"))?),
+    )
+    .position(x, y)
+    .inner_size(width, height)
+    .incognito(true)
+    .data_store_identifier(data_store_id)
+    .initialization_script(disable_webcrypto_script)
+    .visible(true)
+    .decorations(false)
+    .build()
+    .map_err(|e| format!("Failed to create webview: {e}"))?;
+
+    Ok(())
+}
+
+/// Closes a webview by label.
+#[command]
+pub async fn close_sidebar_webview(
+    app_handle: tauri::AppHandle,
+    label: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    if let Some(webview) = app_handle.get_webview_window(&label) {
+        webview
+            .close()
+            .map_err(|e| format!("Failed to close webview: {e}"))?;
+    }
+
+    Ok(())
+}
+
+/// Updates webview position and size.
+#[command]
+pub async fn update_sidebar_webview_bounds(
+    app_handle: tauri::AppHandle,
+    label: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri::PhysicalPosition;
+    use tauri::PhysicalSize;
+    use tauri::{Position, Size};
+
+    if let Some(webview) = app_handle.get_webview_window(&label) {
+        webview
+            .set_position(Position::Physical(PhysicalPosition {
+                x: x as i32,
+                y: y as i32,
+            }))
+            .map_err(|e| format!("Failed to set position: {e}"))?;
+        webview
+            .set_size(Size::Physical(PhysicalSize {
+                width: width as u32,
+                height: height as u32,
+            }))
+            .map_err(|e| format!("Failed to set size: {e}"))?;
+    }
+
+    Ok(())
 }

@@ -1,5 +1,4 @@
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
-import { Webview, type WebviewOptions } from '@tauri-apps/api/webview'
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useEffect, useRef, useState } from 'react'
 
@@ -20,7 +19,7 @@ export const useSidebarWebview = (
   containerRef: React.RefObject<HTMLElement | null>,
 ) => {
   const [isInitialized, setIsInitialized] = useState(false)
-  const webviewRef = useRef<Webview | null>(null)
+  const webviewLabelRef = useRef<string | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const animationFrameRef = useRef<number | undefined>(undefined)
   const windowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
@@ -30,13 +29,13 @@ export const useSidebarWebview = (
       return
     }
 
-    let webview: Webview | null = null
+    let webviewLabel: string | null = null
     let isActive = true
     let unlistenResize: (() => void) | null = null
     let unlistenMove: (() => void) | null = null
 
     const updateWebviewPosition = async () => {
-      if (!webview || !containerRef.current || !isActive) return
+      if (!webviewLabel || !containerRef.current || !isActive) return
 
       const rect = containerRef.current.getBoundingClientRect()
 
@@ -47,8 +46,13 @@ export const useSidebarWebview = (
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
 
       try {
-        await webview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
-        await webview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
+        await invoke('update_sidebar_webview_bounds', {
+          label: webviewLabel,
+          x: Math.floor(rect.left) + borderOffset,
+          y: webviewTop,
+          width: Math.floor(rect.width) - borderOffset,
+          height: webviewHeight,
+        })
       } catch (error) {
         // Silently ignore errors if webview was closed
         if (isActive) {
@@ -91,29 +95,27 @@ export const useSidebarWebview = (
 
         const borderOffset = 0 // Account for ResizableHandle border on the left
 
-        const webviewOptions: WebviewOptions = {
+        const label = `sidebar-webview-${Date.now()}`
+
+        // Use custom Tauri command that creates webview with non-persistent storage
+        // This combines incognito mode with data_store_identifier to prevent keychain access
+        await invoke('create_sidebar_webview', {
+          label,
           url: config.url,
           x: Math.floor(rect.left) + borderOffset,
           y: webviewTop,
           width: Math.floor(rect.width) - borderOffset,
           height: webviewHeight,
-          incognito: true, // Use incognito mode for privacy and to prevent keychain access for WebCrypto API
-        }
-
-        const webviewLabel = `sidebar-webview-${Date.now()}`
-        webview = new Webview(windowRef.current, webviewLabel, webviewOptions)
-
-        webview.once('tauri://error', (error) => {
-          console.error('Webview creation error:', error)
         })
 
         if (!isActive) {
           // Component unmounted while we were creating the webview
-          webview.close().catch(console.error)
+          await invoke('close_sidebar_webview', { label }).catch(console.error)
           return
         }
 
-        webviewRef.current = webview
+        webviewLabel = label
+        webviewLabelRef.current = label
         setIsInitialized(true)
 
         // Set up ResizeObserver to track container size changes
@@ -157,19 +159,19 @@ export const useSidebarWebview = (
       if (unlistenMove) {
         unlistenMove()
       }
-      if (webview) {
-        webview.close().catch(console.error)
+      if (webviewLabel) {
+        invoke('close_sidebar_webview', { label: webviewLabel }).catch(console.error)
       }
-      webviewRef.current = null
+      webviewLabelRef.current = null
       setIsInitialized(false)
     }
   }, [config?.url]) // Re-initialize if URL changes
 
   const closeWebview = async () => {
-    if (webviewRef.current) {
+    if (webviewLabelRef.current) {
       try {
-        await webviewRef.current.close()
-        webviewRef.current = null
+        await invoke('close_sidebar_webview', { label: webviewLabelRef.current })
+        webviewLabelRef.current = null
         setIsInitialized(false)
         if (config?.onClose) {
           config.onClose()
@@ -181,7 +183,7 @@ export const useSidebarWebview = (
   }
 
   return {
-    webview: webviewRef.current,
+    webview: webviewLabelRef.current,
     isInitialized,
     closeWebview,
   }

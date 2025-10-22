@@ -59,6 +59,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::toggle_dock_icon,
             commands::get_env,
             commands::capabilities,
+            commands::create_sidebar_webview,
+            commands::close_sidebar_webview,
+            commands::update_sidebar_webview_bounds,
             #[cfg(feature = "bridge")]
             commands::init_bridge,
             #[cfg(feature = "bridge")]

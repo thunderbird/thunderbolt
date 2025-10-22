@@ -55,7 +55,7 @@ export default function ChatDetailPage() {
       const modelId = messages[0]?.metadata?.modelId
 
       // Fetch thread info to check if we need to generate a title
-      const thread = await getOrCreateChatThread(chatThreadId, modelId)
+      const thread = await getOrCreateChatThread(chatThreadId, modelId ?? '')
 
       // Save messages and update context size using DAL
       const dbChatMessages = await saveMessagesWithContextUpdate(chatThreadId, messages)

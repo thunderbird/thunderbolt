@@ -51,7 +51,7 @@ export const updateChatThread = async (
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID
  */
-export const getOrCreateChatThread = async (id: string, modelId?: string): Promise<ChatThread> => {
+export const getOrCreateChatThread = async (id: string, modelId: string): Promise<ChatThread> => {
   const thread = await getChatThread(id)
 
   if (thread?.id) {
@@ -63,7 +63,7 @@ export const getOrCreateChatThread = async (id: string, modelId?: string): Promi
       id,
       title: 'New Chat',
     },
-    modelId!,
+    modelId,
   )
 
   return (await getChatThread(id))! // We know the thread exists because we just created it

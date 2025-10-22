@@ -160,6 +160,15 @@ export default function ChatUI({
     setTimeout(() => scrollToBottom(), 100)
   }
 
+  // Scroll to bottom when a the page is loaded the first time
+  useEffect(() => {
+    if (hasMessages) {
+      setTimeout(() => {
+        scrollToBottom()
+      }, 100)
+    }
+  }, [hasMessages])
+
   const handleSelectPrompt = (prompt: string) => {
     setInput(prompt)
     setTimeout(() => {
@@ -255,13 +264,11 @@ export default function ChatUI({
       </AnimatePresence>
 
       <motion.div
-        className={cn('p-4', isMobile && 'fixed bottom-0 left-0 right-0 bg-background z-50')}
-        style={{
-          display: 'flex',
-          flex: !hasMessages && !isMobile ? '1' : 'none',
-          alignItems: !hasMessages && !isMobile ? 'center' : 'flex-end',
-          justifyContent: !hasMessages && !isMobile ? 'center' : 'flex-start',
-        }}
+        className={cn(
+          'p-4 flex',
+          !hasMessages && isMobile && 'flex-1 items-end',
+          !hasMessages && !isMobile && 'flex-1 items-center',
+        )}
         initial={false}
         layout
         transition={{

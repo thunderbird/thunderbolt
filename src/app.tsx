@@ -34,6 +34,7 @@ import { useEffect, useState } from 'react'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { ObjectViewProvider } from './components/chat/object-view-provider'
+import { PreviewProvider } from './contexts/preview-context'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import MessageSimulatorPage from './devtools/message-simulator'
@@ -213,7 +214,9 @@ export const App = () => {
                 <ObjectViewProvider>
                   <SidebarProvider>
                     <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <AppContent initData={initData} />
+                      <PreviewProvider>
+                        <AppContent initData={initData} />
+                      </PreviewProvider>
                     </SideviewProvider>
                   </SidebarProvider>
                 </ObjectViewProvider>

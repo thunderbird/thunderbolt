@@ -1,3 +1,4 @@
+import { SidebarWebview } from '@/components/sidebar-webview'
 import { Header } from '@/components/ui/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import {
@@ -8,6 +9,7 @@ import {
   SidebarInset,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
+import { usePreview } from '@/contexts/preview-context'
 import { useSideview } from '@/sideview/provider'
 import { Sidebar } from 'lucide-react'
 import { useRef } from 'react'
@@ -18,6 +20,7 @@ import { Sideview } from './sideview'
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
   const { sideviewId, setSideview } = useSideview()
+  const { previewConfig, closePreview, isPreviewOpen } = usePreview()
   return (
     <SidebarInset className="h-full overflow-hidden flex flex-col">
       <ResizablePanelGroup direction="horizontal" autoSaveId="sideview" className="h-full">
@@ -29,7 +32,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {sideviewId && (
+        {(sideviewId || isPreviewOpen) && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel
@@ -37,7 +40,10 @@ export default function Page() {
               collapsible
               defaultSize={20}
               minSize={15}
-              onCollapse={() => setSideview(null, null)}
+              onCollapse={() => {
+                setSideview(null, null)
+                if (isPreviewOpen) closePreview()
+              }}
             >
               <SidebarHeader>
                 <SidebarGroup>
@@ -45,7 +51,7 @@ export default function Page() {
                     <SidebarMenuButton
                       onClick={() => ref?.current?.collapse()}
                       className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
-                      tooltip="New Chat"
+                      tooltip="Close"
                     >
                       <Sidebar />
                     </SidebarMenuButton>
@@ -53,7 +59,7 @@ export default function Page() {
                 </SidebarGroup>
               </SidebarHeader>
               <SidebarContent className="w-full h-full overflow-scroll">
-                <Sideview />
+                {isPreviewOpen ? <SidebarWebview config={previewConfig} onClose={closePreview} /> : <Sideview />}
               </SidebarContent>
             </ResizablePanel>
           </>

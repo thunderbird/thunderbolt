@@ -14,6 +14,7 @@
     "core:window:allow-create",
     "core:window:allow-close",
     "core:webview:allow-create-webview-window",
+    "core:webview:allow-create-webview",
     "core:webview:allow-webview-size",
     "core:webview:allow-webview-position",
     "core:webview:allow-set-webview-size",

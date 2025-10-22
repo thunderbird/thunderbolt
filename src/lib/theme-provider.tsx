@@ -63,6 +63,7 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = window.document.documentElement
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]')
 
     root.classList.remove('light', 'dark')
 
@@ -70,12 +71,15 @@ export function ThemeProvider({
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 
       root.classList.add(systemTheme)
+
+      metaThemeColor?.setAttribute('content', systemTheme === 'dark' ? '#0a0a0a' : '#fff')
+
       return
     }
 
     root.classList.add(theme)
 
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#fff')
+    metaThemeColor?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#fff')
   }, [theme])
 
   useEffect(() => {

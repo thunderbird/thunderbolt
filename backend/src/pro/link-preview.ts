@@ -56,7 +56,7 @@ const extractMetadata = (html: string, url: string) => {
  * Link preview routes
  * Fetches and parses Open Graph metadata from URLs
  */
-export const createLinkPreviewRoutes = () => {
+export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
 
   return new Elysia({
@@ -110,7 +110,7 @@ export const createLinkPreviewRoutes = () => {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 2_000)
 
-        const response = await fetch(targetUrl, {
+        const response = await fetchFn(targetUrl, {
           method: 'GET',
           headers: {
             // Use a realistic user agent to avoid Forbidden errors

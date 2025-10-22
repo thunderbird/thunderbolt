@@ -33,6 +33,11 @@ interface Location {
 export class OpenMeteoWeather {
   private readonly geocodingUrl = 'https://geocoding-api.open-meteo.com/v1/search'
   private readonly weatherUrl = 'https://api.open-meteo.com/v1/forecast'
+  private readonly fetchFn: typeof fetch
+
+  constructor(fetchFn: typeof fetch = globalThis.fetch) {
+    this.fetchFn = fetchFn
+  }
 
   /**
    * Convert user preferences to Open-Meteo API parameters
@@ -110,7 +115,7 @@ export class OpenMeteoWeather {
     url.searchParams.set('language', 'en')
     url.searchParams.set('format', 'json')
 
-    const response = await fetch(url.toString())
+    const response = await this.fetchFn(url.toString())
 
     if (!response.ok) {
       throw new Error(`Geocoding API error: ${response.status}`)
@@ -153,7 +158,7 @@ export class OpenMeteoWeather {
     const localizationParams = this.getUserLocalizationParams(userPreferences)
     this.applyLocalizationParams(url, localizationParams)
 
-    const response = await fetch(url.toString())
+    const response = await this.fetchFn(url.toString())
 
     if (!response.ok) {
       throw new Error(`Weather API error: ${response.status}`)
@@ -229,7 +234,7 @@ export class OpenMeteoWeather {
       // Determine temperature unit based on what was requested
       const temperatureUnit: 'c' | 'f' = localizationParams.temperatureUnit === 'fahrenheit' ? 'f' : 'c'
 
-      const response = await fetch(url.toString())
+      const response = await this.fetchFn(url.toString())
 
       if (!response.ok) {
         throw new Error(`Weather API error: ${response.status}`)

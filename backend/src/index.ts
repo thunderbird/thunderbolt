@@ -15,7 +15,7 @@ import { Elysia } from 'elysia'
 /**
  * Create the main Elysia application
  */
-const createApp = async () => {
+const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
 
   const app = new Elysia({
@@ -54,7 +54,7 @@ const createApp = async () => {
       .use(createHttpLoggingMiddleware())
       .use(createErrorHandlingMiddleware())
       // Mount route groups
-      .use(createMainRoutes())
+      .use(createMainRoutes(fetchFn))
       .use(createGoogleAuthRoutes())
       .use(createMicrosoftAuthRoutes())
       .use(createProToolsRoutes())

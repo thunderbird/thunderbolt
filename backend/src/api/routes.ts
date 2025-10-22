@@ -14,7 +14,7 @@ export interface LocationResult {
 /**
  * Create main API routes
  */
-export const createMainRoutes = () => {
+export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia()
     .get('/health', () => ({
       status: 'ok',
@@ -74,7 +74,7 @@ export const createMainRoutes = () => {
           url.searchParams.set('language', 'en')
           url.searchParams.set('format', 'json')
 
-          const response = await fetch(url.toString())
+          const response = await fetchFn(url.toString())
 
           if (!response.ok) {
             if (response.status === 400) {

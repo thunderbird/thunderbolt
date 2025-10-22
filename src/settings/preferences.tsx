@@ -1,4 +1,3 @@
-import { getSettings } from '@/dal'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'

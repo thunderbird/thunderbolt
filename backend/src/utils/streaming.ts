@@ -74,7 +74,7 @@ export const createSSEStreamFromCompletion = (
       // Mark as cancelled to stop processing chunks
       isCancelled = true
       // Abort the OpenAI stream
-      completion.controller.abort()
+      completion.controller?.abort()
     },
   })
 }

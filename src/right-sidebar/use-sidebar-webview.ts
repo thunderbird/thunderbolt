@@ -42,12 +42,13 @@ export const useSidebarWebview = (
 
       const previewHeaderHeight = 48 // Header height
       const coordinateOffset = 28 // Empirical offset for title bar/chrome
+      const borderOffset = 0 // Account for ResizableHandle border on the left
       const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
 
       try {
-        await webview.setPosition(new LogicalPosition(Math.floor(rect.left), webviewTop))
-        await webview.setSize(new LogicalSize(Math.floor(rect.width), webviewHeight))
+        await webview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
+        await webview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
       } catch (error) {
         // Silently ignore errors if webview was closed
         if (isActive) {
@@ -82,17 +83,19 @@ export const useSidebarWebview = (
 
         // Account for 48px Preview header + empirical offset
         const previewHeaderHeight = 48
-        // Note: Adding 30px empirical offset because getBoundingClientRect() and Tauri coordinates
+        // Note: Adding 28px empirical offset because getBoundingClientRect() and Tauri coordinates
         // don't perfectly align (likely due to title bar/chrome that isn't reported correctly)
-        const coordinateOffset = 30
+        const coordinateOffset = 28
         const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
         const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
 
+        const borderOffset = 0 // Account for ResizableHandle border on the left
+
         const webviewOptions: WebviewOptions = {
           url: config.url,
-          x: Math.floor(rect.left),
+          x: Math.floor(rect.left) + borderOffset,
           y: webviewTop,
-          width: Math.floor(rect.width),
+          width: Math.floor(rect.width) - borderOffset,
           height: webviewHeight,
           incognito: true, // Use incognito mode for privacy and to prevent keychain access for WebCrypto API
         }

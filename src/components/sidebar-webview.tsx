@@ -14,29 +14,20 @@ type SidebarWebviewProps = {
  *
  * The webview will automatically track the container's size and position,
  * updating when the sidebar is resized or moved.
- *
- * @example
- * ```tsx
- * const [webviewConfig, setWebviewConfig] = useState<SidebarWebviewConfig | null>(null)
- *
- * // When user clicks a preview link:
- * setWebviewConfig({ url: 'https://example.com' })
- *
- * // Render in sidebar:
- * <SidebarWebview
- *   config={webviewConfig}
- *   onClose={() => setWebviewConfig(null)}
- * />
- * ```
  */
 export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const { isInitialized, closeWebview } = useSidebarWebview(config, containerRef)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef)
 
   if (!isTauri()) {
     return (
-      <div className="flex items-center justify-center h-full p-4 text-center">
-        <p className="text-muted-foreground text-sm">Preview webview is only available in the desktop app</p>
+      <div className="flex flex-col h-full">
+        <header className="flex h-12 w-full items-center justify-between px-4 flex-shrink-0 border-b border-border">
+          <span className="text-sm font-medium">Preview</span>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-4 text-center">
+          <p className="text-muted-foreground text-sm">Preview webview is only available in the desktop app</p>
+        </div>
       </div>
     )
   }
@@ -46,38 +37,42 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
   }
 
   const handleClose = async () => {
-    await closeWebview()
-    onClose?.()
+    console.log('SidebarWebview: Close button clicked')
+    try {
+      await closeWebview()
+      console.log('SidebarWebview: Webview closed')
+      onClose?.()
+      console.log('SidebarWebview: onClose callback called')
+    } catch (error) {
+      console.error('SidebarWebview: Error during close:', error)
+    }
   }
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-background">
-      {/* Close button overlay */}
-      <div className="absolute top-2 right-2 z-50">
+    <div ref={panelRef} className="flex flex-col h-full w-full">
+      {/* Header matching main app header - 48px tall */}
+      <header className="flex h-12 w-full items-center justify-between px-4 flex-shrink-0 border-b border-border bg-background z-10">
+        <span className="text-sm font-medium truncate">Preview</span>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="icon"
-          className="h-8 w-8 shadow-lg"
+          className="h-7 w-7 cursor-pointer flex-shrink-0"
           onClick={handleClose}
           aria-label="Close preview"
         >
           <X className="h-4 w-4" />
         </Button>
+      </header>
+
+      {/* Spacer for webview - this will be covered by the webview */}
+      <div className="flex-1 w-full bg-background relative">
+        {/* Loading state */}
+        {!isInitialized && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-muted-foreground text-sm">Loading preview...</p>
+          </div>
+        )}
       </div>
-
-      {/* Loading state */}
-      {!isInitialized && (
-        <div className="flex items-center justify-center h-full">
-          <p className="text-muted-foreground text-sm">Loading preview...</p>
-        </div>
-      )}
-
-      {/* The webview will overlay this container */}
-      {isInitialized && (
-        <div className="absolute inset-0 pointer-events-none">
-          <p className="text-xs text-muted-foreground p-2">Webview active</p>
-        </div>
-      )}
     </div>
   )
 }

@@ -20,13 +20,18 @@ export const PreviewProvider = ({ children }: { children: ReactNode }) => {
   const [previewConfig, setPreviewConfig] = useState<SidebarWebviewConfig | null>(null)
 
   const showPreview = (url: string) => {
+    console.log('PreviewContext: showPreview called with url:', url)
     setPreviewConfig({
       url,
-      onClose: () => setPreviewConfig(null),
+      onClose: () => {
+        console.log('PreviewContext: config.onClose called')
+        setPreviewConfig(null)
+      },
     })
   }
 
   const closePreview = () => {
+    console.log('PreviewContext: closePreview called')
     setPreviewConfig(null)
   }
 

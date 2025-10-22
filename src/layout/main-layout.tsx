@@ -45,22 +45,28 @@ export default function Page() {
                 if (isPreviewOpen) closePreview()
               }}
             >
-              <SidebarHeader>
-                <SidebarGroup>
-                  <SidebarGroupContent className="flex justify-end w-full flex-1 items-center">
-                    <SidebarMenuButton
-                      onClick={() => ref?.current?.collapse()}
-                      className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
-                      tooltip="Close"
-                    >
-                      <Sidebar />
-                    </SidebarMenuButton>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              </SidebarHeader>
-              <SidebarContent className="w-full h-full overflow-scroll">
-                {isPreviewOpen ? <SidebarWebview config={previewConfig} onClose={closePreview} /> : <Sideview />}
-              </SidebarContent>
+              {isPreviewOpen ? (
+                <SidebarWebview config={previewConfig} onClose={closePreview} />
+              ) : (
+                <>
+                  <SidebarHeader>
+                    <SidebarGroup>
+                      <SidebarGroupContent className="flex justify-end w-full flex-1 items-center">
+                        <SidebarMenuButton
+                          onClick={() => ref?.current?.collapse()}
+                          className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+                          tooltip="Close"
+                        >
+                          <Sidebar />
+                        </SidebarMenuButton>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  </SidebarHeader>
+                  <SidebarContent className="w-full h-full overflow-scroll">
+                    <Sideview />
+                  </SidebarContent>
+                </>
+              )}
             </ResizablePanel>
           </>
         )}

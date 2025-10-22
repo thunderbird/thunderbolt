@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { User } from 'lucide-react'
-import { OnboardingFooter } from '@/components/onboarding/onboarding-footer'
+import { Button } from '@/components/ui/button'
 
 const nameFormSchema = z.object({
   preferredName: z.string().min(1, { message: 'Name is required.' }),
@@ -15,11 +15,9 @@ type NameFormData = z.infer<typeof nameFormSchema>
 
 type OnboardingNameStepWrapperProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
 }
 
-export const OnboardingNameStepWrapper = ({ onNext, onSkip, onBack }: OnboardingNameStepWrapperProps) => {
+export const OnboardingNameStepWrapper = ({ onNext }: OnboardingNameStepWrapperProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -70,13 +68,11 @@ export const OnboardingNameStepWrapper = ({ onNext, onSkip, onBack }: Onboarding
             )}
           />
 
-          <OnboardingFooter
-            onBack={onBack}
-            onSkip={onSkip}
-            onContinue={form.handleSubmit(onSubmit)}
-            continueText={isSubmitting ? 'Saving...' : 'Continue'}
-            continueDisabled={isSubmitting}
-          />
+          <div className="pt-5">
+            <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
+              {isSubmitting ? 'Saving...' : 'Continue'}
+            </Button>
+          </div>
         </form>
       </Form>
     </div>

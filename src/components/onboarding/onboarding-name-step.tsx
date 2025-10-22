@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { User } from 'lucide-react'
 import { useSettings } from '@/hooks/use-settings'
-import { OnboardingFooter } from './onboarding-footer'
+import { Button } from '@/components/ui/button'
 
 const nameFormSchema = z.object({
   preferredName: z.string().min(1, { message: 'Name is required.' }),
@@ -16,11 +16,9 @@ type NameFormData = z.infer<typeof nameFormSchema>
 
 type OnboardingNameStepProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
 }
 
-export const OnboardingNameStep = ({ onNext, onSkip, onBack }: OnboardingNameStepProps) => {
+export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { preferredName } = useSettings({
@@ -54,7 +52,7 @@ export const OnboardingNameStep = ({ onNext, onSkip, onBack }: OnboardingNameSte
   }
 
   return (
-    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
+    <div className="w-full h-full flex flex-col justify-center">
       <div className="text-center space-y-4">
         <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
           <User className="w-8 h-8 text-primary" />
@@ -78,16 +76,13 @@ export const OnboardingNameStep = ({ onNext, onSkip, onBack }: OnboardingNameSte
               </FormItem>
             )}
           />
-
-          <OnboardingFooter
-            onBack={onBack}
-            onSkip={onSkip}
-            onContinue={form.handleSubmit(onSubmit)}
-            continueText={isSubmitting ? 'Saving...' : 'Continue'}
-            continueDisabled={isSubmitting}
-          />
         </form>
       </Form>
+      <div className="pt-5">
+        <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
+          {isSubmitting ? 'Saving...' : 'Continue'}
+        </Button>
+      </div>
     </div>
   )
 }

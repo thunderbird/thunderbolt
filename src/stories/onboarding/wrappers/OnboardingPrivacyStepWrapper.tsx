@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Shield, Lock, Eye, Database } from 'lucide-react'
-import { OnboardingFooter } from '@/components/onboarding/onboarding-footer'
+import { Button } from '@/components/ui/button'
 
 type OnboardingPrivacyStepWrapperProps = {
   onNext: () => void
@@ -69,13 +69,11 @@ export const OnboardingPrivacyStepWrapper = ({ onNext }: OnboardingPrivacyStepWr
         </div>
       </div>
 
-      <OnboardingFooter
-        onContinue={onNext}
-        continueText="I Agree & Continue"
-        continueDisabled={!agreedToTerms}
-        showBack={false}
-        showSkip={false}
-      />
+      <div className="pt-5">
+        <Button onClick={onNext} disabled={!agreedToTerms} className="w-full">
+          I Agree & Continue
+        </Button>
+      </div>
     </div>
   )
 }

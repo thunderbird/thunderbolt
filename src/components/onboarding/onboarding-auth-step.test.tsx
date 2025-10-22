@@ -49,8 +49,6 @@ afterEach(async () => {
 describe('OnboardingAuthStep', () => {
   const defaultProps = {
     onNext: mock(),
-    onSkip: mock(),
-    onBack: mock(),
   }
 
   describe('Google provider UI', () => {
@@ -65,9 +63,7 @@ describe('OnboardingAuthStep', () => {
       expect(screen.getByText('Email Integration')).toBeInTheDocument()
       expect(screen.getByText('Drive Access')).toBeInTheDocument()
 
-      // Verify footer buttons
-      expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument()
+      // Verify connect button
       expect(screen.getByRole('button', { name: 'Connect Google Account' })).toBeInTheDocument()
     })
 
@@ -90,7 +86,7 @@ describe('OnboardingAuthStep', () => {
       // Verify OneDrive feature card
       expect(screen.getByText('OneDrive Access')).toBeInTheDocument()
 
-      // Verify footer button
+      // Verify connect button
       expect(screen.getByRole('button', { name: 'Connect Microsoft Account' })).toBeInTheDocument()
     })
   })
@@ -153,22 +149,26 @@ describe('OnboardingAuthStep', () => {
       expect(mockStartOAuthFlowWebview).toHaveBeenCalledWith('google')
     })
 
-    it('should handle back button click', () => {
+    it('should handle loading state during connection', async () => {
+      const mockSuccess = mockOAuthSuccess()
+      mockIsTauri.mockReturnValue(true)
+      mockStartOAuthFlowWebview.mockResolvedValue(mockSuccess)
+
       render(<OnboardingAuthStep {...defaultProps} />)
 
-      const backButton = screen.getByRole('button', { name: 'Back' })
-      fireEvent.click(backButton)
+      const connectButton = screen.getByRole('button', { name: 'Connect Google Account' })
 
-      expect(defaultProps.onBack).toHaveBeenCalled()
-    })
+      // Click connect button
+      fireEvent.click(connectButton)
 
-    it('should handle skip button click', () => {
-      render(<OnboardingAuthStep {...defaultProps} />)
+      // Verify loading state
+      await waitFor(() => {
+        expect(screen.getByText('Connecting...')).toBeInTheDocument()
+      })
 
-      const skipButton = screen.getByRole('button', { name: 'Skip' })
-      fireEvent.click(skipButton)
-
-      expect(defaultProps.onSkip).toHaveBeenCalled()
+      // Verify button is disabled during connection
+      const loadingButton = screen.getByText('Connecting...')
+      expect(loadingButton).toBeDisabled()
     })
   })
 

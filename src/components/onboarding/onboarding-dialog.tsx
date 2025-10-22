@@ -8,6 +8,7 @@ import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { StepIndicators } from './step-indicators'
+import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useLocation, useNavigate } from 'react-router'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 
@@ -71,31 +72,24 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
       <DialogContent
-        className="sm:max-w-[600px] sm:min-h-[500px] p-0 h-screen sm:h-auto w-screen sm:w-auto m-0 sm:m-4 rounded-none sm:rounded-lg max-h-screen overflow-hidden"
+        className="max-w-[600px] p-0 h-[650px] w-[600px] m-4 rounded-lg overflow-hidden sm:h-[650px] sm:w-[600px] h-screen w-full m-0 rounded-none"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
-        <div className="h-full flex flex-col overflow-y-auto overflow-x-hidden">
-          <div className="flex-1 px-6 py-6 flex flex-col justify-center min-h-0">
-            <div className="w-full max-w-md mx-auto space-y-4 sm:min-h-[500px] sm:flex sm:flex-col sm:justify-center overflow-x-hidden">
+        <div className="h-full flex flex-col">
+          <div className="px-4 sm:px-6 pt-4 sm:pt-6 flex-shrink-0">
+            {currentStep > 1 && currentStep < 5 && <OnboardingActionButtons onBack={handleBack} onSkip={handleSkip} />}
+          </div>
+          <div className="flex-1 px-4 sm:px-6 flex items-center justify-center">
+            <div className="w-full max-w-md h-[400px] sm:h-[500px] flex items-center justify-center">
               {currentStep === 1 && <OnboardingPrivacyStep onNext={handleNext} />}
-              {currentStep === 2 && (
-                <OnboardingAuthStep
-                  onNext={handleNext}
-                  onSkip={handleSkip}
-                  onBack={handleBack}
-                  isProcessing={processingOAuth}
-                />
-              )}
-              {currentStep === 3 && <OnboardingNameStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />}
-              {currentStep === 4 && (
-                <OnboardingLocationStep onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />
-              )}
+              {currentStep === 2 && <OnboardingAuthStep onNext={handleNext} isProcessing={processingOAuth} />}
+              {currentStep === 3 && <OnboardingNameStep onNext={handleNext} />}
+              {currentStep === 4 && <OnboardingLocationStep onNext={handleNext} />}
               {currentStep === 5 && <OnboardingCelebrationStep onComplete={handleClose} />}
             </div>
           </div>
-
-          <div className="px-6 pb-6 flex-shrink-0">
+          <div className="px-4 sm:px-6 pb-4 sm:pb-6">
             <StepIndicators currentStep={currentStep} totalSteps={TOTAL_STEPS} />
           </div>
         </div>

@@ -1,21 +1,14 @@
 import { Mail, Calendar, HardDrive } from 'lucide-react'
-import { OnboardingFooter } from '@/components/onboarding/onboarding-footer'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
+import { Button } from '@/components/ui/button'
 
 type OnboardingAuthStepWrapperProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
   providers?: string[]
 }
 
-export const OnboardingAuthStepWrapper = ({
-  onNext,
-  onSkip,
-  onBack,
-  providers = ['google'],
-}: OnboardingAuthStepWrapperProps) => {
+export const OnboardingAuthStepWrapper = ({ onNext, providers = ['google'] }: OnboardingAuthStepWrapperProps) => {
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
 
@@ -77,13 +70,11 @@ export const OnboardingAuthStepWrapper = ({
         </div>
       </div>
 
-      <OnboardingFooter
-        onBack={onBack}
-        onSkip={onSkip}
-        onContinue={handleConnect}
-        continueText={`Connect ${providerName} Account`}
-        continueDisabled={false}
-      />
+      <div className="pt-5">
+        <Button onClick={handleConnect} className="w-full">
+          Connect {providerName} Account
+        </Button>
+      </div>
     </div>
   )
 }

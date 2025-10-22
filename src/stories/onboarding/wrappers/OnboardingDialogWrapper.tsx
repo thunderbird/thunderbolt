@@ -18,16 +18,6 @@ export const OnboardingDialogWrapper = () => {
     setCurrentStep(newStep)
   }
 
-  const handleBack = () => {
-    const newStep = Math.max(currentStep - 1, 1)
-    setCurrentStep(newStep)
-  }
-
-  const handleSkip = () => {
-    const newStep = Math.min(currentStep + 1, TOTAL_STEPS)
-    setCurrentStep(newStep)
-  }
-
   const handleClose = () => {
     setIsOpen(false)
   }
@@ -42,15 +32,9 @@ export const OnboardingDialogWrapper = () => {
           <div className="flex-1 px-6 py-6 flex flex-col justify-center min-h-0">
             <div className="w-full max-w-md mx-auto space-y-4 sm:min-h-[500px] sm:flex sm:flex-col sm:justify-center overflow-x-hidden">
               {currentStep === 1 && <OnboardingPrivacyStepWrapper onNext={handleNext} />}
-              {currentStep === 2 && (
-                <OnboardingAuthStepWrapper onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />
-              )}
-              {currentStep === 3 && (
-                <OnboardingNameStepWrapper onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />
-              )}
-              {currentStep === 4 && (
-                <OnboardingLocationStepWrapper onNext={handleNext} onSkip={handleSkip} onBack={handleBack} />
-              )}
+              {currentStep === 2 && <OnboardingAuthStepWrapper onNext={handleNext} />}
+              {currentStep === 3 && <OnboardingNameStepWrapper onNext={handleNext} />}
+              {currentStep === 4 && <OnboardingLocationStepWrapper onNext={handleNext} />}
               {currentStep === 5 && <OnboardingCelebrationStepWrapper onComplete={handleClose} />}
             </div>
           </div>

@@ -11,8 +11,6 @@ const meta = {
   tags: ['autodocs'],
   argTypes: {
     onNext: { action: 'next' },
-    onSkip: { action: 'skip' },
-    onBack: { action: 'back' },
   },
   decorators: [
     (Story) => (
@@ -29,7 +27,5 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     onNext: fn(),
-    onSkip: fn(),
-    onBack: fn(),
   },
 }

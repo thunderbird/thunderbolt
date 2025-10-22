@@ -8,7 +8,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown, MapPin } from 'lucide-react'
-import { OnboardingFooter } from '@/components/onboarding/onboarding-footer'
 
 const locationFormSchema = z
   .object({
@@ -41,11 +40,9 @@ type LocationData = {
 
 type OnboardingLocationStepWrapperProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
 }
 
-export const OnboardingLocationStepWrapper = ({ onNext, onSkip, onBack }: OnboardingLocationStepWrapperProps) => {
+export const OnboardingLocationStepWrapper = ({ onNext }: OnboardingLocationStepWrapperProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -213,13 +210,11 @@ export const OnboardingLocationStepWrapper = ({ onNext, onSkip, onBack }: Onboar
             )}
           />
 
-          <OnboardingFooter
-            onBack={onBack}
-            onSkip={onSkip}
-            onContinue={form.handleSubmit(onSubmit)}
-            continueText={isSubmitting ? 'Setting up...' : 'Complete Setup'}
-            continueDisabled={isSubmitting}
-          />
+          <div className="pt-5">
+            <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
+              {isSubmitting ? 'Setting up...' : 'Complete Setup'}
+            </Button>
+          </div>
         </form>
       </Form>
     </div>

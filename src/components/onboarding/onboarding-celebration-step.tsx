@@ -23,7 +23,7 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
   }
 
   return (
-    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
+    <div className="w-full h-full flex flex-col justify-center">
       <div className="space-y-6 text-center">
         <div className="space-y-4">
           <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
@@ -35,7 +35,7 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
           </div>
         </div>
 
-        <div className="space-y-6 text-left max-w-md mx-auto pt-3">
+        <div className="space-y-4 sm:space-y-6 text-left max-w-md mx-auto pt-3">
           <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
             <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <div>
@@ -58,12 +58,11 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
             </div>
           </div>
         </div>
-
-        <div className="pt-6">
-          <Button onClick={handleComplete} className="w-full" size="lg" disabled={isCompleting}>
-            {isCompleting ? 'Completing...' : 'Start Using Thunderbolt'}
-          </Button>
-        </div>
+      </div>
+      <div className="pt-5">
+        <Button onClick={handleComplete} className="w-full" size="lg" disabled={isCompleting}>
+          {isCompleting ? 'Completing...' : 'Start Using Thunderbolt'}
+        </Button>
       </div>
     </div>
   )

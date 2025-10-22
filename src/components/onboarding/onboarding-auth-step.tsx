@@ -1,23 +1,19 @@
 import { useState } from 'react'
 import { Mail, Calendar, HardDrive } from 'lucide-react'
-import { OnboardingFooter } from './onboarding-footer'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
 import { type OAuthProvider } from '@/lib/auth'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
+import { Button } from '@/components/ui/button'
 
 type OnboardingAuthStepProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
   providers?: OAuthProvider[]
   isProcessing?: boolean
 }
 
 export const OnboardingAuthStep = ({
   onNext,
-  onSkip,
-  onBack,
   providers = ['google'],
   isProcessing = false,
 }: OnboardingAuthStepProps) => {
@@ -45,7 +41,7 @@ export const OnboardingAuthStep = ({
   const isLoading = isProcessing || isConnecting
 
   return (
-    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
+    <div className="w-full h-full flex flex-col justify-center">
       <div className="text-center space-y-4">
         <div className="mx-auto w-16 h-16 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-sm border">
           <TopIcon className="w-8 h-8" />
@@ -56,7 +52,7 @@ export const OnboardingAuthStep = ({
         </p>
       </div>
 
-      <div className="space-y-6 pt-3">
+      <div className="space-y-4 sm:space-y-6 pt-3">
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
           <Calendar className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
           <div>
@@ -87,14 +83,11 @@ export const OnboardingAuthStep = ({
           </div>
         </div>
       </div>
-
-      <OnboardingFooter
-        onBack={onBack}
-        onSkip={onSkip}
-        onContinue={handleConnect}
-        continueText={isLoading ? 'Connecting...' : `Connect ${providerName} Account`}
-        continueDisabled={isLoading}
-      />
+      <div className="pt-5">
+        <Button onClick={handleConnect} disabled={isLoading} className="w-full">
+          {isLoading ? 'Connecting...' : `Connect ${providerName} Account`}
+        </Button>
+      </div>
     </div>
   )
 }

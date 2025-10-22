@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Shield, Lock, Eye, Database } from 'lucide-react'
-import { OnboardingFooter } from './onboarding-footer'
+import { Button } from '@/components/ui/button'
 
 type OnboardingPrivacyStepProps = {
   onNext: () => void
@@ -11,7 +11,7 @@ export const OnboardingPrivacyStep = ({ onNext }: OnboardingPrivacyStepProps) =>
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   return (
-    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
+    <div className="w-full h-full flex flex-col justify-center">
       <div className="text-center space-y-4">
         <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
           <Shield className="w-8 h-8 text-primary" />
@@ -20,7 +20,7 @@ export const OnboardingPrivacyStep = ({ onNext }: OnboardingPrivacyStepProps) =>
         <p className="text-sm text-muted-foreground">Your privacy is our priority.</p>
       </div>
 
-      <div className="space-y-6 pt-3">
+      <div className="space-y-4 sm:space-y-6 pt-3">
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
           <Lock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
           <div>
@@ -69,13 +69,11 @@ export const OnboardingPrivacyStep = ({ onNext }: OnboardingPrivacyStepProps) =>
         </div>
       </div>
 
-      <OnboardingFooter
-        onContinue={onNext}
-        continueText="I Agree & Continue"
-        continueDisabled={!agreedToTerms}
-        showBack={false}
-        showSkip={false}
-      />
+      <div className="pt-5">
+        <Button onClick={onNext} disabled={!agreedToTerms} className="w-full">
+          I Agree & Continue
+        </Button>
+      </div>
     </div>
   )
 }

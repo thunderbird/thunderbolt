@@ -12,7 +12,6 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { useSettings } from '@/hooks/use-settings'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { extractCountryFromLocation } from '@/lib/country-utils'
-import { OnboardingFooter } from './onboarding-footer'
 
 const locationFormSchema = z
   .object({
@@ -37,11 +36,9 @@ type LocationFormData = z.infer<typeof locationFormSchema>
 
 type OnboardingLocationStepProps = {
   onNext: () => void
-  onSkip: () => void
-  onBack: () => void
 }
 
-export const OnboardingLocationStep = ({ onNext, onSkip, onBack }: OnboardingLocationStepProps) => {
+export const OnboardingLocationStep = ({ onNext }: OnboardingLocationStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const locationSearch = useLocationSearch()
   const { fetchCountryUnits } = useCountryUnits()
@@ -114,7 +111,7 @@ export const OnboardingLocationStep = ({ onNext, onSkip, onBack }: OnboardingLoc
   }
 
   return (
-    <div className="h-full flex flex-col justify-center overflow-x-hidden px-2">
+    <div className="w-full h-full flex flex-col justify-center">
       <div className="text-center space-y-4">
         <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
           <MapPin className="w-8 h-8 text-primary" />
@@ -203,16 +200,13 @@ export const OnboardingLocationStep = ({ onNext, onSkip, onBack }: OnboardingLoc
               </FormItem>
             )}
           />
-
-          <OnboardingFooter
-            onBack={onBack}
-            onSkip={onSkip}
-            onContinue={form.handleSubmit(onSubmit)}
-            continueText={isSubmitting ? 'Setting up...' : 'Complete Setup'}
-            continueDisabled={isSubmitting}
-          />
         </form>
       </Form>
+      <div className="pt-5">
+        <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
+          {isSubmitting ? 'Setting up...' : 'Complete Setup'}
+        </Button>
+      </div>
     </div>
   )
 }

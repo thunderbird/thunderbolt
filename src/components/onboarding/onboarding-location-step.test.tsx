@@ -59,8 +59,6 @@ afterEach(async () => {
 describe('OnboardingLocationStep', () => {
   const defaultProps = {
     onNext: mock(),
-    onSkip: mock(),
-    onBack: mock(),
   }
 
   describe('Component rendering', () => {
@@ -76,8 +74,6 @@ describe('OnboardingLocationStep', () => {
       expect(screen.getByText('Location')).toBeInTheDocument()
       expect(screen.getByText('Select location...')).toBeInTheDocument()
       expect(screen.getByText('Complete Setup')).toBeInTheDocument()
-      expect(screen.getByText('Skip')).toBeInTheDocument()
-      expect(screen.getByText('Back')).toBeInTheDocument()
     })
 
     it('should render MapPin icon', () => {
@@ -222,30 +218,6 @@ describe('OnboardingLocationStep', () => {
     })
   })
 
-  describe('Navigation', () => {
-    it('should call onBack when back button is clicked', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      const backButton = screen.getByText('Back')
-      fireEvent.click(backButton)
-
-      expect(defaultProps.onBack).toHaveBeenCalled()
-    })
-
-    it('should call onSkip when skip button is clicked', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      const skipButton = screen.getByText('Skip')
-      fireEvent.click(skipButton)
-
-      expect(defaultProps.onSkip).toHaveBeenCalled()
-    })
-  })
-
   describe('Accessibility', () => {
     it('should have proper form labels and structure', () => {
       render(<OnboardingLocationStep {...defaultProps} />, {
@@ -296,6 +268,64 @@ describe('OnboardingLocationStep', () => {
       await waitFor(() => {
         expect(screen.getByText('Location is required.')).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Edge cases', () => {
+    it('should handle rapid button clicks', async () => {
+      render(<OnboardingLocationStep {...defaultProps} />, {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      const submitButton = screen.getByText('Complete Setup')
+
+      // Click multiple times rapidly
+      fireEvent.click(submitButton)
+      fireEvent.click(submitButton)
+      fireEvent.click(submitButton)
+
+      // Should show validation error
+      await waitFor(() => {
+        expect(screen.getByText('Location is required.')).toBeInTheDocument()
+      })
+    })
+
+    it('should handle keyboard navigation', () => {
+      render(<OnboardingLocationStep {...defaultProps} />, {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      const combobox = screen.getByRole('combobox')
+
+      // Test keyboard navigation
+      fireEvent.keyDown(combobox, { key: 'Enter' })
+      fireEvent.keyDown(combobox, { key: 'Escape' })
+      fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+      fireEvent.keyDown(combobox, { key: 'ArrowUp' })
+
+      // Component should handle keyboard events gracefully
+      expect(combobox).toBeInTheDocument()
+    })
+
+    it('should maintain accessibility during error states', async () => {
+      render(<OnboardingLocationStep {...defaultProps} />, {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      const submitButton = screen.getByText('Complete Setup')
+      fireEvent.click(submitButton)
+
+      await waitFor(() => {
+        expect(screen.getByText('Location is required.')).toBeInTheDocument()
+      })
+
+      // Check that error message is accessible
+      const errorMessage = screen.getByText('Location is required.')
+      expect(errorMessage).toBeInTheDocument()
+
+      // Check that form controls are still accessible
+      const combobox = screen.getByRole('combobox')
+      expect(combobox).toBeInTheDocument()
     })
   })
 })

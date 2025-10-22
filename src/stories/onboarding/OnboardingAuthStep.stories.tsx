@@ -11,8 +11,6 @@ const meta = {
   tags: ['autodocs'],
   argTypes: {
     onNext: { action: 'next' },
-    onSkip: { action: 'skip' },
-    onBack: { action: 'back' },
     providers: {
       control: { type: 'object' },
       description: 'Array of OAuth providers',
@@ -33,8 +31,6 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     onNext: fn(),
-    onSkip: fn(),
-    onBack: fn(),
     providers: ['google'],
   },
 }
@@ -42,8 +38,6 @@ export const Default: Story = {
 export const Microsoft: Story = {
   args: {
     onNext: fn(),
-    onSkip: fn(),
-    onBack: fn(),
     providers: ['microsoft'],
   },
 }
@@ -51,8 +45,6 @@ export const Microsoft: Story = {
 export const MultipleProviders: Story = {
   args: {
     onNext: fn(),
-    onSkip: fn(),
-    onBack: fn(),
     providers: ['google', 'microsoft'],
   },
 }

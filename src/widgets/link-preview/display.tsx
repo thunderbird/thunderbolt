@@ -1,5 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { usePreview } from '@/contexts/preview-context'
+import { usePreview } from '@/contexts/right-sidebar-context'
 import { isTauri } from '@/lib/platform'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'

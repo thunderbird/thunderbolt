@@ -1,4 +1,4 @@
-import { useSideview } from '@/sideview/provider'
+import { useSideview } from '@/contexts/right-sidebar-context'
 import { EmailThreadView } from '@/sideview/thread'
 import { useQuery } from '@tanstack/react-query'
 

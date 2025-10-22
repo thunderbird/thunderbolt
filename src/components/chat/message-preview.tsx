@@ -1,6 +1,6 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useSideview } from '@/contexts/right-sidebar-context'
 import { formatDate } from '@/lib/utils'
-import { useSideview } from '@/sideview/provider'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Mail } from 'lucide-react'
 

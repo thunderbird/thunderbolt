@@ -33,8 +33,7 @@ import TasksPage from '@/tasks'
 import { useEffect, useState } from 'react'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
-import { ObjectViewProvider } from './components/chat/object-view-provider'
-import { PreviewProvider } from './contexts/preview-context'
+import { RightSidebarProvider, useRightSidebar } from './contexts/right-sidebar-context'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import MessageSimulatorPage from './devtools/message-simulator'
@@ -46,7 +45,6 @@ import { getDatabasePath, getDatabaseType } from './lib/platform'
 import { TrayManager, TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
-import { SideviewProvider } from './sideview/provider'
 import type { InitData, SideviewType } from './types'
 
 const queryClient = new QueryClient()
@@ -142,7 +140,6 @@ export const App = () => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<Error>()
   const [isClearingDatabase, setIsClearingDatabase] = useState(false)
-  const [objectSidebarOpen, setObjectSidebarOpen] = useState(false)
 
   useEffect(() => {
     init()
@@ -210,16 +207,12 @@ export const App = () => {
         <ThemeProvider defaultTheme="system" storageKey="ui_theme">
           <TrayProvider tray={initData.tray} window={initData.window}>
             <MCPProvider>
-              <SidebarProvider open={objectSidebarOpen} onOpenChange={setObjectSidebarOpen} defaultWidth="26rem">
-                <ObjectViewProvider>
-                  <SidebarProvider>
-                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <PreviewProvider>
-                        <AppContent initData={initData} />
-                      </PreviewProvider>
-                    </SideviewProvider>
-                  </SidebarProvider>
-                </ObjectViewProvider>
+              <SidebarProvider>
+                <RightSidebarProvider>
+                  <RightSidebarInitializer sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
+                    <AppContent initData={initData} />
+                  </RightSidebarInitializer>
+                </RightSidebarProvider>
               </SidebarProvider>
             </MCPProvider>
           </TrayProvider>
@@ -227,4 +220,28 @@ export const App = () => {
       </PostHogProvider>
     </QueryClientProvider>
   )
+}
+
+/**
+ * Component that initializes the right sidebar with sideview if provided
+ */
+const RightSidebarInitializer = ({
+  children,
+  sideviewType,
+  sideviewId,
+}: {
+  children: React.ReactNode
+  sideviewType: string | null
+  sideviewId: string | null
+}) => {
+  const { showSideview } = useRightSidebar()
+
+  // Initialize sideview if provided
+  useEffect(() => {
+    if (sideviewType && sideviewId) {
+      showSideview(sideviewType, sideviewId)
+    }
+  }, [sideviewType, sideviewId, showSideview])
+
+  return <>{children}</>
 }

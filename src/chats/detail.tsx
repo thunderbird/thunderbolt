@@ -48,29 +48,14 @@ export default function ChatDetailPage() {
 
   const addMessagesMutation = useMutation({
     mutationFn: async (messages: ThunderboltUIMessage[]) => {
-      const isNewChat = params.chatThreadId === 'new'
-      let isEncrypted = false
-
       if (!chatThreadId) {
         throw new Error('No chat thread ID')
       }
 
-      if (isNewChat) {
-        const modelId = messages[0]?.metadata?.modelId
-        if (!modelId) {
-          throw new Error('No model ID')
-        }
-
-        const model = await getModel(modelId)
-        if (!model) {
-          throw new Error('No model found')
-        }
-
-        isEncrypted = model.isConfidential === 1
-      }
+      const modelId = messages[0]?.metadata?.modelId
 
       // Fetch thread info to check if we need to generate a title
-      const thread = await getOrCreateChatThread(chatThreadId, isEncrypted)
+      const thread = await getOrCreateChatThread(chatThreadId, modelId)
 
       // Save messages and update context size using DAL
       const dbChatMessages = await saveMessagesWithContextUpdate(chatThreadId, messages)
@@ -80,7 +65,7 @@ export default function ChatDetailPage() {
         updateThreadTitle(messages, chatThreadId)
       }
 
-      if (isNewChat) {
+      if (params.chatThreadId === 'new') {
         navigate(`/chats/${chatThreadId}`, { relative: 'path' })
       }
 

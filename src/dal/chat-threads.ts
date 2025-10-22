@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatThreadsTable } from '../db/tables'
 import { type ChatThread } from '@/types'
+import { getModel } from './models'
 
 /**
  * Gets all chat threads ordered by creation date
@@ -23,9 +24,19 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
 /**
  * Create a new chat thread
  */
-export const createChatThread = async (data: Partial<ChatThread> & Required<Pick<ChatThread, 'id'>>): Promise<void> => {
+export const createChatThread = async (
+  data: Partial<Omit<ChatThread, 'isEncrypted'>> & Required<Pick<ChatThread, 'id'>>,
+  modelId: string,
+): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(chatThreadsTable).values(data)
+
+  const model = await getModel(modelId)
+
+  if (!model) {
+    throw new Error('No model found')
+  }
+
+  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
 }
 
 export const updateChatThread = async (
@@ -39,18 +50,20 @@ export const updateChatThread = async (
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID
  */
-export const getOrCreateChatThread = async (id: string, isEncrypted: boolean): Promise<ChatThread> => {
+export const getOrCreateChatThread = async (id: string, modelId?: string): Promise<ChatThread> => {
   const thread = await getChatThread(id)
 
   if (thread?.id) {
     return thread
   }
 
-  await createChatThread({
-    id,
-    title: 'New Chat',
-    isEncrypted: isEncrypted ? 1 : 0,
-  })
+  await createChatThread(
+    {
+      id,
+      title: 'New Chat',
+    },
+    modelId!,
+  )
 
   return (await getChatThread(id))! // We know the thread exists because we just created it
 }

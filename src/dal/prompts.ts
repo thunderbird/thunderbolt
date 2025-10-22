@@ -114,13 +114,15 @@ export const runAutomation = async (promptId: string): Promise<string> => {
 
   const threadId = uuidv7()
 
-  await createChatThread({
-    id: threadId,
-    title: prompt.title ?? 'Automation',
-    isEncrypted: model.isConfidential,
-    triggeredBy: prompt.id,
-    wasTriggeredByAutomation: 1,
-  })
+  await createChatThread(
+    {
+      id: threadId,
+      title: prompt.title ?? 'Automation',
+      triggeredBy: prompt.id,
+      wasTriggeredByAutomation: 1,
+    },
+    model.id,
+  )
 
   const userMessage = {
     id: uuidv7(),

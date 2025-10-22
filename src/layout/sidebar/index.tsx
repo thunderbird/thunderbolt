@@ -6,7 +6,7 @@ import { deleteAllChatThreads, deleteChatThread, getAllChatThreads } from '@/dal
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent } from '@/lib/posthog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'

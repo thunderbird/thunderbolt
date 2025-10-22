@@ -2,7 +2,6 @@ import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
-import { getCloudUrl } from '@/lib/config'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -46,7 +45,7 @@ type AiFetchStreamingResponseOptions = {
 export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const cloudUrl = await getCloudUrl()
+      const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
       const openaiCompatible = createOpenAICompatible({
         name: 'thunderbolt',
         baseURL: cloudUrl,

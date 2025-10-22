@@ -31,8 +31,9 @@ src/widgets/my-widget/
 ```
 
 For more complex widgets, you can add:
+
 - `lib.ts` - Utility functions and types
-- `lib.test.ts` - Unit tests for utilities  
+- `lib.test.ts` - Unit tests for utilities
 - `display.tsx` - Separate presentation component
 - `schema.test.ts` - Tests for schema parsing
 
@@ -87,6 +88,7 @@ export const parse = createParser(schema)
 ```
 
 **Key points:**
+
 - Use `createParser(schema)` to auto-generate the parser
 - No need to repeat widget name or args structure
 - Simple and readable - no fancy Zod tricks
@@ -210,6 +212,7 @@ src/widgets/weather-forecast/
 ```
 
 The weather forecast widget demonstrates the optional files for complex widgets:
+
 - **lib.ts**: Utilities like `convertTemperature()`, `getWeatherMetadata()`, and shared types
 - **lib.test.ts**: Unit tests for the utility functions
 - **display.tsx**: Reusable presentation component that `widget.tsx` renders after fetching data
@@ -291,7 +294,9 @@ export const widgetPrompts = [
   'Use these XML-like tags in your response to show rich widgets:',
   '',
   ...widgetRegistry.flatMap((widget) => [widget.module.instructions, '']),
-].join('\n').trim()
+]
+  .join('\n')
+  .trim()
 
 export const widgetParsers = widgetRegistry.map((widget) => ({
   tagName: widget.name,
@@ -468,7 +473,7 @@ const fetchFn = async () => {
 ```typescript
 // Frontend: src/integrations/thunderbolt-pro/api.ts
 export const fetchLinkPreview = async (params: LinkPreviewParams) => {
-  const cloudUrl = await getCloudUrl()
+  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
   const response = await ky.get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`)
   return response.json()
 }
@@ -772,10 +777,12 @@ export const parse = (attrs: Record<string, string>): MyWidget | null => {
     return null // Widget won't render
   }
 
-  return schema.safeParse({
-    widget: 'my-widget',
-    args: { symbol: attrs.symbol.trim().toUpperCase() }
-  }).data ?? null
+  return (
+    schema.safeParse({
+      widget: 'my-widget',
+      args: { symbol: attrs.symbol.trim().toUpperCase() },
+    }).data ?? null
+  )
 }
 ```
 
@@ -923,7 +930,7 @@ import { parse } from './schema'
 describe('my-widget schema', () => {
   it('parses valid attributes', () => {
     const result = parse({ attribute: 'value' })
-    
+
     expect(result).toEqual({
       widget: 'my-widget',
       args: { attribute: 'value' },

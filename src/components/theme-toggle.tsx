@@ -2,7 +2,7 @@ import { Monitor, Moon, Sun } from 'lucide-react'
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTheme } from '@/lib/theme-provider'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent } from '@/lib/posthog'
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()

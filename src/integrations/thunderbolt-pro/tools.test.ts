@@ -8,7 +8,6 @@ import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLoca
 const mockGet = mock()
 const mockPost = mock()
 const mockJson = mock()
-const mockGetCloudUrl = mock()
 
 // Mock ky
 mock.module('ky', () => ({
@@ -16,11 +15,6 @@ mock.module('ky', () => ({
     get: mockGet,
     post: mockPost,
   },
-}))
-
-// Mock config
-mock.module('@/lib/config', () => ({
-  getCloudUrl: mockGetCloudUrl,
 }))
 
 beforeAll(async () => {
@@ -67,10 +61,8 @@ describe('Thunderbolt Pro Tools', () => {
     mockGet.mockClear()
     mockPost.mockClear()
     mockJson.mockClear()
-    mockGetCloudUrl.mockClear()
 
     // Setup default mocks
-    mockGetCloudUrl.mockResolvedValue('https://example.com')
     mockPost.mockReturnValue({ json: mockJson })
   })
 
@@ -102,7 +94,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toEqual(mockResponse.data)
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/search',
+        'http://localhost:8000/v1/pro/search',
         expect.objectContaining({
           timeout: 10000,
           json: {
@@ -139,7 +131,7 @@ describe('Thunderbolt Pro Tools', () => {
       await search(params)
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/search',
+        'http://localhost:8000/v1/pro/search',
         expect.objectContaining({
           json: {
             query: 'test query',
@@ -230,7 +222,7 @@ describe('Thunderbolt Pro Tools', () => {
       })
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/fetch-content',
+        'http://localhost:8000/v1/pro/fetch-content',
         expect.objectContaining({
           timeout: 10000,
           json: {
@@ -325,7 +317,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toBe('Current weather in New York: 22°C, Partly cloudy')
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/weather/current',
+        'http://localhost:8000/v1/pro/weather/current',
         expect.objectContaining({
           timeout: 10000,
           json: {
@@ -395,7 +387,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toEqual(mockWeatherForecastData)
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/weather/forecast',
+        'http://localhost:8000/v1/pro/weather/forecast',
         expect.objectContaining({
           timeout: 10000,
           json: {
@@ -428,7 +420,7 @@ describe('Thunderbolt Pro Tools', () => {
       await getWeatherForecast(params)
 
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/weather/forecast',
+        'http://localhost:8000/v1/pro/weather/forecast',
         expect.objectContaining({
           json: {
             location: 'New York',
@@ -517,7 +509,7 @@ describe('Thunderbolt Pro Tools', () => {
 
       expect(result).toBe('Found locations: New York, NY, US')
       expect(mockPost).toHaveBeenCalledWith(
-        'https://example.com/pro/locations/search',
+        'http://localhost:8000/v1/pro/locations/search',
         expect.objectContaining({
           timeout: 10000,
           json: {
@@ -566,15 +558,18 @@ describe('Thunderbolt Pro Tools', () => {
   })
 
   describe('error handling and edge cases', () => {
-    it('should handle cloud URL fetch failure', async () => {
+    it('should handle network errors during search', async () => {
       const params: SearchParams = {
         query: 'test',
         max_results: 10,
       }
 
-      mockGetCloudUrl.mockRejectedValue(new Error('Config service unavailable'))
+      const networkError = new Error('Network error')
+      mockPost.mockImplementation(() => {
+        throw networkError
+      })
 
-      await expect(search(params)).rejects.toThrow('Config service unavailable')
+      await expect(search(params)).rejects.toThrow('Search failed: Network error')
     })
 
     it('should handle malformed JSON responses', async () => {

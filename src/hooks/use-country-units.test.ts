@@ -118,9 +118,9 @@ describe('useCountryUnits hook configuration and data structures', () => {
     expect(error).toBeInstanceOf(Error)
   })
 
-  it('should handle getCloudUrl errors', () => {
-    const error = new Error('Cloud URL not configured')
-    expect(error.message).toBe('Cloud URL not configured')
+  it('should handle settings fetch errors', () => {
+    const error = new Error('Settings not available')
+    expect(error.message).toBe('Settings not available')
     expect(error).toBeInstanceOf(Error)
   })
 

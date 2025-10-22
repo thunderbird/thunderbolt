@@ -1,4 +1,3 @@
-import { getCloudUrl } from '@/lib/config'
 import { getSettings } from '@/dal'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
@@ -36,7 +35,7 @@ export const sanitizeUrl = (url: string): string => {
  * Initialize Posthog analytics and return the client
  */
 export const initPosthog = async (): Promise<PostHog | null> => {
-  const cloudUrl = await getCloudUrl()
+  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
 

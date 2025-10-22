@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 
 const mockUnitsOptionsData = {
   units: ['metric', 'imperial'],
@@ -85,9 +85,9 @@ describe('useUnitsOptions and useCountryUnits API contracts and data structures'
     expect(error).toBeInstanceOf(Error)
   })
 
-  it('should handle getCloudUrl errors', () => {
-    const error = new Error('Cloud URL not configured')
-    expect(error.message).toBe('Cloud URL not configured')
+  it('should handle settings fetch errors', () => {
+    const error = new Error('Settings not available')
+    expect(error.message).toBe('Settings not available')
     expect(error).toBeInstanceOf(Error)
   })
 

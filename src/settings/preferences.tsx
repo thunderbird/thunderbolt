@@ -1,10 +1,10 @@
+import { getSettings } from '@/dal'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
-import { trackEvent } from '@/lib/analytics'
-import { getCloudUrl } from '@/lib/config'
+import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import { countryUnitsResponseSchema } from '@/schemas/api'
 import type { CountryUnitsData } from '@/types'
@@ -210,7 +210,7 @@ export default function PreferencesSettingsPage() {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        const cloudUrl = await getCloudUrl()
+        const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
 
         if (!cloudUrl) {
           console.error('Cloud URL not configured')
@@ -310,7 +310,7 @@ export default function PreferencesSettingsPage() {
         .fetchQuery({
           queryKey: ['country-units', newCountry],
           queryFn: async (): Promise<CountryUnitsData> => {
-            const cloudUrl = await getCloudUrl()
+            const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
             const response = await ky
               .get(`${cloudUrl}/units`, {
                 searchParams: { country: newCountry },
@@ -402,7 +402,7 @@ export default function PreferencesSettingsPage() {
         .fetchQuery({
           queryKey: ['country-units', country],
           queryFn: async (): Promise<CountryUnitsData> => {
-            const cloudUrl = await getCloudUrl()
+            const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
             const response = await ky
               .get(`${cloudUrl}/units`, {
                 searchParams: { country },

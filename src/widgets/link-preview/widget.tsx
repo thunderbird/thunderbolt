@@ -31,7 +31,7 @@ export const LinkPreviewSkeleton = () => {
 }
 
 export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) => {
-  const { cloudUrl } = useSettings({ cloud_url: String })
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   // Use message cache hook - it handles checking cache and fetching if needed
   const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({

@@ -1,6 +1,6 @@
 import { useEffect, useReducer } from 'react'
 import { useDebounce } from '@/hooks/use-debounce'
-import { getCloudUrl } from '@/lib/config'
+import { getSettings } from '@/dal'
 import ky from 'ky'
 
 type LocationData = {
@@ -67,7 +67,7 @@ export const useLocationSearch = () => {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        const cloudUrl = await getCloudUrl()
+        const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
         const data = await ky
           .get(`${cloudUrl}/locations`, {
             searchParams: { query: debouncedSearchQuery },

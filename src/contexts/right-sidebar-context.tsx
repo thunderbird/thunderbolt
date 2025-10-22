@@ -1,15 +1,16 @@
 import type { SidebarWebviewConfig } from '@/hooks/use-sidebar-webview'
+import type { ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 
 type RightSidebarState =
   | { type: null; data: null }
-  | { type: 'object-view'; data: any }
+  | { type: 'object-view'; data: ToolUIPart }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: { sideviewType: string; sideviewId: string } }
 
 type RightSidebarContextType = {
   state: RightSidebarState
-  showObjectView: (content: any) => void
+  showObjectView: (content: ToolUIPart) => void
   showPreview: (url: string) => void
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
@@ -29,7 +30,7 @@ const RightSidebarContext = createContext<RightSidebarContextType | undefined>(u
 export const RightSidebarProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<RightSidebarState>({ type: null, data: null })
 
-  const showObjectView = useCallback((content: any) => {
+  const showObjectView = useCallback((content: ToolUIPart) => {
     setState({ type: 'object-view', data: content })
   }, [])
 

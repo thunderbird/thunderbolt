@@ -2,17 +2,17 @@ import { RightSidebarHeader } from '@/components/ui/right-sidebar-header'
 import { SidebarContent } from '@/components/ui/sidebar'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { splitPartType } from '@/lib/utils'
+import type { ToolUIPart } from 'ai'
 
-const getOutput = (part: any) => {
+const getOutput = (part: ToolUIPart) => {
   if (typeof part?.output === 'string') {
     return part?.output
-  } else {
-    return JSON.stringify(part?.output, null, 2)
   }
+  return JSON.stringify(part?.output, null, 2)
 }
 
 type ObjectSidebarContentProps = {
-  content: any
+  content: ToolUIPart
   onClose: () => void
 }
 

@@ -1,5 +1,5 @@
-import { Sidebar, SidebarContent, SidebarHeader, SidebarRail, useSidebar } from '@/components/ui/sidebar'
-import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
+import { RightSidebarHeader } from '@/components/ui/right-sidebar-header'
+import { Sidebar, SidebarContent, SidebarRail, useSidebar } from '@/components/ui/sidebar'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { splitPartType } from '@/lib/utils'
 import { type ComponentProps } from 'react'
@@ -22,10 +22,7 @@ export function ObjectSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar side="right" variant="sidebar" {...props}>
-      <SidebarHeader className="flex-row justify-between items-center flex bg-card">
-        <h2 className="text-lg font-semibold truncate">{metadata.displayName}</h2>
-        <SidebarCloseButton onClick={closeObjectSidebar} />
-      </SidebarHeader>
+      <RightSidebarHeader title={metadata.displayName} onClose={closeObjectSidebar} className="bg-card" />
       <SidebarContent className="p-4 overflow-x-hidden">
         <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(objectContent)}</p>
       </SidebarContent>

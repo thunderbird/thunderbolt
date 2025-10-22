@@ -2,10 +2,11 @@ import { useSideview } from '@/sideview/provider'
 import { EmailThreadView } from '@/sideview/thread'
 import { useQuery } from '@tanstack/react-query'
 
+/**
+ * Sideview component - displays content based on sideview type
+ */
 export function Sideview() {
   const { sideviewId, sideviewType } = useSideview()
-
-  console.log('sideviewType', sideviewType, sideviewId)
 
   const { data: _object } = useQuery({
     queryKey: ['sideview', sideviewType, sideviewId],

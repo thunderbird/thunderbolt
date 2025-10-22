@@ -1,4 +1,5 @@
+export { LinkPreview } from './display'
 export { instructions } from './instructions'
-export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget, LinkPreviewWidget as Component } from './widget'
 export { parse, schema } from './schema'
 export type { CacheData, LinkPreviewWidget as LinkPreviewWidgetType } from './schema'
+export { LinkPreviewSkeleton, LinkPreviewWidget, LinkPreviewWidget as Component } from './widget'

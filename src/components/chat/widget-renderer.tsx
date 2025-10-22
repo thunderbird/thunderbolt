@@ -28,9 +28,11 @@ export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) 
   }
 
   // Type safety is ensured by the widget registry - widget.args matches the component's props
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return createElement(widgetConfig.module.Component as any, {
-    ...(widget.args as any),
-    messageId,
-  })
+  return createElement(
+    widgetConfig.module.Component as React.ComponentType<Record<string, unknown> & { messageId: string }>,
+    {
+      ...widget.args,
+      messageId,
+    },
+  )
 })

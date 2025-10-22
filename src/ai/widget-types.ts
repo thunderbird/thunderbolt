@@ -10,10 +10,12 @@ import { z } from 'zod'
 
 /**
  * Union of all possible widget types - auto-generated from widget registry
+ * Type assertion is safe because we know the schemas are discriminated unions at runtime
  */
 const _WidgetSchema = z.discriminatedUnion(
   'widget',
-  widgetSchemas as unknown as readonly [z.ZodObject<any>, z.ZodObject<any>, ...z.ZodObject<any>[]],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  widgetSchemas as any,
 )
 
 export type Widget = z.infer<typeof _WidgetSchema>

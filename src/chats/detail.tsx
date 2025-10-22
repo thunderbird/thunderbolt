@@ -1,4 +1,4 @@
-import { getModel, getChatMessages, getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/dal'
+import { getChatMessages, getOrCreateChatThread, saveMessagesWithContextUpdate } from '@/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'

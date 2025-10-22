@@ -1,5 +1,5 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatThreadsTable } from '@/db/tables'
+import { chatThreadsTable, modelsTable } from '@/db/tables'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -22,6 +22,33 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+/**
+ * Helper function to create a test model
+ */
+const createTestModel = async () => {
+  const db = DatabaseSingleton.instance.db
+  const modelId = uuidv7()
+
+  await db.insert(modelsTable).values({
+    id: modelId,
+    provider: 'thunderbolt',
+    name: 'Test Model',
+    model: 'gpt-oss-120b',
+    isSystem: 0,
+    enabled: 1,
+    isConfidential: 0,
+    contextWindow: 131072,
+    toolUsage: 1,
+    startWithReasoning: 0,
+    deletedAt: null,
+    apiKey: null,
+    url: null,
+    defaultHash: null,
+  })
+
+  return modelId
+}
+
 describe('Chat Threads DAL', () => {
   afterEach(async () => {
     await resetTestDatabase()
@@ -30,8 +57,9 @@ describe('Chat Threads DAL', () => {
   describe('createChatThread', () => {
     it('should create a new chat thread with the provided ID', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })
+      await createChatThread({ id: threadId, title: 'New Chat' }, modelId)
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -43,9 +71,10 @@ describe('Chat Threads DAL', () => {
     it('should create multiple threads with different IDs', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId1, title: 'New Chat', isEncrypted: 0 })
-      await createChatThread({ id: threadId2, title: 'New Chat', isEncrypted: 0 })
+      await createChatThread({ id: threadId1, title: 'New Chat' }, modelId)
+      await createChatThread({ id: threadId2, title: 'New Chat' }, modelId)
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -56,11 +85,12 @@ describe('Chat Threads DAL', () => {
 
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })
+      await createChatThread({ id: threadId, title: 'New Chat' }, modelId)
 
       // Should throw due to UNIQUE constraint
-      await expect(createChatThread({ id: threadId, title: 'New Chat', isEncrypted: 0 })).rejects.toThrow()
+      await expect(createChatThread({ id: threadId, title: 'New Chat' }, modelId)).rejects.toThrow()
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -133,7 +163,8 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
       })
 
-      const thread = await getOrCreateChatThread(threadId, false)
+      const modelId = await createTestModel()
+      const thread = await getOrCreateChatThread(threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('Existing Thread')
@@ -145,8 +176,9 @@ describe('Chat Threads DAL', () => {
 
     it('should create and return new thread when it does not exist', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(threadId, false)
+      const thread = await getOrCreateChatThread(threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('New Chat')
@@ -160,9 +192,10 @@ describe('Chat Threads DAL', () => {
 
     it('should handle multiple calls with same ID consistently', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(threadId, false)
-      const thread2 = await getOrCreateChatThread(threadId, false)
+      const thread1 = await getOrCreateChatThread(threadId, modelId)
+      const thread2 = await getOrCreateChatThread(threadId, modelId)
 
       expect(thread1?.id).toBe(threadId)
       expect(thread2?.id).toBe(threadId)
@@ -178,9 +211,10 @@ describe('Chat Threads DAL', () => {
     it('should work correctly with different thread IDs', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(threadId1, false)
-      const thread2 = await getOrCreateChatThread(threadId2, false)
+      const thread1 = await getOrCreateChatThread(threadId1, modelId)
+      const thread2 = await getOrCreateChatThread(threadId2, modelId)
 
       expect(thread1?.id).toBe(threadId1)
       expect(thread2?.id).toBe(threadId2)

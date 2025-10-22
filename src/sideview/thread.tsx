@@ -1,9 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSideview } from '@/right-sidebar/context'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
-import { useSideview } from './provider'
 
 export function EmailThreadView() {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)

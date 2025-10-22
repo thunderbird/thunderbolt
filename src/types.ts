@@ -3,6 +3,7 @@ import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { UIDataTypes, UIMessage, UITools } from 'ai'
 import type { InferSelectModel } from 'drizzle-orm'
+import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type {
   chatMessagesTable,
@@ -14,7 +15,6 @@ import type {
   tasksTable,
   triggersTable,
 } from './db/tables'
-import { type PostHog } from 'posthog-js'
 
 export type InitData = {
   tray: TrayIcon | undefined
@@ -63,7 +63,7 @@ export type AuthProviderBackendConfig = {
 }
 
 // Re-export types from schemas to maintain backward compatibility
-export type { DateFormat, Currency, TemperatureUnit, UnitsOptionsData, CountryUnitsData } from './schemas/api'
+export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'
 
 export type PreferencesSettings = {
   locationName: string

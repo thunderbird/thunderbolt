@@ -1,6 +1,6 @@
-import { ObjectViewProvider } from '@/components/chat/object-view-provider'
 import { ToolGroup } from '@/components/chat/tool-group'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { RightSidebarProvider } from '@/right-sidebar/context'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { ToolUIPart } from 'ai'
 
@@ -19,11 +19,11 @@ const meta = {
   decorators: [
     (Story) => (
       <SidebarProvider defaultOpen={false}>
-        <ObjectViewProvider>
+        <RightSidebarProvider>
           <div className="p-8 bg-background max-w-2xl">
             <Story />
           </div>
-        </ObjectViewProvider>
+        </RightSidebarProvider>
       </SidebarProvider>
     ),
   ],

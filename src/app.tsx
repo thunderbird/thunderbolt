@@ -33,7 +33,6 @@ import TasksPage from '@/tasks'
 import { useEffect, useState } from 'react'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
-import { ObjectViewProvider } from './components/chat/object-view-provider'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import MessageSimulatorPage from './devtools/message-simulator'
@@ -44,8 +43,8 @@ import { MCPProvider } from './lib/mcp-provider'
 import { getDatabasePath, getDatabaseType } from './lib/platform'
 import { TrayManager, TrayProvider } from './lib/tray'
 import Loading from './loading'
+import { RightSidebarProvider } from './right-sidebar/context'
 import SettingsLayout from './settings/layout'
-import { SideviewProvider } from './sideview/provider'
 import type { InitData, SideviewType } from './types'
 
 const queryClient = new QueryClient()
@@ -141,7 +140,6 @@ export const App = () => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<Error>()
   const [isClearingDatabase, setIsClearingDatabase] = useState(false)
-  const [objectSidebarOpen, setObjectSidebarOpen] = useState(false)
 
   useEffect(() => {
     init()
@@ -209,14 +207,13 @@ export const App = () => {
         <ThemeProvider defaultTheme="system" storageKey="ui_theme">
           <TrayProvider tray={initData.tray} window={initData.window}>
             <MCPProvider>
-              <SidebarProvider open={objectSidebarOpen} onOpenChange={setObjectSidebarOpen} defaultWidth="26rem">
-                <ObjectViewProvider>
-                  <SidebarProvider>
-                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <AppContent initData={initData} />
-                    </SideviewProvider>
-                  </SidebarProvider>
-                </ObjectViewProvider>
+              <SidebarProvider>
+                <RightSidebarProvider
+                  initialSideviewType={initData.sideviewType}
+                  initialSideviewId={initData.sideviewId}
+                >
+                  <AppContent initData={initData} />
+                </RightSidebarProvider>
               </SidebarProvider>
             </MCPProvider>
           </TrayProvider>

@@ -62,7 +62,9 @@ export const createSSEStreamFromCompletion = (
           // })
         }
 
-        controller.close()
+        if (controller.desiredSize !== null) {
+          controller.close()
+        }
       } catch (error) {
         if (!isCancelled) {
           console.error('OpenAI streaming error:', error)

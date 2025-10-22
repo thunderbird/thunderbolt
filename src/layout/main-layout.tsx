@@ -8,6 +8,7 @@ import {
   SidebarInset,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
+import { useSettings } from '@/hooks/use-settings'
 import { useRightSidebar } from '@/right-sidebar/context'
 import { ObjectSidebarContent } from '@/right-sidebar/object-sidebar-content'
 import { SidebarWebview } from '@/right-sidebar/sidebar-webview'
@@ -18,21 +19,32 @@ import { useEffect, useRef } from 'react'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
 
+const MINIMUM_WIDTH_THRESHOLD = 10 // If width is below 10%, open to default
+const DEFAULT_OPEN_WIDTH = 50 // Default width when opening
+
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
   const { state, close } = useRightSidebar()
+  const { rightSidebarWidth } = useSettings({
+    right_sidebar_width: Number,
+  })
   const isOpen = state.type !== null
   const prevIsOpen = useRef(isOpen)
+  const lastSavedWidth = useRef<number | null>(null)
 
   useEffect(() => {
     // Only animate on state changes, not on mount
     if (prevIsOpen.current !== isOpen && ref.current) {
       if (isOpen) {
-        // Opening: animate from 0 to 50
+        // Determine target width: use saved width if it's above threshold, otherwise use default
+        const savedWidth = rightSidebarWidth.value
+        const targetWidth = savedWidth && savedWidth >= MINIMUM_WIDTH_THRESHOLD ? savedWidth : DEFAULT_OPEN_WIDTH
+
+        // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             if (ref.current) {
-              animate(0, 50, {
+              animate(0, targetWidth, {
                 duration: 0.3,
                 ease: [0.32, 0.72, 0, 1],
                 onUpdate: (latest) => {
@@ -43,8 +55,13 @@ export default function Page() {
           })
         })
       } else {
-        // Closing: animate from current size to 0
+        // Closing: save current size before animating to 0
         const currentSize = ref.current.getSize()
+        if (currentSize > 0) {
+          lastSavedWidth.current = currentSize
+          rightSidebarWidth.setValue(currentSize)
+        }
+
         animate(currentSize, 0, {
           duration: 0.3,
           ease: [0.32, 0.72, 0, 1],
@@ -55,7 +72,19 @@ export default function Page() {
       }
     }
     prevIsOpen.current = isOpen
-  }, [isOpen])
+  }, [isOpen, rightSidebarWidth])
+
+  // Persist width changes as user resizes
+  const handleResize = (size: number) => {
+    // Only save if the panel is actually open and has a meaningful size
+    if (isOpen && size > 0) {
+      // Debounce saves by only updating if the change is significant (> 1%)
+      if (!lastSavedWidth.current || Math.abs(size - lastSavedWidth.current) > 1) {
+        lastSavedWidth.current = size
+        rightSidebarWidth.setValue(size)
+      }
+    }
+  }
 
   return (
     <SidebarInset className="h-full overflow-hidden flex flex-col">
@@ -76,6 +105,7 @@ export default function Page() {
           minSize={0}
           collapsedSize={0}
           onCollapse={() => close()}
+          onResize={handleResize}
           className="overflow-hidden"
         >
           <AnimatePresence initial={false}>

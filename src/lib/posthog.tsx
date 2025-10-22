@@ -35,7 +35,11 @@ export const sanitizeUrl = (url: string): string => {
  * Initialize Posthog analytics and return the client
  */
 export const initPosthog = async (): Promise<PostHog | null> => {
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
+    cloud_url: 'http://localhost:8000/v1',
+    data_collection: true,
+    debug_posthog: false,
+  })
 
   const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
 
@@ -48,7 +52,6 @@ export const initPosthog = async (): Promise<PostHog | null> => {
   const apiHost = `${cloudUrl}/posthog`
 
   if (!posthogClient) {
-    const { dataCollection, debugPosthog } = await getSettings({ data_collection: true, debug_posthog: false })
     posthogClient = posthog.init(apiKey, {
       opt_out_capturing_by_default: !dataCollection,
       api_host: apiHost,

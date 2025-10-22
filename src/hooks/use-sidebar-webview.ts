@@ -54,13 +54,14 @@ export const useSidebarWebview = (
       const rect = containerRef.current.getBoundingClientRect()
 
       // The containerRef is the whole panel, we need to account for the 48px header
-      const HEADER_HEIGHT = 48
-      const webviewTop = Math.floor(rect.top) + HEADER_HEIGHT
-      const webviewHeight = Math.floor(rect.height) - HEADER_HEIGHT
+      const PREVIEW_HEADER_HEIGHT = 48
+      const COORDINATE_OFFSET = 28 // Empirical offset for title bar/chrome
+      const webviewTop = Math.floor(rect.top) + PREVIEW_HEADER_HEIGHT + COORDINATE_OFFSET
+      const webviewHeight = Math.floor(rect.height) - PREVIEW_HEADER_HEIGHT
 
       console.log('Updating webview position:', {
         panelTop: Math.floor(rect.top),
-        headerHeight: HEADER_HEIGHT,
+        headerHeight: PREVIEW_HEADER_HEIGHT,
         webviewTop,
         left: Math.floor(rect.left),
         width: Math.floor(rect.width),
@@ -93,15 +94,50 @@ export const useSidebarWebview = (
         const container = containerRef.current
         if (!container || !isActive) return
 
-        // Get container position relative to window
-        const rect = container.getBoundingClientRect()
+        // Wait for layout to fully settle before measuring
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        if (!isActive || !containerRef.current) return
+
+        // Get container position relative to viewport
+        const rect = containerRef.current.getBoundingClientRect()
+
+        // Get window's outer size and inner size to calculate title bar height
+        const outerSize = await windowRef.current.outerSize()
+        const innerSize = await windowRef.current.innerSize()
+        const titleBarHeight = outerSize.height - innerSize.height
+
+        console.log('🔍 Window chrome detection:', {
+          'outerSize.height': outerSize.height,
+          'innerSize.height': innerSize.height,
+          '➡️ Title bar height': titleBarHeight,
+        })
+
+        // Account for 48px Preview header + empirical offset
+        const PREVIEW_HEADER_HEIGHT = 48
+        // Note: Adding 30px empirical offset because getBoundingClientRect() and Tauri coordinates
+        // don't perfectly align (likely due to title bar/chrome that isn't reported correctly)
+        const COORDINATE_OFFSET = 30
+        const webviewTop = Math.floor(rect.top) + PREVIEW_HEADER_HEIGHT + COORDINATE_OFFSET
+        const webviewHeight = Math.floor(rect.height) - PREVIEW_HEADER_HEIGHT
+
+        console.log('🔍 INITIAL POSITIONING DEBUG:', {
+          'Panel rect.top (viewport)': rect.top,
+          'Panel rect.left': rect.left,
+          'Panel rect.height': rect.height,
+          'Title bar height': titleBarHeight,
+          'Preview header': PREVIEW_HEADER_HEIGHT,
+          '➡️ Calculated webviewTop': webviewTop,
+          '➡️ Calculated webviewHeight': webviewHeight,
+        })
 
         const webviewOptions: WebviewOptions = {
           url: config.url,
           x: Math.floor(rect.left),
-          y: Math.floor(rect.top),
+          y: webviewTop,
           width: Math.floor(rect.width),
-          height: Math.floor(rect.height),
+          height: webviewHeight,
         }
 
         const webviewLabel = `sidebar-webview-${Date.now()}`

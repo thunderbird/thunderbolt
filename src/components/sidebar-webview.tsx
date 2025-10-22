@@ -1,8 +1,7 @@
 import { useSidebarWebview, type SidebarWebviewConfig } from '@/hooks/use-sidebar-webview'
 import { isTauri } from '@/lib/platform'
-import { X } from 'lucide-react'
 import { useRef } from 'react'
-import { Button } from './ui/button'
+import { SidebarCloseButton } from './ui/sidebar-close-button'
 
 type SidebarWebviewProps = {
   config: SidebarWebviewConfig | null
@@ -52,16 +51,8 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
     <div ref={panelRef} className="flex flex-col h-full w-full">
       {/* Header matching main app header - 48px tall */}
       <header className="flex h-12 w-full items-center justify-between px-4 flex-shrink-0 border-b border-border bg-background z-10">
-        <span className="text-sm font-medium truncate">Preview</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 cursor-pointer flex-shrink-0"
-          onClick={handleClose}
-          aria-label="Close preview"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <span className="text-sm font-medium truncate">{/* Title Placeholder */}</span>
+        <SidebarCloseButton onClick={handleClose} />
       </header>
 
       {/* Spacer for webview - this will be covered by the webview */}

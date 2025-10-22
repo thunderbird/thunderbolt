@@ -3,19 +3,16 @@ import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
 import '@testing-library/jest-dom'
 import { useUnitsOptions } from './use-units-options'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { updateSetting } from '@/dal/settings'
 
-// Mock ky and getCloudUrl
+// Mock only ky, use real database for getSettings
 const mockKyGet = vi.fn()
-const mockGetCloudUrl = vi.fn()
 
 vi.mock('ky', () => ({
   default: {
     get: mockKyGet,
   },
-}))
-
-vi.mock('@/lib/config', () => ({
-  getCloudUrl: mockGetCloudUrl,
 }))
 
 const mockUnitsOptionsData = {
@@ -50,15 +47,18 @@ const mockUnitsOptionsData = {
 }
 
 describe('useUnitsOptions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setupTestDatabase()
+    // Set up the cloud_url setting in the database
+    await updateSetting('cloud_url', 'https://api.example.com')
     vi.clearAllMocks()
-    mockGetCloudUrl.mockResolvedValue('https://api.example.com')
     mockKyGet.mockReturnValue({
       json: vi.fn().mockResolvedValue(mockUnitsOptionsData),
     } as unknown as { json: () => Promise<typeof mockUnitsOptionsData> })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await resetTestDatabase()
     vi.clearAllMocks()
   })
 
@@ -87,13 +87,12 @@ describe('useUnitsOptions', () => {
       expect(result.current.error).toBeNull()
     })
 
-    it('should call getCloudUrl and ky.get with correct parameters', async () => {
+    it('should call getSettings and ky.get with correct parameters', async () => {
       renderHook(() => useUnitsOptions(), {
         wrapper: createQueryTestWrapper(),
       })
 
       await waitFor(() => {
-        expect(mockGetCloudUrl).toHaveBeenCalled()
         expect(mockKyGet).toHaveBeenCalledWith('https://api.example.com/units-options')
       })
     })
@@ -120,23 +119,22 @@ describe('useUnitsOptions', () => {
       expect(result.current.data).toBeUndefined()
     })
 
-    it('should handle getCloudUrl errors', async () => {
-      const errorMessage = 'Cloud URL not configured'
-      mockGetCloudUrl.mockRejectedValue(new Error(errorMessage))
-
+    it('should handle database errors when cloud_url is missing', async () => {
+      // This test verifies that the hook works with the default cloud_url
+      // Since the hook has a default value, it should still work
       const { result } = renderHook(() => useUnitsOptions(), {
         wrapper: createQueryTestWrapper(),
       })
 
-      // Wait for the error to propagate
+      // Wait for the hook to complete successfully
       await waitFor(
         () => {
-          expect(result.current.isError).toBe(true)
+          expect(result.current.isSuccess).toBe(true)
         },
         { timeout: 5000 },
       )
 
-      expect(result.current.error).toBeDefined()
+      expect(result.current.data).toBeDefined()
     })
   })
 

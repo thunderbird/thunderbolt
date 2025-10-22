@@ -4,6 +4,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
+  deleteAllChatThreads,
+  deleteChatThread,
   getAllChatThreads,
   getChatThread,
   getContextSizeForThread,
@@ -257,6 +259,89 @@ describe('Chat Threads DAL', () => {
 
       const contextSize = await getContextSizeForThread(threadId)
       expect(contextSize).toBe(1500)
+    })
+  })
+
+  describe('deleteChatThread', () => {
+    it('should delete a specific chat thread by ID', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      const threadsBefore = await db.select().from(chatThreadsTable)
+      expect(threadsBefore).toHaveLength(1)
+
+      await deleteChatThread(threadId)
+
+      const threadsAfter = await db.select().from(chatThreadsTable)
+      expect(threadsAfter).toHaveLength(0)
+    })
+
+    it('should only delete the specified thread when multiple exist', async () => {
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values([
+        {
+          id: threadId1,
+          title: 'First Thread',
+          isEncrypted: 0,
+        },
+        {
+          id: threadId2,
+          title: 'Second Thread',
+          isEncrypted: 0,
+        },
+      ])
+
+      await deleteChatThread(threadId1)
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0]?.id).toBe(threadId2)
+      expect(threads[0]?.title).toBe('Second Thread')
+    })
+
+    it('should not throw when deleting non-existent thread', async () => {
+      const nonExistentId = uuidv7()
+      await expect(deleteChatThread(nonExistentId)).resolves.toBeUndefined()
+    })
+  })
+
+  describe('deleteAllChatThreads', () => {
+    it('should delete all chat threads', async () => {
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+      const threadId3 = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values([
+        { id: threadId1, title: 'First Thread', isEncrypted: 0 },
+        { id: threadId2, title: 'Second Thread', isEncrypted: 0 },
+        { id: threadId3, title: 'Third Thread', isEncrypted: 0 },
+      ])
+
+      const threadsBefore = await db.select().from(chatThreadsTable)
+      expect(threadsBefore).toHaveLength(3)
+
+      await deleteAllChatThreads()
+
+      const threadsAfter = await db.select().from(chatThreadsTable)
+      expect(threadsAfter).toHaveLength(0)
+    })
+
+    it('should not throw when deleting from empty table', async () => {
+      const db = DatabaseSingleton.instance.db
+      const threadsBefore = await db.select().from(chatThreadsTable)
+      expect(threadsBefore).toHaveLength(0)
+
+      await expect(deleteAllChatThreads()).resolves.toBeUndefined()
     })
   })
 })

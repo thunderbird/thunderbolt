@@ -1,9 +1,7 @@
-import { useState, useEffect, type ReactNode, type CSSProperties } from 'react'
-import { motion, useMotionValue, useAnimation, type PanInfo } from 'framer-motion'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './sheet'
-import { X } from 'lucide-react'
-import { Button } from './button'
 import { cn } from '@/lib/utils'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
 interface MobileSidebarProps {
   open: boolean
@@ -22,51 +20,107 @@ export const MobileSidebar = ({
   className,
   style,
 }: MobileSidebarProps) => {
-  const [isOpen, setIsOpen] = useState(open)
-  const controls = useAnimation()
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
-  const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth : 375 // Full screen width
+  const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth : 375
 
+  // Transform x position to overlay opacity (fade out as sidebar moves away)
+  const overlayOpacity = useTransform(
+    x,
+    side === 'left' ? [-sidebarWidth, 0] : [0, sidebarWidth],
+    side === 'left' ? [0, 0.5] : [0.5, 0],
+  )
+
+  // Handle external open/close requests
   useEffect(() => {
-    setIsOpen(open)
-    if (open) {
-      controls.start({ x: 0 })
+    if (open && !internalOpen) {
+      // Opening: set position first, then animate in
+      // Set position synchronously before rendering to avoid flicker
+      x.set(side === 'left' ? -sidebarWidth : sidebarWidth)
+      setInternalOpen(true)
+
+      // Animate to position after render
+      const animateOpen = async () => {
+        await animate(x, 0, {
+          type: 'spring',
+          // Performance-optimized spring physics:
+          // - Higher damping (35) = fewer oscillations, settles faster, less computation
+          // - Higher stiffness (400) = snappier response, shorter animation duration
+          // - Lower mass (0.8) = lighter feel, more responsive, better for mobile
+          damping: 35,
+          stiffness: 400,
+          mass: 0.8,
+        })
+      }
+      animateOpen()
+    } else if (!open && internalOpen && !isAnimating) {
+      // Closing: animate first, then close
+      const animateClose = async () => {
+        setIsAnimating(true)
+        await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, {
+          type: 'spring',
+          // Same optimized spring physics for consistent feel across all animations
+          damping: 35,
+          stiffness: 400,
+          mass: 0.8,
+        })
+        setIsAnimating(false)
+        setInternalOpen(false)
+      }
+      animateClose()
     }
-  }, [open, controls])
+  }, [open, internalOpen, isAnimating, x, side, sidebarWidth])
+
+  const handleClose = async () => {
+    if (isAnimating) return
+
+    setIsAnimating(true)
+    await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, {
+      type: 'spring',
+      // Same optimized spring physics for consistent feel across all animations
+      damping: 35,
+      stiffness: 400,
+      mass: 0.8,
+    })
+    setIsAnimating(false)
+    setInternalOpen(false)
+    onOpenChange(false)
+  }
 
   const handleDragEnd = async (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const shouldClose =
       side === 'left' ? info.offset.x < -50 || info.velocity.x < -500 : info.offset.x > 50 || info.velocity.x > 500
 
     if (shouldClose) {
-      await controls.start({
-        x: side === 'left' ? -sidebarWidth : sidebarWidth,
-        transition: { type: 'spring', damping: 30, stiffness: 300 },
-      })
-      onOpenChange(false)
+      await handleClose()
     } else {
-      controls.start({
-        x: 0,
-        transition: { type: 'spring', damping: 30, stiffness: 300 },
+      // Snap back to position with animation
+      await animate(x, 0, {
+        type: 'spring',
+        // Same optimized spring physics for consistent feel across all animations
+        damping: 35,
+        stiffness: 400,
+        mass: 0.8,
       })
     }
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent
-        data-sidebar="sidebar"
-        data-slot="sidebar"
-        data-mobile="true"
-        className={cn('bg-sidebar text-sidebar-foreground w-full p-0 [&>button]:hidden', className)}
-        style={style}
-        side={side}
-      >
-        <SheetHeader className="sr-only">
-          <SheetTitle>Sidebar</SheetTitle>
-          <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-        </SheetHeader>
+    <DialogPrimitive.Root open={internalOpen}>
+      <DialogPrimitive.Portal>
+        {/* Animated overlay */}
+        <motion.div
+          className="fixed inset-0 z-50 bg-black"
+          style={{
+            opacity: overlayOpacity,
+            // willChange hints to browser this property will animate, enabling GPU acceleration
+            willChange: 'opacity',
+          }}
+          onClick={handleClose}
+        />
 
+        {/* Animated sidebar content */}
         <motion.div
           drag="x"
           dragConstraints={{
@@ -75,26 +129,27 @@ export const MobileSidebar = ({
           }}
           dragElastic={0.2}
           onDragEnd={handleDragEnd}
-          animate={controls}
-          style={{ x }}
-          className="h-full w-full"
+          style={{
+            x,
+            // willChange hints to browser this property will animate, enabling GPU acceleration
+            // This promotes the element to its own compositing layer for smoother 60fps animations
+            willChange: 'transform',
+            ...style,
+          }}
+          className={cn(
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-full border-r shadow-lg flex flex-col',
+            side === 'left' ? 'left-0' : 'right-0',
+            className,
+          )}
+          data-sidebar="sidebar"
+          data-slot="sidebar"
+          data-mobile="true"
         >
           <div className="relative h-full">
-            {/* Close button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-4 right-4 h-8 w-8 rounded-full z-10"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close sidebar</span>
-            </Button>
-
             <div className="flex h-full w-full flex-col">{children}</div>
           </div>
         </motion.div>
-      </SheetContent>
-    </Sheet>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }

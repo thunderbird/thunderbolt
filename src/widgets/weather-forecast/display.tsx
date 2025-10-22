@@ -1,10 +1,10 @@
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
-import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from '@/lib/weather-forecast'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader } from '../ui/card'
-import { Skeleton } from '../ui/skeleton'
-import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group'
+import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from './lib'
 
 type WeatherForecastProps = WeatherForecastData
 
@@ -62,7 +62,7 @@ export const WeatherForecast = ({ location, days = [], temperature_unit }: Weath
               className={cn(
                 'items-center flex flex-row md:flex-col justify-between px-6 md:px-0 md:justify-center gap-1 py-6 cursor-pointer',
                 dayIndex > 0 ? 'border-t border-t-border border-l-0 md:border-t-0 md:border-l md:border-l-border' : '',
-                dayIndex === selectedDayIndex ? 'bg-accent' : '',
+                dayIndex === selectedDayIndex ? 'bg-secondary/60 dark:bg-secondary/40' : '',
               )}
               key={day.date}
               onClick={() => setSelectedDayIndex(dayIndex)}

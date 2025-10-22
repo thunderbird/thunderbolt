@@ -1,7 +1,7 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { AutomationRun, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'

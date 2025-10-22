@@ -6,16 +6,17 @@ import {
   type ToolGroupUIPart,
 } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
-import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
+import type { ThunderboltUIMessage } from '@/types'
+import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { memo, type ReactNode } from 'react'
-import { DisplayToolHandler } from './display-tool-handler'
 import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ToolGroup } from './tool-group'
+import { ToolPart } from './tool-part'
 
 interface AssistantMessageProps {
-  message: UIMessage
+  message: ThunderboltUIMessage
   isStreaming: boolean
 }
 
@@ -27,7 +28,7 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
  * Handles different part types (reasoning, tools, text) and manages loading states.
  * @internal - Exported for testing only
  */
-export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean) => {
+export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean, messageId: string) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0) {
@@ -61,10 +62,10 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
         break
       }
       case 'tool':
-        partElements.push(<DisplayToolHandler part={part as ToolUIPart} />)
+        partElements.push(<ToolPart part={part as ToolUIPart} />)
         break
       case 'text':
-        partElements.push(<TextPart part={part as TextUIPart} />)
+        partElements.push(<TextPart part={part as TextUIPart} messageId={messageId} />)
         break
     }
   })
@@ -77,7 +78,7 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
 
   const groupedParts = groupToolParts(filteredParts)
 
-  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming)
+  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
 
   return (
     <div>

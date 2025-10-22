@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
 import { useSettings } from '@/hooks/use-settings'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent } from '@/lib/posthog'
 import { getAvailableModels, getSelectedModel, updateAutomation } from '@/dal'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'

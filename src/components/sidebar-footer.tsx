@@ -21,18 +21,22 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 
-export function SidebarFooter() {
+type SidebarFooterProps = {
+  className?: string
+}
+
+export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { isMobile } = useSidebar()
 
   return (
-    <ShadcnSidebarFooter>
+    <ShadcnSidebarFooter className={className}>
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
                 size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage />
@@ -65,22 +69,22 @@ export function SidebarFooter() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer">
                   <Sparkles />
                   Upgrade to Pro
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer">
                   <BadgeCheck />
                   Account
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer">
                   <CreditCard />
                   Billing
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer">
                   <Bell />
                   Notifications
                 </DropdownMenuItem>
@@ -88,20 +92,20 @@ export function SidebarFooter() {
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
-                  <NavLink to="/settings/dev-settings">
+                  <NavLink to="/settings/dev-settings" className="cursor-pointer">
                     <Terminal className="mr-2 size-4" />
                     Dev Settings
                   </NavLink>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <NavLink to="/message-simulator">
+                  <NavLink to="/message-simulator" className="cursor-pointer">
                     <Terminal className="mr-2 size-4" />
                     Message Simulator
                   </NavLink>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer">
                 <LogOut />
                 Log out
               </DropdownMenuItem>

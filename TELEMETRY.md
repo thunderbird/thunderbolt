@@ -71,10 +71,10 @@ Events follow the pattern: `<feature>_<action>`
 
 ### Implementation
 
-Events are tracked using the `trackEvent` function from `src/lib/analytics.tsx`:
+Events are tracked using the `trackEvent` function from `src/lib/posthog.tsx`:
 
 ```typescript
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent } from '@/lib/posthog'
 
 // Track a simple event
 trackEvent('chat_send_prompt')

@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getSettings } from '@/dal'
 import ky from 'ky'
 import type { CountryUnitsData } from '@/types'
 import { countryUnitsResponseSchema } from '@/schemas/api'
-import { getCloudUrl } from '@/lib/config'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { useSettings } from './use-settings'
 
@@ -15,7 +15,7 @@ const retryDelay = 1000 // 1 second
  * Creates a query function for fetching country units data
  */
 const createCountryUnitsQueryFn = (targetCountry: string) => async (): Promise<CountryUnitsData> => {
-  const cloudUrl = await getCloudUrl()
+  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
   const response = await ky
     .get(`${cloudUrl}/units`, {
       searchParams: { country: targetCountry },

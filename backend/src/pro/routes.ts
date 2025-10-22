@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { exaPlugin } from './exa'
+import { createLinkPreviewRoutes } from './link-preview'
 import { createProxyRoutes } from './proxy'
 import type {
   LocationSearchRequest,
@@ -38,6 +39,7 @@ export const createProToolsRoutes = () => {
     })
     .use(exaPlugin)
     .use(createProxyRoutes())
+    .use(createLinkPreviewRoutes())
 
     .post(
       '/weather/current',

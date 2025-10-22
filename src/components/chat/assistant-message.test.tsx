@@ -31,9 +31,11 @@ const createToolGroupPart = (tools: ToolUIPart[]): ToolGroupUIPart =>
   }) as ToolGroupUIPart
 
 describe('mountMessageParts', () => {
+  const testMessageId = 'test-message-id'
+
   describe('empty parts', () => {
     it('renders synthetic loading part when no parts exist', () => {
-      const result = mountMessageParts([], true)
+      const result = mountMessageParts([], true, testMessageId)
 
       expect(result).toHaveLength(1)
       // Check that it's the synthetic loading component by checking the result structure
@@ -44,7 +46,7 @@ describe('mountMessageParts', () => {
   describe('reasoning parts', () => {
     it('renders reasoning part', () => {
       const parts: GroupedUIPart[] = [createReasoningPart('Let me think about this...')]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBeDefined()
@@ -54,7 +56,7 @@ describe('mountMessageParts', () => {
   describe('text parts', () => {
     it('renders text part', () => {
       const parts: GroupedUIPart[] = [createTextPart('Hello world')]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBeDefined()
@@ -63,7 +65,7 @@ describe('mountMessageParts', () => {
     it('detects text part presence for tool group logic', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup, createTextPart('Response text')]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(2)
       // Both parts should be rendered
@@ -76,7 +78,7 @@ describe('mountMessageParts', () => {
     it('renders tool group with single tool', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBeDefined()
@@ -89,7 +91,7 @@ describe('mountMessageParts', () => {
         createToolPart('output-available', 'get_weather'),
       ])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBeDefined()
@@ -98,8 +100,8 @@ describe('mountMessageParts', () => {
     it('passes isStreaming prop to tool group', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup]
-      const streamingResult = mountMessageParts(parts, true)
-      const notStreamingResult = mountMessageParts(parts, false)
+      const streamingResult = mountMessageParts(parts, true, testMessageId)
+      const notStreamingResult = mountMessageParts(parts, false, testMessageId)
 
       expect(streamingResult[0]).toBeDefined()
       expect(notStreamingResult[0]).toBeDefined()
@@ -110,7 +112,7 @@ describe('mountMessageParts', () => {
       const toolGroup1 = createToolGroupPart([createToolPart('output-available')])
       const toolGroup2 = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup1, toolGroup2]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(2)
       // Both tool groups should render
@@ -121,7 +123,7 @@ describe('mountMessageParts', () => {
     it('passes hasTextInMessage flag when text part exists', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup, createTextPart('Some text')]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(2)
     })
@@ -129,7 +131,7 @@ describe('mountMessageParts', () => {
     it('does not set hasTextInMessage when only tools exist', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(1)
     })
@@ -142,7 +144,7 @@ describe('mountMessageParts', () => {
         createToolGroupPart([createToolPart('output-available')]),
         createTextPart('Here is the result'),
       ]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(3)
       expect(result[0]).toBeDefined()
@@ -159,14 +161,14 @@ describe('mountMessageParts', () => {
         ]),
         createTextPart('Based on the search results, I found...'),
       ]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(3)
     })
 
     it('handles message with only reasoning and text (no tools)', () => {
       const parts: GroupedUIPart[] = [createReasoningPart('Thinking...'), createTextPart('Direct answer')]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(2)
     })
@@ -179,7 +181,7 @@ describe('mountMessageParts', () => {
         createToolPart('input-streaming'), // Still loading
       ])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(1)
     })
@@ -187,7 +189,7 @@ describe('mountMessageParts', () => {
     it('handles streaming message with completed tools but no text yet', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available'), createToolPart('output-available')])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(1)
       // Should show loading indicator for next action
@@ -198,7 +200,7 @@ describe('mountMessageParts', () => {
         createToolGroupPart([createToolPart('output-available')]),
         createTextPart('Complete response'),
       ]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(2)
     })
@@ -208,21 +210,21 @@ describe('mountMessageParts', () => {
     it('handles tool group with errored tools', () => {
       const toolGroup = createToolGroupPart([createToolPart('output-available'), createToolPart('output-error')])
       const parts: GroupedUIPart[] = [toolGroup]
-      const result = mountMessageParts(parts, true)
+      const result = mountMessageParts(parts, true, testMessageId)
 
       expect(result).toHaveLength(1)
     })
 
     it('handles message with only reasoning', () => {
       const parts: GroupedUIPart[] = [createReasoningPart('Just thinking out loud...')]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
     })
 
     it('handles message with only tools (no text or reasoning)', () => {
       const parts: GroupedUIPart[] = [createToolGroupPart([createToolPart('output-available')])]
-      const result = mountMessageParts(parts, false)
+      const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
     })

@@ -1,13 +1,21 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import type { ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+
+/**
+ * Gets a single chat message by ID
+ */
+export const getMessage = async (messageId: string): Promise<ChatMessage | undefined> => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+}
 
 /**
  * Gets all chat messages for a specific thread
  */
-export const getChatMessages = async (threadId: string) => {
+export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
   const chatMessages = await db
     .select()
@@ -17,7 +25,9 @@ export const getChatMessages = async (threadId: string) => {
   return chatMessages
 }
 
-export const getLastMessage = async (threadId: string) => {
+export const getLastMessage = async (
+  threadId: string,
+): Promise<Pick<ChatMessage, 'id' | 'chatThreadId' | 'modelId'> | undefined> => {
   const db = DatabaseSingleton.instance.db
 
   return await db
@@ -40,7 +50,10 @@ export const getLastMessage = async (threadId: string) => {
  * @returns The saved database messages
  * @throws Error if thread is not found
  */
-export const saveMessagesWithContextUpdate = async (threadId: string, messages: ThunderboltUIMessage[]) => {
+export const saveMessagesWithContextUpdate = async (
+  threadId: string,
+  messages: ThunderboltUIMessage[],
+): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
 
   // Verify thread exists
@@ -87,4 +100,23 @@ export const saveMessagesWithContextUpdate = async (threadId: string, messages: 
   }
 
   return dbChatMessages
+}
+
+/**
+ * Updates a specific cache field for a message
+ * Uses flat key-value storage with camelCase namespace (e.g., "linkPreview/https://example.com")
+ */
+export const updateMessageCache = async (messageId: string, cacheKey: string, value: unknown): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+
+  // Fetch current message
+  const message = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+
+  if (!message) {
+    throw new Error('Message not found')
+  }
+
+  // Simple flat key-value storage
+  const updatedCache = { ...(message.cache || {}), [cacheKey]: value } as typeof message.cache
+  await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
 }

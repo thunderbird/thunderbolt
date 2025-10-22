@@ -45,7 +45,13 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Fetch content service is not configured.')
         }
 
-        const response = await store.exaClient.getContents([body.url])
+        const response = await store.exaClient.getContents([body.url], {
+          livecrawlTimeout: 5_000,
+          extras: { imageLinks: 1 },
+          text: {
+            maxCharacters: 5_000,
+          },
+        })
 
         return {
           data: response.results[0] || null,
@@ -280,7 +286,13 @@ describe('Pro - Exa Plugin', () => {
         data: mockContent[0],
         success: true,
       })
-      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'])
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
+        livecrawlTimeout: 5_000,
+        extras: { imageLinks: 1 },
+        text: {
+          maxCharacters: 5_000,
+        },
+      })
     })
 
     it('should throw error when API key is not configured', async () => {
@@ -383,7 +395,13 @@ describe('Pro - Exa Plugin', () => {
         )
 
         expect(response.status).toBe(200)
-        expect(mockGetContents).toHaveBeenCalledWith([url])
+        expect(mockGetContents).toHaveBeenCalledWith([url], {
+          livecrawlTimeout: 5_000,
+          extras: { imageLinks: 1 },
+          text: {
+            maxCharacters: 5_000,
+          },
+        })
       }
     })
   })

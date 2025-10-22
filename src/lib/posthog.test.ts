@@ -1,6 +1,6 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, sanitizeUrl } from './analytics'
+import { initPosthog, sanitizeUrl } from './posthog'
 
 const mockKyGet = mock()
 const mockKyPost = mock()
@@ -23,10 +23,6 @@ mock.module('posthog-js', () => ({
       return mockPosthogInit(...args)
     },
   },
-}))
-
-mock.module('@/lib/config', () => ({
-  getCloudUrl: async () => 'http://cloud.example',
 }))
 
 beforeAll(async () => {

@@ -25,7 +25,7 @@ describe('Proxy Routes', () => {
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
-    // Create mock fetch - no global mocking needed
+    // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockResponse('test content')))
 
     // Inject mock fetch into routes

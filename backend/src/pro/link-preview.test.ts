@@ -24,7 +24,7 @@ describe('Link Preview Routes', () => {
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
-    // Create mock fetch - no global mocking needed
+    // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockHtmlResponse('<html></html>')))
 
     // Inject mock fetch into routes

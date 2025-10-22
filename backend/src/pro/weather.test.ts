@@ -6,7 +6,7 @@ describe('Pro - OpenMeteoWeather', () => {
   let mockFetch: ReturnType<typeof mock>
 
   beforeEach(() => {
-    // Create mock fetch - no global mocking needed
+    // Create mock fetch
     mockFetch = mock(() => Promise.resolve(new Response()))
     weather = new OpenMeteoWeather(mockFetch as unknown as typeof fetch)
   })

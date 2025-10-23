@@ -1,7 +1,6 @@
 import { parseContentParts } from '@/ai/widget-parser'
 import { type TextUIPart } from 'ai'
 import { memo } from 'react'
-import { StreamingMarkdown } from './streaming-markdown'
 import { WidgetRenderer } from './widget-renderer'
 import { MemoizedMarkdown } from './memoized-markdown'
 
@@ -22,11 +21,6 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
           return (
             <div key={`text-${index}`} className="p-4 rounded-md my-2" style={{ maxWidth: 'calc(100vw - 2rem)' }}>
               <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={part.text} />
-              {/* <StreamingMarkdown
-                content={contentPart.content}
-                isStreaming={part.state === 'streaming'}
-                className="text-secondary-foreground leading-relaxed"
-              /> */}
             </div>
           )
         }

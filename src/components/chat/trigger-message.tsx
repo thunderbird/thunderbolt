@@ -1,10 +1,11 @@
 import { cn } from '@/lib/utils'
 import { Zap } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
-import { StreamingMarkdown } from './streaming-markdown'
 import TimelineMessage from './timeline-message'
+import { MemoizedMarkdown } from './memoized-markdown'
 
 interface TriggerMessageProps {
+  chatThreadId: string
   /** The title of the automation that triggered the chat */
   title?: string
   /** The full prompt that was used to start the chat */
@@ -20,7 +21,7 @@ interface TriggerMessageProps {
  * Renders a timeline-style bullet with a "Triggered by automation" label and an
  * accordion that reveals the full automation prompt when expanded.
  */
-export const TriggerMessage = ({ title, prompt, isDeleted = false, className }: TriggerMessageProps) => (
+export const TriggerMessage = ({ chatThreadId, title, prompt, isDeleted = false, className }: TriggerMessageProps) => (
   <div className={cn('flex flex-col items-center w-full', className)}>
     <TimelineMessage>Triggered by automation</TimelineMessage>
     {/* Automation title & prompt */}
@@ -36,7 +37,7 @@ export const TriggerMessage = ({ title, prompt, isDeleted = false, className }: 
         icon={<Zap className="h-4 w-4 text-muted-foreground" />}
         defaultOpen={false}
       >
-        <StreamingMarkdown content={prompt} className="text-secondary-foreground leading-relaxed" />
+        <MemoizedMarkdown id={chatThreadId} content={prompt} />
       </Expandable>
     ) : (
       <div className="shadow-none w-full max-w-[696px] rounded-lg border border-transparent px-4 py-2">

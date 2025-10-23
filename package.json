@@ -86,7 +86,6 @@
     "react-router": "^7.8.1",
     "remark-gfm": "^4.0.1",
     "sqlocal": "^0.14.2",
-    "streaming-markdown": "^0.2.15",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",

@@ -120,6 +120,7 @@ export const runAutomation = async (promptId: string): Promise<string> => {
       title: prompt.title ?? 'Automation',
       triggeredBy: prompt.id,
       wasTriggeredByAutomation: 1,
+      contextSize: null,
     },
     model.id,
   )

@@ -59,7 +59,10 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId, title: 'New Chat' }, modelId)
+      await createChatThread(
+        { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -73,8 +76,14 @@ describe('Chat Threads DAL', () => {
       const threadId2 = uuidv7()
       const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId1, title: 'New Chat' }, modelId)
-      await createChatThread({ id: threadId2, title: 'New Chat' }, modelId)
+      await createChatThread(
+        { id: threadId1, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
+      await createChatThread(
+        { id: threadId2, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -87,10 +96,18 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      await createChatThread({ id: threadId, title: 'New Chat' }, modelId)
+      await createChatThread(
+        { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       // Should throw due to UNIQUE constraint
-      await expect(createChatThread({ id: threadId, title: 'New Chat' }, modelId)).rejects.toThrow()
+      await expect(
+        createChatThread(
+          { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+          modelId,
+        ),
+      ).rejects.toThrow()
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)

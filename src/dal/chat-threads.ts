@@ -25,8 +25,7 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
  * Create a new chat thread
  */
 export const createChatThread = async (
-  data: Partial<Pick<ChatThread, 'contextSize' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>> &
-    Required<Pick<ChatThread, 'id'>>,
+  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>,
   modelId: string,
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
@@ -62,6 +61,9 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
     {
       id,
       title: 'New Chat',
+      contextSize: null,
+      triggeredBy: null,
+      wasTriggeredByAutomation: 0,
     },
     modelId,
   )

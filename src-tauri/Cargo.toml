@@ -18,19 +18,34 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 libsql = ["dep:thunderbolt-libsql"]
-email = ["dep:thunderbolt-email", "dep:thunderbolt-imap-client", "dep:thunderbolt-imap-sync", "libsql"]
+email = [
+    "dep:thunderbolt-email",
+    "dep:thunderbolt-imap-client",
+    "dep:thunderbolt-imap-sync",
+    "libsql",
+]
 embeddings = ["dep:thunderbolt-embeddings"]
 bridge = ["dep:thunderbolt-bridge"]
 native_fetch = []
 all = ["libsql", "email", "embeddings", "bridge", "native_fetch"]
 
 [workspace]
-members = ["thunderbolt_imap_client", "thunderbolt_imap_sync", "thunderbolt_embeddings", "thunderbolt_bridge", "thunderbolt_libsql", "thunderbolt_email"]
+members = [
+    "thunderbolt_imap_client",
+    "thunderbolt_imap_sync",
+    "thunderbolt_embeddings",
+    "thunderbolt_bridge",
+    "thunderbolt_libsql",
+    "thunderbolt_email",
+]
 
 [workspace.dependencies]
 # Use Thunderbird's fork with Windows build fix
 # See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { version = "0.9.20", default-features = false, features = ["core", "encryption"] }
+libsql = { version = "0.9.20", default-features = false, features = [
+    "core",
+    "encryption",
+] }
 anyhow = "1.0.99"
 serde = { version = "1.0.219", features = ["derive"] }
 thunderbolt-lib = { path = "." }
@@ -43,7 +58,11 @@ path = "src/main.rs"
 tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.8.2", features = [ "tray-icon", "devtools"] }
+tauri = { version = "2.8.2", features = [
+    "tray-icon",
+    "devtools",
+    "unstable",  # Required for webview
+] }
 tauri-plugin-opener = "2.5.0"
 tauri-plugin-shell = "2.3.0"
 tauri-plugin-os = "2.3.1"
@@ -63,7 +82,7 @@ thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_lib
 thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
 
 [profile.dev]
-incremental = true                              # Compile your binary in smaller steps.
+incremental = true # Compile your binary in smaller steps.
 
 [profile.dev.package]
 "candle-nn" = { opt-level = 3, debug = false }

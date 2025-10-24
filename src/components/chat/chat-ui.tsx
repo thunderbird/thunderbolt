@@ -241,7 +241,7 @@ export default function ChatUI({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 p-4 overflow-y-auto space-y-4"
+            className="flex-1 p-4 overflow-y-auto space-y-4 max-w-dvw"
           >
             {chatThread?.isEncrypted === 1 && (
               <TimelineMessage>

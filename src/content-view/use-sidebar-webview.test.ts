@@ -185,6 +185,74 @@ describe('useSidebarWebview', () => {
       // Unmount should not throw
       expect(() => unmount()).not.toThrow()
     })
+
+    it('should close webview on page unload event', async () => {
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      const containerRef = { current: container } as RefObject<HTMLDivElement>
+
+      const { result } = renderHook(() => useSidebarWebview(config, containerRef))
+
+      // Wait for initialization
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
+
+      // Trigger unload event
+      const unloadEvent = new Event('unload')
+      window.dispatchEvent(unloadEvent)
+
+      // Verify webview.close was called
+      expect(mockWebview.close).toHaveBeenCalled()
+    })
+
+    it('should remove unload listener on unmount', async () => {
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      const containerRef = { current: container } as RefObject<HTMLDivElement>
+
+      const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
+
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
+
+      // Clear mock to reset call count
+      mockWebview.close.mockClear()
+
+      // Unmount the hook
+      unmount()
+
+      // Trigger unload after unmount - should not call close again
+      const unloadEvent = new Event('unload')
+      window.dispatchEvent(unloadEvent)
+
+      // Since the listener was removed, close should have been called once during unmount cleanup
+      // but not again from the unload event
+      expect(mockWebview.close).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('closeWebview function', () => {

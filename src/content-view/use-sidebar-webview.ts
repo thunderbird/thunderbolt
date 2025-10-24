@@ -131,8 +131,8 @@ export const useSidebarWebview = (
 
     initWebview()
 
-    // Cleanup
-    return () => {
+    // Cleanup when component unmounts OR page navigates/refreshes
+    const cleanupWebview = () => {
       isActive = false
 
       if (animationFrameRef.current) {
@@ -152,6 +152,23 @@ export const useSidebarWebview = (
       }
       webviewRef.current = null
       setIsInitialized(false)
+    }
+
+    // Handle page unload (refresh/navigation) - close webview immediately
+    // Note: Tauri requires 'unload' instead of 'beforeunload' for reliable cleanup
+    const handleUnload = () => {
+      // Use ref to ensure we have the latest webview instance
+      if (webviewRef.current) {
+        // Close synchronously to ensure it happens before page unloads
+        webviewRef.current.close().catch(console.error)
+      }
+    }
+
+    window.addEventListener('unload', handleUnload)
+
+    return () => {
+      window.removeEventListener('unload', handleUnload)
+      cleanupWebview()
     }
   }, [config?.url]) // Re-initialize if URL changes
 

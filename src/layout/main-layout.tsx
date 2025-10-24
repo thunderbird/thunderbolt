@@ -95,7 +95,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        {isOpen && <ResizableHandle withHandle />}
         <ResizablePanel
           ref={ref}
           collapsible

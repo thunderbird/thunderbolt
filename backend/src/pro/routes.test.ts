@@ -19,7 +19,8 @@ describe('Pro Tools Routes', () => {
     spyOn(console, 'warn').mockImplementation(() => {})
 
     // Create mock fetch for weather API calls
-    mockFetch = mock((url: string) => {
+    mockFetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString()
       if (url.includes('geocoding-api.open-meteo.com')) {
         return Promise.resolve(
           createMockWeatherResponse({
@@ -41,13 +42,39 @@ describe('Pro Tools Routes', () => {
           createMockWeatherResponse({
             current: {
               temperature_2m: 15,
-              wind_speed_10m: 10,
               relative_humidity_2m: 70,
+              apparent_temperature: 14,
+              weather_code: 0,
+              wind_speed_10m: 10,
+              wind_direction_10m: 180,
+              time: '2025-10-24T12:00',
+            },
+            current_units: {
+              temperature_2m: '°C',
+              relative_humidity_2m: '%',
+              apparent_temperature: '°C',
+              wind_speed_10m: 'km/h',
+              wind_direction_10m: '°',
             },
             daily: {
               time: ['2025-10-24', '2025-10-25', '2025-10-26'],
+              weather_code: [0, 1, 2],
               temperature_2m_max: [18, 19, 17],
               temperature_2m_min: [12, 13, 11],
+              apparent_temperature_max: [17, 18, 16],
+              apparent_temperature_min: [11, 12, 10],
+              precipitation_sum: [0, 2.5, 5.0],
+              precipitation_probability_max: [10, 60, 80],
+              wind_speed_10m_max: [15, 20, 25],
+            },
+            daily_units: {
+              temperature_2m_max: '°C',
+              temperature_2m_min: '°C',
+              apparent_temperature_max: '°C',
+              apparent_temperature_min: '°C',
+              precipitation_sum: 'mm',
+              precipitation_probability_max: '%',
+              wind_speed_10m_max: 'km/h',
             },
           }),
         )

@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
-import { Button } from '@/components/ui/button'
+import { useEffect, useRef } from 'react'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -9,9 +8,8 @@ import { z } from 'zod'
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown, MapPin } from 'lucide-react'
 import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
-import { useSettings } from '@/hooks/use-settings'
-import { useCountryUnits } from '@/hooks/use-country-units'
-import { extractCountryFromLocation } from '@/lib/country-utils'
+import type { OnboardingState } from '@/hooks/use-onboarding-state'
+import { Button } from '@/components/ui/button'
 
 const locationFormSchema = z
   .object({
@@ -35,27 +33,22 @@ const locationFormSchema = z
 type LocationFormData = z.infer<typeof locationFormSchema>
 
 type OnboardingLocationStepProps = {
-  onNext: () => void
+  state: OnboardingState
+  actions: {
+    setLocationValue: (value: string) => void
+    setLocationValid: (valid: boolean) => void
+    setSubmittingLocation: (submitting: boolean) => void
+    submitLocation: (locationData: { locationName: string; locationLat: number; locationLng: number }) => Promise<void>
+    nextStep: () => Promise<void>
+    prevStep: () => Promise<void>
+    skipStep: () => Promise<void>
+  }
 }
 
-export const OnboardingLocationStep = ({ onNext }: OnboardingLocationStepProps) => {
-  const [isSubmitting, setIsSubmitting] = useState(false)
+export const OnboardingLocationStep = ({ actions }: OnboardingLocationStepProps) => {
   const locationSearch = useLocationSearch()
-  const { fetchCountryUnits } = useCountryUnits()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-
-  const { locationName, locationLat, locationLng, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency } =
-    useSettings({
-      location_name: '',
-      location_lat: '',
-      location_lng: '',
-      distance_unit: 'imperial',
-      temperature_unit: 'f',
-      date_format: 'MM/DD/YYYY',
-      time_format: '12h',
-      currency: 'USD',
-    })
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationFormSchema),
@@ -66,11 +59,21 @@ export const OnboardingLocationStep = ({ onNext }: OnboardingLocationStepProps) 
     },
   })
 
-  const handleSelectLocation = (location: LocationData) => {
+  const handleSelectLocation = async (location: LocationData) => {
     form.setValue('locationName', location.name)
     form.setValue('locationLat', location.coordinates.lat)
     form.setValue('locationLng', location.coordinates.lng)
     locationSearch.setOpen(false)
+
+    try {
+      await actions.submitLocation({
+        locationName: location.name,
+        locationLat: location.coordinates.lat,
+        locationLng: location.coordinates.lng,
+      })
+    } catch (error) {
+      console.error('Failed to save location:', error)
+    }
   }
 
   useEffect(() => {
@@ -82,32 +85,31 @@ export const OnboardingLocationStep = ({ onNext }: OnboardingLocationStepProps) 
     }
   }, [])
 
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      const hasValidLocation = !!(
+        value.locationName &&
+        value.locationName.trim().length > 0 &&
+        value.locationLat &&
+        value.locationLng
+      )
+      actions.setLocationValue(value.locationName || '')
+      actions.setLocationValid(hasValidLocation)
+    })
+    return () => subscription.unsubscribe()
+  }, [form, actions])
+
   const onSubmit = async (values: LocationFormData) => {
-    setIsSubmitting(true)
-
-    // Save location data
-    await Promise.all([
-      locationName.setValue(values.locationName),
-      locationLat.setValue(String(values.locationLat)),
-      locationLng.setValue(String(values.locationLng)),
-    ])
-
-    const country = extractCountryFromLocation(values.locationName)
-    if (country) {
-      const countryUnitsData = await fetchCountryUnits(country)
-      if (countryUnitsData) {
-        await Promise.all([
-          distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true }),
-          temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true }),
-          dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true }),
-          timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true }),
-          currency.setValue(countryUnitsData.currency.code, { recomputeHash: true }),
-        ])
-      }
+    try {
+      await actions.submitLocation({
+        locationName: values.locationName,
+        locationLat: values.locationLat!,
+        locationLng: values.locationLng!,
+      })
+      actions.nextStep()
+    } catch (error) {
+      console.error('Failed to submit location:', error)
     }
-
-    setIsSubmitting(false)
-    onNext()
   }
 
   return (
@@ -202,11 +204,6 @@ export const OnboardingLocationStep = ({ onNext }: OnboardingLocationStepProps) 
           />
         </form>
       </Form>
-      <div className="pt-5">
-        <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Setting up...' : 'Complete Setup'}
-        </Button>
-      </div>
     </div>
   )
 }

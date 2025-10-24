@@ -22,5 +22,6 @@ export const Default: Story = {
   args: {
     onBack: fn(),
     onSkip: fn(),
+    onContinue: fn(),
   },
 }

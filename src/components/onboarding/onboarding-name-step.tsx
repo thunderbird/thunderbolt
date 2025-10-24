@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { User } from 'lucide-react'
+import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { useSettings } from '@/hooks/use-settings'
-import { Button } from '@/components/ui/button'
 
 const nameFormSchema = z.object({
   preferredName: z.string().min(1, { message: 'Name is required.' }),
@@ -15,11 +15,19 @@ const nameFormSchema = z.object({
 type NameFormData = z.infer<typeof nameFormSchema>
 
 type OnboardingNameStepProps = {
-  onNext: () => void
+  state: OnboardingState
+  actions: {
+    setNameValue: (value: string) => void
+    setNameValid: (valid: boolean) => void
+    setSubmittingName: (submitting: boolean) => void
+    submitName: (name: string) => Promise<void>
+    nextStep: () => Promise<void>
+    prevStep: () => Promise<void>
+    skipStep: () => Promise<void>
+  }
 }
 
-export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
-  const [isSubmitting, setIsSubmitting] = useState(false)
+export const OnboardingNameStep = ({ actions }: OnboardingNameStepProps) => {
   const inputRef = useRef<HTMLInputElement>(null)
   const { preferredName } = useSettings({
     preferred_name: '',
@@ -28,7 +36,7 @@ export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
   const form = useForm<NameFormData>({
     resolver: zodResolver(nameFormSchema),
     defaultValues: {
-      preferredName: preferredName.value || '',
+      preferredName: '',
     },
   })
 
@@ -39,17 +47,19 @@ export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
   }, [])
 
   useEffect(() => {
-    if (preferredName.value && !preferredName.isLoading) {
+    if (preferredName.value && !preferredName.isLoading && preferredName.value.trim().length > 0) {
       form.setValue('preferredName', preferredName.value)
     }
   }, [preferredName.value, preferredName.isLoading, form])
 
-  const onSubmit = async (values: NameFormData) => {
-    setIsSubmitting(true)
-    await preferredName.setValue(values.preferredName)
-    setIsSubmitting(false)
-    onNext()
-  }
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      const hasValidName = !!(value.preferredName && value.preferredName.trim().length > 0)
+      actions.setNameValue(value.preferredName || '')
+      actions.setNameValid(hasValidName)
+    })
+    return () => subscription.unsubscribe()
+  }, [form, actions])
 
   return (
     <div className="w-full h-full flex flex-col justify-center">
@@ -62,7 +72,7 @@ export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-3">
+        <div className="space-y-6 pt-3">
           <FormField
             control={form.control}
             name="preferredName"
@@ -76,13 +86,8 @@ export const OnboardingNameStep = ({ onNext }: OnboardingNameStepProps) => {
               </FormItem>
             )}
           />
-        </form>
+        </div>
       </Form>
-      <div className="pt-5">
-        <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Saving...' : 'Continue'}
-        </Button>
-      </div>
     </div>
   )
 }

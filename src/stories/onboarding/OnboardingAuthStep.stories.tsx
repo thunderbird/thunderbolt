@@ -16,13 +16,6 @@ const meta = {
       description: 'Array of OAuth providers',
     },
   },
-  decorators: [
-    (Story) => (
-      <div className="w-[400px] h-[500px] border rounded-lg p-4">
-        <Story />
-      </div>
-    ),
-  ],
 } satisfies Meta<typeof OnboardingAuthStepWrapper>
 
 export default meta

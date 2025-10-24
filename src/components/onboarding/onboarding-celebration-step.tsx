@@ -1,31 +1,10 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { CheckCircle, Sparkles } from 'lucide-react'
-import { useSettings } from '@/hooks/use-settings'
 
-type OnboardingCelebrationStepProps = {
-  onComplete: () => void
-}
-
-export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationStepProps) => {
-  const [isCompleting, setIsCompleting] = useState(false)
-  const { userHasCompletedOnboarding, onboardingCurrentStep } = useSettings({
-    user_has_completed_onboarding: false,
-    onboarding_current_step: '1',
-  })
-
-  const handleComplete = async () => {
-    setIsCompleting(true)
-    // Mark onboarding as completed and reset step
-    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
-    setIsCompleting(false)
-    onComplete()
-  }
-
+export const OnboardingCelebrationStep = () => {
   return (
     <div className="w-full h-full flex flex-col justify-center">
-      <div className="space-y-6 text-center">
-        <div className="space-y-4">
+      <div className="space-y-6">
+        <div className="space-y-4 text-center">
           <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
             <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
@@ -58,11 +37,6 @@ export const OnboardingCelebrationStep = ({ onComplete }: OnboardingCelebrationS
             </div>
           </div>
         </div>
-      </div>
-      <div className="pt-5">
-        <Button onClick={handleComplete} className="w-full" size="lg" disabled={isCompleting}>
-          {isCompleting ? 'Completing...' : 'Start Using Thunderbolt'}
-        </Button>
       </div>
     </div>
   )

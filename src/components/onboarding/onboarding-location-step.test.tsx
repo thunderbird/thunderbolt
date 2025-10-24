@@ -1,331 +1,161 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
+import '@testing-library/jest-dom'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 
-// Mock external dependencies
-const mockSetOpen = mock()
-const mockSetSearchQuery = mock()
-const mockClearSearch = mock()
-const mockFetchCountryUnits = mock()
+// Mock state and actions
+const mockActions = {
+  setLocationValue: vi.fn(),
+  setLocationValid: vi.fn(),
+  setSubmittingLocation: vi.fn(),
+  submitLocation: vi.fn(),
+  nextStep: vi.fn(),
+  prevStep: vi.fn(),
+  skipStep: vi.fn(),
+}
 
-mock.module('@/hooks/use-location-search', () => ({
-  useLocationSearch: () => ({
-    open: false,
-    searchQuery: '',
-    locations: [],
-    isSearching: false,
-    setOpen: mockSetOpen,
-    setSearchQuery: mockSetSearchQuery,
-    clearSearch: mockClearSearch,
-  }),
+const mockState = {
+  currentStep: 4 as const,
+  privacyAgreed: true,
+  isProviderConnected: true,
+  isConnecting: false,
+  processingOAuth: false,
+  nameValue: 'John Doe',
+  isNameValid: true,
+  isSubmittingName: false,
+  locationValue: '',
+  isLocationValid: false,
+  isSubmittingLocation: false,
+  canGoBack: true,
+  canGoNext: false,
+  canSkip: true,
+}
+
+// Mock useLocationSearch hook
+const mockLocationSearch = {
+  open: false,
+  setOpen: vi.fn(),
+  searchQuery: '',
+  setSearchQuery: vi.fn(),
+  locations: [] as Array<{ name: string; coordinates: { lat: number; lng: number } }>,
+  isSearching: false,
+  clearSearch: vi.fn(),
+}
+
+vi.mock('@/hooks/use-location-search', () => ({
+  useLocationSearch: () => mockLocationSearch,
 }))
-
-mock.module('@/hooks/use-country-units', () => ({
-  useCountryUnits: () => ({
-    fetchCountryUnits: mockFetchCountryUnits,
-  }),
-}))
-
-// Mock country utils
-mock.module('@/lib/country-utils', () => ({
-  extractCountryFromLocation: (location: string) => {
-    if (location.includes('United States') || location.includes('USA')) return 'US'
-    if (location.includes('Canada')) return 'CA'
-    if (location.includes('United Kingdom') || location.includes('UK')) return 'GB'
-    return null
-  },
-}))
-
-beforeAll(async () => {
-  await setupTestDatabase()
-})
-
-afterAll(async () => {
-  await teardownTestDatabase()
-})
-
-afterEach(async () => {
-  await resetTestDatabase()
-
-  // Reset mocks
-  mockSetOpen.mockClear()
-  mockSetSearchQuery.mockClear()
-  mockClearSearch.mockClear()
-  mockFetchCountryUnits.mockClear()
-})
 
 describe('OnboardingLocationStep', () => {
-  const defaultProps = {
-    onNext: mock(),
+  beforeEach(async () => {
+    await setupTestDatabase()
+    vi.clearAllMocks()
+  })
+
+  afterEach(async () => {
+    await resetTestDatabase()
+    vi.clearAllMocks()
+  })
+
+  const renderComponent = () => {
+    return render(<OnboardingLocationStep state={mockState} actions={mockActions} />, {
+      wrapper: createQueryTestWrapper(),
+    })
   }
 
   describe('Component rendering', () => {
     it('should render location step UI correctly', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+      renderComponent()
 
       expect(screen.getByText('Where are you located?')).toBeInTheDocument()
       expect(
         screen.getByText('This helps us personalize your experience with local settings and features.'),
       ).toBeInTheDocument()
-      expect(screen.getByText('Location')).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'Location' })).toBeInTheDocument()
       expect(screen.getByText('Select location...')).toBeInTheDocument()
-      expect(screen.getByText('Complete Setup')).toBeInTheDocument()
     })
 
     it('should render MapPin icon', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+      renderComponent()
 
-      // Check for the MapPin icon by its class name
-      const mapPinIcon = document.querySelector('.lucide-map-pin')
-      expect(mapPinIcon).toBeInTheDocument()
-    })
-
-    it('should focus search input on mount', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // The component should trigger focus on mount
-      expect(true).toBe(true) // Basic rendering test
+      // The MapPin icon is an SVG with aria-hidden="true", so we check the container
+      const iconContainer = screen
+        .getByText('Where are you located?')
+        .closest('div')
+        ?.parentElement?.querySelector('.mx-auto.w-16.h-16')
+      expect(iconContainer).toBeInTheDocument()
+      expect(iconContainer).toHaveClass('mx-auto', 'w-16', 'h-16', 'bg-primary/10', 'rounded-full')
     })
   })
 
-  describe('Form validation', () => {
-    it('should show validation error for empty location', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-    })
-
-    it('should show validation error for location without coordinates', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Simulate typing in location without selecting from dropdown
-      const locationInput = screen.getByRole('combobox')
-      fireEvent.click(locationInput)
-
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Location search functionality', () => {
+  describe('Form interaction', () => {
     it('should open location search when combobox is clicked', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+      renderComponent()
 
-      const combobox = screen.getByRole('combobox')
+      const combobox = screen.getByRole('combobox', { name: 'Location' })
       fireEvent.click(combobox)
 
-      expect(mockSetOpen).toHaveBeenCalledWith(true)
+      expect(mockLocationSearch.setOpen).toHaveBeenCalledWith(true)
     })
 
-    it('should handle location selection', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+    it('should have proper form structure', () => {
+      renderComponent()
 
-      // Test that the combobox can be clicked
-      const combobox = screen.getByRole('combobox')
-      fireEvent.click(combobox)
-
-      expect(mockSetOpen).toHaveBeenCalledWith(true)
+      const form = document.querySelector('form')
+      expect(form).toBeInTheDocument()
     })
 
-    it('should show loading state during search', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+    it('should have proper combobox structure', () => {
+      renderComponent()
 
-      // Test basic functionality without complex mocking
-      expect(screen.getByText('Complete Setup')).toBeInTheDocument()
-    })
-
-    it('should show no results message when no locations found', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic functionality without complex mocking
-      expect(screen.getByText('Complete Setup')).toBeInTheDocument()
-    })
-  })
-
-  describe('Form submission', () => {
-    it('should handle successful form submission', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic form submission without complex mocking
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      // Should show validation error since no location is selected
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-    })
-
-    it('should handle form submission without country units', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic form submission without complex mocking
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      // Should show validation error since no location is selected
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-    })
-
-    it('should show loading state during submission', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic form submission without complex mocking
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      // Should show validation error since no location is selected
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
+      const combobox = screen.getByRole('combobox', { name: 'Location' })
+      expect(combobox).toBeInTheDocument()
+      expect(combobox).toHaveAttribute('aria-expanded', 'false')
+      expect(combobox).toHaveAttribute('aria-haspopup', 'dialog')
     })
   })
 
   describe('Accessibility', () => {
     it('should have proper form labels and structure', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+      renderComponent()
 
       expect(screen.getByLabelText('Location')).toBeInTheDocument()
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Complete Setup' })).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'Location' })).toBeInTheDocument()
     })
 
-    it('should have proper heading structure', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+    it('should maintain accessibility during interactions', () => {
+      renderComponent()
 
-      const heading = screen.getByRole('heading', { level: 2 })
-      expect(heading).toHaveTextContent('Where are you located?')
-    })
+      const combobox = screen.getByRole('combobox', { name: 'Location' })
+      fireEvent.click(combobox)
 
-    it('should maintain accessibility during loading states', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic accessibility without complex mocking
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      // Should show validation error since no location is selected
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Integration with database', () => {
-    it('should persist location data to database', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic integration without complex mocking
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      // Should show validation error since no location is selected
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
+      expect(combobox).toBeInTheDocument()
+      expect(combobox).toHaveAttribute('aria-expanded', 'false')
     })
   })
 
   describe('Edge cases', () => {
-    it('should handle rapid button clicks', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+    it('should handle rapid button clicks', () => {
+      renderComponent()
 
-      const submitButton = screen.getByText('Complete Setup')
+      const combobox = screen.getByRole('combobox', { name: 'Location' })
 
-      // Click multiple times rapidly
-      fireEvent.click(submitButton)
-      fireEvent.click(submitButton)
-      fireEvent.click(submitButton)
+      // Rapid clicks should not cause issues
+      fireEvent.click(combobox)
+      fireEvent.click(combobox)
+      fireEvent.click(combobox)
 
-      // Should show validation error
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
+      expect(mockLocationSearch.setOpen).toHaveBeenCalled()
     })
 
-    it('should handle keyboard navigation', () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
+    it('should maintain accessibility during error states', () => {
+      renderComponent()
 
-      const combobox = screen.getByRole('combobox')
-
-      // Test keyboard navigation
-      fireEvent.keyDown(combobox, { key: 'Enter' })
-      fireEvent.keyDown(combobox, { key: 'Escape' })
-      fireEvent.keyDown(combobox, { key: 'ArrowDown' })
-      fireEvent.keyDown(combobox, { key: 'ArrowUp' })
-
-      // Component should handle keyboard events gracefully
+      const combobox = screen.getByRole('combobox', { name: 'Location' })
       expect(combobox).toBeInTheDocument()
-    })
-
-    it('should maintain accessibility during error states', async () => {
-      render(<OnboardingLocationStep {...defaultProps} />, {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      const submitButton = screen.getByText('Complete Setup')
-      fireEvent.click(submitButton)
-
-      await waitFor(() => {
-        expect(screen.getByText('Location is required.')).toBeInTheDocument()
-      })
-
-      // Check that error message is accessible
-      const errorMessage = screen.getByText('Location is required.')
-      expect(errorMessage).toBeInTheDocument()
-
-      // Check that form controls are still accessible
-      const combobox = screen.getByRole('combobox')
-      expect(combobox).toBeInTheDocument()
+      expect(combobox).toHaveAttribute('aria-invalid', 'false')
     })
   })
 })

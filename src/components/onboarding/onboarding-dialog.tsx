@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useSettings } from '@/hooks/use-settings'
-import { useOnboardingNavigation, TOTAL_STEPS } from '@/hooks/use-onboarding-navigation'
+import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
@@ -9,32 +9,15 @@ import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
-import { useLocation, useNavigate } from 'react-router'
-import { useOAuthConnect } from '@/hooks/use-oauth-connect'
-
-type LocationState = {
-  oauth?: {
-    code?: string
-    state?: string
-    error?: string
-  }
-}
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export const OnboardingDialog = () => {
-  const location = useLocation()
-  const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
   const [isOpen, setIsOpen] = useState(false)
-  const { currentStep, handleNext, handleBack, handleSkip } = useOnboardingNavigation()
-  const [processingOAuth, setProcessingOAuth] = useState(false)
-
-  const { processCallback } = useOAuthConnect({
-    onSuccess: handleNext,
-    setPreferredName: true,
-    returnContext: 'onboarding',
-  })
+  const { state, actions } = useOnboardingState()
 
   useEffect(() => {
     if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
@@ -42,55 +25,112 @@ export const OnboardingDialog = () => {
     }
   }, [userHasCompletedOnboarding.value, userHasCompletedOnboarding.isLoading])
 
-  // Handle OAuth callback when navigated back from /oauth/callback
-  useEffect(() => {
-    const state = location.state as LocationState | null
-    const oauth = state?.oauth
-    if (!oauth || processingOAuth) return
-
-    const handleCallback = async () => {
-      setProcessingOAuth(true)
-
-      try {
-        await processCallback(oauth)
-      } catch (err) {
-        console.error('Failed to complete OAuth:', err)
-      } finally {
-        setProcessingOAuth(false)
-        navigate('.', { replace: true, state: null })
-      }
-    }
-
-    handleCallback()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state])
-
   const handleClose = () => {
     setIsOpen(false)
+  }
+
+  // Celebration step completion handler
+  const [isCompleting, setIsCompleting] = useState(false)
+  const { onboardingCurrentStep } = useSettings({
+    onboarding_current_step: '1',
+  })
+
+  const handleCelebrationComplete = async () => {
+    setIsCompleting(true)
+    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
+    setIsCompleting(false)
+    handleClose()
+  }
+
+  // Unified action handlers
+  const handleContinue = async () => {
+    if (state.currentStep === 5) {
+      // Special handling for celebration step
+      handleCelebrationComplete()
+    } else if (state.currentStep === 2) {
+      // Auth step - only allow continue if connected
+      if (state.isProviderConnected) {
+        actions.nextStep()
+      }
+    } else if (state.currentStep === 3) {
+      // Name step - save name to database before proceeding
+      if (state.isNameValid && state.nameValue) {
+        try {
+          await actions.submitName(state.nameValue)
+          actions.nextStep()
+        } catch (error) {
+          console.error('Failed to save name:', error)
+        }
+      }
+    } else if (state.canGoNext) {
+      actions.nextStep()
+    }
+  }
+
+  const handleBackAction = () => {
+    if (state.canGoBack) {
+      actions.prevStep()
+    }
+  }
+
+  const handleSkipAction = () => {
+    if (state.canSkip) {
+      actions.skipStep()
+    }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
       <DialogContent
-        className="max-w-[600px] p-0 h-[650px] w-[600px] m-4 rounded-lg overflow-hidden sm:h-[650px] sm:w-[600px] h-screen w-full m-0 rounded-none"
+        className={`max-w-[600px] p-0 h-[650px] w-[600px] m-4 overflow-hidden sm:h-[650px] sm:w-[600px] h-screen w-full m-0 rounded-${isMobile ? 'none' : 'lg'}`}
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
-        <div className="h-full flex flex-col">
-          <div className="px-4 sm:px-6 pt-4 sm:pt-6 flex-shrink-0">
-            {currentStep > 1 && currentStep < 5 && <OnboardingActionButtons onBack={handleBack} onSkip={handleSkip} />}
+        <DialogDescription className="sr-only">
+          Complete the setup process to get started with Thunderbolt
+        </DialogDescription>
+        <div className="flex flex-col items-center py-8">
+          <div className="flex items-center justify-center px-4">
+            <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>
-          <div className="flex-1 px-4 sm:px-6 flex items-center justify-center">
-            <div className="w-full max-w-md h-[400px] sm:h-[500px] flex items-center justify-center">
-              {currentStep === 1 && <OnboardingPrivacyStep onNext={handleNext} />}
-              {currentStep === 2 && <OnboardingAuthStep onNext={handleNext} isProcessing={processingOAuth} />}
-              {currentStep === 3 && <OnboardingNameStep onNext={handleNext} />}
-              {currentStep === 4 && <OnboardingLocationStep onNext={handleNext} />}
-              {currentStep === 5 && <OnboardingCelebrationStep onComplete={handleClose} />}
-            </div>
+          <div className="flex flex-1 px-6 pt-6">
+            {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
+            {state.currentStep === 2 && (
+              <OnboardingAuthStep
+                isProcessing={state.processingOAuth}
+                isConnected={state.isProviderConnected}
+                onConnectionChange={actions.setProviderConnected}
+              />
+            )}
+            {state.currentStep === 3 && <OnboardingNameStep state={state} actions={actions} />}
+            {state.currentStep === 4 && <OnboardingLocationStep state={state} actions={actions} />}
+            {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="px-4 sm:px-6 pb-4 sm:pb-6">
-            <StepIndicators currentStep={currentStep} totalSteps={TOTAL_STEPS} />
+          <div className="flex w-full px-5 pb-5">
+            <OnboardingActionButtons
+              onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
+              onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
+              onContinue={handleContinue}
+              showBack={state.currentStep === 5 ? false : state.canGoBack}
+              showSkip={state.currentStep === 5 ? false : state.canSkip}
+              skipDisabled={state.currentStep === 2 && state.isProviderConnected}
+              continueDisabled={
+                state.currentStep === 5
+                  ? isCompleting
+                  : state.currentStep === 1
+                    ? !state.privacyAgreed
+                    : state.currentStep === 2
+                      ? !state.isProviderConnected
+                      : state.currentStep === 3
+                        ? !state.isNameValid
+                        : state.currentStep === 4
+                          ? !state.isLocationValid
+                          : !state.canGoNext
+              }
+              continueText={
+                state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'
+              }
+            />
           </div>
         </div>
       </DialogContent>

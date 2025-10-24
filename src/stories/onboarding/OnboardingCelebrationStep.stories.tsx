@@ -12,13 +12,6 @@ const meta = {
   argTypes: {
     onComplete: { action: 'complete' },
   },
-  decorators: [
-    (Story) => (
-      <div className="w-[400px] h-[500px] border rounded-lg p-4">
-        <Story />
-      </div>
-    ),
-  ],
 } satisfies Meta<typeof OnboardingCelebrationStepWrapper>
 
 export default meta

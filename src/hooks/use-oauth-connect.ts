@@ -66,7 +66,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     try {
       if (isTauri()) {
-        // Tauri: Use webview window and process immediately
         const result = await startOAuthFlowWebview(provider)
 
         if (!result) return
@@ -77,7 +76,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
-        // Web: Store context and redirect (this function never returns)
         sessionStorage.setItem('oauth_return_context', returnContext)
         await redirectOAuthFlow(provider)
       }

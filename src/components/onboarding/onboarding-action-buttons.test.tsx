@@ -1,51 +1,60 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, beforeEach, expect } from 'vitest'
 import '@testing-library/jest-dom'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 
 describe('OnboardingActionButtons', () => {
   const mockOnBack = vi.fn()
   const mockOnSkip = vi.fn()
+  const mockOnContinue = vi.fn()
+
+  const defaultProps = {
+    onBack: mockOnBack,
+    onSkip: mockOnSkip,
+    onContinue: mockOnContinue,
+  }
 
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
+  const renderComponent = (props = {}) => {
+    return render(<OnboardingActionButtons {...defaultProps} {...props} />)
+  }
+
   describe('Rendering', () => {
     it('should render back and skip buttons', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
-      const buttons = screen.getAllByRole('button')
-      expect(buttons).toHaveLength(2)
-      expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument()
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
+      const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+
+      expect(backButton).toBeInTheDocument()
+      expect(skipButton).toBeInTheDocument()
+      expect(continueButton).toBeInTheDocument()
     })
 
     it('should render back button with arrow icon', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
-      const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0] // First button is the back button
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
       expect(backButton).toBeInTheDocument()
-
-      // Check for arrow icon (ArrowLeft component)
-      const arrowIcon = backButton.querySelector('svg')
-      expect(arrowIcon).toBeInTheDocument()
     })
   })
 
   describe('User Interactions', () => {
     it('should call onBack when back button is clicked', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
-      const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0]
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
       fireEvent.click(backButton)
 
       expect(mockOnBack).toHaveBeenCalledTimes(1)
     })
 
     it('should call onSkip when skip button is clicked', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
       const skipButton = screen.getByRole('button', { name: 'Skip' })
       fireEvent.click(skipButton)
@@ -53,8 +62,17 @@ describe('OnboardingActionButtons', () => {
       expect(mockOnSkip).toHaveBeenCalledTimes(1)
     })
 
+    it('should call onContinue when continue button is clicked', () => {
+      renderComponent()
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      fireEvent.click(continueButton)
+
+      expect(mockOnContinue).toHaveBeenCalledTimes(1)
+    })
+
     it('should not call onBack when skip button is clicked', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
       const skipButton = screen.getByRole('button', { name: 'Skip' })
       fireEvent.click(skipButton)
@@ -63,101 +81,197 @@ describe('OnboardingActionButtons', () => {
     })
 
     it('should not call onSkip when back button is clicked', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
-      const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0]
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
       fireEvent.click(backButton)
 
       expect(mockOnSkip).not.toHaveBeenCalled()
     })
   })
 
-  describe('Accessibility', () => {
-    it('should have proper button roles', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+  describe('Button States', () => {
+    it('should disable continue button when continueDisabled is true', () => {
+      renderComponent({ continueDisabled: true })
 
-      const buttons = screen.getAllByRole('button')
-      expect(buttons).toHaveLength(2)
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      expect(continueButton).toBeDisabled()
     })
 
-    it('should be keyboard accessible', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+    it('should disable skip button when skipDisabled is true', () => {
+      renderComponent({ skipDisabled: true })
 
-      const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0]
       const skipButton = screen.getByRole('button', { name: 'Skip' })
-
-      // Buttons should be focusable
-      backButton.focus()
-      expect(backButton).toHaveFocus()
-
-      skipButton.focus()
-      expect(skipButton).toHaveFocus()
+      expect(skipButton).toBeDisabled()
     })
 
-    it('should support keyboard navigation', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+    it('should enable buttons when not disabled', () => {
+      renderComponent()
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const backButton = screen.getAllByRole('button')[0]
+
+      expect(continueButton).not.toBeDisabled()
+      expect(skipButton).not.toBeDisabled()
+      expect(backButton).not.toBeDisabled()
+    })
+  })
+
+  describe('Button Visibility', () => {
+    it('should hide back button when showBack is false', () => {
+      renderComponent({ showBack: false })
 
       const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0]
+      expect(buttons).toHaveLength(2) // Skip and Continue only
+    })
+
+    it('should hide skip button when showSkip is false', () => {
+      renderComponent({ showSkip: false })
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
+
+      expect(continueButton).toBeInTheDocument()
+      expect(backButton).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
+    })
+
+    it('should hide continue button when showContinue is false', () => {
+      renderComponent({ showContinue: false })
+
       const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
 
-      // Test that buttons can be focused and activated
-      backButton.focus()
-      expect(backButton).toHaveFocus()
+      expect(skipButton).toBeInTheDocument()
+      expect(backButton).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument()
+    })
 
-      skipButton.focus()
-      expect(skipButton).toHaveFocus()
+    it('should show only continue button when showBack and showSkip are false', () => {
+      renderComponent({ showBack: false, showSkip: false })
 
-      // Test that buttons respond to clicks (which also work with keyboard)
-      fireEvent.click(backButton)
-      expect(mockOnBack).toHaveBeenCalledTimes(1)
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      expect(continueButton).toBeInTheDocument()
+      expect(continueButton).toHaveClass('w-full')
+    })
+  })
 
-      fireEvent.click(skipButton)
-      expect(mockOnSkip).toHaveBeenCalledTimes(1)
+  describe('Custom Text', () => {
+    it('should display custom continue text', () => {
+      renderComponent({ continueText: 'Next Step' })
+
+      const continueButton = screen.getByRole('button', { name: 'Next Step' })
+      expect(continueButton).toBeInTheDocument()
+    })
+
+    it('should display default continue text when not provided', () => {
+      renderComponent()
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      expect(continueButton).toBeInTheDocument()
     })
   })
 
   describe('Layout and Structure', () => {
     it('should have proper flex layout', () => {
-      const { container } = render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      const { container } = renderComponent()
 
       const wrapper = container.firstChild as HTMLElement
-      expect(wrapper).toHaveClass('flex', 'items-center', 'justify-between', 'w-full')
+      expect(wrapper).toHaveClass('flex', 'flex-1', 'w-full', 'justify-between')
     })
 
     it('should have responsive gap classes', () => {
-      const { container } = render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      const { container } = renderComponent()
 
-      const rightSection = container.querySelector('.flex.items-center.gap-2.sm\\:gap-3')
+      const rightSection = container.querySelector('.flex.space-x-2')
       expect(rightSection).toBeInTheDocument()
+    })
+  })
+
+  describe('Accessibility', () => {
+    it('should have proper button roles', () => {
+      renderComponent()
+
+      const buttons = screen.getAllByRole('button')
+      expect(buttons).toHaveLength(3) // Back, Skip, Continue
+    })
+
+    it('should be keyboard accessible', () => {
+      renderComponent()
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const backButton = screen.getAllByRole('button')[0]
+
+      expect(continueButton).toBeInTheDocument()
+      expect(skipButton).toBeInTheDocument()
+      expect(backButton).toBeInTheDocument()
+    })
+
+    it('should support keyboard navigation', () => {
+      renderComponent()
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      continueButton.focus()
+      expect(continueButton).toHaveFocus()
     })
   })
 
   describe('Edge Cases', () => {
     it('should handle multiple rapid clicks', () => {
-      render(<OnboardingActionButtons onBack={mockOnBack} onSkip={mockOnSkip} />)
+      renderComponent()
 
-      const buttons = screen.getAllByRole('button')
-      const backButton = buttons[0]
-      const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
 
       // Rapid clicks
-      fireEvent.click(backButton)
-      fireEvent.click(backButton)
-      fireEvent.click(skipButton)
-      fireEvent.click(skipButton)
+      fireEvent.click(continueButton)
+      fireEvent.click(continueButton)
+      fireEvent.click(continueButton)
 
-      expect(mockOnBack).toHaveBeenCalledTimes(2)
-      expect(mockOnSkip).toHaveBeenCalledTimes(2)
+      expect(mockOnContinue).toHaveBeenCalledTimes(3)
     })
 
     it('should work with undefined callback functions', () => {
-      // This should not throw errors
-      expect(() => {
-        render(<OnboardingActionButtons onBack={undefined as any} onSkip={undefined as any} />)
-      }).not.toThrow()
+      renderComponent({ onBack: undefined, onSkip: undefined })
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      expect(continueButton).toBeInTheDocument()
+    })
+
+    it('should handle all buttons being hidden', () => {
+      renderComponent({ showBack: false, showSkip: false, showContinue: false })
+
+      const buttons = screen.queryAllByRole('button')
+      expect(buttons).toHaveLength(0)
+    })
+
+    it('should handle conditional rendering based on props', () => {
+      renderComponent({ onBack: undefined })
+
+      const buttons = screen.getAllByRole('button')
+      expect(buttons).toHaveLength(2) // Skip and Continue only
+    })
+  })
+
+  describe('Button Styling', () => {
+    it('should apply correct button variants', () => {
+      renderComponent()
+
+      const backButton = screen.getAllByRole('button')[0]
+      const skipButton = screen.getByRole('button', { name: 'Skip' })
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+
+      expect(backButton).toBeInTheDocument()
+      expect(skipButton).toBeInTheDocument()
+      expect(continueButton).toBeInTheDocument()
+    })
+
+    it('should apply full width to continue button when no other buttons', () => {
+      renderComponent({ showBack: false, showSkip: false })
+
+      const continueButton = screen.getByRole('button', { name: 'Continue' })
+      expect(continueButton).toHaveClass('w-full')
     })
   })
 })

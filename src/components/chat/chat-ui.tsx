@@ -254,7 +254,7 @@ export default function ChatUI({
             {/* Automation trigger banner */}
             {triggerAutomation?.wasTriggeredByAutomation && (
               <TriggerMessage
-                chatThreadId={chatThreadId ?? ''}
+                chatThreadId={chatThreadId}
                 title={triggerAutomation.prompt?.title ?? undefined}
                 prompt={triggerPromptContent}
                 isDeleted={triggerAutomation.isAutomationDeleted}

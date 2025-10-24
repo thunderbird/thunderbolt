@@ -250,11 +250,7 @@ export default function ChatUI({
       </AnimatePresence>
 
       <motion.div
-        className={cn(
-          'p-4 flex',
-          !hasMessages && isMobile && 'flex-1 items-end',
-          !hasMessages && !isMobile && 'flex-1 items-center',
-        )}
+        className={cn('p-4 flex', !hasMessages && 'flex-1 items-center')}
         initial={false}
         layout
         transition={{

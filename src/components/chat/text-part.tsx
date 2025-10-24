@@ -20,7 +20,7 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
         if (contentPart.type === 'text') {
           return (
             <div key={`text-${index}`} className="p-4 rounded-md my-2" style={{ maxWidth: 'calc(100vw - 2rem)' }}>
-              <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={part.text} />
+              <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={contentPart.content} />
             </div>
           )
         }

@@ -8,6 +8,7 @@ import {
   SidebarInset,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/right-sidebar/constants'
 import { useRightSidebar } from '@/right-sidebar/context'
@@ -23,6 +24,7 @@ import { Outlet } from 'react-router'
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
   const { state, close } = useRightSidebar()
+  const isMobile = useIsMobile()
   const { rightSidebarWidth } = useSettings({
     right_sidebar_width: Number,
   })
@@ -34,9 +36,10 @@ export default function Page() {
     // Only animate on state changes, not on mount
     if (prevIsOpen.current !== isOpen && ref.current) {
       if (isOpen) {
-        // Determine target width: use saved width if it's above threshold, otherwise use default
+        // On mobile: always use 100% width. On desktop: use saved width if above threshold, otherwise use default
         const savedWidth = rightSidebarWidth.value
-        const targetWidth = savedWidth && savedWidth >= minimumWidthThreshold ? savedWidth : defaultOpenWidth
+        const hasSavedWidthAboveThreshold = savedWidth && savedWidth >= minimumWidthThreshold
+        const targetWidth = isMobile ? 100 : hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
 
         // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
@@ -51,9 +54,10 @@ export default function Page() {
           }
         })
       } else {
-        // Closing: save current size before animating to 0
+        // Closing: save current size before animating to 0 (but not on mobile)
         const currentSize = ref.current.getSize()
-        if (currentSize > 0) {
+        const shouldSaveWidthOnClose = currentSize > 0 && !isMobile
+        if (shouldSaveWidthOnClose) {
           lastSavedWidth.current = currentSize
           rightSidebarWidth.setValue(currentSize)
         }
@@ -68,14 +72,14 @@ export default function Page() {
       }
     }
     prevIsOpen.current = isOpen
-  }, [isOpen, rightSidebarWidth])
+  }, [isOpen, isMobile, rightSidebarWidth])
 
-  // Persist width changes as user resizes
+  // Persist width changes as user resizes (but not on mobile)
   const handleResize = (size: number) => {
-    // Only save if the panel is actually open and has a meaningful size
-    if (isOpen && size > 0) {
-      // Debounce saves by only updating if the change is significant (> 1%)
-      if (!lastSavedWidth.current || Math.abs(size - lastSavedWidth.current) > 1) {
+    const shouldPersistWidthChange = isOpen && size > 0 && !isMobile
+    if (shouldPersistWidthChange) {
+      const hasSignificantWidthChange = !lastSavedWidth.current || Math.abs(size - lastSavedWidth.current) > 1
+      if (hasSignificantWidthChange) {
         lastSavedWidth.current = size
         rightSidebarWidth.setValue(size)
       }
@@ -93,7 +97,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {isOpen && <ResizableHandle withHandle />}
+        {isOpen && !isMobile && <ResizableHandle withHandle />}
         <ResizablePanel
           ref={ref}
           collapsible

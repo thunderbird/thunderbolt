@@ -1,5 +1,6 @@
+import { useIsMobile } from '@/hooks/use-mobile'
 import type { ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 
 type RightSidebarState =
@@ -41,6 +42,8 @@ export const RightSidebarProvider = ({
   initialSideviewId,
 }: RightSidebarProviderProps) => {
   const [state, setState] = useState<RightSidebarState>({ type: null, data: null })
+  const isMobile = useIsMobile()
+  const prevIsMobile = useRef(isMobile)
 
   const showObjectView = useCallback((content: ToolUIPart) => {
     setState({ type: 'object-view', data: content })
@@ -77,6 +80,15 @@ export const RightSidebarProvider = ({
       showSideview(initialSideviewType, initialSideviewId)
     }
   }, [initialSideviewType, initialSideviewId, showSideview])
+
+  // Close sidebar when crossing into mobile mode (only on transition, not continuously)
+  useEffect(() => {
+    const crossedIntoMobileWithSidebarOpen = !prevIsMobile.current && isMobile && state.type !== null
+    if (crossedIntoMobileWithSidebarOpen) {
+      close()
+    }
+    prevIsMobile.current = isMobile
+  }, [isMobile, state.type, close])
 
   return (
     <RightSidebarContext.Provider

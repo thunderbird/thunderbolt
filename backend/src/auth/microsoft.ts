@@ -9,7 +9,7 @@ const SCOPES = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 /**
  * Create Microsoft OAuth router
  */
-export const createMicrosoftAuthRoutes = () => {
+export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/microsoft' })
     .get('/config', async () => {
       const settings = getSettings()
@@ -45,7 +45,7 @@ export const createMicrosoftAuthRoutes = () => {
         })
 
         try {
-          const response = await fetch(MICROSOFT_TOKEN_URL, {
+          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -116,7 +116,7 @@ export const createMicrosoftAuthRoutes = () => {
         })
 
         try {
-          const response = await fetch(MICROSOFT_TOKEN_URL, {
+          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

@@ -1,10 +1,17 @@
-import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
 import { createMicrosoftAuthRoutes } from './microsoft'
 
 describe('Authentication Routes', () => {
   let app: Elysia
+  let mockFetch: ReturnType<typeof mock>
+
+  const createMockOAuthResponse = (status = 200, body: any = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
 
   beforeAll(async () => {
     // Mock console methods to reduce test noise
@@ -13,7 +20,13 @@ describe('Authentication Routes', () => {
     spyOn(console, 'error').mockImplementation(() => {})
     spyOn(console, 'warn').mockImplementation(() => {})
 
-    app = new Elysia().use(createGoogleAuthRoutes()).use(createMicrosoftAuthRoutes())
+    // Create mock fetch
+    mockFetch = mock(() => Promise.resolve(createMockOAuthResponse()))
+
+    // Inject mock fetch into routes
+    app = new Elysia()
+      .use(createGoogleAuthRoutes(mockFetch as unknown as typeof fetch))
+      .use(createMicrosoftAuthRoutes(mockFetch as unknown as typeof fetch))
   })
 
   afterAll(async () => {

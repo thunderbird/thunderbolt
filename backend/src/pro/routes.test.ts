@@ -1,8 +1,15 @@
-import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createProToolsRoutes } from './routes'
 
 describe('Pro Tools Routes', () => {
   let app: ReturnType<typeof createProToolsRoutes>
+  let mockFetch: ReturnType<typeof mock>
+
+  const createMockWeatherResponse = (body: any = {}) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
 
   beforeAll(async () => {
     // Mock console methods to reduce test noise
@@ -11,7 +18,44 @@ describe('Pro Tools Routes', () => {
     spyOn(console, 'error').mockImplementation(() => {})
     spyOn(console, 'warn').mockImplementation(() => {})
 
-    app = createProToolsRoutes()
+    // Create mock fetch for weather API calls
+    mockFetch = mock((url: string) => {
+      if (url.includes('geocoding-api.open-meteo.com')) {
+        return Promise.resolve(
+          createMockWeatherResponse({
+            results: [
+              {
+                name: 'London',
+                latitude: 51.5074,
+                longitude: -0.1278,
+                admin1: 'England',
+                country: 'United Kingdom',
+                elevation: 11,
+              },
+            ],
+          }),
+        )
+      }
+      if (url.includes('api.open-meteo.com')) {
+        return Promise.resolve(
+          createMockWeatherResponse({
+            current: {
+              temperature_2m: 15,
+              wind_speed_10m: 10,
+              relative_humidity_2m: 70,
+            },
+            daily: {
+              time: ['2025-10-24', '2025-10-25', '2025-10-26'],
+              temperature_2m_max: [18, 19, 17],
+              temperature_2m_min: [12, 13, 11],
+            },
+          }),
+        )
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    })
+
+    app = createProToolsRoutes(mockFetch as unknown as typeof fetch)
   })
 
   afterAll(async () => {

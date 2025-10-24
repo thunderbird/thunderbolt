@@ -6,7 +6,7 @@ import { Elysia } from 'elysia'
 /**
  * PostHog analytics proxy routes
  */
-export const createPostHogRoutes = () => {
+export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
 
   return new Elysia({
@@ -35,7 +35,7 @@ export const createPostHogRoutes = () => {
         const queryString = buildQueryString(ctx.query)
         const url = `${baseUrl}${queryString}`
 
-        const response = await fetch(url, {
+        const response = await fetchFn(url, {
           method: ctx.request.method,
           headers,
           body: ctx.request.body as BodyInit,

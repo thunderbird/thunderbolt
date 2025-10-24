@@ -55,11 +55,11 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
       .use(createErrorHandlingMiddleware())
       // Mount route groups
       .use(createMainRoutes(fetchFn))
-      .use(createGoogleAuthRoutes())
-      .use(createMicrosoftAuthRoutes())
-      .use(createProToolsRoutes())
+      .use(createGoogleAuthRoutes(fetchFn))
+      .use(createMicrosoftAuthRoutes(fetchFn))
+      .use(createProToolsRoutes(fetchFn))
       .use(createOpenAIRoutes())
-      .use(createPostHogRoutes())
+      .use(createPostHogRoutes(fetchFn))
   )
 }
 

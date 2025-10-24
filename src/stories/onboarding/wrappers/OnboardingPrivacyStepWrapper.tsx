@@ -2,11 +2,7 @@ import { OnboardingPrivacyStep } from '@/components/onboarding/onboarding-privac
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 
-type OnboardingPrivacyStepWrapperProps = {
-  onNext?: () => void
-}
-
-export const OnboardingPrivacyStepWrapper = ({}: OnboardingPrivacyStepWrapperProps) => {
+export const OnboardingPrivacyStepWrapper = () => {
   const mockState: OnboardingState = {
     currentStep: 1 as const,
     privacyAgreed: false,

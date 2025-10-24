@@ -2,11 +2,7 @@ import { OnboardingNameStep } from '@/components/onboarding/onboarding-name-step
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 
-type OnboardingNameStepWrapperProps = {
-  onNext?: () => void
-}
-
-export const OnboardingNameStepWrapper = ({}: OnboardingNameStepWrapperProps) => {
+export const OnboardingNameStepWrapper = () => {
   const mockState: OnboardingState = {
     currentStep: 3 as const,
     privacyAgreed: true,

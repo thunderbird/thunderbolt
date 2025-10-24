@@ -40,17 +40,15 @@ export default function Page() {
 
         // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (ref.current) {
-              animate(0, targetWidth, {
-                duration: 0.3,
-                ease: [0.32, 0.72, 0, 1],
-                onUpdate: (latest) => {
-                  ref.current?.resize(latest)
-                },
-              })
-            }
-          })
+          if (ref.current) {
+            animate(0, targetWidth, {
+              duration: 0.3,
+              ease: [0.32, 0.72, 0, 1],
+              onUpdate: (latest) => {
+                ref.current?.resize(latest)
+              },
+            })
+          }
         })
       } else {
         // Closing: save current size before animating to 0

@@ -72,7 +72,6 @@ export const useSidebarWebview = (
 
         // Wait for layout to fully settle before measuring
         await new Promise((resolve) => requestAnimationFrame(resolve))
-        await new Promise((resolve) => requestAnimationFrame(resolve))
 
         if (!isActive || !containerRef.current) return
 

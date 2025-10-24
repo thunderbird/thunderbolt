@@ -157,26 +157,31 @@ export default function ChatUI({
 
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()
-    setTimeout(() => scrollToBottom(), 100)
+    requestAnimationFrame(() => {
+      scrollToBottom()
+    })
   }
 
-  // Scroll to bottom when a the page is loaded the first time
   useEffect(() => {
-    if (hasMessages) {
-      setTimeout(() => {
+    if (!hasMessages) return
+
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
         scrollToBottom()
-      }, 100)
-    }
+      })
+    })
+
+    return () => cancelAnimationFrame(frame)
   }, [hasMessages])
 
   const handleSelectPrompt = (prompt: string) => {
     setInput(prompt)
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const textareaElement = formRef.current?.querySelector('textarea')
       if (textareaElement) {
         textareaElement.focus()
       }
-    }, 0)
+    })
   }
 
   const handleNewChat = async () => {

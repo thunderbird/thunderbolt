@@ -8,13 +8,13 @@ import {
   SidebarInset,
   SidebarMenuButton,
 } from '@/components/ui/sidebar'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { useSettings } from '@/hooks/use-settings'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
 import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { Sideview } from '@/content-view/sideview'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, motion } from 'framer-motion'
 import { Sidebar } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -101,7 +101,7 @@ export default function Page() {
         <ResizablePanel
           ref={ref}
           collapsible
-          defaultSize={isOpen ? 50 : 0}
+          defaultSize={0}
           minSize={0}
           collapsedSize={0}
           onCollapse={() => close()}

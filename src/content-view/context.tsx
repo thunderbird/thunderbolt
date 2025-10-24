@@ -3,14 +3,14 @@ import type { ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 
-type RightSidebarState =
+type ContentViewState =
   | { type: null; data: null }
   | { type: 'object-view'; data: ToolUIPart }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: { sideviewType: string; sideviewId: string } }
 
-type RightSidebarContextType = {
-  state: RightSidebarState
+type ContentViewContextType = {
+  state: ContentViewState
   showObjectView: (content: ToolUIPart) => void
   showPreview: (url: string) => void
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
@@ -18,30 +18,26 @@ type RightSidebarContextType = {
   isOpen: boolean
 }
 
-const RightSidebarContext = createContext<RightSidebarContextType | undefined>(undefined)
+const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
 
-type RightSidebarProviderProps = {
+type ContentViewProviderProps = {
   children: ReactNode
   initialSideviewType?: string | null
   initialSideviewId?: string | null
 }
 
 /**
- * Unified provider for managing the right sidebar content
+ * Unified provider for managing the content view
  *
- * The right sidebar can display:
+ * The content view can display:
  * - Object views (tool call results)
  * - Webview previews (link previews)
  * - Sideviews (email detail, task detail, etc)
  *
  * Optionally accepts initial sideview state to open on mount
  */
-export const RightSidebarProvider = ({
-  children,
-  initialSideviewType,
-  initialSideviewId,
-}: RightSidebarProviderProps) => {
-  const [state, setState] = useState<RightSidebarState>({ type: null, data: null })
+export const ContentViewProvider = ({ children, initialSideviewType, initialSideviewId }: ContentViewProviderProps) => {
+  const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const isMobile = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
@@ -81,17 +77,17 @@ export const RightSidebarProvider = ({
     }
   }, [initialSideviewType, initialSideviewId, showSideview])
 
-  // Close sidebar when crossing into mobile mode (only on transition, not continuously)
+  // Close content view when crossing into mobile mode (only on transition, not continuously)
   useEffect(() => {
-    const crossedIntoMobileWithSidebarOpen = !prevIsMobile.current && isMobile && state.type !== null
-    if (crossedIntoMobileWithSidebarOpen) {
+    const crossedIntoMobileWithContentViewOpen = !prevIsMobile.current && isMobile && state.type !== null
+    if (crossedIntoMobileWithContentViewOpen) {
       close()
     }
     prevIsMobile.current = isMobile
   }, [isMobile, state.type, close])
 
   return (
-    <RightSidebarContext.Provider
+    <ContentViewContext.Provider
       value={{
         state,
         showObjectView,
@@ -102,24 +98,24 @@ export const RightSidebarProvider = ({
       }}
     >
       {children}
-    </RightSidebarContext.Provider>
+    </ContentViewContext.Provider>
   )
 }
 
 /**
- * Hook to access the unified right sidebar context
+ * Hook to access the unified content view context
  */
-export const useRightSidebar = () => {
-  const context = useContext(RightSidebarContext)
+export const useContentView = () => {
+  const context = useContext(ContentViewContext)
   if (context === undefined) {
-    throw new Error('useRightSidebar must be used within a RightSidebarProvider')
+    throw new Error('useContentView must be used within a ContentViewProvider')
   }
   return context
 }
 
 // Backwards compatibility hooks for existing code
 export const useObjectView = () => {
-  const { showObjectView, close, state } = useRightSidebar()
+  const { showObjectView, close, state } = useContentView()
   return {
     objectContent: state.type === 'object-view' ? state.data : undefined,
     openObjectSidebar: showObjectView,
@@ -128,7 +124,7 @@ export const useObjectView = () => {
 }
 
 export const usePreview = () => {
-  const { showPreview, close, state } = useRightSidebar()
+  const { showPreview, close, state } = useContentView()
   return {
     previewConfig: state.type === 'preview' ? state.data : null,
     showPreview,
@@ -138,7 +134,7 @@ export const usePreview = () => {
 }
 
 export const useSideview = () => {
-  const { showSideview, state } = useRightSidebar()
+  const { showSideview, state } = useContentView()
   return {
     sideviewType: state.type === 'sideview' ? state.data.sideviewType : null,
     sideviewId: state.type === 'sideview' ? state.data.sideviewId : null,

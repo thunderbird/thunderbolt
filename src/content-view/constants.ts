@@ -1,5 +1,5 @@
 /**
- * Layout constants for the right sidebar
+ * Layout constants for the content view
  */
 
 /** Height of the preview header in pixels */
@@ -11,8 +11,8 @@ export const coordinateOffset = 28
 /** Border offset for ResizableHandle */
 export const borderOffset = 0
 
-/** Minimum width of the sidebar as threshold percentage - if width is below this, open to default */
+/** Minimum width of the content view as threshold percentage - if width is below this, open to default */
 export const minimumWidthThreshold = 10
 
-/** Default width of the sidebar as percentage when opening the sidebar */
+/** Default width of the content view as percentage when opening */
 export const defaultOpenWidth = 50

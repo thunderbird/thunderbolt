@@ -44,7 +44,7 @@ import { MCPProvider } from './lib/mcp-provider'
 import { getDatabasePath, getDatabaseType } from './lib/platform'
 import { TrayManager, TrayProvider } from './lib/tray'
 import Loading from './loading'
-import { RightSidebarProvider } from './right-sidebar/context'
+import { ContentViewProvider } from './content-view/context'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 
@@ -198,12 +198,12 @@ export const App = () => {
           <TrayProvider tray={initData.tray} window={initData.window}>
             <MCPProvider>
               <SidebarProvider>
-                <RightSidebarProvider
+                <ContentViewProvider
                   initialSideviewType={initData.sideviewType}
                   initialSideviewId={initData.sideviewId}
                 >
                   <AppContent initData={initData} />
-                </RightSidebarProvider>
+                </ContentViewProvider>
               </SidebarProvider>
             </MCPProvider>
           </TrayProvider>

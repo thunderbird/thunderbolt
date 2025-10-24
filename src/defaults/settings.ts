@@ -141,8 +141,8 @@ export const defaultSettingIntegrationsProIsEnabled: Setting = {
   defaultHash: null,
 }
 
-export const defaultSettingRightSidebarWidth: Setting = {
-  key: 'right_sidebar_width',
+export const defaultSettingContentViewWidth: Setting = {
+  key: 'content_view_width',
   value: '50',
   updatedAt: null,
   defaultHash: null,
@@ -169,5 +169,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingTimeFormat,
   defaultSettingCurrency,
   defaultSettingIntegrationsProIsEnabled,
-  defaultSettingRightSidebarWidth,
+  defaultSettingContentViewWidth,
 ] as const

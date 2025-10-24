@@ -1,7 +1,7 @@
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { type ReactNode } from 'react'
 
-type RightSidebarHeaderProps = {
+type ContentViewHeaderProps = {
   title: string
   onClose: () => void
   actions?: ReactNode
@@ -9,10 +9,10 @@ type RightSidebarHeaderProps = {
 }
 
 /**
- * Reusable header component for right sidebars
+ * Reusable header component for content views
  * Provides consistent layout with title, optional actions, and close button
  */
-export const RightSidebarHeader = ({ title, onClose, actions, className = '' }: RightSidebarHeaderProps) => {
+export const ContentViewHeader = ({ title, onClose, actions, className = '' }: ContentViewHeaderProps) => {
   return (
     <div className={`flex h-12 w-full items-center justify-between px-4 flex-shrink-0 ${className}`.trim()}>
       <h2 className="text-lg font-semibold truncate">{title}</h2>

@@ -1,4 +1,4 @@
-import { EmailThreadView } from '@/sideview/thread'
+import { EmailThreadView } from './thread'
 import { useQuery } from '@tanstack/react-query'
 import { useSideview } from './context'
 

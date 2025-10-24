@@ -2,7 +2,7 @@ import { SidebarContent } from '@/components/ui/sidebar'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
-import { RightSidebarHeader } from './header'
+import { ContentViewHeader } from './header'
 
 const getOutput = (part: ToolUIPart) => {
   if (typeof part?.output === 'string') {
@@ -17,7 +17,7 @@ type ObjectSidebarContentProps = {
 }
 
 /**
- * Content for displaying tool call results in the unified right sidebar
+ * Content for displaying tool call results in the unified content view
  */
 export const ObjectSidebarContent = ({ content, onClose }: ObjectSidebarContentProps) => {
   const [, toolName] = splitPartType(content?.type ?? '')
@@ -25,7 +25,7 @@ export const ObjectSidebarContent = ({ content, onClose }: ObjectSidebarContentP
 
   return (
     <div className="flex flex-col h-full">
-      <RightSidebarHeader title={metadata.displayName} onClose={onClose} className="bg-card border-b border-border" />
+      <ContentViewHeader title={metadata.displayName} onClose={onClose} className="bg-card border-b border-border" />
       <SidebarContent className="p-4 overflow-x-hidden">
         <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(content)}</p>
       </SidebarContent>

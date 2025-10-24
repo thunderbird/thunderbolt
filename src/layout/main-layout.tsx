@@ -10,11 +10,11 @@ import {
 } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
-import { defaultOpenWidth, minimumWidthThreshold } from '@/right-sidebar/constants'
-import { useRightSidebar } from '@/right-sidebar/context'
-import { ObjectSidebarContent } from '@/right-sidebar/object-sidebar-content'
-import { SidebarWebview } from '@/right-sidebar/sidebar-webview'
-import { Sideview } from '@/right-sidebar/sideview'
+import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
+import { useContentView } from '@/content-view/context'
+import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
+import { SidebarWebview } from '@/content-view/sidebar-webview'
+import { Sideview } from '@/content-view/sideview'
 import { animate, AnimatePresence, motion } from 'framer-motion'
 import { Sidebar } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -23,10 +23,10 @@ import { Outlet } from 'react-router'
 
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
-  const { state, close } = useRightSidebar()
+  const { state, close } = useContentView()
   const isMobile = useIsMobile()
-  const { rightSidebarWidth } = useSettings({
-    right_sidebar_width: Number,
+  const { contentViewWidth } = useSettings({
+    content_view_width: Number,
   })
   const isOpen = state.type !== null
   const prevIsOpen = useRef(isOpen)
@@ -37,7 +37,7 @@ export default function Page() {
     if (prevIsOpen.current !== isOpen && ref.current) {
       if (isOpen) {
         // On mobile: always use 100% width. On desktop: use saved width if above threshold, otherwise use default
-        const savedWidth = rightSidebarWidth.value
+        const savedWidth = contentViewWidth.value
         const hasSavedWidthAboveThreshold = savedWidth && savedWidth >= minimumWidthThreshold
         const targetWidth = isMobile ? 100 : hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
 
@@ -59,7 +59,7 @@ export default function Page() {
         const shouldSaveWidthOnClose = currentSize > 0 && !isMobile
         if (shouldSaveWidthOnClose) {
           lastSavedWidth.current = currentSize
-          rightSidebarWidth.setValue(currentSize)
+          contentViewWidth.setValue(currentSize)
         }
 
         animate(currentSize, 0, {
@@ -72,7 +72,7 @@ export default function Page() {
       }
     }
     prevIsOpen.current = isOpen
-  }, [isOpen, isMobile, rightSidebarWidth])
+  }, [isOpen, isMobile, contentViewWidth])
 
   // Persist width changes as user resizes (but not on mobile)
   const handleResize = (size: number) => {
@@ -81,7 +81,7 @@ export default function Page() {
       const hasSignificantWidthChange = !lastSavedWidth.current || Math.abs(size - lastSavedWidth.current) > 1
       if (hasSignificantWidthChange) {
         lastSavedWidth.current = size
-        rightSidebarWidth.setValue(size)
+        contentViewWidth.setValue(size)
       }
     }
   }

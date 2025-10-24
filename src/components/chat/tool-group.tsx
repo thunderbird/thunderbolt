@@ -1,4 +1,4 @@
-import { useObjectView } from '@/right-sidebar/context'
+import { useObjectView } from '@/content-view/context'
 import type { ToolUIPart } from 'ai'
 import { motion } from 'framer-motion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'

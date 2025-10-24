@@ -82,7 +82,7 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
               className="h-8 w-8 rounded-full"
               title="Copy URL"
             >
-              {isCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
+              {isCopied ? <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" /> : <Copy className="size-4" />}
             </Button>
             <Button
               onClick={handleOpenExternal}

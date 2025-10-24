@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { isTauri } from '@/lib/platform'
+import { trackEvent } from '@/lib/posthog'
 import { Check, Copy, ExternalLink } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { ContentViewHeader } from './header'
@@ -38,6 +39,7 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
 
   const handleClose = async () => {
     try {
+      trackEvent('preview_close')
       await closeWebview()
       onClose?.()
     } catch (error) {
@@ -49,6 +51,7 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
     if (!config.url) return
     try {
       await navigator.clipboard.writeText(config.url)
+      trackEvent('preview_copy_url')
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 2000)
     } catch (error) {
@@ -59,6 +62,7 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
   const handleOpenExternal = async () => {
     if (!config.url) return
     try {
+      trackEvent('preview_open_external')
       const { openUrl } = await import('@tauri-apps/plugin-opener')
       await openUrl(config.url)
     } catch (error) {

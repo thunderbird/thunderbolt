@@ -1,4 +1,5 @@
 import { useIsMobile } from '@/hooks/use-mobile'
+import { trackEvent } from '@/lib/posthog'
 import type { ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
@@ -42,10 +43,14 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
   const prevIsMobile = useRef(isMobile)
 
   const showObjectView = useCallback((content: ToolUIPart) => {
+    const [, toolName] = content?.type?.split(':') ?? ['', 'unknown']
+    trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
     setState({ type: 'object-view', data: content })
   }, [])
 
   const showPreview = useCallback((url: string) => {
+    trackEvent('content_view_open', { view_type: 'preview' })
+    trackEvent('preview_open')
     setState({
       type: 'preview',
       data: {
@@ -59,6 +64,7 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
     if (sideviewType === null || sideviewId === null) {
       setState({ type: null, data: null })
     } else {
+      trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
       setState({
         type: 'sideview',
         data: { sideviewType, sideviewId },
@@ -67,8 +73,11 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
   }, [])
 
   const close = useCallback(() => {
+    if (state.type !== null) {
+      trackEvent('content_view_close', { view_type: state.type })
+    }
     setState({ type: null, data: null })
-  }, [])
+  }, [state.type])
 
   // Initialize with sideview if provided
   useEffect(() => {

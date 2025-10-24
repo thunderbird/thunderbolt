@@ -129,6 +129,13 @@ export type EventType =
   | 'automation_run'
   | 'automation_delete_clicked'
   | 'automation_delete_confirmed'
+  // Content View & Preview
+  | 'content_view_open'
+  | 'content_view_close'
+  | 'preview_open'
+  | 'preview_close'
+  | 'preview_copy_url'
+  | 'preview_open_external'
   // UI & Navigation
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'

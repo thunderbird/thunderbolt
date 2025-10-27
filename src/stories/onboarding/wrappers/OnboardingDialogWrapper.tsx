@@ -2,7 +2,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { OnboardingPrivacyStepWrapper } from './OnboardingPrivacyStepWrapper'
 import { StepIndicators } from '@/components/onboarding/step-indicators'
 
-const TOTAL_STEPS = 5
+const totalSteps = 5
 
 export const OnboardingDialogWrapper = () => {
   return (
@@ -19,7 +19,7 @@ export const OnboardingDialogWrapper = () => {
           </div>
 
           <div className="px-6 pb-6 flex-shrink-0">
-            <StepIndicators currentStep={1} totalSteps={TOTAL_STEPS} />
+            <StepIndicators currentStep={1} totalSteps={totalSteps} />
           </div>
         </div>
       </DialogContent>

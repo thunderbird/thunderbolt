@@ -234,7 +234,7 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           bun install
-          bun tauri android build --release
+          bun tauri android build
 
       - name: Find AAB file
         id: find_aab

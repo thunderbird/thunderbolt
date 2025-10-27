@@ -1,0 +1,6 @@
+error: rustc 1.85.0 is not supported by the following package:
+  home@0.5.12 requires rustc 1.88
+Either upgrade rustc or select compatible dependency versions with
+`cargo update <name>@<current-ver> --precise <compatible-ver>`
+where `<compatible-ver>` is the latest version supporting rustc 1.85.0
+

@@ -5,7 +5,7 @@ import type { Model } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export const useChatModel = (id: string) => {
+export const useChatModel = (chatThreadId: string) => {
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
     queryFn: getAvailableModels,
@@ -20,8 +20,8 @@ export const useChatModel = (id: string) => {
   const selectedModelIdRef = useRef<string | null>(null)
 
   const { data: defaultModel } = useQuery<Model>({
-    queryKey: ['models', 'defaultModel', id],
-    queryFn: () => getDefaultModelForThread(id, selectedModel.value ?? undefined),
+    queryKey: ['models', 'defaultModel', chatThreadId],
+    queryFn: () => getDefaultModelForThread(chatThreadId, selectedModel.value ?? undefined),
   })
 
   const handleModelChange = useCallback(

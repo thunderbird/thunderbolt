@@ -22,7 +22,7 @@ concurrency:
 jobs:
   draft:
     name: Create Draft Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.set-version.outputs.version }}
 
@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             build_name: 'Linux'
           - os: macos-latest
@@ -105,13 +105,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
 
       - name: build Tauri app for Linux
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           bun install
           bun tauri build
@@ -192,7 +192,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload Linux artifacts to GitHub Release
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ inputs.version }}
@@ -229,7 +229,7 @@ jobs:
   publish:
     name: Publish Release
     needs: [draft, build]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:

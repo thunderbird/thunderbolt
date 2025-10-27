@@ -7,7 +7,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 /**
  * Create Google OAuth router
  */
-export const createGoogleAuthRoutes = () => {
+export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/google' })
     .get('/config', async () => {
       const settings = getSettings()
@@ -41,7 +41,7 @@ export const createGoogleAuthRoutes = () => {
         })
 
         try {
-          const response = await fetch(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(GOOGLE_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -111,7 +111,7 @@ export const createGoogleAuthRoutes = () => {
         })
 
         try {
-          const response = await fetch(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(GOOGLE_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

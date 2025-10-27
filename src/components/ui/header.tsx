@@ -8,7 +8,7 @@ import { Menu } from 'lucide-react'
  */
 export const Header = () => {
   const { toggleSidebar } = useSidebar()
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
 
   return (
     <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">

@@ -4,7 +4,6 @@ import { createProxyRoutes } from './proxy'
 
 describe('Proxy Routes', () => {
   let app: Elysia
-  let fetchSpy: ReturnType<typeof spyOn>
   let consoleSpy: ReturnType<typeof spyOn>
   let mockFetch: ReturnType<typeof mock>
 
@@ -26,15 +25,14 @@ describe('Proxy Routes', () => {
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
-    // Mock global fetch
+    // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockResponse('test content')))
-    fetchSpy = spyOn(global, 'fetch').mockImplementation(mockFetch as any)
 
-    app = new Elysia().use(createProxyRoutes())
+    // Inject mock fetch into routes
+    app = new Elysia().use(createProxyRoutes(mockFetch as unknown as typeof fetch))
   })
 
   afterAll(() => {
-    fetchSpy?.mockRestore()
     consoleSpy?.mockRestore()
   })
 

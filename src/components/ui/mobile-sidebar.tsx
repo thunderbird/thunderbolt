@@ -111,7 +111,7 @@ export const MobileSidebar = ({
       <DialogPrimitive.Portal>
         {/* Animated overlay */}
         <motion.div
-          className="fixed inset-0 z-50 bg-black"
+          className="fixed inset-0 z-50 bg-sidebar"
           style={{
             opacity: overlayOpacity,
             // willChange hints to browser this property will animate, enabling GPU acceleration

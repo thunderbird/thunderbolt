@@ -1,5 +1,5 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatThreadsTable } from '@/db/tables'
+import { chatThreadsTable, modelsTable } from '@/db/tables'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -10,6 +10,7 @@ import {
   getChatThread,
   getContextSizeForThread,
   getOrCreateChatThread,
+  updateChatThread,
 } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -21,6 +22,33 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+/**
+ * Helper function to create a test model
+ */
+const createTestModel = async () => {
+  const db = DatabaseSingleton.instance.db
+  const modelId = uuidv7()
+
+  await db.insert(modelsTable).values({
+    id: modelId,
+    provider: 'thunderbolt',
+    name: 'Test Model',
+    model: 'gpt-oss-120b',
+    isSystem: 0,
+    enabled: 1,
+    isConfidential: 0,
+    contextWindow: 131072,
+    toolUsage: 1,
+    startWithReasoning: 0,
+    deletedAt: null,
+    apiKey: null,
+    url: null,
+    defaultHash: null,
+  })
+
+  return modelId
+}
+
 describe('Chat Threads DAL', () => {
   afterEach(async () => {
     await resetTestDatabase()
@@ -29,8 +57,12 @@ describe('Chat Threads DAL', () => {
   describe('createChatThread', () => {
     it('should create a new chat thread with the provided ID', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread(threadId)
+      await createChatThread(
+        { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -42,9 +74,16 @@ describe('Chat Threads DAL', () => {
     it('should create multiple threads with different IDs', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread(threadId1)
-      await createChatThread(threadId2)
+      await createChatThread(
+        { id: threadId1, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
+      await createChatThread(
+        { id: threadId2, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -55,11 +94,20 @@ describe('Chat Threads DAL', () => {
 
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      await createChatThread(threadId)
+      await createChatThread(
+        { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        modelId,
+      )
 
       // Should throw due to UNIQUE constraint
-      await expect(createChatThread(threadId)).rejects.toThrow()
+      await expect(
+        createChatThread(
+          { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+          modelId,
+        ),
+      ).rejects.toThrow()
 
       const db = DatabaseSingleton.instance.db
       const threads = await db.select().from(chatThreadsTable)
@@ -132,7 +180,8 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
       })
 
-      const thread = await getOrCreateChatThread(threadId)
+      const modelId = await createTestModel()
+      const thread = await getOrCreateChatThread(threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('Existing Thread')
@@ -144,8 +193,9 @@ describe('Chat Threads DAL', () => {
 
     it('should create and return new thread when it does not exist', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(threadId)
+      const thread = await getOrCreateChatThread(threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('New Chat')
@@ -159,9 +209,10 @@ describe('Chat Threads DAL', () => {
 
     it('should handle multiple calls with same ID consistently', async () => {
       const threadId = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(threadId)
-      const thread2 = await getOrCreateChatThread(threadId)
+      const thread1 = await getOrCreateChatThread(threadId, modelId)
+      const thread2 = await getOrCreateChatThread(threadId, modelId)
 
       expect(thread1?.id).toBe(threadId)
       expect(thread2?.id).toBe(threadId)
@@ -177,9 +228,10 @@ describe('Chat Threads DAL', () => {
     it('should work correctly with different thread IDs', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
+      const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(threadId1)
-      const thread2 = await getOrCreateChatThread(threadId2)
+      const thread1 = await getOrCreateChatThread(threadId1, modelId)
+      const thread2 = await getOrCreateChatThread(threadId2, modelId)
 
       expect(thread1?.id).toBe(threadId1)
       expect(thread2?.id).toBe(threadId2)
@@ -342,6 +394,244 @@ describe('Chat Threads DAL', () => {
       expect(threadsBefore).toHaveLength(0)
 
       await expect(deleteAllChatThreads()).resolves.toBeUndefined()
+    })
+  })
+
+  describe('updateChatThread', () => {
+    it('should update thread title', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Original Title',
+        isEncrypted: 0,
+      })
+
+      // Update title
+      await updateChatThread(threadId, { title: 'Updated Title' })
+
+      // Verify update
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.title).toBe('Updated Title')
+      expect(updatedThread?.id).toBe(threadId)
+      expect(updatedThread?.isEncrypted).toBe(0) // Should remain unchanged
+    })
+
+    it('should update context size', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      // Update context size
+      await updateChatThread(threadId, { contextSize: 2000 })
+
+      // Verify update
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.contextSize).toBe(2000)
+      expect(updatedThread?.title).toBe('Test Thread') // Should remain unchanged
+    })
+
+    it('should update triggeredBy field', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      // Update triggeredBy to null (since we don't have a valid prompt ID)
+      await updateChatThread(threadId, { triggeredBy: null })
+
+      // Verify update
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.triggeredBy).toBeNull()
+    })
+
+    it('should update wasTriggeredByAutomation field', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 0,
+      })
+
+      // Update wasTriggeredByAutomation
+      await updateChatThread(threadId, { wasTriggeredByAutomation: 1 })
+
+      // Verify update
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.wasTriggeredByAutomation).toBe(1)
+    })
+
+    it('should update multiple fields at once', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Original Title',
+        isEncrypted: 0,
+        contextSize: 1000,
+        wasTriggeredByAutomation: 0,
+      })
+
+      // Update multiple fields
+      await updateChatThread(threadId, {
+        title: 'Updated Title',
+        contextSize: 3000,
+        triggeredBy: null,
+        wasTriggeredByAutomation: 1,
+      })
+
+      // Verify all updates
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.title).toBe('Updated Title')
+      expect(updatedThread?.contextSize).toBe(3000)
+      expect(updatedThread?.triggeredBy).toBeNull()
+      expect(updatedThread?.wasTriggeredByAutomation).toBe(1)
+      expect(updatedThread?.id).toBe(threadId) // Should remain unchanged
+      expect(updatedThread?.isEncrypted).toBe(0) // Should remain unchanged
+    })
+
+    it('should update only specified fields (partial update)', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create initial thread with all fields
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Original Title',
+        isEncrypted: 0,
+        contextSize: 1000,
+        wasTriggeredByAutomation: 0,
+      })
+
+      // Update only title
+      await updateChatThread(threadId, { title: 'Updated Title' })
+
+      // Verify only title changed
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.title).toBe('Updated Title')
+      expect(updatedThread?.contextSize).toBe(1000) // Should remain unchanged
+      expect(updatedThread?.wasTriggeredByAutomation).toBe(0) // Should remain unchanged
+    })
+
+    it('should not throw when updating non-existent thread', async () => {
+      const nonExistentId = uuidv7()
+
+      // Should not throw
+      await expect(updateChatThread(nonExistentId, { title: 'New Title' })).resolves.toBeUndefined()
+    })
+
+    it('should update specific thread when multiple threads exist', async () => {
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create two threads
+      await db.insert(chatThreadsTable).values([
+        {
+          id: threadId1,
+          title: 'First Thread',
+          isEncrypted: 0,
+          contextSize: 1000,
+        },
+        {
+          id: threadId2,
+          title: 'Second Thread',
+          isEncrypted: 0,
+          contextSize: 2000,
+        },
+      ])
+
+      // Update only the first thread
+      await updateChatThread(threadId1, { title: 'Updated First Thread', contextSize: 1500 })
+
+      // Verify only first thread was updated
+      const firstThread = await getChatThread(threadId1)
+      const secondThread = await getChatThread(threadId2)
+
+      expect(firstThread?.title).toBe('Updated First Thread')
+      expect(firstThread?.contextSize).toBe(1500)
+      expect(secondThread?.title).toBe('Second Thread')
+      expect(secondThread?.contextSize).toBe(2000)
+    })
+
+    it('should handle null values correctly', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create thread with values
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        contextSize: 1000,
+        triggeredBy: null, // Start with null to avoid foreign key constraint
+      })
+
+      // Update with null values
+      await updateChatThread(threadId, {
+        contextSize: null,
+        triggeredBy: null,
+      })
+
+      // Verify null values were set
+      const updatedThread = await getChatThread(threadId)
+      expect(updatedThread?.contextSize).toBeNull()
+      expect(updatedThread?.triggeredBy).toBeNull()
+      expect(updatedThread?.title).toBe('Test Thread') // Should remain unchanged
+    })
+
+    it('should not affect other threads when updating one', async () => {
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+      const threadId3 = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create three threads
+      await db.insert(chatThreadsTable).values([
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0, contextSize: 1000 },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0, contextSize: 2000 },
+        { id: threadId3, title: 'Thread 3', isEncrypted: 0, contextSize: 3000 },
+      ])
+
+      // Update only the second thread
+      await updateChatThread(threadId2, {
+        title: 'Updated Thread 2',
+        contextSize: 2500,
+      })
+
+      // Verify all threads
+      const allThreads = await getAllChatThreads()
+      expect(allThreads).toHaveLength(3)
+
+      const thread1 = allThreads.find((t) => t.id === threadId1)
+      const thread2 = allThreads.find((t) => t.id === threadId2)
+      const thread3 = allThreads.find((t) => t.id === threadId3)
+
+      expect(thread1?.title).toBe('Thread 1')
+      expect(thread1?.contextSize).toBe(1000)
+      expect(thread2?.title).toBe('Updated Thread 2')
+      expect(thread2?.contextSize).toBe(2500)
+      expect(thread3?.title).toBe('Thread 3')
+      expect(thread3?.contextSize).toBe(3000)
     })
   })
 })

@@ -1,15 +1,14 @@
-import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { OpenMeteoWeather } from './weather'
-
-// Mock fetch globally
-const mockFetch = spyOn(globalThis, 'fetch')
 
 describe('Pro - OpenMeteoWeather', () => {
   let weather: OpenMeteoWeather
+  let mockFetch: ReturnType<typeof mock>
 
   beforeEach(() => {
-    weather = new OpenMeteoWeather()
-    mockFetch.mockReset()
+    // Create mock fetch
+    mockFetch = mock(() => Promise.resolve(new Response()))
+    weather = new OpenMeteoWeather(mockFetch as unknown as typeof fetch)
   })
 
   describe('searchLocations', () => {

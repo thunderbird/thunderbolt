@@ -6,7 +6,7 @@ import { Elysia } from 'elysia'
  * General-purpose proxy routes
  * Proxies GET requests to external URLs with CORS headers
  */
-export const createProxyRoutes = () => {
+export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
 
   return new Elysia({
@@ -61,7 +61,7 @@ export const createProxyRoutes = () => {
 
       try {
         // Make the proxied request
-        const response = await fetch(targetUrl, {
+        const response = await fetchFn(targetUrl, {
           method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; ThunderboltBot/1.0)',

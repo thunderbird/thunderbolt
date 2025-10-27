@@ -1,11 +1,27 @@
+import type { Settings } from '@/config/settings'
 import * as settingsModule from '@/config/settings'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { createApp } from '../index'
 
 describe('Main Routes', () => {
   let app: Awaited<ReturnType<typeof createApp>>
-  let fetchSpy: ReturnType<typeof spyOn>
   let getSettingsSpy: ReturnType<typeof spyOn>
+
+  const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
+    const url = input instanceof Request ? input.url : input.toString()
+    if (url.startsWith('https://geocoding-api.open-meteo.com')) {
+      return new Response(
+        JSON.stringify({
+          results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    }
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
 
   beforeAll(async () => {
     // Mock console methods to reduce test noise
@@ -13,23 +29,6 @@ describe('Main Routes', () => {
     spyOn(console, 'info').mockImplementation(() => {})
     spyOn(console, 'error').mockImplementation(() => {})
     spyOn(console, 'warn').mockImplementation(() => {})
-
-    // Mock fetch for geocoding API
-    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : input.toString()
-      if (url.startsWith('https://geocoding-api.open-meteo.com')) {
-        return new Response(
-          JSON.stringify({
-            results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
-    }) as unknown as typeof fetch)
 
     // Mock settings for analytics route
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -51,14 +50,13 @@ describe('Main Routes', () => {
       corsAllowHeaders:
         'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
       corsExposeHeaders: 'mcp-session-id',
-    } as any)
+    } satisfies Settings)
 
-    app = await createApp()
+    // Inject mock fetch into app
+    app = await createApp(mockFetch as typeof fetch)
   })
 
   afterAll(async () => {
-    // Cleanup if needed
-    fetchSpy?.mockRestore()
     getSettingsSpy?.mockRestore()
   })
 

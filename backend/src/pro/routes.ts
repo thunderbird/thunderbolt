@@ -21,13 +21,13 @@ type WeatherPreferences = {
   temperatureUnit?: 'c' | 'f'
 }
 
-// Initialize the tool clients
-const weatherClient = new OpenMeteoWeather()
-
 /**
  * Create pro tools routes
  */
-export const createProToolsRoutes = () => {
+export const createProToolsRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
+  // Initialize the tool clients with injected fetch
+  const weatherClient = new OpenMeteoWeather(fetchFn)
+
   return new Elysia({ prefix: '/pro' })
     .onError(({ code, error, set }) => {
       set.status = code === 'VALIDATION' ? 400 : 500
@@ -38,8 +38,8 @@ export const createProToolsRoutes = () => {
       }
     })
     .use(exaPlugin)
-    .use(createProxyRoutes())
-    .use(createLinkPreviewRoutes())
+    .use(createProxyRoutes(fetchFn))
+    .use(createLinkPreviewRoutes(fetchFn))
 
     .post(
       '/weather/current',

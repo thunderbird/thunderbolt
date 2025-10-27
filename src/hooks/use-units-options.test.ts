@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
+import { describe, it, beforeEach, afterEach, expect, mock } from 'bun:test'
 import '@testing-library/jest-dom'
 import { useUnitsOptions } from './use-units-options'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -7,9 +7,9 @@ import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { updateSetting } from '@/dal/settings'
 
 // Mock only ky, use real database for getSettings
-const mockKyGet = vi.fn()
+const mockKyGet = mock()
 
-vi.mock('ky', () => ({
+mock.module('ky', () => ({
   default: {
     get: mockKyGet,
   },
@@ -51,15 +51,15 @@ describe('useUnitsOptions', () => {
     await setupTestDatabase()
     // Set up the cloud_url setting in the database
     await updateSetting('cloud_url', 'https://api.example.com')
-    vi.clearAllMocks()
+    mockKyGet.mockClear()
     mockKyGet.mockReturnValue({
-      json: vi.fn().mockResolvedValue(mockUnitsOptionsData),
+      json: mock().mockResolvedValue(mockUnitsOptionsData),
     } as unknown as { json: () => Promise<typeof mockUnitsOptionsData> })
   })
 
   afterEach(async () => {
     await resetTestDatabase()
-    vi.clearAllMocks()
+    mockKyGet.mockClear()
   })
 
   describe('Hook functionality', () => {
@@ -100,7 +100,7 @@ describe('useUnitsOptions', () => {
     it('should handle API errors after retries', async () => {
       const errorMessage = 'Network error'
       mockKyGet.mockReturnValue({
-        json: vi.fn().mockRejectedValue(new Error(errorMessage)),
+        json: mock().mockRejectedValue(new Error(errorMessage)),
       } as unknown as { json: () => Promise<never> })
 
       const { result } = renderHook(() => useUnitsOptions(), {
@@ -235,11 +235,11 @@ describe('useUnitsOptions', () => {
         callCount++
         if (callCount < 3) {
           return {
-            json: vi.fn().mockRejectedValue(new Error('Network error')),
+            json: mock().mockRejectedValue(new Error('Network error')),
           } as unknown as { json: () => Promise<never> }
         }
         return {
-          json: vi.fn().mockResolvedValue(mockUnitsOptionsData),
+          json: mock().mockResolvedValue(mockUnitsOptionsData),
         } as unknown as { json: () => Promise<typeof mockUnitsOptionsData> }
       })
 
@@ -269,7 +269,7 @@ describe('useUnitsOptions', () => {
       }
 
       mockKyGet.mockReturnValue({
-        json: vi.fn().mockResolvedValue(emptyData),
+        json: mock().mockResolvedValue(emptyData),
       } as unknown as { json: () => Promise<typeof emptyData> })
 
       const { result } = renderHook(() => useUnitsOptions(), {
@@ -293,7 +293,7 @@ describe('useUnitsOptions', () => {
       }
 
       mockKyGet.mockReturnValue({
-        json: vi.fn().mockResolvedValue(malformedData),
+        json: mock().mockResolvedValue(malformedData),
       } as unknown as { json: () => Promise<typeof malformedData> })
 
       const { result } = renderHook(() => useUnitsOptions(), {

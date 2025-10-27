@@ -11,7 +11,7 @@ runs:
     - name: Increment versionCode in tauri.conf.json
       shell: bash
       run: |
-        STEP=${{ inputs.step }}
+        export STEP=${{ inputs.step }}
         node -e "
           const fs = require('fs');
           const path = 'src-tauri/tauri.conf.json';

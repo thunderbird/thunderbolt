@@ -99,6 +99,11 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 Version: $NEW_VERSION"
 
+          # Output the version type
+          VERSION_TYPE="${{ inputs.version_type }}"
+          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+          echo "📝 Version type: $VERSION_TYPE"
+
       - name: Extract tag name
         id: tag
         run: |

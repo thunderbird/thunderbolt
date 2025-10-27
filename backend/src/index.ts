@@ -41,6 +41,7 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
 
   return (
     configuredApp
+      .use(createLoggerMiddleware(settings))
       .use(
         cors({
           origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
@@ -50,7 +51,6 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
           exposeHeaders: settings.corsExposeHeaders,
         }),
       )
-      .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware())
       .use(createErrorHandlingMiddleware())
       // Mount route groups

@@ -27,7 +27,9 @@ const settingsSchema = z.object({
 
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
-  corsOriginRegex: z.string().default('^(tauri:\/\/localhost|http:\/\/localhost:\d+)$'),
+  corsOriginRegex: z
+    .string()
+    .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+|null|file://.*)$'),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
   corsAllowHeaders: z
@@ -57,7 +59,9 @@ const parseSettings = (): Settings => {
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
-    corsOriginRegex: process.env.CORS_ORIGIN_REGEX || '',
+    corsOriginRegex:
+      process.env.CORS_ORIGIN_REGEX ||
+      '^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+|null|file://.*)$',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:

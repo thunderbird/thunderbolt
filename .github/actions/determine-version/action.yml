@@ -30,7 +30,8 @@ runs:
         else
           # Auto-detect version type if requested
           if [ "$VERSION_TYPE_INPUT" = "auto" ]; then
-            COMMITS=$(git log --pretty=format:"%s" --reverse)
+            # Get commits since the last tag (or from the beginning if no tags exist)
+            COMMITS=$(git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --pretty=format:"%s")
             if echo "$COMMITS" | grep -qiE "(breaking|!|BREAKING)"; then
               DETECTED="major"
             elif echo "$COMMITS" | grep -qiE "^(feat|feature|add)"; then

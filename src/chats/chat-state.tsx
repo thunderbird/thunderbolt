@@ -1,20 +1,19 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import ChatUI from '@/components/chat/chat-ui'
-import { useSettings } from '@/hooks/use-settings'
 import { useThrottledCallback } from '@/hooks/use-throttle'
 import { trackEvent } from '@/lib/posthog'
-import { getDefaultModelForThread, getTriggerPromptForThread } from '@/dal'
+import { getTriggerPromptForThread } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat, type UseChatHelpers } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { useChatModel } from './use-chat-model'
 
 interface ChatStateProps {
   id: string
-  models: Model[]
   initialMessages?: ThunderboltUIMessage[]
   saveMessages: SaveMessagesFunction
 }
@@ -42,45 +41,10 @@ const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseS
   }, [chatHelpers.messages, chatHelpers.status, throttledSave])
 }
 
-export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
+export default function ChatState({ id, initialMessages, saveMessages }: ChatStateProps) {
   const { getEnabledClients } = useMCP()
 
-  const { selectedModel } = useSettings({
-    selected_model: '',
-  })
-
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
-
-  const selectedModelIdRef = useRef<string | null>(null)
-
-  // Keep ref in sync with state so fetch always sees latest value
-  useEffect(() => {
-    selectedModelIdRef.current = selectedModelId
-  }, [selectedModelId])
-
-  const { data: defaultModel } = useQuery<Model>({
-    queryKey: ['models', 'defaultModel', id],
-    queryFn: () => getDefaultModelForThread(id, selectedModel.value ?? undefined),
-  })
-
-  const handleModelChange = (modelId: string | null) => {
-    setSelectedModelId(modelId)
-    selectedModel.setValue(modelId)
-    trackEvent('model_select', { model: modelId })
-  }
-
-  useEffect(() => {
-    if (defaultModel) {
-      setSelectedModelId(defaultModel.id)
-    }
-  }, [defaultModel])
-
-  // Hydrate the singleton store the first time a thread is opened
-  useEffect(() => {
-    if (initialMessages && initialMessages.length > 0) {
-      // The useChat hook will handle initializing the store with initialMessages
-    }
-  }, [id, initialMessages])
+  const { handleModelChange, models, selectedModelId, selectedModelIdRef } = useChatModel(id)
 
   // Stable fetch function that always reads the latest model id from the ref
   const customFetch = useCallback(

@@ -1,4 +1,5 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { updateSetting } from '@/dal/settings'
 import type { WeatherForecastData } from '@/widgets/weather-forecast'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
@@ -56,7 +57,7 @@ const mockWeatherForecastData: WeatherForecastData = {
 }
 
 describe('Thunderbolt Pro Tools', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset all mocks
     mockGet.mockClear()
     mockPost.mockClear()
@@ -64,6 +65,11 @@ describe('Thunderbolt Pro Tools', () => {
 
     // Setup default mocks
     mockPost.mockReturnValue({ json: mockJson })
+
+    // Set up test database with correct values
+    await updateSetting('cloud_url', 'http://localhost:8000/v1')
+    await updateSetting('temperature_unit', 'f')
+    await updateSetting('distance_unit', 'imperial')
   })
 
   describe('search', () => {

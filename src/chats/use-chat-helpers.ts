@@ -4,7 +4,7 @@ import { useMCP } from '@/lib/mcp-provider'
 import type { ChatThread, Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { type RefObject, useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 type UseChatHelpersParams = {
@@ -13,7 +13,7 @@ type UseChatHelpersParams = {
   initialMessages: ThunderboltUIMessage[]
   saveMessages: SaveMessagesFunction
   models: Model[]
-  selectedModelIdRef: RefObject<string | null>
+  selectedModelId: string | null
 }
 export const useChatHelpers = ({
   chatThread,
@@ -21,9 +21,16 @@ export const useChatHelpers = ({
   initialMessages,
   saveMessages,
   models,
-  selectedModelIdRef,
+  selectedModelId,
 }: UseChatHelpersParams) => {
   const { getEnabledClients } = useMCP()
+
+  const selectedModelIdRef = useRef<string | null>(null)
+
+  // Keep ref in sync with state so fetch always sees latest value
+  useEffect(() => {
+    selectedModelIdRef.current = selectedModelId
+  }, [selectedModelId])
 
   // Stable fetch function that always reads the latest model id from the ref
   const customFetch = useCallback(
@@ -74,13 +81,13 @@ export const useChatHelpers = ({
   })
 
   const validateEncryptionState = useCallback(() => {
-    const selectedModel = models.find((m) => m.id === selectedModelIdRef.current) || models[0]
+    const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
     if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )
     }
-  }, [chatThread, models, selectedModelIdRef])
+  }, [chatThread, models, selectedModelId])
 
   // extend sendMessage function to add validations before sending the message
   const sendMessage: typeof chatHelpers.sendMessage = useCallback(

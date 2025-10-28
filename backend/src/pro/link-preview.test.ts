@@ -139,6 +139,50 @@ describe('Link Preview Routes', () => {
       expect(body.data?.image).toBe('https://example.com/twitter-image.jpg')
     })
 
+    it('should convert relative image URLs to absolute URLs', async () => {
+      const targetUrl = 'https://www.thunderbird.net/en-US/'
+      const html = `
+        <html>
+          <head>
+            <meta property="og:title" content="Thunderbird — Free Your Inbox." />
+            <meta property="og:description" content="Thunderbird is a free email application that's easy to set up and customize - and it's loaded with great features!" />
+            <meta property="og:image" content="/media/img/thunderbird/thunderbird-256.png" />
+          </head>
+        </html>
+      `
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+      const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(true)
+      expect(body.data?.image).toBe('https://www.thunderbird.net/media/img/thunderbird/thunderbird-256.png')
+    })
+
+    it('should handle protocol-relative image URLs', async () => {
+      const targetUrl = 'https://example.com/page'
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="//cdn.example.com/image.jpg" />
+          </head>
+        </html>
+      `
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+      const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(true)
+      expect(body.data?.image).toBe('https://cdn.example.com/image.jpg')
+    })
+
     it('should return null values when metadata is missing', async () => {
       const targetUrl = 'https://example.com/minimal'
       const html = '<html><head></head><body>Content</body></html>'

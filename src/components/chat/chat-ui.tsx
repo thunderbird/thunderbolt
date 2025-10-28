@@ -3,7 +3,7 @@ import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
-import type { AutomationRun, Model, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
@@ -15,8 +15,6 @@ import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
-import { useQuery } from '@tanstack/react-query'
-import { getChatThread } from '@/dal'
 import { EncryptionMessage } from './encryption-message'
 
 interface ChatUIProps {
@@ -26,6 +24,7 @@ interface ChatUIProps {
   onModelChange: (model: string | null) => void
   triggerAutomation?: AutomationRun | null
   chatThreadId: string
+  chatThread: ChatThread | null
 }
 
 interface SuggestionButtonProps {
@@ -74,6 +73,7 @@ export default function ChatUI({
   onModelChange,
   triggerAutomation,
   chatThreadId,
+  chatThread,
 }: ChatUIProps) {
   const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [input, setInput] = useState('')
@@ -90,11 +90,6 @@ export default function ChatUI({
     chatThreadId,
     currentInput: input,
     onOverflow: () => setShowOverflowModal(true),
-  })
-
-  const { data: chatThread = null } = useQuery({
-    queryKey: ['chatThreads', chatThreadId],
-    queryFn: () => getChatThread(chatThreadId),
   })
 
   // Extract prompt from the first message (automation prompt) for trigger display
@@ -141,13 +136,6 @@ export default function ChatUI({
     // Prevent submitting while streaming or if input is empty
     const textToSend = input.trim()
     if (isStreaming || !textToSend) return
-
-    // Validate encryption state
-    if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
-    }
 
     if (isOverflowing) {
       setShowOverflowModal(true)

@@ -77,7 +77,7 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
       trackEvent('content_view_close', { view_type: state.type })
     }
     setState({ type: null, data: null })
-  }, [state.type])
+  }, [])
 
   // Initialize with sideview if provided
   useEffect(() => {

@@ -12,7 +12,7 @@ import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 export const OnboardingDialog = () => {
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })

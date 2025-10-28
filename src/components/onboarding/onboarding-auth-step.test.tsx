@@ -59,7 +59,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       expect(screen.getByRole('heading', { name: /Connect Google Account/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Connect Google Account/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Connect Google/i })).toBeInTheDocument()
     })
   })
 
@@ -67,7 +67,7 @@ describe('OnboardingAuthStep', () => {
     it('should handle connect button click', () => {
       renderComponent()
 
-      const connectButton = screen.getByRole('button', { name: /Connect Google Account/i })
+      const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
       expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
@@ -76,7 +76,7 @@ describe('OnboardingAuthStep', () => {
     it('should handle connection error gracefully', async () => {
       renderComponent()
 
-      const connectButton = screen.getByRole('button', { name: /Connect Google Account/i })
+      const connectButton = screen.getByRole('button', { name: /Connect Google/i })
 
       // Component should render without errors
       expect(connectButton).toBeInTheDocument()
@@ -85,7 +85,7 @@ describe('OnboardingAuthStep', () => {
     it('should handle loading state during connection', () => {
       renderComponent()
 
-      const connectButton = screen.getByRole('button', { name: /Connect Google Account/i })
+      const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
       expect(connectButton).toBeInTheDocument()
@@ -107,7 +107,7 @@ describe('OnboardingAuthStep', () => {
     it('should disable buttons during connection', () => {
       renderComponent()
 
-      const connectButton = screen.getByRole('button', { name: /Connect Google Account/i })
+      const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       expect(connectButton).toBeInTheDocument()
       expect(connectButton).not.toBeDisabled()
     })

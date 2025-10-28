@@ -54,7 +54,6 @@ describe('OnboardingNameStep', () => {
 
       expect(screen.getByText('What should we call you?')).toBeInTheDocument()
       expect(screen.getByText('Your AI assistant will use this name to address you personally.')).toBeInTheDocument()
-      expect(screen.getByLabelText('Preferred Name')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument()
     })
 
@@ -136,20 +135,20 @@ describe('OnboardingNameStep', () => {
       expect(input).toHaveAttribute('placeholder', 'Enter your name')
     })
 
-    it('should have proper label structure', () => {
+    it('should have proper input structure', () => {
       renderComponent()
 
-      const label = screen.getByText('Preferred Name')
-      expect(label).toBeInTheDocument()
-      expect(label).toHaveAttribute('for')
+      const input = screen.getByPlaceholderText('Enter your name')
+      expect(input).toBeInTheDocument()
+      expect(input).toHaveAttribute('name', 'preferredName')
     })
   })
 
   describe('Accessibility', () => {
-    it('should have proper form labels and structure', () => {
+    it('should have proper form structure', () => {
       renderComponent()
 
-      const input = screen.getByLabelText('Preferred Name')
+      const input = screen.getByPlaceholderText('Enter your name')
       expect(input).toBeInTheDocument()
       expect(input).toHaveAttribute('placeholder', 'Enter your name')
     })

@@ -22,6 +22,39 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
   const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef)
   const [isCopied, setIsCopied] = useState(false)
 
+  const handleClose = async () => {
+    try {
+      trackEvent('preview_close')
+      await closeWebview()
+      onClose?.()
+    } catch (error) {
+      console.error('Error closing sidebar webview:', error)
+    }
+  }
+
+  const handleCopyUrl = async () => {
+    if (!config?.url) return
+    try {
+      await navigator.clipboard.writeText(config.url)
+      trackEvent('preview_copy_url')
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000)
+    } catch (error) {
+      console.error('Error copying URL:', error)
+    }
+  }
+
+  const handleOpenExternal = async () => {
+    if (!config?.url) return
+    try {
+      trackEvent('preview_open_external')
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(config.url)
+    } catch (error) {
+      console.error('Error opening URL externally:', error)
+    }
+  }
+
   if (!isTauri()) {
     return (
       <div className="flex flex-col h-full">
@@ -35,39 +68,6 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
 
   if (!config) {
     return null
-  }
-
-  const handleClose = async () => {
-    try {
-      trackEvent('preview_close')
-      await closeWebview()
-      onClose?.()
-    } catch (error) {
-      console.error('Error closing sidebar webview:', error)
-    }
-  }
-
-  const handleCopyUrl = async () => {
-    if (!config.url) return
-    try {
-      await navigator.clipboard.writeText(config.url)
-      trackEvent('preview_copy_url')
-      setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000)
-    } catch (error) {
-      console.error('Error copying URL:', error)
-    }
-  }
-
-  const handleOpenExternal = async () => {
-    if (!config.url) return
-    try {
-      trackEvent('preview_open_external')
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(config.url)
-    } catch (error) {
-      console.error('Error opening URL externally:', error)
-    }
   }
 
   return (

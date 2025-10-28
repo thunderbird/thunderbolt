@@ -212,3 +212,15 @@ export const hashValues = (values: (string | number | null | undefined)[]): stri
   }
   return hash.toString(36)
 }
+
+/**
+ * Format tool output as a string, handling both string and object outputs
+ * @param output The output from a tool invocation
+ * @returns String representation of the output
+ */
+export const formatToolOutput = (output: unknown): string => {
+  if (typeof output === 'string') {
+    return output
+  }
+  return JSON.stringify(output, null, 2)
+}

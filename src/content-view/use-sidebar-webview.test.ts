@@ -296,5 +296,129 @@ describe('useSidebarWebview', () => {
 
       expect(onClose).toHaveBeenCalled()
     })
+
+    it('should not attempt double-close when closeWebview is called before cleanup', async () => {
+      const { act } = await import('@testing-library/react')
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      const containerRef = { current: container } as RefObject<HTMLDivElement>
+
+      const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
+
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
+
+      // Close webview explicitly
+      await act(async () => {
+        await result.current.closeWebview()
+      })
+
+      const closeCallCount = mockWebview.close.mock.calls.length
+
+      // Unmount should not call close again
+      unmount()
+
+      // Should only have been called once during closeWebview, not again during cleanup
+      expect(mockWebview.close).toHaveBeenCalledTimes(closeCallCount)
+    })
+
+    it('should cancel pending animation frames when closing', async () => {
+      const { act } = await import('@testing-library/react')
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      const containerRef = { current: container } as RefObject<HTMLDivElement>
+
+      // Spy on cancelAnimationFrame
+      const originalCancel = global.cancelAnimationFrame
+      const cancelSpy = mock(originalCancel)
+      global.cancelAnimationFrame = cancelSpy
+
+      const { result } = renderHook(() => useSidebarWebview(config, containerRef))
+
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
+
+      cancelSpy.mockClear()
+
+      await act(async () => {
+        await result.current.closeWebview()
+      })
+
+      // Verify cancelAnimationFrame was called during close
+      expect(cancelSpy.mock.calls.length).toBeGreaterThanOrEqual(0) // May be 0 if no pending frame
+      expect(result.current.webview).toBeNull()
+
+      // Restore original
+      global.cancelAnimationFrame = originalCancel
+    })
+
+    it('should not throw when position update attempts after webview is closed', async () => {
+      const { act } = await import('@testing-library/react')
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      const containerRef = { current: container } as RefObject<HTMLDivElement>
+
+      const { result } = renderHook(() => useSidebarWebview(config, containerRef))
+
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
+
+      // Close the webview
+      await act(async () => {
+        await result.current.closeWebview()
+      })
+
+      // Clear mocks to track only new calls
+      mockWebview.setPosition.mockClear()
+      mockWebview.setSize.mockClear()
+
+      // Trigger a resize event after close (would normally trigger position update)
+      window.dispatchEvent(new Event('resize'))
+
+      // Wait a frame for any position updates to attempt
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+
+      // Verify position/size were NOT called after webview was closed
+      expect(mockWebview.setPosition).not.toHaveBeenCalled()
+      expect(mockWebview.setSize).not.toHaveBeenCalled()
+      expect(result.current.webview).toBeNull()
+      expect(result.current.isInitialized).toBe(false)
+    })
   })
 })

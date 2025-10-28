@@ -28,15 +28,15 @@ export const OnboardingActionButtons = ({
     <div className="flex flex-1 w-full justify-between">
       <div>
         {showBack && onBack && (
-          <Button onClick={onBack} variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
+          <Button onClick={onBack} variant="ghost" className="justify-center">
+            <ArrowLeft className="w-4 h-4" />
           </Button>
         )}
       </div>
 
       <div className={`flex space-x-2 ${!showBack && !showSkip && 'w-full'}`}>
         {showSkip && onSkip && (
-          <Button onClick={onSkip} variant="ghost" size="sm" disabled={skipDisabled}>
+          <Button onClick={onSkip} variant="ghost" disabled={skipDisabled}>
             Skip
           </Button>
         )}

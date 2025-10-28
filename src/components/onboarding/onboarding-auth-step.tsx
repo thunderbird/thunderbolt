@@ -6,6 +6,7 @@ import { type OAuthProvider } from '@/lib/auth'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { Button } from '@/components/ui/button'
 import { useLocation, useNavigate } from 'react-router'
+import { OnboardingFeatureCard } from './onboarding-feature-card'
 
 type OnboardingAuthStepProps = {
   providers?: OAuthProvider[]
@@ -82,38 +83,26 @@ export const OnboardingAuthStep = ({
         </p>
       </div>
 
-      <div className="space-y-4 sm:space-y-3 pt-3">
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-          <Calendar className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">Calendar Access</h3>
-            <p className="text-xs text-muted-foreground">
-              View and manage your schedule, create events, and get smart reminders.
-            </p>
-          </div>
-        </div>
+      <div className="space-y-4 sm:space-y-3 pt-5">
+        <OnboardingFeatureCard
+          icon={Calendar}
+          title="Calendar Access"
+          description="View and manage your schedule, create events, and get smart reminders."
+        />
 
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-          <Mail className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">Email Integration</h3>
-            <p className="text-xs text-muted-foreground">
-              Read, compose, and organize your emails with AI-powered assistance.
-            </p>
-          </div>
-        </div>
+        <OnboardingFeatureCard
+          icon={Mail}
+          title="Email Integration"
+          description="Read, compose, and organize your emails with AI-powered assistance."
+        />
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <HardDrive className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">{storageFeatureTitle}</h3>
-            <p className="text-xs text-muted-foreground">
-              Search and work with your {storageServiceName} files and documents.
-            </p>
-          </div>
-        </div>
+        <OnboardingFeatureCard
+          icon={HardDrive}
+          title={storageFeatureTitle}
+          description={`Search and work with your ${storageServiceName} files and documents.`}
+        />
 
-        <div className="flex items-start rounded-lg">
+        <div className="flex items-start rounded-lg pt-5">
           <Button
             onClick={handleConnect}
             disabled={isLoading}
@@ -128,7 +117,7 @@ export const OnboardingAuthStep = ({
             ) : isLoading ? (
               'Connecting...'
             ) : (
-              `Connect ${providerName} Account`
+              `Connect ${providerName}`
             )}
           </Button>
         </div>

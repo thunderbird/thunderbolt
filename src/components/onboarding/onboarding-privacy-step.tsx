@@ -1,6 +1,7 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Shield, Lock, Eye, Database } from 'lucide-react'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
+import { OnboardingFeatureCard } from './onboarding-feature-card'
 
 type OnboardingPrivacyStepProps = {
   state: OnboardingState
@@ -27,49 +28,41 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
         <p className="text-sm text-muted-foreground">Your privacy is our priority.</p>
       </div>
 
-      <div className="space-y-4 sm:space-y-3 pt-3">
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-          <Lock className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">On-Device Processing</h3>
-            <p className="text-xs text-muted-foreground">
-              View and manage your schedule, create events, and get smart reminders.
-            </p>
-          </div>
-        </div>
+      <div className="space-y-4 sm:space-y-3 pt-5">
+        <OnboardingFeatureCard
+          icon={Lock}
+          title="On-Device Processing"
+          description="View and manage your schedule and create events."
+        />
 
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-          <Eye className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">No Data Collection</h3>
-            <p className="text-xs text-muted-foreground">We don't collect or share your personal information.</p>
-          </div>
-        </div>
+        <OnboardingFeatureCard
+          icon={Eye}
+          title="No Data Collection"
+          description="We don't collect or share your personal information."
+        />
 
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-          <Database className="w-5 h-5 flex-shrink-0" />
-          <div>
-            <h3 className="font-medium text-sm">Local Storage</h3>
-            <p className="text-xs text-muted-foreground">All data stored securely on your device.</p>
-          </div>
-        </div>
+        <OnboardingFeatureCard
+          icon={Database}
+          title="Local Storage"
+          description="All data stored securely on your device."
+        />
       </div>
 
-      <div className="pt-3">
-        <div className="flex items-start gap-2">
+      <div className="pt-5">
+        <div className="flex items-start gap-3 pl-1">
           <Checkbox
             id="terms-agreement"
             checked={state.privacyAgreed}
             onCheckedChange={(checked) => handleAgreementChange(checked === true)}
-            className="mt-0.5"
+            className="mt-1.5 scale-130"
           />
-          <label htmlFor="terms-agreement" className="text-xs text-muted-foreground leading-relaxed">
+          <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed">
             I agree to the{' '}
             <a
               href="https://www.thunderbird.net/en-US/privacy/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline hover:no-underline"
+              className="text-primary underline hover:no-underline font-medium"
             >
               Privacy Policy
             </a>{' '}

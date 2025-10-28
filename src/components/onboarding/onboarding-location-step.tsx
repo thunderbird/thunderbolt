@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -43,12 +43,14 @@ type OnboardingLocationStepProps = {
     prevStep: () => Promise<void>
     skipStep: () => Promise<void>
   }
+  onFormDirtyChange?: (isDirty: boolean) => void
 }
 
-export const OnboardingLocationStep = ({ actions }: OnboardingLocationStepProps) => {
+export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
   const locationSearch = useLocationSearch()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationFormSchema),
@@ -59,10 +61,13 @@ export const OnboardingLocationStep = ({ actions }: OnboardingLocationStepProps)
     },
   })
 
+  const isFormDirty = form.formState.isDirty && isInitialized
+
   const handleSelectLocation = async (location: LocationData) => {
-    form.setValue('locationName', location.name)
-    form.setValue('locationLat', location.coordinates.lat)
-    form.setValue('locationLng', location.coordinates.lng)
+    form.setValue('locationName', location.name, { shouldDirty: true })
+    form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
+    form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
+    form.trigger() // Trigger validation to update form state
     locationSearch.setOpen(false)
 
     try {
@@ -86,6 +91,8 @@ export const OnboardingLocationStep = ({ actions }: OnboardingLocationStepProps)
   }, [])
 
   useEffect(() => {
+    if (!isInitialized) return // Don't track changes until initialized
+
     const subscription = form.watch((value) => {
       const hasValidLocation = !!(
         value.locationName &&
@@ -97,7 +104,28 @@ export const OnboardingLocationStep = ({ actions }: OnboardingLocationStepProps)
       actions.setLocationValid(hasValidLocation)
     })
     return () => subscription.unsubscribe()
-  }, [form, actions])
+  }, [form, actions, isInitialized])
+
+  useEffect(() => {
+    onFormDirtyChange?.(isFormDirty)
+  }, [isFormDirty, onFormDirtyChange])
+
+  useEffect(() => {
+    form.reset(form.getValues())
+
+    const currentValues = form.getValues()
+    const hasValidLocation = !!(
+      currentValues.locationName &&
+      currentValues.locationName.trim().length > 0 &&
+      currentValues.locationLat &&
+      currentValues.locationLng
+    )
+    actions.setLocationValue(currentValues.locationName || '')
+    actions.setLocationValid(hasValidLocation)
+
+    setIsInitialized(true)
+    onFormDirtyChange?.(false)
+  }, [])
 
   const onSubmit = async (values: LocationFormData) => {
     try {

@@ -31,6 +31,7 @@ export const OnboardingDialog = () => {
 
   // Celebration step completion handler
   const [isCompleting, setIsCompleting] = useState(false)
+  const [isFormDirty, setIsFormDirty] = useState(false)
   const { onboardingCurrentStep } = useSettings({
     onboarding_current_step: '1',
   })
@@ -82,18 +83,18 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        className={`max-w-[600px] p-0 overflow-hidden rounded-${isMobile ? 'none' : 'lg'} ${isMobile ? 'h-screen w-full m-0' : 'h-[650px] w-[600px] m-4'}`}
+        className={`p-0 overflow-hidden rounded-${isMobile ? 'none' : 'lg'} ${isMobile ? 'h-screen w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none' : 'max-w-[600px] h-[650px] w-[600px] m-4'}`}
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
-        <div className="flex flex-col items-center py-8">
+        <div className="flex flex-col items-center pt-8 pb-6">
           <div className="flex items-center justify-center px-4">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>
-          <div className="flex flex-1 px-6 pt-6">
+          <div className={`flex flex-1 px-6 pt-6`}>
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
@@ -102,30 +103,34 @@ export const OnboardingDialog = () => {
                 onConnectionChange={actions.setProviderConnected}
               />
             )}
-            {state.currentStep === 3 && <OnboardingNameStep state={state} actions={actions} />}
-            {state.currentStep === 4 && <OnboardingLocationStep state={state} actions={actions} />}
+            {state.currentStep === 3 && (
+              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+            )}
+            {state.currentStep === 4 && (
+              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+            )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5 pb-5">
+          <div className="flex w-full px-5">
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
               onContinue={handleContinue}
               showBack={state.currentStep === 5 ? false : state.canGoBack}
               showSkip={state.currentStep === 5 ? false : state.canSkip}
-              skipDisabled={state.currentStep === 2 && state.isProviderConnected}
+              skipDisabled={
+                (state.currentStep === 2 && state.isProviderConnected) ||
+                (state.currentStep === 3 && isFormDirty) ||
+                (state.currentStep === 4 && isFormDirty)
+              }
               continueDisabled={
                 state.currentStep === 5
                   ? isCompleting
-                  : state.currentStep === 1
-                    ? !state.privacyAgreed
-                    : state.currentStep === 2
-                      ? !state.isProviderConnected
-                      : state.currentStep === 3
-                        ? !state.isNameValid
-                        : state.currentStep === 4
-                          ? !state.isLocationValid
-                          : !state.canGoNext
+                  : state.currentStep === 3
+                    ? !state.isNameValid
+                    : state.currentStep === 4
+                      ? !state.isLocationValid
+                      : !state.canGoNext
               }
               continueText={
                 state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -25,13 +25,15 @@ type OnboardingNameStepProps = {
     prevStep: () => Promise<void>
     skipStep: () => Promise<void>
   }
+  onFormDirtyChange?: (isDirty: boolean) => void
 }
 
-export const OnboardingNameStep = ({ actions }: OnboardingNameStepProps) => {
+export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNameStepProps) => {
   const inputRef = useRef<HTMLInputElement>(null)
   const { preferredName } = useSettings({
     preferred_name: '',
   })
+  const [isInitialized, setIsInitialized] = useState(false)
 
   const form = useForm<NameFormData>({
     resolver: zodResolver(nameFormSchema),
@@ -39,6 +41,8 @@ export const OnboardingNameStep = ({ actions }: OnboardingNameStepProps) => {
       preferredName: '',
     },
   })
+
+  const isFormDirty = form.formState.isDirty && isInitialized
 
   useEffect(() => {
     if (inputRef.current) {
@@ -48,18 +52,36 @@ export const OnboardingNameStep = ({ actions }: OnboardingNameStepProps) => {
 
   useEffect(() => {
     if (preferredName.value && !preferredName.isLoading && preferredName.value.trim().length > 0) {
-      form.setValue('preferredName', preferredName.value)
+      form.setValue('preferredName', preferredName.value, { shouldDirty: false }) // Don't mark as dirty when loading saved value
     }
   }, [preferredName.value, preferredName.isLoading, form])
 
   useEffect(() => {
+    if (!isInitialized) return // Don't track changes until initialized
+
     const subscription = form.watch((value) => {
       const hasValidName = !!(value.preferredName && value.preferredName.trim().length > 0)
       actions.setNameValue(value.preferredName || '')
       actions.setNameValid(hasValidName)
     })
     return () => subscription.unsubscribe()
-  }, [form, actions])
+  }, [form, actions, isInitialized])
+
+  useEffect(() => {
+    onFormDirtyChange?.(isFormDirty)
+  }, [isFormDirty, onFormDirtyChange])
+
+  useEffect(() => {
+    form.reset(form.getValues())
+
+    const currentValue = form.getValues().preferredName
+    const hasValidName = !!(currentValue && currentValue.trim().length > 0)
+    actions.setNameValue(currentValue || '')
+    actions.setNameValid(hasValidName)
+
+    setIsInitialized(true)
+    onFormDirtyChange?.(false)
+  }, [])
 
   return (
     <div className="w-full h-full flex flex-col justify-center">
@@ -78,7 +100,6 @@ export const OnboardingNameStep = ({ actions }: OnboardingNameStepProps) => {
             name="preferredName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Preferred Name</FormLabel>
                 <FormControl>
                   <Input placeholder="Enter your name" {...field} ref={inputRef} />
                 </FormControl>

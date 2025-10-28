@@ -108,7 +108,16 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # Install libfuse2 for running linuxdeploy (which is itself an AppImage)
+          # Ubuntu 24.04 uses libfuse2t64 as a transition package
+          sudo add-apt-repository universe -y
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
 
       - name: build Tauri app for Linux
         if: matrix.os == 'ubuntu-24.04'
@@ -119,6 +128,7 @@ jobs:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
+          NO_STRIP: true
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

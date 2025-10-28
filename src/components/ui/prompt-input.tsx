@@ -1,11 +1,10 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Model } from '@/types'
-import { ArrowUp, Lock, Square } from 'lucide-react'
+import { ArrowUp, Square } from 'lucide-react'
 import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
-import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 import { type ChatThread } from '@/layout/sidebar/types'
+import { ModelSelector } from './model-selector'
 
 interface PromptInputProps {
   chatThread: ChatThread | null
@@ -88,34 +87,12 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
           <div className="flex gap-2 items-center">
-            <Select value={selectedModelId} onValueChange={onModelChange}>
-              <SelectTrigger className="rounded-full" size="sm">
-                <SelectValue placeholder="Select a model" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((model) => {
-                  const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
-
-                  return (
-                    <Tooltip key={model.id}>
-                      <TooltipTrigger asChild>
-                        <SelectItem disabled={isDisabled} value={model.id} style={{ pointerEvents: 'auto' }}>
-                          <div className="flex items-center gap-2">
-                            {model.isConfidential ? <Lock className="size-3.5" /> : null}
-                            <p className="text-left">{model.name}</p>
-                          </div>
-                        </SelectItem>
-                      </TooltipTrigger>
-                      {chatThread && isDisabled && (
-                        <TooltipContent side="left">
-                          <p>{`This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`}</p>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+            <ModelSelector
+              chatThread={chatThread}
+              models={models}
+              selectedModelId={selectedModelId}
+              onModelChange={onModelChange}
+            />
 
             {showSubmitButton &&
               (isStreaming ? (

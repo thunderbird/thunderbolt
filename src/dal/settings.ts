@@ -9,7 +9,7 @@ import { camelCased, hashValues } from '../lib/utils'
 /**
  * Gets all settings from the database
  */
-export const getAllSettings = async () => {
+export const getAllSettings = async (): Promise<Setting[]> => {
   const db = DatabaseSingleton.instance.db
   return await db.select().from(settingsTable)
 }
@@ -281,7 +281,7 @@ export const deleteSetting = async (key: string): Promise<void> => {
 /**
  * Reset a setting to its default state
  */
-export const resetSettingToDefault = async (key: string, defaultSetting: Setting) => {
+export const resetSettingToDefault = async (key: string, defaultSetting: Setting): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Compute the hash for the default setting so it shows as unmodified after reset
   const computedHash = hashSetting(defaultSetting)

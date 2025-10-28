@@ -53,7 +53,7 @@ export const getModel = async (id: string): Promise<Model | null> => {
   return model ? mapModel(model) : null
 }
 
-export const getSystemModel = async () => {
+export const getSystemModel = async (): Promise<Model | null> => {
   const db = DatabaseSingleton.instance.db
   const systemModel = await db
     .select()
@@ -124,7 +124,7 @@ export const getDefaultModelForThread = async (threadId: string, fallbackModelId
 /**
  * Update a model (preserves defaultHash for modification tracking)
  */
-export const updateModel = async (id: string, updates: Partial<Model>) => {
+export const updateModel = async (id: string, updates: Partial<Model>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
@@ -134,7 +134,7 @@ export const updateModel = async (id: string, updates: Partial<Model>) => {
 /**
  * Reset a model to its default state
  */
-export const resetModelToDefault = async (id: string, defaultModel: Model) => {
+export const resetModelToDefault = async (id: string, defaultModel: Model): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultModel
   await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))

@@ -106,7 +106,7 @@ describe('Chat Messages DAL', () => {
   })
 
   describe('getLastMessage', () => {
-    it('should return undefined when thread has no messages', async () => {
+    it('should return null when thread has no messages', async () => {
       const threadId = uuidv7()
       const db = DatabaseSingleton.instance.db
 
@@ -117,7 +117,7 @@ describe('Chat Messages DAL', () => {
       })
 
       const lastMessage = await getLastMessage(threadId)
-      expect(lastMessage).toBeUndefined()
+      expect(lastMessage).toBeNull()
     })
 
     it('should return the last message for a thread', async () => {

@@ -1,9 +1,11 @@
 import { cn } from '@/lib/utils'
 import { Zap } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
-import { StreamingMarkdown } from './streaming-markdown'
+import TimelineMessage from './timeline-message'
+import { MemoizedMarkdown } from './memoized-markdown'
 
 interface TriggerMessageProps {
+  chatThreadId: string
   /** The title of the automation that triggered the chat */
   title?: string
   /** The full prompt that was used to start the chat */
@@ -19,23 +21,9 @@ interface TriggerMessageProps {
  * Renders a timeline-style bullet with a "Triggered by automation" label and an
  * accordion that reveals the full automation prompt when expanded.
  */
-export const TriggerMessage = ({ title, prompt, isDeleted = false, className }: TriggerMessageProps) => (
+export const TriggerMessage = ({ chatThreadId, title, prompt, isDeleted = false, className }: TriggerMessageProps) => (
   <div className={cn('flex flex-col items-center w-full', className)}>
-    {/* Timeline marker and label */}
-    <div className="flex flex-col items-center select-none">
-      {/* Timeline bullet */}
-      <span className="w-3 h-3 rounded-full bg-secondary" />
-
-      {/* Vertical line above the text */}
-      <span className="h-6 w-px bg-secondary mb-2" />
-
-      {/* Label */}
-      <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Triggered by automation</div>
-
-      {/* Vertical line that runs directly into the accordion */}
-      <span className="h-6 w-px bg-secondary" />
-    </div>
-
+    <TimelineMessage>Triggered by automation</TimelineMessage>
     {/* Automation title & prompt */}
     {prompt ? (
       <Expandable
@@ -49,7 +37,7 @@ export const TriggerMessage = ({ title, prompt, isDeleted = false, className }: 
         icon={<Zap className="h-4 w-4 text-muted-foreground" />}
         defaultOpen={false}
       >
-        <StreamingMarkdown content={prompt} className="text-secondary-foreground leading-relaxed" />
+        <MemoizedMarkdown id={chatThreadId} content={prompt} />
       </Expandable>
     ) : (
       <div className="shadow-none w-full max-w-[696px] rounded-lg border border-transparent px-4 py-2">

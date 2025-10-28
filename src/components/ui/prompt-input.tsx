@@ -4,8 +4,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { Model } from '@/types'
 import { ArrowUp, Lock, Square } from 'lucide-react'
 import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
+import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
+import { type ChatThread } from '@/layout/sidebar/types'
 
 interface PromptInputProps {
+  chatThread: ChatThread | null
   value: string
   onChange: (value: string) => void
   placeholder?: string
@@ -31,6 +34,7 @@ interface PromptInputProps {
 export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
   (
     {
+      chatThread,
       value = '',
       onChange,
       placeholder = 'Say something...',
@@ -89,14 +93,27 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
-                {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    <div className="flex items-center gap-2">
-                      {model.isConfidential ? <Lock className="size-3.5" /> : null}
-                      <p className="text-left">{model.name}</p>
-                    </div>
-                  </SelectItem>
-                ))}
+                {models.map((model) => {
+                  const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+
+                  return (
+                    <Tooltip key={model.id}>
+                      <TooltipTrigger asChild>
+                        <SelectItem disabled={isDisabled} value={model.id} style={{ pointerEvents: 'auto' }}>
+                          <div className="flex items-center gap-2">
+                            {model.isConfidential ? <Lock className="size-3.5" /> : null}
+                            <p className="text-left">{model.name}</p>
+                          </div>
+                        </SelectItem>
+                      </TooltipTrigger>
+                      {chatThread && isDisabled && (
+                        <TooltipContent side="left">
+                          <p>{`This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  )
+                })}
               </SelectContent>
             </Select>
 

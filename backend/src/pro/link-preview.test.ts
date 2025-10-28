@@ -5,7 +5,6 @@ import type { LinkPreviewResponse } from './types'
 
 describe('Link Preview Routes', () => {
   let app: Elysia
-  let fetchSpy: ReturnType<typeof spyOn>
   let consoleSpy: ReturnType<typeof spyOn>
   let mockFetch: ReturnType<typeof mock>
 
@@ -25,15 +24,14 @@ describe('Link Preview Routes', () => {
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
-    // Mock global fetch
+    // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockHtmlResponse('<html></html>')))
-    fetchSpy = spyOn(global, 'fetch').mockImplementation(mockFetch as any)
 
-    app = new Elysia().use(createLinkPreviewRoutes())
+    // Inject mock fetch into routes
+    app = new Elysia().use(createLinkPreviewRoutes(mockFetch as unknown as typeof fetch))
   })
 
   afterAll(() => {
-    fetchSpy?.mockRestore()
     consoleSpy?.mockRestore()
   })
 

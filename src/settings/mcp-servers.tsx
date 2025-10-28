@@ -24,15 +24,7 @@ import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { getHttpMcpServers } from '@/dal'
-
-interface McpServer {
-  id: string
-  name: string
-  url: string
-  enabled: number
-  createdAt: number | null
-  updatedAt: number | null
-}
+import { type McpServer } from '@/types'
 
 interface ServerTools {
   [serverId: string]: string[]
@@ -419,7 +411,7 @@ export default function McpServersPage() {
                               }}
                               className="text-lg font-medium cursor-pointer"
                             >
-                              {formatServerTitle(server.url, server.id)}
+                              {formatServerTitle(server.url ?? '', server.id)}
                             </CardTitle>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-2" side="bottom" align="start">
@@ -431,7 +423,7 @@ export default function McpServersPage() {
                                 className="h-6 w-6 p-0 hover:bg-muted"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  handleCopyUrl(server.url)
+                                  handleCopyUrl(server.url ?? '')
                                 }}
                                 disabled={copiedUrl === server.url}
                               >

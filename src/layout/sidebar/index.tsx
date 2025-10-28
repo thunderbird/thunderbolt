@@ -21,7 +21,7 @@ export default function Sidebar() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { setOpenMobile, state, toggleSidebar } = useSidebar()
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)

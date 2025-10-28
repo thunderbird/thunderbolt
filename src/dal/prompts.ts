@@ -1,9 +1,11 @@
 import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable } from '../db/tables'
+import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import type { AutomationRun, Prompt } from '../types'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { getModel } from './models'
+import { createChatThread } from './chat-threads'
 
 /**
  * Gets all prompts, optionally filtered by search query
@@ -55,7 +57,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
 /**
  * Update an automation/prompt (preserves defaultHash for modification tracking)
  */
-export const updateAutomation = async (id: string, updates: Partial<Prompt>) => {
+export const updateAutomation = async (id: string, updates: Partial<Prompt>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
@@ -65,7 +67,7 @@ export const updateAutomation = async (id: string, updates: Partial<Prompt>) => 
 /**
  * Reset an automation to its default state
  */
-export const resetAutomationToDefault = async (id: string, defaultAutomation: Prompt) => {
+export const resetAutomationToDefault = async (id: string, defaultAutomation: Prompt): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultAutomation
   await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
@@ -74,7 +76,7 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
 /**
  * Delete an automation (soft delete) and its associated triggers
  */
-export const deleteAutomation = async (id: string) => {
+export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Import locally to avoid circular dependency
   const { triggersTable } = await import('../db/tables')
@@ -84,6 +86,17 @@ export const deleteAutomation = async (id: string) => {
   await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, id))
 }
 
+export const getPrompt = async (id: string): Promise<Prompt | null> => {
+  const db = DatabaseSingleton.instance.db
+  const prompt = await db
+    .select()
+    .from(promptsTable)
+    .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
+    .get()
+
+  return prompt ?? null
+}
+
 /**
  * Runs an automation by creating a new chat thread and seeding it with the prompt
  * @returns The threadId of the newly created chat thread
@@ -91,28 +104,26 @@ export const deleteAutomation = async (id: string) => {
 export const runAutomation = async (promptId: string): Promise<string> => {
   const db = DatabaseSingleton.instance.db
 
-  const prompt = await db
-    .select()
-    .from(promptsTable)
-    .where(and(eq(promptsTable.id, promptId), isNull(promptsTable.deletedAt)))
-    .get()
+  const prompt = await getPrompt(promptId)
+
   if (!prompt) throw new Error('Prompt not found')
 
-  const model = await db
-    .select()
-    .from(modelsTable)
-    .where(and(eq(modelsTable.id, prompt.modelId), isNull(modelsTable.deletedAt)))
-    .get()
+  const model = await getModel(prompt.modelId)
+
   if (!model) throw new Error('Model not found')
 
   const threadId = uuidv7()
 
-  await db.insert(chatThreadsTable).values({
-    id: threadId,
-    title: prompt.title ?? 'Automation',
-    triggeredBy: prompt.id,
-    wasTriggeredByAutomation: 1,
-  })
+  await createChatThread(
+    {
+      id: threadId,
+      title: prompt.title ?? 'Automation',
+      triggeredBy: prompt.id,
+      wasTriggeredByAutomation: 1,
+      contextSize: null,
+    },
+    model.id,
+  )
 
   const userMessage = {
     id: uuidv7(),

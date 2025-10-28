@@ -8,7 +8,7 @@ import { Link } from 'react-router'
  */
 export const NavLink = forwardRef<HTMLAnchorElement, ComponentProps<typeof Link>>(({ onClick, ...props }, ref) => {
   const { setOpenMobile } = useSidebar()
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
 
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (isMobile) {

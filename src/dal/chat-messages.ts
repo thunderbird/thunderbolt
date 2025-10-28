@@ -1,8 +1,9 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
-import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
+import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
  * Gets a single chat message by ID
@@ -25,22 +26,18 @@ export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> 
   return chatMessages
 }
 
-export const getLastMessage = async (
-  threadId: string,
-): Promise<Pick<ChatMessage, 'id' | 'chatThreadId' | 'modelId'> | undefined> => {
+export const getLastMessage = async (threadId: string): Promise<ChatMessage | null> => {
   const db = DatabaseSingleton.instance.db
 
-  return await db
-    .select({
-      id: chatMessagesTable.id,
-      chatThreadId: chatMessagesTable.chatThreadId,
-      modelId: chatMessagesTable.modelId,
-    })
+  const lastMessage = await db
+    .select()
     .from(chatMessagesTable)
     .where(eq(chatMessagesTable.chatThreadId, threadId))
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)
     .get()
+
+  return lastMessage ?? null
 }
 
 /**
@@ -57,7 +54,7 @@ export const saveMessagesWithContextUpdate = async (
   const db = DatabaseSingleton.instance.db
 
   // Verify thread exists
-  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
+  const thread = await getChatThread(threadId)
   if (!thread) {
     throw new Error('Thread not found')
   }
@@ -93,10 +90,7 @@ export const saveMessagesWithContextUpdate = async (
   const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
   if (metadata?.usage?.totalTokens) {
-    await db
-      .update(chatThreadsTable)
-      .set({ contextSize: metadata.usage.totalTokens })
-      .where(eq(chatThreadsTable.id, threadId))
+    await updateChatThread(threadId, { contextSize: metadata.usage.totalTokens })
   }
 
   return dbChatMessages

@@ -10,11 +10,13 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
 export default [
+  {
+    ignores: ['node_modules/**', 'dist/**', 'dist-isolation/**', 'src-tauri/**', 'backend/**'],
+  },
   js.configs.recommended,
   prettier,
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['node_modules', 'dist', 'dist-isolation', 'src-tauri', 'thunderbird-*', 'backend'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {

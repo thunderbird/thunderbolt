@@ -18,6 +18,17 @@ const decodeHtmlEntities = (text: string): string => {
 }
 
 /**
+ * Resolves a potentially relative URL to an absolute URL
+ */
+const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
+  try {
+    return new URL(relativeUrl, baseUrl).href
+  } catch {
+    return relativeUrl
+  }
+}
+
+/**
  * Extracts Open Graph metadata from HTML content
  */
 const extractMetadata = (html: string, url: string) => {
@@ -27,7 +38,8 @@ const extractMetadata = (html: string, url: string) => {
     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["'][^>]*>/i) ||
     html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image["'][^>]*>/i)
-  const image = imageMatch?.[1] || null
+  const rawImage = imageMatch?.[1] || null
+  const image = rawImage ? resolveUrl(url, rawImage) : null
 
   // Extract og:title or fallback to title tag
   const ogTitleMatch =

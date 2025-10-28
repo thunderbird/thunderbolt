@@ -141,6 +141,13 @@ export const defaultSettingIntegrationsProIsEnabled: Setting = {
   defaultHash: null,
 }
 
+export const defaultSettingContentViewWidth: Setting = {
+  key: 'content_view_width',
+  value: '50',
+  updatedAt: null,
+  defaultHash: null,
+}
+
 /**
  * Array of all default settings for iteration
  */
@@ -162,4 +169,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingTimeFormat,
   defaultSettingCurrency,
   defaultSettingIntegrationsProIsEnabled,
+  defaultSettingContentViewWidth,
 ] as const

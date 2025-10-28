@@ -22,6 +22,7 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { initPosthog, PostHogProvider } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { parseSideviewParam } from '@/lib/sideview-url'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
 import { default as Settings } from '@/settings/index'
@@ -33,7 +34,6 @@ import TasksPage from '@/tasks'
 import { useEffect, useState } from 'react'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
-import { ObjectViewProvider } from './components/chat/object-view-provider'
 import { migrate } from './db/migrate'
 import { DatabaseSingleton } from './db/singleton'
 import MessageSimulatorPage from './devtools/message-simulator'
@@ -44,9 +44,9 @@ import { MCPProvider } from './lib/mcp-provider'
 import { getDatabasePath, getDatabaseType } from './lib/platform'
 import { TrayManager, TrayProvider } from './lib/tray'
 import Loading from './loading'
+import { ContentViewProvider } from './content-view/context'
 import SettingsLayout from './settings/layout'
-import { SideviewProvider } from './sideview/provider'
-import type { InitData, SideviewType } from './types'
+import type { InitData } from './types'
 
 const queryClient = new QueryClient()
 
@@ -114,18 +114,7 @@ const init = async (): Promise<InitData> => {
   const tray = await TrayManager.initIfSupported()
 
   const url = new URL(window.location.href)
-  const sideviewParam = url.searchParams.get('sideview')
-
-  let sideviewType: SideviewType | null = null
-  let sideviewId: string | null = null
-
-  if (sideviewParam) {
-    const [type, id] = sideviewParam.split(':')
-    if (type && id) {
-      sideviewType = type as SideviewType
-      sideviewId = decodeURIComponent(id)
-    }
-  }
+  const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
 
   const posthogClient = await initPosthog()
 
@@ -141,7 +130,6 @@ export const App = () => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<Error>()
   const [isClearingDatabase, setIsClearingDatabase] = useState(false)
-  const [objectSidebarOpen, setObjectSidebarOpen] = useState(false)
 
   useEffect(() => {
     init()
@@ -209,14 +197,13 @@ export const App = () => {
         <ThemeProvider defaultTheme="system" storageKey="ui_theme">
           <TrayProvider tray={initData.tray} window={initData.window}>
             <MCPProvider>
-              <SidebarProvider open={objectSidebarOpen} onOpenChange={setObjectSidebarOpen} defaultWidth="26rem">
-                <ObjectViewProvider>
-                  <SidebarProvider>
-                    <SideviewProvider sideviewType={initData.sideviewType} sideviewId={initData.sideviewId}>
-                      <AppContent initData={initData} />
-                    </SideviewProvider>
-                  </SidebarProvider>
-                </ObjectViewProvider>
+              <SidebarProvider>
+                <ContentViewProvider
+                  initialSideviewType={initData.sideviewType}
+                  initialSideviewId={initData.sideviewId}
+                >
+                  <AppContent initData={initData} />
+                </ContentViewProvider>
               </SidebarProvider>
             </MCPProvider>
           </TrayProvider>

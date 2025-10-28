@@ -1,4 +1,6 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { isTauri } from '@/lib/platform'
+import { usePreview } from '@/content-view/context'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'
 
@@ -13,6 +15,8 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   const [imageError, setImageError] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(!!image)
   const showPlaceholder = !image || imageError
+  const { showPreview } = usePreview()
+  const isDesktop = isTauri()
 
   const placeholder = (
     <div className="h-full w-full bg-secondary/60 dark:bg-secondary/40 flex items-center justify-center">
@@ -20,9 +24,23 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
     </div>
   )
 
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isDesktop) {
+      e.preventDefault()
+      e.stopPropagation()
+      showPreview(url)
+    }
+    // If not desktop, let the default <a> behavior happen (open in browser)
+  }
+
   return (
     <div className="my-4">
-      <a href={url} target="_blank" rel="noopener noreferrer">
+      <a
+        href={isDesktop ? '#' : url}
+        target={isDesktop ? undefined : '_blank'}
+        rel={isDesktop ? undefined : 'noopener noreferrer'}
+        onClick={handleClick}
+      >
         <Card className="cursor-pointer flex-row flex p-0 gap-0 rounded-lg overflow-hidden relative group">
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 dark:group-hover:bg-white/5 pointer-events-none z-10" />
           <div className="h-24 w-24 flex-shrink-0 grid">

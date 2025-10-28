@@ -97,7 +97,20 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {isOpen && !isMobile && <ResizableHandle withHandle />}
+        {isOpen && !isMobile && (
+          <div className="relative h-full flex">
+            <ResizableHandle withHandle className="h-full" />
+            {/* 
+              Webview cursor mask: When a webview is displayed in the right panel,
+              it overlays the resize handle, making the right half non-interactive.
+              This div covers the right side to show the correct cursor (default
+              instead of ew-resize) over the non-clickable area.
+            */}
+            {state.type === 'preview' && (
+              <div className="absolute inset-y-0 left-1/2 w-2 cursor-default z-10" aria-hidden="true" />
+            )}
+          </div>
+        )}
         <ResizablePanel
           ref={ref}
           collapsible

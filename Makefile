@@ -9,18 +9,17 @@ NC := \033[0m # No Color
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  make setup           - Install frontend and backend dependencies"
-	@echo "  make install         - Install frontend dependencies"
-	@echo "  make run             - Start both backend and frontend development servers"
-	@echo "  make dev             - Alias for 'make run'"
-	@echo "  make build           - Build frontend for production"
-	@echo "  make build-desktop   - Build Tauri desktop app"
-	@echo "  make build-android   - Build Tauri Android app (includes ProGuard setup)"
-	@echo "  make setup-android   - Setup Android ProGuard rules only"
-	@echo "  make build-ios       - Build Tauri iOS app"
-	@echo "  make clean           - Clean build artifacts"
-	@echo "  make format          - Format frontend, backend (JS/TS), and Rust code"
-	@echo "  make format-check    - Check formatting for frontend, backend, and Rust code"
+	@echo "  make setup          - Install frontend and backend dependencies"
+	@echo "  make install        - Install frontend dependencies"
+	@echo "  make run            - Start both backend and frontend development servers"
+	@echo "  make dev            - Alias for 'make run'"
+	@echo "  make build          - Build frontend for production"
+	@echo "  make build-desktop  - Build Tauri desktop app"
+	@echo "  make build-android  - Build Tauri Android app"
+	@echo "  make build-ios      - Build Tauri iOS app"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
+	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
 
 # Setup project - install frontend and backend dependencies
 setup:
@@ -53,15 +52,9 @@ build-desktop-full:
 	bun install
 	bun tauri build --bundles $(BUNDLES) --target $(TARGET)
 
-# Setup Android ProGuard rules
-setup-android:
-	@./scripts/setup-android-proguard.sh
-
 # Build Android app
 build-android:
 	bun install
-	@echo "$(BLUE)→ Setting up Android ProGuard rules...$(NC)"
-	@./scripts/setup-android-proguard.sh
 	bun tauri android build
 
 # Build iOS app

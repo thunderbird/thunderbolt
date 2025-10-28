@@ -37,7 +37,9 @@ export const useSidebarWebview = (
     let unlistenMove: (() => void) | null = null
 
     const updateWebviewPosition = async () => {
-      if (!webview || !containerRef.current || !isActive) return
+      // Use ref instead of local variable to get current state
+      const currentWebview = webviewRef.current
+      if (!currentWebview || !containerRef.current || !isActive) return
 
       const rect = containerRef.current.getBoundingClientRect()
 
@@ -45,11 +47,11 @@ export const useSidebarWebview = (
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
 
       try {
-        await webview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
-        await webview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
+        await currentWebview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
+        await currentWebview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
       } catch (error) {
         // Silently ignore errors if webview was closed
-        if (isActive) {
+        if (isActive && webviewRef.current) {
           console.error('Failed to update webview position/size:', error)
         }
       }
@@ -137,6 +139,7 @@ export const useSidebarWebview = (
 
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = undefined
       }
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect()
@@ -147,7 +150,8 @@ export const useSidebarWebview = (
       if (unlistenMove) {
         unlistenMove()
       }
-      if (webview) {
+      // Only close if not already closed by closeWebview()
+      if (webview && webviewRef.current) {
         webview.close().catch(console.error)
       }
       webviewRef.current = null
@@ -174,6 +178,12 @@ export const useSidebarWebview = (
 
   const closeWebview = async () => {
     if (webviewRef.current) {
+      // Cancel any pending position updates
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = undefined
+      }
+
       try {
         await webviewRef.current.close()
         webviewRef.current = null

@@ -99,10 +99,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-release-${{ inputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ inputs.version }}-
             ${{ runner.os }}-cargo-release-
-            ${{ runner.os }}-cargo-
 
       - name: install Linux dependencies
         if: matrix.os == 'ubuntu-24.04'

@@ -1,3 +1,4 @@
+import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/posthog'
@@ -5,14 +6,13 @@ import { cn } from '@/lib/utils'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
+import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatMessages } from './chat-messages'
-import { SuggestionButtons } from './suggestion-buttons'
-import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -24,6 +24,45 @@ interface ChatUIProps {
   chatThread: ChatThread | null
 }
 
+interface SuggestionButtonProps {
+  label: string
+  prompt: string
+  onSelect: (prompt: string) => void
+}
+
+const SuggestionButton = ({ label, prompt, onSelect }: SuggestionButtonProps) => (
+  <Button
+    variant="outline"
+    className="bg-card text-sm text-foreground rounded-full px-3 py-1.5 border border-border shadow-sm hover:bg-accent whitespace-nowrap flex-shrink-0"
+    onClick={() => onSelect(prompt)}
+  >
+    {label}
+  </Button>
+)
+
+export const SuggestionButtons = memo(({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
+  const suggestions = [
+    { label: 'Check the weather', prompt: 'What is the forecast for this week?' },
+    { label: 'Check your to dos', prompt: 'What are my current tasks?' },
+    {
+      label: 'Write a message',
+      prompt: 'Write a thank you email to my coworker for helping with the meeting yesterday.',
+    },
+    {
+      label: 'Understand a topic',
+      prompt: 'Explain how checks and balances work between the three branches of government.',
+    },
+  ]
+
+  return (
+    <div className="flex flex-wrap gap-2 justify-center mt-4 w-full max-w-[696px] mx-auto">
+      {suggestions.map((suggestion, index) => (
+        <SuggestionButton key={index} label={suggestion.label} prompt={suggestion.prompt} onSelect={onSelectPrompt} />
+      ))}
+    </div>
+  )
+})
+
 export default function ChatUI({
   chatHelpers,
   models,
@@ -33,27 +72,15 @@ export default function ChatUI({
   chatThreadId,
   chatThread,
 }: ChatUIProps) {
-  const hasMessages = useMemo(() => chatHelpers.messages.length > 0, [chatHelpers.messages.length])
-  const isStreaming = useMemo(() => chatHelpers.status === 'streaming', [chatHelpers.status])
-
-  const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } = useChatScrollHandler(
-    {
-      hasMessages,
-      isStreaming,
-      messages: chatHelpers.messages,
-    },
-  )
-
+  const [hasMessages, setHasMessages] = useState(chatHelpers.messages.length > 0)
   const [input, setInput] = useState('')
   const [showOverflowModal, setShowOverflowModal] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
+  const previousMessageCountRef = useRef(chatHelpers.messages.length)
   const navigate = useNavigate()
   const { isMobile, isReady } = useIsMobile()
 
-  const selectedModel = useMemo(
-    () => models.find((m) => m.id === selectedModelId) || models[0],
-    [models, selectedModelId],
-  )
+  const selectedModel = models.find((m) => m.id === selectedModelId) || models[0]
 
   const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
     model: selectedModel,
@@ -61,6 +88,40 @@ export default function ChatUI({
     currentInput: input,
     onOverflow: () => setShowOverflowModal(true),
   })
+
+  const {
+    scrollContainerRef,
+    scrollTargetRef,
+    scrollToBottom,
+    resetUserScroll,
+    scrollHandlers,
+    userHasScrolled,
+    isAtBottom,
+  } = useAutoScroll({
+    dependencies: [],
+    smooth: true,
+    isStreaming: chatHelpers.status === 'streaming',
+    rootMargin: '0px 0px -50px 0px', // 50px threshold from bottom
+  })
+
+  useEffect(() => {
+    const currentMessageCount = chatHelpers.messages.length
+    const previousMessageCount = previousMessageCountRef.current
+
+    // Scroll to bottom when a new message is added
+    if (currentMessageCount > previousMessageCount) {
+      scrollToBottom()
+      resetUserScroll() // Reset user scroll when new message starts
+    } else if (chatHelpers.status === 'streaming' && !userHasScrolled) {
+      // Continue scrolling during streaming as long as the user hasn't manually scrolled away
+      scrollToBottom()
+    }
+
+    previousMessageCountRef.current = currentMessageCount
+    setHasMessages(currentMessageCount > 0)
+  }, [chatHelpers.messages, chatHelpers.status, scrollToBottom, resetUserScroll, userHasScrolled, isAtBottom])
+
+  const isStreaming = chatHelpers.status === 'streaming'
 
   const handleSubmit = async () => {
     // Prevent submitting while streaming or if input is empty
@@ -94,6 +155,18 @@ export default function ChatUI({
       scrollToBottom()
     })
   }
+
+  useEffect(() => {
+    if (!hasMessages) return
+
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        scrollToBottom()
+      })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [hasMessages])
 
   const handleSelectPrompt = useCallback((prompt: string) => {
     setInput(prompt)

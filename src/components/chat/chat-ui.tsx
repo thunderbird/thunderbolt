@@ -15,10 +15,9 @@ import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
-import { Lock } from 'lucide-react'
-import TimelineMessage from './timeline-message'
 import { useQuery } from '@tanstack/react-query'
 import { getChatThread } from '@/dal'
+import { EncryptionMessage } from './encryption-message'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -225,14 +224,7 @@ export default function ChatUI({
             exit={{ opacity: 0 }}
             className="flex-1 p-4 overflow-y-auto space-y-4 max-w-dvw"
           >
-            {chatThread?.isEncrypted === 1 && (
-              <TimelineMessage>
-                <div className="flex flex-row items-center gap-2">
-                  <Lock className="size-4 text-blue-600 dark:text-blue-400" />
-                  <p className="text-blue-700 dark:text-blue-300">This conversation is encrypted</p>
-                </div>
-              </TimelineMessage>
-            )}
+            {chatThread?.isEncrypted === 1 && <EncryptionMessage />}
             {/* Automation trigger banner */}
             {triggerAutomation?.wasTriggeredByAutomation && (
               <TriggerMessage

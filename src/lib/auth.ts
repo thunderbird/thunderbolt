@@ -101,33 +101,16 @@ export const startOAuthFlow = async (
     const { openUrl } = await import('@tauri-apps/plugin-opener')
     await openUrl(authUrl)
   } else {
-    // Open a popup window. Avoid using 'noreferrer'/'noopener' because we rely on window.opener
-    // for the postMessage callback flow. Some browsers also return null when 'noreferrer' is set.
-    const features = 'width=600,height=700,scrollbars=yes,resizable=yes'
-    popup = window.open(authUrl, 'thunderbolt-oauth', features)
-
-    // Fallback attempt without explicit features in case some environments block feature strings
-    if (!popup) popup = window.open(authUrl, '_blank')
-
-    if (!popup) throw new Error('Failed to open authentication window. Please allow pop-ups and try again.')
-    try {
-      popup.focus()
-    } catch {
-      // Best-effort; focusing may fail in some browsers
-    }
+    popup = window.open(authUrl, '_blank', 'noopener,noreferrer,width=600,height=700')
+    if (!popup) throw new Error('Failed to open authentication window')
+    popup.focus()
   }
 
   const callback = new Promise<{ code: string; state: string }>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'oauth-callback') {
         window.removeEventListener('message', handler)
-        if (popup && !popup.closed) {
-          try {
-            popup.close()
-          } catch {
-            // Ignored: some browsers disallow programmatic close
-          }
-        }
+        if (popup && !popup.closed) popup.close()
 
         if (event.data.error) reject(new Error(event.data.error))
         else resolve({ code: event.data.code, state: event.data.state })
@@ -136,7 +119,6 @@ export const startOAuthFlow = async (
 
     window.addEventListener('message', handler)
 
-    // Global timeout as a safety net
     setTimeout(
       () => {
         window.removeEventListener('message', handler)

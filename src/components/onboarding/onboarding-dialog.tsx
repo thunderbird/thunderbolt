@@ -80,7 +80,7 @@ export const OnboardingDialog = () => {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
+    <Dialog open={isOpen}>
       <DialogContent
         className={`max-w-[600px] p-0 overflow-hidden rounded-${isMobile ? 'none' : 'lg'} ${isMobile ? 'h-screen w-full m-0' : 'h-[650px] w-[600px] m-4'}`}
         showCloseButton={false}

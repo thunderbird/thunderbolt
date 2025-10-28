@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import type { AutomationRun, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -45,7 +45,7 @@ const SuggestionButton = ({ label, prompt, onSelect }: SuggestionButtonProps) =>
   </Button>
 )
 
-const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
+const SuggestionButtons = memo(({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
   const suggestions = [
     { label: 'Check the weather', prompt: 'What is the forecast for this week?' },
     { label: 'Check your to dos', prompt: 'What are my current tasks?' },
@@ -66,7 +66,7 @@ const SuggestionButtons = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string
       ))}
     </div>
   )
-}
+})
 
 export default function ChatUI({
   chatHelpers,
@@ -190,7 +190,7 @@ export default function ChatUI({
     return () => cancelAnimationFrame(frame)
   }, [hasMessages])
 
-  const handleSelectPrompt = (prompt: string) => {
+  const handleSelectPrompt = useCallback((prompt: string) => {
     setInput(prompt)
     requestAnimationFrame(() => {
       const textareaElement = formRef.current?.querySelector('textarea')
@@ -198,7 +198,7 @@ export default function ChatUI({
         textareaElement.focus()
       }
     })
-  }
+  }, [])
 
   const handleNewChat = async () => {
     await navigate('/chats/new')

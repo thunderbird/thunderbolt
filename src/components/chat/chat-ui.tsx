@@ -16,6 +16,7 @@ import { AssistantMessage } from './assistant-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
+import { ErrorMessage } from './error-message'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -245,14 +246,7 @@ export default function ChatUI({
             })}
 
             {/* Show error message if there's an error */}
-            {chatHelpers.error && (
-              <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto w-full">
-                <p className="text-destructive font-medium mb-1">Error</p>
-                <p className="text-destructive/80 text-sm">
-                  {chatHelpers.error.message || 'An unexpected error occurred. Please try again.'}
-                </p>
-              </div>
-            )}
+            {chatHelpers.error && <ErrorMessage message={chatHelpers.error.message} />}
 
             <div ref={scrollTargetRef} />
           </motion.div>

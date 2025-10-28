@@ -39,7 +39,7 @@ type ContentViewProviderProps = {
  */
 export const ContentViewProvider = ({ children, initialSideviewType, initialSideviewId }: ContentViewProviderProps) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
   const showObjectView = useCallback((content: ToolUIPart) => {

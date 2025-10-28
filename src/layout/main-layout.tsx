@@ -24,7 +24,7 @@ import { Outlet } from 'react-router'
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
   const { state, close } = useContentView()
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
   const { contentViewWidth } = useSettings({
     content_view_width: Number,
   })

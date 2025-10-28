@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
-import { updateChatThread } from '@/dal/chat-threads'
+import { getChatThread, updateChatThread } from '@/dal/chat-threads'
 
 export const useChatPersistence = () => {
   const navigate = useNavigate()
@@ -15,6 +15,12 @@ export const useChatPersistence = () => {
   const isNew = useMemo(() => params.chatThreadId === 'new', [params.chatThreadId])
 
   const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [isNew, params.chatThreadId])
+
+  const { data: chatThread = null } = useQuery({
+    queryKey: ['chatThreads', id],
+    queryFn: () => getChatThread(id!),
+    enabled: !!id && !isNew,
+  })
 
   const { data: messages = [], isLoading } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', id],
@@ -86,5 +92,5 @@ export const useChatPersistence = () => {
     [addMessagesMutation],
   )
 
-  return { id, isLoading, messages, saveMessages }
+  return { chatThread, id, isLoading, messages, saveMessages }
 }

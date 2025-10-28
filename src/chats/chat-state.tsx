@@ -13,7 +13,7 @@ interface ChatStateProps {
 }
 
 export default function ChatState({ chatThread, id, initialMessages, saveMessages }: ChatStateProps) {
-  const { handleModelChange, models, selectedModelId, selectedModelIdRef } = useChatModel(id)
+  const { handleModelChange, models, selectedModelId } = useChatModel(id)
 
   const chatHelpers = useChatHelpers({
     chatThread,
@@ -21,7 +21,7 @@ export default function ChatState({ chatThread, id, initialMessages, saveMessage
     initialMessages,
     saveMessages,
     models,
-    selectedModelIdRef,
+    selectedModelId,
   })
 
   useSavePartialAssistantMessages({ chatHelpers, chatThreadId: id, saveMessages })

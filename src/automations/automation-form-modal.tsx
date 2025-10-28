@@ -20,7 +20,7 @@ import type { Model, Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -75,11 +75,6 @@ export default function AutomationFormModal({
     form.setValue('prompt', value)
   }
 
-  const handleModelChange = (value: string | null) => {
-    setModelId(value)
-    form.setValue('modelId', value || '')
-  }
-
   const handleTitleChange = (value: string) => {
     setTitleText(value)
     form.setValue('title', value)
@@ -95,6 +90,14 @@ export default function AutomationFormModal({
       triggerTime: '08:00',
     },
   })
+
+  const handleModelChange = useCallback(
+    (value: string | null) => {
+      setModelId(value)
+      form.setValue('modelId', value || '')
+    },
+    [form],
+  )
 
   // Reset form and state when prompt changes or modal opens/closes
   useEffect(() => {

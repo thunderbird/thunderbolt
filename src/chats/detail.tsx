@@ -2,7 +2,7 @@ import ChatState from './chat-state'
 import { useChatPersistence } from './use-chat-persistence'
 
 export default function ChatDetailPage() {
-  const { id, isLoading, messages, saveMessages } = useChatPersistence()
+  const { chatThread, id, isLoading, messages, saveMessages } = useChatPersistence()
 
   if (!id) {
     return <div>No chat thread ID</div>
@@ -14,7 +14,7 @@ export default function ChatDetailPage() {
 
   return (
     <div className="h-full w-full">
-      <ChatState key={id} id={id} initialMessages={messages} saveMessages={saveMessages} />
+      <ChatState key={id} chatThread={chatThread} id={id} initialMessages={messages} saveMessages={saveMessages} />
     </div>
   )
 }

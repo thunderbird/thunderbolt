@@ -92,13 +92,12 @@ jobs:
           cache: false
           rustflags: ''
 
-      - name: Cache cargo registry and build
+      - name: Cache cargo dependencies
         uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
           key: ${{ runner.os }}-cargo-release-${{ inputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-release-${{ inputs.version }}-

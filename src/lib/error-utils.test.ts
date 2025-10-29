@@ -109,7 +109,7 @@ describe('createHandleError', () => {
 
     expect(error.originalError).toBe(originalError)
     // @ts-ignore - accessing custom property for testing
-    expect((error.originalError as any).customProperty).toBe('test value')
+    expect((error.originalError as Error & { customProperty: string }).customProperty).toBe('test value')
     expect(error.stackTrace).toBe(originalError.stack)
   })
 

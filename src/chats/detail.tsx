@@ -1,12 +1,13 @@
+import ChatUI from '@/components/chat/chat-ui'
 import { ChatDataProvider } from './chat-data-provider'
-import ChatState from './chat-state'
+import { ChatStateProvider } from './chat-state-provider'
 
 export default function ChatDetailPage() {
   return (
     <ChatDataProvider>
-      <div className="h-full w-full">
-        <ChatState />
-      </div>
+      <ChatStateProvider>
+        <ChatUI />
+      </ChatStateProvider>
     </ChatDataProvider>
   )
 }

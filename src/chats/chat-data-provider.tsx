@@ -17,8 +17,7 @@ import { getChatThread, updateChatThread } from '@/dal/chat-threads'
 type ChatDataState = {
   chatThread: ChatThread | null
   id: string
-  isLoadingMessages: boolean
-  messages: ThunderboltUIMessage[]
+  initialMessages: ThunderboltUIMessage[]
   models: Model[]
   saveMessages: SaveMessagesFunction
   triggerData: AutomationRun | null
@@ -40,7 +39,7 @@ export function ChatDataProvider({ children }: PropsWithChildren) {
     enabled: !!id && !isNew,
   })
 
-  const { data: messages = [], isLoading: isLoadingMessages } = useQuery<ThunderboltUIMessage[], Error>({
+  const { data: initialMessages = [], isLoading: isLoadingInitialMessages } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', id],
     queryFn: async () => {
       const chatMessages = await getChatMessages(id!)
@@ -49,7 +48,7 @@ export function ChatDataProvider({ children }: PropsWithChildren) {
     enabled: !!id && !isNew,
   })
 
-  const { data: models = [] } = useQuery({
+  const { data: models = [], isLoading: isLoadingModels } = useQuery({
     queryKey: ['models'],
     queryFn: getAvailableModels,
     enabled: !!id,
@@ -127,7 +126,7 @@ export function ChatDataProvider({ children }: PropsWithChildren) {
     return <div>No chat thread ID</div>
   }
 
-  if (isLoadingMessages) {
+  if (isLoadingInitialMessages || isLoadingModels) {
     return null
   }
 
@@ -136,8 +135,7 @@ export function ChatDataProvider({ children }: PropsWithChildren) {
       value={{
         chatThread,
         id,
-        isLoadingMessages,
-        messages,
+        initialMessages,
         models,
         saveMessages,
         triggerData,

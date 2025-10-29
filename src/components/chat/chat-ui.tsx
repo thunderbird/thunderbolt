@@ -2,10 +2,8 @@ import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
-import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
-import type { UseChatHelpers } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -13,34 +11,20 @@ import { PromptInput } from '../ui/prompt-input'
 import { ChatMessages } from './chat-messages'
 import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
+import { useChatState } from '@/chats/chat-state-provider'
+import { useChatData } from '@/chats/chat-data-provider'
 
-interface ChatUIProps {
-  chatHelpers: UseChatHelpers<ThunderboltUIMessage>
-  models: Model[]
-  selectedModelId?: string
-  onModelChange: (model: string | null) => void
-  triggerAutomation?: AutomationRun | null
-  chatThreadId: string
-  chatThread: ChatThread | null
-}
+export default function ChatUI() {
+  const { chatThread, id: chatThreadId, models, triggerData } = useChatData()
 
-export default function ChatUI({
-  chatHelpers,
-  models,
-  selectedModelId,
-  onModelChange,
-  triggerAutomation,
-  chatThreadId,
-  chatThread,
-}: ChatUIProps) {
-  const hasMessages = useMemo(() => chatHelpers.messages.length > 0, [chatHelpers.messages.length])
-  const isStreaming = useMemo(() => chatHelpers.status === 'streaming', [chatHelpers.status])
+  const { error, handleModelChange, handleSendMessage, handleStop, hasMessages, isStreaming, messages, selectedModel } =
+    useChatState()
 
   const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } = useChatScrollHandler(
     {
       hasMessages,
       isStreaming,
-      messages: chatHelpers.messages,
+      messages,
     },
   )
 
@@ -49,11 +33,6 @@ export default function ChatUI({
   const formRef = useRef<HTMLFormElement>(null)
   const navigate = useNavigate()
   const { isMobile, isReady } = useIsMobile()
-
-  const selectedModel = useMemo(
-    () => models.find((m) => m.id === selectedModelId) || models[0],
-    [models, selectedModelId],
-  )
 
   const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
     model: selectedModel,
@@ -70,23 +49,17 @@ export default function ChatUI({
     if (isOverflowing) {
       setShowOverflowModal(true)
       trackEvent('chat_send_prompt_overflow', {
-        model: selectedModelId,
+        model: selectedModel,
         length: textToSend.length,
-        prompt_number: chatHelpers.messages.length + 1,
+        prompt_number: messages.length + 1,
       })
       return
     }
 
-    trackEvent('chat_send_prompt', {
-      model: selectedModelId,
-      length: textToSend.length,
-      prompt_number: chatHelpers.messages.length + 1,
-    })
-
     // Clear the input immediately for responsive UX
     setInput('')
 
-    await chatHelpers.sendMessage({ text: textToSend, metadata: { modelId: selectedModelId } })
+    await handleSendMessage(textToSend)
 
     // Reset user scroll state and scroll to bottom when submitting a new message
     resetUserScroll()
@@ -114,47 +87,39 @@ export default function ChatUI({
   }
 
   return (
-    <div
-      className={cn(
-        'flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
-        isMobile && 'pb-0',
-      )}
-    >
-      <AnimatePresence>
-        {hasMessages && (
-          <motion.div
-            ref={scrollContainerRef}
-            {...scrollHandlers}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1 p-4 overflow-y-auto space-y-4 max-w-dvw"
-          >
-            <ChatMessages
-              chatThreadId={chatThreadId}
-              error={chatHelpers.error?.message ?? ''}
-              isEncrypted={chatThread?.isEncrypted === 1}
-              isStreaming={isStreaming}
-              messages={chatHelpers.messages}
-              triggerAutomation={triggerAutomation}
-            />
-            <div ref={scrollTargetRef} />
-          </motion.div>
+    <div className="h-full w-full">
+      <div
+        className={cn(
+          'flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
+          isMobile && 'pb-0',
         )}
-      </AnimatePresence>
-
-      <motion.div
-        className={cn('p-4 flex', !hasMessages && 'flex-1 items-center')}
-        initial={false}
-        layout
-        transition={{
-          type: 'tween',
-          ease: [0.2, 0.9, 0.1, 1],
-          duration: 0.25,
-        }}
       >
+        <AnimatePresence>
+          {hasMessages && (
+            <motion.div
+              ref={scrollContainerRef}
+              {...scrollHandlers}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 p-4 overflow-y-auto space-y-4 max-w-dvw"
+            >
+              <ChatMessages
+                chatThreadId={chatThreadId}
+                error={error?.message ?? ''}
+                isEncrypted={chatThread?.isEncrypted === 1}
+                isStreaming={isStreaming}
+                messages={messages}
+                triggerAutomation={triggerData}
+              />
+              <div ref={scrollTargetRef} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.div
-          className="flex flex-col items-center w-full"
+          className={cn('p-4 flex', !hasMessages && 'flex-1 items-center')}
+          initial={false}
           layout
           transition={{
             type: 'tween',
@@ -163,7 +128,7 @@ export default function ChatUI({
           }}
         >
           <motion.div
-            className="w-full max-w-[696px] min-w-[268px]"
+            className="flex flex-col items-center w-full"
             layout
             transition={{
               type: 'tween',
@@ -171,51 +136,61 @@ export default function ChatUI({
               duration: 0.25,
             }}
           >
-            <PromptInput
-              ref={formRef}
-              chatThread={chatThread}
-              value={input}
-              onChange={(value: string) => setInput(value)}
-              placeholder="Say something..."
-              models={models}
-              selectedModelId={selectedModelId}
-              onModelChange={onModelChange}
-              showSubmitButton
-              onSubmit={handleSubmit}
-              isLoading={chatHelpers.status === 'streaming'}
-              isStreaming={isStreaming}
-              onStop={() => chatHelpers.stop()}
-              autoFocus
-              submitOnEnter={!isStreaming}
-              className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
-              footerStartElements={
-                isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
-              }
-            />
+            <motion.div
+              className="w-full max-w-[696px] min-w-[268px]"
+              layout
+              transition={{
+                type: 'tween',
+                ease: [0.2, 0.9, 0.1, 1],
+                duration: 0.25,
+              }}
+            >
+              <PromptInput
+                ref={formRef}
+                chatThread={chatThread}
+                value={input}
+                onChange={(value: string) => setInput(value)}
+                placeholder="Say something..."
+                models={models}
+                selectedModelId={selectedModel.id}
+                onModelChange={handleModelChange}
+                showSubmitButton
+                onSubmit={handleSubmit}
+                isLoading={isStreaming}
+                isStreaming={isStreaming}
+                onStop={handleStop}
+                autoFocus
+                submitOnEnter={!isStreaming}
+                className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+                footerStartElements={
+                  isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
+                }
+              />
+            </motion.div>
+
+            {!hasMessages && (
+              <AnimatePresence>
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ delay: 0.1 }}
+                  className="w-full overflow-x-auto pb-2"
+                >
+                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
+                </motion.div>
+              </AnimatePresence>
+            )}
           </motion.div>
-
-          {!hasMessages && (
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ delay: 0.1 }}
-                className="w-full overflow-x-auto pb-2"
-              >
-                <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
-              </motion.div>
-            </AnimatePresence>
-          )}
         </motion.div>
-      </motion.div>
 
-      <ContextOverflowModal
-        isOpen={showOverflowModal}
-        onClose={() => setShowOverflowModal(false)}
-        maxTokens={maxTokens ?? undefined}
-        onNewChat={handleNewChat}
-      />
+        <ContextOverflowModal
+          isOpen={showOverflowModal}
+          onClose={() => setShowOverflowModal(false)}
+          maxTokens={maxTokens ?? undefined}
+          onNewChat={handleNewChat}
+        />
+      </div>
     </div>
   )
 }

@@ -95,6 +95,7 @@ Usage:
 Options:
   -v, --version <version>   Specify exact version (e.g., 1.2.3)
   -t, --type <type>         Version bump type: major, minor, patch, or auto (default: auto)
+  --platform <platform>     Target platform: all, ios, android, or desktop (default: all)
   -d, --dry-run             Show what would be done without making changes
   -p, --push                Push commit and tag to remote (default: local only)
   -h, --help                Show this help message

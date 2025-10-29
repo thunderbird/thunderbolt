@@ -4,8 +4,11 @@ import { getDefaultModelForThread } from '@/dal'
 import type { Model } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useChatData } from './chat-data-provider'
 
-export const useChatModel = (chatThreadId: string, models: Model[]) => {
+export const useChatModel = () => {
+  const { id: chatThreadId, models } = useChatData()
+
   const { selectedModel: selectedModelSetting } = useSettings({
     selected_model: '',
   })

@@ -1,4 +1,4 @@
-import { createContext, type PropsWithChildren, useCallback, useContext } from 'react'
+import { createContext, type PropsWithChildren, useCallback, useContext, useMemo } from 'react'
 import { useChatData } from './chat-data-provider'
 import { useChatModel } from './use-chat-model'
 import { useChatHelpers } from './use-chat-helpers'
@@ -21,18 +21,19 @@ type ChatStateState = {
 const ChatStateContext = createContext<ChatStateState>({} as ChatStateState)
 
 export function ChatStateProvider({ children }: PropsWithChildren) {
-  const { chatThread, initialMessages, id, models, saveMessages } = useChatData()
+  const { chatThread } = useChatData()
 
-  const { handleModelChange, selectedModel } = useChatModel(id, models)
+  const { handleModelChange, selectedModel } = useChatModel()
 
   const chatHelpers = useChatHelpers({
-    chatThreadId: id,
-    initialMessages,
-    saveMessages,
     selectedModel,
   })
 
-  useSavePartialAssistantMessages({ chatHelpers, chatThreadId: id, saveMessages })
+  const isStreaming = useMemo(() => chatHelpers.status === 'streaming', [chatHelpers.status])
+
+  const messages = useMemo(() => chatHelpers.messages, [chatHelpers.messages])
+
+  useSavePartialAssistantMessages({ isStreaming, messages })
 
   useChatAutomation({ chatHelpers, selectedModelId: selectedModel.id })
 
@@ -72,8 +73,8 @@ export function ChatStateProvider({ children }: PropsWithChildren) {
         handleStop: chatHelpers.stop,
         error: chatHelpers.error,
         hasMessages: chatHelpers.messages.length > 0,
-        isStreaming: chatHelpers.status === 'streaming',
-        messages: chatHelpers.messages,
+        isStreaming,
+        messages,
         selectedModel,
       }}
     >

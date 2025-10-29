@@ -1,6 +1,8 @@
+import { AppLogo } from '@/components/app-logo'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Shield, Lock, Eye, Database } from 'lucide-react'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
+import { Database, EyeOff, ServerOff } from 'lucide-react'
+import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
 
 type OnboardingPrivacyStepProps = {
@@ -21,30 +23,28 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
   return (
     <div className="w-full flex flex-col">
       <div className="text-center space-y-4">
-        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-          <Shield className="w-8 h-8 text-primary" />
-        </div>
-        <h2 className="text-2xl font-bold">Privacy & Security First</h2>
-        <p className="text-sm text-muted-foreground">Your privacy is our priority.</p>
+        <IconCircle>
+          <AppLogo size={32} />
+        </IconCircle>
+        <h2 className="text-2xl font-bold">
+          Welcome to <b>Thunderbolt</b>!
+        </h2>
+        <p className="text-sm text-muted-foreground">Your privacy-first AI assistant</p>
       </div>
 
       <div className="space-y-4 sm:space-y-3 pt-5">
         <OnboardingFeatureCard
-          icon={Lock}
-          title="On-Device Processing"
-          description="View and manage your schedule and create events."
+          icon={ServerOff}
+          title="Zero Logs"
+          description="We don't keep logs of your conversations."
         />
 
-        <OnboardingFeatureCard
-          icon={Eye}
-          title="No Data Collection"
-          description="We don't collect or share your personal information."
-        />
+        <OnboardingFeatureCard icon={EyeOff} title="Zero Training" description="We don't train models on your data." />
 
         <OnboardingFeatureCard
           icon={Database}
           title="Local Storage"
-          description="All data stored securely on your device."
+          description="Data is stored securely on your device."
         />
       </div>
 
@@ -54,9 +54,9 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
             id="terms-agreement"
             checked={state.privacyAgreed}
             onCheckedChange={(checked) => handleAgreementChange(checked === true)}
-            className="mt-1.5 scale-130"
+            className="mt-1.5 scale-130 cursor-pointer"
           />
-          <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed">
+          <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed cursor-pointer">
             I agree to the{' '}
             <a
               href="https://www.thunderbird.net/en-US/privacy/"
@@ -66,7 +66,16 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
             >
               Privacy Policy
             </a>{' '}
-            and understand how my data is handled.
+            and{' '}
+            <a
+              href="https://www.mozilla.org/en-US/about/legal/terms/mozilla/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline hover:no-underline font-medium"
+            >
+              Terms of Service
+            </a>
+            .
           </label>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { User } from 'lucide-react'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { useSettings } from '@/hooks/use-settings'
+import { IconCircle } from './icon-circle'
 
 const nameFormSchema = z.object({
   preferredName: z.string().min(1, { message: 'Name is required.' }),
@@ -86,9 +87,9 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
   return (
     <div className="w-full h-full flex flex-col justify-center">
       <div className="text-center space-y-4">
-        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+        <IconCircle>
           <User className="w-8 h-8 text-primary" />
-        </div>
+        </IconCircle>
         <h2 className="text-2xl font-bold">What should we call you?</h2>
         <p className="text-muted-foreground">Your AI assistant will use this name to address you personally.</p>
       </div>

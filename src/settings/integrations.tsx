@@ -3,21 +3,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { configs as googleToolConfigs } from '@/integrations/google/tools'
 import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
-import {
-  exchangeCodeForTokens,
-  getUserInfo,
-  redirectOAuthFlow,
-  type GoogleUserInfo,
-  type OAuthTokens,
-} from '@/lib/auth'
+import { type OAuthProvider } from '@/lib/auth'
 import { getSettings, updateSetting } from '@/dal'
-import { startOAuthFlowWebview } from '@/lib/oauth-webview'
-import { isTauri } from '@/lib/platform'
-import { Loader2 } from 'lucide-react'
+import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -83,8 +76,17 @@ export default function IntegrationsPage() {
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
-  const [connectingProvider, setConnectingProvider] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const { processCallback } = useOAuthConnect({
+    onSuccess: () => {
+      loadIntegrations()
+    },
+    onError: (error) => {
+      setError(error.message)
+    },
+    returnContext: 'integrations',
+  })
 
   useEffect(() => {
     loadIntegrations()
@@ -95,74 +97,17 @@ export default function IntegrationsPage() {
     const oauth = (location.state as any)?.oauth
     if (!oauth) return
 
-    const processCallback = async () => {
-      const {
-        code,
-        state: returnedState,
-        error: oauthError,
-      } = oauth as {
-        code?: string
-        state?: string
-        error?: string
-      }
-
-      if (oauthError) {
-        setError(oauthError)
-        // Clear state so we don't process again
-        navigate('.', { replace: true, state: null })
-        return
-      }
-
-      if (!code || !returnedState) return
-
-      const storedState = sessionStorage.getItem('oauth_state')
-      const provider = sessionStorage.getItem('oauth_provider') as 'google' | 'microsoft' | null
-      const codeVerifier = sessionStorage.getItem('oauth_verifier')
-
-      if (!provider || !codeVerifier || storedState !== returnedState) {
-        setError('OAuth validation failed — please try again.')
-        navigate('.', { replace: true, state: null })
-        return
-      }
-
+    const handleCallback = async () => {
       try {
-        setConnectingProvider(provider)
-
-        const tokens: OAuthTokens = await exchangeCodeForTokens(provider, code, codeVerifier)
-        const userInfo: GoogleUserInfo = await getUserInfo(provider, tokens.access_token)
-
-        const credentials = {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || '',
-          expires_at: Date.now() + tokens.expires_in * 1000,
-          profile: {
-            email: userInfo.email,
-            name: userInfo.name,
-            picture: (userInfo as any).picture,
-          },
-        }
-
-        await updateSetting(`integrations_${provider}_credentials`, JSON.stringify(credentials))
-        await updateSetting(`integrations_${provider}_is_enabled`, 'true')
-
-        // Cleanup session storage
-        sessionStorage.removeItem('oauth_state')
-        sessionStorage.removeItem('oauth_provider')
-        sessionStorage.removeItem('oauth_verifier')
-
-        // Clear navigation state
-        navigate('.', { replace: true, state: null })
-
-        await loadIntegrations()
-      } catch (err: any) {
+        await processCallback(oauth)
+      } catch (err) {
         console.error('Failed to complete OAuth:', err)
-        setError(err.message || 'Failed to complete authentication')
       } finally {
-        setConnectingProvider(null)
+        navigate('.', { replace: true, state: null })
       }
     }
 
-    processCallback()
+    handleCallback()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
@@ -255,57 +200,6 @@ export default function IntegrationsPage() {
     }
   }
 
-  const handleConnect = async (integration: Integration) => {
-    const provider = integration.provider as 'google' | 'microsoft'
-
-    setConnectingProvider(provider)
-    setError(null)
-
-    try {
-      console.log(`Starting ${integration.name} OAuth flow...`)
-
-      if (isTauri()) {
-        const result = await startOAuthFlowWebview(provider)
-
-        if (!result) {
-          // User cancelled the flow
-          return
-        }
-
-        const { tokens, userInfo } = result
-
-        const credentials = {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || '',
-          expires_at: Date.now() + tokens.expires_in * 1000,
-          profile: {
-            email: userInfo.email,
-            name: userInfo.name,
-            picture: (userInfo as any).picture,
-          },
-        }
-
-        await updateSetting(`integrations_${provider}_credentials`, JSON.stringify(credentials))
-        await updateSetting(`integrations_${provider}_is_enabled`, 'true')
-
-        console.log(`Connected successfully as ${userInfo.email}`)
-
-        await loadIntegrations()
-      } else {
-        // For web: perform full redirect and let the callback route handle the rest
-        redirectOAuthFlow(provider)
-      }
-    } catch (error: any) {
-      console.error('OAuth error:', error)
-      setError(error.message || 'Failed to complete authentication')
-    } finally {
-      // For web we never reach this point because the page is redirected.
-      if (isTauri()) {
-        setConnectingProvider(null)
-      }
-    }
-  }
-
   const handleGetPro = async () => {
     // For now, just show an alert since this is a placeholder
     alert(
@@ -386,22 +280,25 @@ export default function IntegrationsPage() {
 
             {!integration.isConnected && (
               <CardContent>
-                <Button
-                  onClick={() =>
-                    integration.provider === 'thunderbolt-pro' ? handleGetPro() : handleConnect(integration)
-                  }
-                  className="w-full"
-                  disabled={connectingProvider !== null}
-                >
-                  {connectingProvider === integration.provider ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    integration.connectLabel
-                  )}
-                </Button>
+                {integration.provider === 'thunderbolt-pro' ? (
+                  <Button onClick={handleGetPro} className="w-full">
+                    {integration.connectLabel}
+                  </Button>
+                ) : (
+                  <ConnectProviderButton
+                    provider={integration.provider as OAuthProvider}
+                    isConnected={false}
+                    onSuccess={() => {
+                      loadIntegrations()
+                    }}
+                    onError={(error) => {
+                      setError(error.message)
+                    }}
+                    returnContext="integrations"
+                    className="w-full"
+                    connectLabel={integration.connectLabel}
+                  />
+                )}
               </CardContent>
             )}
 

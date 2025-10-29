@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { useForm } from 'react-hook-form'
@@ -67,7 +67,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationName', location.name, { shouldDirty: true })
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
-    form.trigger() // Trigger validation to update form state
+    form.trigger()
     locationSearch.setOpen(false)
 
     try {
@@ -91,7 +91,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
   }, [])
 
   useEffect(() => {
-    if (!isInitialized) return // Don't track changes until initialized
+    if (!isInitialized) return
 
     const subscription = form.watch((value) => {
       const hasValidLocation = !!(
@@ -153,13 +153,12 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-3">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-5">
           <FormField
             control={form.control}
             name="locationName"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <FormLabel>Location</FormLabel>
                 <Popover
                   open={locationSearch.open}
                   onOpenChange={(newOpen) => {

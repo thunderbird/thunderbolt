@@ -94,7 +94,7 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
       </div>
 
       <Form {...form}>
-        <div className="space-y-6 pt-3">
+        <div className="space-y-6 pt-5">
           <FormField
             control={form.control}
             name="preferredName"

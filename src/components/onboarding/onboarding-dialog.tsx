@@ -120,7 +120,7 @@ export const OnboardingDialog = () => {
               showSkip={state.currentStep === 5 ? false : state.canSkip}
               skipDisabled={
                 (state.currentStep === 2 && state.isProviderConnected) ||
-                (state.currentStep === 3 && isFormDirty) ||
+                (state.currentStep === 3 && state.isNameValid) ||
                 (state.currentStep === 4 && isFormDirty)
               }
               continueDisabled={

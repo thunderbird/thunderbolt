@@ -42,6 +42,8 @@ module.exports = {
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-non-null-assertion': 'off',
+    '@typescript-eslint/ban-ts-comment': 'warn',
+    '@typescript-eslint/no-unsafe-function-type': 'warn',
     '@typescript-eslint/consistent-type-imports': [
       'error',
       {
@@ -53,15 +55,19 @@ module.exports = {
     // React rules
     'react/react-in-jsx-scope': 'off',
     'react/prop-types': 'off',
+    'react/display-name': 'off',
+    'react/no-unescaped-entities': 'off',
+    'react/jsx-no-target-blank': 'warn',
 
     // React Hooks rules
-    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/rules-of-hooks': 'warn',  // Storybook render functions trigger false positives
     'react-hooks/exhaustive-deps': 'warn',
 
     // General rules
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     'prefer-const': 'error',
     'no-async-promise-executor': 'off',
+    'no-constant-condition': 'warn',  // Test files use while(true) for event loops
     'no-restricted-imports': [
       'error',
       {

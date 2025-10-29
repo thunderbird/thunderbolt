@@ -124,13 +124,17 @@ export const OnboardingDialog = () => {
                 (state.currentStep === 4 && isFormDirty)
               }
               continueDisabled={
-                state.currentStep === 5
-                  ? isCompleting
-                  : state.currentStep === 3
-                    ? !state.isNameValid
-                    : state.currentStep === 4
-                      ? !state.isLocationValid
-                      : !state.canGoNext
+                state.currentStep === 1
+                  ? !state.privacyAgreed
+                  : state.currentStep === 2
+                    ? !state.isProviderConnected
+                    : state.currentStep === 3
+                      ? !state.isNameValid
+                      : state.currentStep === 4
+                        ? !state.isLocationValid
+                        : state.currentStep === 5
+                          ? isCompleting
+                          : true
               }
               continueText={
                 state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'

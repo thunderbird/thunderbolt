@@ -315,6 +315,17 @@ export const useOnboardingState = () => {
     },
     skipStep: async () => {
       const newStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+
+      if (state.currentStep === 3) {
+        try {
+          await preferredName.setValue('')
+          dispatch({ type: 'SET_NAME_VALUE', payload: '' })
+          dispatch({ type: 'SET_NAME_VALID', payload: false })
+        } catch (error) {
+          console.error('Failed to clear name when skipping:', error)
+        }
+      }
+
       dispatch({ type: 'SKIP_STEP' })
       await onboardingCurrentStep.setValue(String(newStep))
     },

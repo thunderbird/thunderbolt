@@ -1,24 +1,19 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { trackEvent } from '@/lib/posthog'
 import { useMCP } from '@/lib/mcp-provider'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { useChatData } from './chat-data-provider'
 
 type UseChatHelpersParams = {
-  chatThreadId: string
-  initialMessages: ThunderboltUIMessage[]
-  saveMessages: SaveMessagesFunction
   selectedModel: Model
 }
-export const useChatHelpers = ({
-  chatThreadId,
-  initialMessages,
-  saveMessages,
-  selectedModel,
-}: UseChatHelpersParams) => {
+export const useChatHelpers = ({ selectedModel }: UseChatHelpersParams) => {
+  const { initialMessages, id: chatThreadId, saveMessages } = useChatData()
+
   const { getEnabledClients } = useMCP()
 
   const selectedModelIdRef = useRef<string | null>(null)

@@ -1,19 +1,16 @@
 import { useThrottledCallback } from '@/hooks/use-throttle'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { type UseChatHelpers } from '@ai-sdk/react'
+import type { ThunderboltUIMessage } from '@/types'
 import { useEffect } from 'react'
+import { useChatData } from './chat-data-provider'
 
 type UseSavePartialAssistantMessagesParams = {
-  chatHelpers: UseChatHelpers<ThunderboltUIMessage>
-  chatThreadId: string
-  saveMessages: SaveMessagesFunction
+  isStreaming: boolean
+  messages: ThunderboltUIMessage[]
 }
 
-export const useSavePartialAssistantMessages = ({
-  chatHelpers,
-  chatThreadId,
-  saveMessages,
-}: UseSavePartialAssistantMessagesParams) => {
+export const useSavePartialAssistantMessages = ({ isStreaming, messages }: UseSavePartialAssistantMessagesParams) => {
+  const { id: chatThreadId, saveMessages } = useChatData()
+
   const throttledSave = useThrottledCallback((message: ThunderboltUIMessage) => {
     saveMessages({
       id: chatThreadId,
@@ -22,10 +19,10 @@ export const useSavePartialAssistantMessages = ({
   }, 200)
 
   useEffect(() => {
-    const latestMessage = chatHelpers.messages[chatHelpers.messages.length - 1]
+    const latestMessage = messages[messages.length - 1]
 
-    if (chatHelpers.status === 'streaming' && latestMessage?.role === 'assistant') {
+    if (isStreaming && latestMessage?.role === 'assistant') {
       throttledSave(latestMessage)
     }
-  }, [chatHelpers.messages, chatHelpers.status, throttledSave])
+  }, [messages, isStreaming, throttledSave])
 }

@@ -31,57 +31,67 @@ export const sanitizeUrl = (url: string): string => {
   return url
 }
 
+type PostHogInitResult =
+  | { success: true; client: PostHog | null }
+  | { success: false; code: 'POSTHOG_FETCH_FAILED'; error: unknown }
+
 /**
  * Initialize Posthog analytics and return the client
  */
-export const initPosthog = async (): Promise<PostHog | null> => {
-  const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
-    cloud_url: 'http://localhost:8000/v1',
-    data_collection: true,
-    debug_posthog: false,
-  })
+export const initPosthog = async (): Promise<PostHogInitResult> => {
+  try {
+    const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
+      cloud_url: 'http://localhost:8000/v1',
+      data_collection: true,
+      debug_posthog: false,
+    })
 
-  const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
+    const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
 
-  if (!apiKey) {
-    console.log('Posthog analytics disabled - no API key provided')
-    return null
-  }
+    if (!apiKey) {
+      console.log('Posthog analytics disabled - no API key provided')
+      return { success: true, client: null }
+    }
 
-  // Use the cloudUrl proxy for PostHog analytics
-  const apiHost = `${cloudUrl}/posthog`
+    // Use the cloudUrl proxy for PostHog analytics
+    const apiHost = `${cloudUrl}/posthog`
 
-  if (!posthogClient) {
-    posthogClient = posthog.init(apiKey, {
-      opt_out_capturing_by_default: !dataCollection,
-      api_host: apiHost,
-      debug: debugPosthog,
-      autocapture: false,
-      capture_exceptions: true,
-      capture_pageview: false,
-      capture_pageleave: false,
-      persistence: 'localStorage',
-      before_send: (event) => {
-        if (!event) return null
-        if (event.event === '$pageview' || event.event === '$pageleave') {
-          if (typeof event.properties?.$current_url === 'string') {
-            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
+    if (!posthogClient) {
+      posthogClient = posthog.init(apiKey, {
+        opt_out_capturing_by_default: !dataCollection,
+        api_host: apiHost,
+        debug: debugPosthog,
+        autocapture: false,
+        capture_exceptions: true,
+        capture_pageview: false,
+        capture_pageleave: false,
+        persistence: 'localStorage',
+        before_send: (event) => {
+          if (!event) return null
+          if (event.event === '$pageview' || event.event === '$pageleave') {
+            if (typeof event.properties?.$current_url === 'string') {
+              event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
+            }
           }
-        }
 
-        if (typeof event.properties?.url === 'string') {
-          event.properties.url = sanitizeUrl(event.properties.url)
-        }
-        if (typeof event.properties?.$pathname === 'string') {
-          event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
-        }
+          if (typeof event.properties?.url === 'string') {
+            event.properties.url = sanitizeUrl(event.properties.url)
+          }
+          if (typeof event.properties?.$pathname === 'string') {
+            event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
+          }
 
-        return event
-      },
-    }) as PostHog
+          return event
+        },
+      }) as PostHog
+    }
+
+    return { success: true, client: posthogClient }
+  } catch (error) {
+    // TODO: track these errors in some analytics tool.
+    console.warn('Failed to initialize PostHog, continuing without analytics:', error)
+    return { success: false, code: 'POSTHOG_FETCH_FAILED', error }
   }
-
-  return posthogClient
 }
 
 /**

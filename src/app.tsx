@@ -47,6 +47,11 @@ import Loading from './loading'
 import { ContentViewProvider } from './content-view/context'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
+import type { InitError, InitResult } from './types/init-errors'
+import type { AnyDrizzleDatabase } from './db/database-interface'
+import type { TrayIcon } from '@tauri-apps/api/tray'
+import type { Window } from '@tauri-apps/api/window'
+import type { PostHog } from 'posthog-js'
 
 const queryClient = new QueryClient()
 
@@ -98,91 +103,223 @@ function AppRoutes(_: { initData: InitData }) {
   )
 }
 
-const init = async (): Promise<InitData> => {
-  const appDirPath = await createAppDir()
-  const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(databaseType, appDirPath)
+const init = async (): Promise<InitResult<InitData>> => {
+  try {
+    // Step 1: App directory creation
+    let appDirPath: string
+    try {
+      appDirPath = await createAppDir()
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      return {
+        success: false,
+        error: {
+          code: 'APP_DIR_CREATION_FAILED',
+          message: 'Failed to create app directory',
+          originalError: error,
+        },
+      }
+    }
 
-  const db = await DatabaseSingleton.instance.initialize({
-    type: databaseType,
-    path: dbPath,
-  })
+    // Step 2: Database path resolution
+    let databaseType: 'sqlocal' | 'libsql-tauri' | 'bun-sqlite'
+    let dbPath: string
+    try {
+      databaseType = await getDatabaseType()
+      dbPath = await getDatabasePath(databaseType, appDirPath)
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_PATH_FAILED',
+          message: 'Failed to resolve database path',
+          originalError: error,
+        },
+      }
+    }
 
-  await migrate(db)
-  await reconcileDefaults(db)
+    // Step 3: Database initialization
+    let db: AnyDrizzleDatabase
+    try {
+      db = await DatabaseSingleton.instance.initialize({
+        type: databaseType,
+        path: dbPath,
+      })
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_INIT_FAILED',
+          message: 'Failed to initialize database',
+          originalError: error,
+        },
+      }
+    }
 
-  const tray = await TrayManager.initIfSupported()
+    // Step 4: Database migrations
+    try {
+      await migrate(db)
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      return {
+        success: false,
+        error: {
+          code: 'MIGRATION_FAILED',
+          message: 'Failed to run database migrations',
+          originalError: error,
+        },
+      }
+    }
 
-  const url = new URL(window.location.href)
-  const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
+    // Step 5: Reconcile defaults (critical for app functionality)
+    try {
+      await reconcileDefaults(db)
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      return {
+        success: false,
+        error: {
+          code: 'RECONCILE_DEFAULTS_FAILED',
+          message: 'Failed to reconcile default settings',
+          originalError: error,
+        },
+      }
+    }
 
-  const posthogClient = await initPosthog()
+    // Step 6: Tray initialization (non-critical)
+    let tray: { tray: TrayIcon | undefined; window: Window | undefined } = { tray: undefined, window: undefined }
+    try {
+      tray = await TrayManager.initIfSupported()
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      console.warn('Failed to initialize tray, continuing without tray support:', error)
+    }
 
-  return {
-    sideviewType,
-    sideviewId,
-    posthogClient,
-    ...tray,
+    const url = new URL(window.location.href)
+    const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
+
+    // Step 7: PostHog initialization (non-critical)
+    let posthogClient: PostHog | null = null
+    try {
+      const posthogResult = await initPosthog()
+      if (posthogResult.success) {
+        posthogClient = posthogResult.client
+      } else {
+        // TODO: track these errors in some analytics tool.
+        console.warn('PostHog initialization failed:', posthogResult.error)
+      }
+    } catch (error) {
+      // TODO: track these errors in some analytics tool.
+      console.warn('Unexpected error during PostHog initialization:', error)
+    }
+
+    return {
+      success: true,
+      data: {
+        sideviewType,
+        sideviewId,
+        posthogClient,
+        ...tray,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: 'UNKNOWN_ERROR',
+        message: 'An unexpected error occurred during initialization',
+        originalError: error,
+      },
+    }
   }
 }
 
 export const App = () => {
   const [initData, setInitData] = useState<InitData>()
-  const [initError, setInitError] = useState<Error>()
+  const [initError, setInitError] = useState<InitError>()
   const [isClearingDatabase, setIsClearingDatabase] = useState(false)
 
   useEffect(() => {
-    init()
-      .then(setInitData)
-      .catch((error) => {
-        console.error('Failed to initialize app:', error)
-        setInitError(error)
-      })
+    init().then((result) => {
+      if (result.success) {
+        setInitData(result.data)
+      } else {
+        console.error('Failed to initialize app:', result.error)
+        setInitError(result.error)
+      }
+    })
   }, [])
 
   const handleClearDatabase = async () => {
     setIsClearingDatabase(true)
     try {
       await resetAppDir()
-      const newInitData = await init()
-      setInitData(newInitData)
+      const result = await init()
+      if (result.success) {
+        setInitData(result.data)
+        setInitError(undefined)
+      } else {
+        setInitError(result.error)
+      }
     } finally {
       setIsClearingDatabase(false)
     }
   }
 
   if (initError) {
+    const isDatabaseError = initError.code === 'MIGRATION_FAILED' || initError.code === 'DATABASE_INIT_FAILED'
+
     return (
       <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
         <div className="text-red-500 text-center mb-4">Failed to initialize app</div>
         <div className="text-sm text-gray-500 text-center mb-6">{initError.message}</div>
 
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={isClearingDatabase}>
-              {isClearingDatabase ? 'Clearing Database...' : 'Clear Local Database'}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Clear Local Database?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Unfortuantely, the local database encountered an error while being migrated to the latest version of
-                this app. Deleting your local data will resolve the issue but you will lose your settings and chat
-                history.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleClearDatabase}
-                className="bg-destructive text-white hover:bg-destructive/90"
-              >
-                Clear Database
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex flex-col gap-3">
+          {isDatabaseError && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isClearingDatabase}>
+                  {isClearingDatabase ? 'Clearing Database...' : 'Clear Local Database'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Local Database?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Unfortunately, the local database encountered an error while being migrated to the latest version of
+                    this app. Deleting your local data will resolve the issue but you will permanently lose your
+                    settings and chat history. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleClearDatabase}
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                  >
+                    Clear Database
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={() =>
+              window.open(
+                'mailto:support@thunderbird.net?subject=App Initialization Error&body=Error Code: ' +
+                  initError.code +
+                  '%0AError Message: ' +
+                  encodeURIComponent(initError.message),
+              )
+            }
+          >
+            Contact Support
+          </Button>
+        </div>
       </div>
     )
   }

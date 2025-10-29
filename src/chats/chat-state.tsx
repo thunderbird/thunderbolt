@@ -1,19 +1,14 @@
 import ChatUI from '@/components/chat/chat-ui'
-import type { ChatThread, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChatModel } from './use-chat-model'
 import { useChatAutomation } from './use-chat-automation'
 import { useChatHelpers } from './use-chat-helpers'
 import { useSavePartialAssistantMessages } from './use-save-partial-assistant-messages'
+import { useChatData } from './chat-data-provider'
 
-interface ChatStateProps {
-  chatThread: ChatThread | null
-  id: string
-  initialMessages: ThunderboltUIMessage[]
-  saveMessages: SaveMessagesFunction
-}
+export default function ChatState() {
+  const { chatThread, id, messages: initialMessages, models, saveMessages, triggerData } = useChatData()
 
-export default function ChatState({ chatThread, id, initialMessages, saveMessages }: ChatStateProps) {
-  const { handleModelChange, models, selectedModelId } = useChatModel(id)
+  const { handleModelChange, selectedModelId } = useChatModel(id)
 
   const chatHelpers = useChatHelpers({
     chatThread,
@@ -26,7 +21,7 @@ export default function ChatState({ chatThread, id, initialMessages, saveMessage
 
   useSavePartialAssistantMessages({ chatHelpers, chatThreadId: id, saveMessages })
 
-  const { triggerData } = useChatAutomation({ chatHelpers, chatThreadId: id, selectedModelId })
+  useChatAutomation({ chatHelpers, selectedModelId })
 
   // If we don't pass a selectedModelId to the ChatUI, it will warn about changing an input from uncontrolled to controlled
   if (!selectedModelId) {

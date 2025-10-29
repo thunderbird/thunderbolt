@@ -1,22 +1,13 @@
-import { getTriggerPromptForThread } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
 import { type UseChatHelpers } from '@ai-sdk/react'
-import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
 type UseChatAutomationParams = {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
-  chatThreadId: string
   selectedModelId: string | null
 }
 
-export const useChatAutomation = ({ chatHelpers, chatThreadId, selectedModelId }: UseChatAutomationParams) => {
-  // Load the automation prompt that triggered this chat, if any
-  const { data: triggerData } = useQuery({
-    queryKey: ['triggerPrompt', chatThreadId],
-    queryFn: () => getTriggerPromptForThread(chatThreadId),
-  })
-
+export const useChatAutomation = ({ chatHelpers, selectedModelId }: UseChatAutomationParams) => {
   // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet
   const hasTriggeredRef = useRef(false)
 
@@ -38,6 +29,4 @@ export const useChatAutomation = ({ chatHelpers, chatThreadId, selectedModelId }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatHelpers.status, selectedModelId])
-
-  return { triggerData }
 }

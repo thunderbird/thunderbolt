@@ -2,123 +2,73 @@ name: Release
 run-name: Release triggered by ${{ github.actor }}
 
 on:
-  push:
-    branches:
-      - main
-      - 'ci-*' # Matches ci-test, ci-release-automation, etc.
-    tags:
-      - 'v*' # Matches v1.2.3, v2.0.0-beta, etc.
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform for the release (all, ios, android, desktop)'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - ios
+          - android
+          - desktop
+      version:
+        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
+        required: false
+        type: string
+      version_type:
+        description: 'Type of version bump (auto, patch, minor, major)'
+        required: false
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - patch
+          - minor
+          - major
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
-  validate_version:
-    name: Validate Version Files
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.extract.outputs.version }}
-      is_tag: ${{ steps.extract.outputs.is_tag }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Extract version from tag or package.json
-        id: extract
-        run: |
-          # Check if this is a tag push
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            # Remove 'v' prefix and any suffix like -rc, -beta
-            VERSION=${GITHUB_REF#refs/tags/v}
-            # Extract just the semver part (1.2.3)
-            VERSION=$(echo $VERSION | sed 's/-.*$//')
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=true" >> $GITHUB_OUTPUT
-            echo "📌 Tag version: $VERSION"
-          else
-            # Not a tag, get current version from package.json
-            VERSION=$(node -p "require('./package.json').version")
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=false" >> $GITHUB_OUTPUT
-            echo "📦 Current version: $VERSION"
-          fi
-
-      - name: Validate version matches files (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          CARGO_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-
-          echo "Tag version: $TAG_VERSION"
-          echo "package.json version: $PKG_VERSION"
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "tauri.conf.json version: $TAURI_VERSION"
-
-          VALIDATION_FAILED=false
-
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match package.json ($PKG_VERSION)"
-            VALIDATION_FAILED=true
-          fi
-
-          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match Cargo.toml ($CARGO_VERSION)"
-            VALIDATION_FAILED=true
-          fi
-
-          if [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
-            echo "❌ Error: Tag version ($TAG_VERSION) doesn't match tauri.conf.json ($TAURI_VERSION)"
-            VALIDATION_FAILED=true
-          fi
-
-          # Check iOS project.yml if it exists
-          if [ -f "src-tauri/gen/apple/project.yml" ]; then
-            IOS_VERSION=$(grep 'CFBundleShortVersionString:' src-tauri/gen/apple/project.yml | sed 's/.*CFBundleShortVersionString: //')
-            echo "iOS project.yml version: $IOS_VERSION"
-            if [ "$TAG_VERSION" != "$IOS_VERSION" ]; then
-              echo "❌ Error: Tag version ($TAG_VERSION) doesn't match iOS project.yml ($IOS_VERSION)"
-              VALIDATION_FAILED=true
-            fi
-          fi
-
-          if [ "$VALIDATION_FAILED" = true ]; then
-            echo ""
-            echo "💡 Tip: Use 'gh workflow run create-version-tag.yml -f version=$TAG_VERSION' to update all version files"
-            exit 1
-          fi
-
-          echo "✅ All version numbers validated successfully"
+  version_bump:
+    name: Version Bump
+    uses: ./.github/workflows/version-bump.yml
+    secrets: inherit
+    with:
+      platform: ${{ inputs.platform }}
+      version: ${{ inputs.version }}
+      version_type: ${{ inputs.version_type }}
 
   desktop:
     name: Desktop Release
-    needs: validate_version
-    if: needs.validate_version.outputs.is_tag == 'true'
+    needs: version_bump
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop')
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
-      version: ${{ needs.validate_version.outputs.version }}
+      version: ${{ needs.version_bump.outputs.new_version }}
 
   ios:
     name: iOS Release
-    needs: validate_version
-    if: needs.validate_version.outputs.is_tag == 'true'
+    needs: version_bump
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios')
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
-      version: ${{ needs.validate_version.outputs.version }}
+      version: ${{ needs.version_bump.outputs.new_version }}
 
-  # Future: Add Android here
-  # android:
-  #   name: Android Release
-  #   needs: validate_version
-  #   if: needs.validate_version.outputs.is_tag == 'true'
-  #   uses: ./.github/workflows/android-release.yml
-  #   secrets: inherit
-  #   with:
-  #     version: ${{ needs.validate_version.outputs.version }}
+  android:
+    name: Android Release
+    needs: version_bump
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android')
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.version_bump.outputs.new_version }}

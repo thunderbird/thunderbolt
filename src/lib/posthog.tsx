@@ -1,9 +1,9 @@
 import { getSettings } from '@/dal'
 import ky from 'ky'
-import type { PostHog } from 'posthog-js'
-import posthog from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import { type ReactNode } from 'react'
+import { createHandleError, type HandleResult } from '@/types/handle-errors'
+import posthog, { type PostHog } from 'posthog-js'
+import type { ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 
@@ -31,14 +31,10 @@ export const sanitizeUrl = (url: string): string => {
   return url
 }
 
-type PostHogInitResult =
-  | { success: true; client: PostHog | null }
-  | { success: false; code: 'POSTHOG_FETCH_FAILED'; error: unknown }
-
 /**
  * Initialize Posthog analytics and return the client
  */
-export const initPosthog = async (): Promise<PostHogInitResult> => {
+export const initPosthog = async (): Promise<HandleResult<PostHog | null>> => {
   try {
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',
@@ -49,8 +45,8 @@ export const initPosthog = async (): Promise<PostHogInitResult> => {
     const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
 
     if (!apiKey) {
-      console.log('Posthog analytics disabled - no API key provided')
-      return { success: true, client: null }
+      console.warn('Posthog analytics disabled - no API key provided')
+      return { success: true, data: null }
     }
 
     // Use the cloudUrl proxy for PostHog analytics
@@ -86,11 +82,13 @@ export const initPosthog = async (): Promise<PostHogInitResult> => {
       }) as PostHog
     }
 
-    return { success: true, client: posthogClient }
+    return { success: true, data: posthogClient }
   } catch (error) {
-    // TODO: track these errors in some analytics tool.
     console.warn('Failed to initialize PostHog, continuing without analytics:', error)
-    return { success: false, code: 'POSTHOG_FETCH_FAILED', error }
+    return {
+      success: false,
+      error: createHandleError('POSTHOG_FETCH_FAILED', 'Failed to initialize PostHog analytics', error),
+    }
   }
 }
 
@@ -151,7 +149,7 @@ export type EventType =
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
 
-export const trackEvent = (eventName: EventType, properties?: Record<string, any>) => {
+export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {
     if (posthogClient) {
       posthogClient.capture(eventName, properties)

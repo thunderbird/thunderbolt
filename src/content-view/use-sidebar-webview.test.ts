@@ -1,13 +1,10 @@
-import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { renderHook, waitFor } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { type RefObject } from 'react'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
+import { previewHeaderHeight, coordinateOffset, borderOffset } from './constants'
 
-beforeAll(() => {
-  // Set up happy-dom global environment
-  GlobalRegistrator.register()
-
+beforeEach(() => {
   // Mock ResizeObserver for testing
   global.ResizeObserver = class ResizeObserver {
     observe() {}
@@ -16,12 +13,7 @@ beforeAll(() => {
   }
 })
 
-afterAll(() => {
-  // Clean up happy-dom global environment to prevent pollution
-  GlobalRegistrator.unregister()
-})
-
-// Mock Tauri APIs
+// Mock only what's absolutely necessary for the test environment to run
 const mockWebview = {
   setPosition: mock(() => Promise.resolve()),
   setSize: mock(() => Promise.resolve()),
@@ -34,6 +26,7 @@ const mockWindow = {
   onMoved: mock(() => Promise.resolve(() => {})),
 }
 
+// Mock Tauri APIs - this is necessary because the hook is tightly coupled to them
 mock.module('@tauri-apps/api/webview', () => ({
   Webview: mock(() => mockWebview),
 }))
@@ -45,6 +38,12 @@ mock.module('@tauri-apps/api/window', () => ({
 mock.module('@tauri-apps/api/dpi', () => ({
   LogicalPosition: mock((x: number, y: number) => ({ x, y })),
   LogicalSize: mock((w: number, h: number) => ({ width: w, height: h })),
+}))
+
+// Prevent webviewWindow from loading to avoid the error
+mock.module('@tauri-apps/api/webviewWindow', () => ({
+  WebviewWindow: mock(() => mockWebview),
+  getCurrent: mock(() => mockWindow),
 }))
 
 describe('useSidebarWebview', () => {
@@ -79,7 +78,7 @@ describe('useSidebarWebview', () => {
     it('should initialize webview when both config and container are present', async () => {
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
-      // Mock getBoundingClientRect
+      // Mock getBoundingClientRect with realistic values
       container.getBoundingClientRect = mock(() => ({
         top: 100,
         left: 50,
@@ -101,6 +100,11 @@ describe('useSidebarWebview', () => {
         },
         { timeout: 1000 },
       )
+
+      // Test the actual behavior we care about - the hook state
+      expect(result.current.isInitialized).toBe(true)
+      expect(result.current.webview).not.toBeNull()
+      expect(typeof result.current.closeWebview).toBe('function')
     })
   })
 
@@ -133,28 +137,36 @@ describe('useSidebarWebview', () => {
   })
 
   describe('position calculations', () => {
-    it('should calculate update position correctly', () => {
-      const previewHeaderHeight = 48
-      const coordinateOffset = 28
-
-      const rect = { top: 100, height: 600 }
+    it('should calculate update position correctly using real constants', () => {
+      const rect = { top: 100, height: 600, left: 50, width: 400 }
       const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
+      const webviewLeft = Math.floor(rect.left) + borderOffset
+      const webviewWidth = Math.floor(rect.width) - borderOffset
 
       expect(webviewTop).toBe(176) // 100 + 48 + 28
       expect(webviewHeight).toBe(552) // 600 - 48
+      expect(webviewLeft).toBe(50) // 50 + 0
+      expect(webviewWidth).toBe(400) // 400 - 0
     })
 
-    it('should calculate init position with different offset', () => {
-      const previewHeaderHeight = 48
-      const coordinateOffset = 30
-
-      const rect = { top: 100, height: 600 }
+    it('should handle edge cases in position calculations', () => {
+      const rect = { top: 0, height: 0, left: 0, width: 0 }
       const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
       const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
+      const webviewLeft = Math.floor(rect.left) + borderOffset
+      const webviewWidth = Math.floor(rect.width) - borderOffset
 
-      expect(webviewTop).toBe(178) // 100 + 48 + 30
-      expect(webviewHeight).toBe(552) // 600 - 48
+      expect(webviewTop).toBe(76) // 0 + 48 + 28
+      expect(webviewHeight).toBe(-48) // 0 - 48 (negative height should be handled by the hook)
+      expect(webviewLeft).toBe(0) // 0 + 0
+      expect(webviewWidth).toBe(0) // 0 - 0
+    })
+
+    it('should use correct constants from the constants file', () => {
+      expect(previewHeaderHeight).toBe(48)
+      expect(coordinateOffset).toBe(28)
+      expect(borderOffset).toBe(0)
     })
   })
 

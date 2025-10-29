@@ -1,7 +1,8 @@
 import { getSettings } from '@/dal'
 import ky from 'ky'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import { createHandleError, type HandleResult } from '@/types/handle-errors'
+import type { HandleResult, HandleError } from '@/types/handle-errors'
+import { createHandleError } from '@/lib/error-utils'
 import posthog, { type PostHog } from 'posthog-js'
 import type { ReactNode } from 'react'
 
@@ -156,5 +157,25 @@ export const trackEvent = (eventName: EventType, properties?: Record<string, unk
     }
   } catch (error) {
     console.error('Failed to track event:', error)
+  }
+}
+
+/**
+ * Tracks errors using PostHog analytics
+ * Only tracks non-PostHog errors to avoid circular tracking
+ */
+export const trackError = (error: HandleError, context?: Record<string, unknown>) => {
+  try {
+    // Don't track PostHog errors with PostHog to avoid circular tracking
+    if (posthogClient && error.code !== 'POSTHOG_FETCH_FAILED') {
+      posthogClient.captureException('$exception', {
+        $exception_type: error.code,
+        $exception_message: error.message,
+        $exception_stack: error.stackTrace,
+        ...context,
+      })
+    }
+  } catch (trackingError) {
+    console.error('Failed to track error:', trackingError)
   }
 }

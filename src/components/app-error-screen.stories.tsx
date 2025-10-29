@@ -1,7 +1,7 @@
 import { AppErrorScreen } from './app-error-screen'
-import { createHandleError } from '@/types/handle-errors'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { HandleError } from '@/types/handle-errors'
+import { createHandleError } from '@/lib/error-utils'
 
 const meta: Meta<typeof AppErrorScreen> = {
   title: 'Components/AppErrorScreen',

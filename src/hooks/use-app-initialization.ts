@@ -7,9 +7,10 @@ import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { TrayManager } from '@/lib/tray'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
-import { createHandleError } from '@/types/handle-errors'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
+import { createHandleError } from '@/lib/error-utils'
+import { trackError } from '@/lib/posthog'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
@@ -52,9 +53,11 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   try {
     appDirPath = await createAppDirectory()
   } catch (error) {
+    const appDirError = createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error)
+    trackError(appDirError, { initialization_step: 'app_directory' })
     return {
       success: false,
-      error: createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error),
+      error: appDirError,
     }
   }
 
@@ -63,9 +66,11 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   try {
     db = await initializeDatabase(appDirPath)
   } catch (error) {
+    const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
+    trackError(dbError, { initialization_step: 'database_init' })
     return {
       success: false,
-      error: createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error),
+      error: dbError,
     }
   }
 
@@ -73,9 +78,11 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   try {
     await runDatabaseMigrations(db)
   } catch (error) {
+    const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
+    trackError(migrationError, { initialization_step: 'database_migration' })
     return {
       success: false,
-      error: createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error),
+      error: migrationError,
     }
   }
 
@@ -83,9 +90,11 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   try {
     await reconcileDefaultSettings(db)
   } catch (error) {
+    const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
+    trackError(reconcileError, { initialization_step: 'reconcile_defaults' })
     return {
       success: false,
-      error: createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error),
+      error: reconcileError,
     }
   }
 
@@ -94,8 +103,9 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   try {
     tray = await initializeTray()
   } catch (error) {
-    // TODO: track these errors in some analytics tool.
     console.warn('Failed to initialize tray, continuing without tray support:', error)
+    const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
+    trackError(trayError, { initialization_step: 'tray' })
   }
 
   // Step 6: PostHog initialization (non-critical)

@@ -3,10 +3,10 @@ import { trackEvent } from '@/lib/posthog'
 import { getDefaultModelForThread } from '@/dal'
 import type { Model } from '@/types'
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-export const useChatModel = (chatThreadId: string) => {
-  const { selectedModel } = useSettings({
+export const useChatModel = (chatThreadId: string, models: Model[]) => {
+  const { selectedModel: selectedModelSetting } = useSettings({
     selected_model: '',
   })
 
@@ -14,16 +14,21 @@ export const useChatModel = (chatThreadId: string) => {
 
   const { data: defaultModel } = useQuery<Model>({
     queryKey: ['models', 'defaultModel', chatThreadId],
-    queryFn: () => getDefaultModelForThread(chatThreadId, selectedModel.value ?? undefined),
+    queryFn: () => getDefaultModelForThread(chatThreadId, selectedModelSetting.value ?? undefined),
   })
+
+  const selectedModel = useMemo(
+    () => models.find((m) => m.id === selectedModelId) || models[0],
+    [models, selectedModelId],
+  )
 
   const handleModelChange = useCallback(
     (modelId: string | null) => {
       setSelectedModelId(modelId)
-      selectedModel.setValue(modelId)
+      selectedModelSetting.setValue(modelId)
       trackEvent('model_select', { model: modelId })
     },
-    [selectedModel],
+    [selectedModelSetting],
   )
 
   useEffect(() => {
@@ -34,6 +39,6 @@ export const useChatModel = (chatThreadId: string) => {
 
   return {
     handleModelChange,
-    selectedModelId,
+    selectedModel,
   }
 }

@@ -63,6 +63,15 @@ Events follow the pattern: `<feature>_<action>`
 - `automation_delete_clicked` - Delete automation button is clicked
 - `automation_delete_confirmed` - Automation deletion is confirmed
 
+#### Content View & Preview (`content_view_*`, `preview_*`)
+
+- `content_view_open` - Content view opens (with properties: `view_type`, `tool_name` for object views, `sideview_type` for sideviews)
+- `content_view_close` - Content view closes (with property: `view_type`)
+- `preview_open` - Preview webview opens from a link click
+- `preview_close` - Preview webview closes
+- `preview_copy_url` - User copies URL from preview header
+- `preview_open_external` - User opens preview URL in external browser
+
 #### UI & Navigation (`ui_*`)
 
 - `ui_shortcut_use` - User uses a keyboard shortcut

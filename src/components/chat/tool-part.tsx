@@ -1,5 +1,5 @@
 import { getToolMetadata, getToolMetadataSync } from '@/lib/tool-metadata'
-import { splitPartType } from '@/lib/utils'
+import { formatToolOutput, splitPartType } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import type { ToolUIPart } from 'ai'
 import { Check, Loader2, X } from 'lucide-react'
@@ -22,14 +22,6 @@ const getToolIcon = (state: ToolUIPart['state']) => {
       return <Check className={`${baseClass} text-green-600 dark:text-green-400`} />
     case 'output-error':
       return <X className={`${baseClass} text-red-600 dark:text-red-400`} />
-  }
-}
-
-const getOutput = (part: ToolUIPart) => {
-  if (typeof part.output === 'string') {
-    return part.output
-  } else {
-    return JSON.stringify(part.output, null, 2)
   }
 }
 
@@ -71,7 +63,9 @@ export const ToolPart = memo(({ part }: ToolPartProps) => {
     >
       <div className="tool-result w-full">
         <div className="rounded-md">
-          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{getOutput(part)}</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">
+            {formatToolOutput(part.output)}
+          </p>
         </div>
       </div>
     </Expandable>

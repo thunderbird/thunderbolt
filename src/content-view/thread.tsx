@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
-import { useSideview } from './provider'
+import { useSideview } from './context'
 
 export function EmailThreadView() {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)

@@ -141,6 +141,13 @@ export const defaultSettingIntegrationsProIsEnabled: Setting = {
   defaultHash: null,
 }
 
+export const defaultSettingContentViewWidth: Setting = {
+  key: 'content_view_width',
+  value: '50',
+  updatedAt: null,
+  defaultHash: null,
+}
+
 export const defaultSettingUserHasCompletedOnboarding: Setting = {
   key: 'user_has_completed_onboarding',
   value: 'false',
@@ -170,4 +177,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingCurrency,
   defaultSettingIntegrationsProIsEnabled,
   defaultSettingUserHasCompletedOnboarding,
+  defaultSettingContentViewWidth,
 ] as const

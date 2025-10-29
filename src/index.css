@@ -96,6 +96,18 @@
   }
 }
 
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @utility animate-accordion-down {
   animation: accordion-down 0.2s ease-out;
 }

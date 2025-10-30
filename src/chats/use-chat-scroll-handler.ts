@@ -1,14 +1,10 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import type { ThunderboltUIMessage } from '@/types'
 import { useEffect, useRef } from 'react'
+import { useChatState } from './chat-state-provider'
 
-type UseChatScrollHandlerParams = {
-  hasMessages: boolean
-  isStreaming: boolean
-  messages: ThunderboltUIMessage[]
-}
+export const useChatScrollHandler = () => {
+  const { hasMessages, isStreaming, messages } = useChatState()
 
-export const useChatScrollHandler = ({ hasMessages, isStreaming, messages }: UseChatScrollHandlerParams) => {
   const {
     scrollContainerRef,
     scrollTargetRef,

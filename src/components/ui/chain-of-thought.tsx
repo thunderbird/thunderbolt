@@ -1,10 +1,11 @@
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Badge } from './badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsible'
-import { BrainIcon, ChevronDownIcon, DotIcon, type LucideIcon } from 'lucide-react'
+import { ChevronDownIcon, DotIcon, type LucideIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'
 import { createContext, memo, useContext, useMemo } from 'react'
 import { cn } from '@/lib/utils'
+import { Shimmer } from './shimmer'
 
 type ChainOfThoughtContextValue = {
   isOpen: boolean
@@ -61,7 +62,7 @@ export const ChainOfThoughtHeader = memo(({ className, children, ...props }: Cha
         )}
         {...props}
       >
-        <BrainIcon className="size-4" />
+        <DotIcon className="size-4" />
         <span className="flex-1 text-left">{children ?? 'Chain of Thought'}</span>
         <ChevronDownIcon className={cn('size-4 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')} />
       </CollapsibleTrigger>
@@ -107,7 +108,7 @@ export const ChainOfThoughtStep = memo(
           <div className="-mx-px absolute top-7 bottom-0 left-1/2 w-px bg-border" />
         </div>
         <div className="flex-1 space-y-2">
-          <div>{label}</div>
+          {status === 'pending' ? <Shimmer>{label}</Shimmer> : <div>{label}</div>}
           {description && <div className="text-muted-foreground text-xs">{description}</div>}
           {children}
         </div>

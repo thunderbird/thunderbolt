@@ -2,18 +2,17 @@ import {
   filterMessageParts,
   type GroupableUIPart,
   type GroupedUIPart,
-  groupToolParts,
-  type ToolGroupUIPart,
+  groupMessageParts,
+  type ReasoningGroupUIPart,
 } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
-import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
+import type { TextUIPart, ToolUIPart } from 'ai'
 import { memo, type ReactNode } from 'react'
-import { ReasoningPart } from './reasoning-part'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ToolGroup } from './tool-group'
 import { ToolPart } from './tool-part'
+import { ReasoningGroupPart } from './reasoning-group/reasoning-group-part'
 
 interface AssistantMessageProps {
   message: ThunderboltUIMessage
@@ -36,31 +35,16 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
-  const hasTextPart = groupedParts.some((part) => {
-    const [partType] = splitPartType(part.type)
-    return partType === 'text'
-  })
-
   groupedParts.forEach((part, index) => {
     const [partType] = splitPartType(part.type)
     const isLastPart = index === groupedParts.length - 1
 
     switch (partType) {
-      case 'reasoning':
-        partElements.push(<ReasoningPart part={part as ReasoningUIPart} />)
-        break
-      case 'group_tools': {
-        const toolGroup = part as ToolGroupUIPart
+      case 'reasoning_group':
         partElements.push(
-          <ToolGroup
-            tools={toolGroup.tools}
-            isStreaming={isStreaming}
-            isLastPartInMessage={isLastPart}
-            hasTextInMessage={hasTextPart}
-          />,
+          <ReasoningGroupPart isLastPart={isLastPart} isStreaming={isStreaming} part={part as ReasoningGroupUIPart} />,
         )
         break
-      }
       case 'tool':
         partElements.push(<ToolPart part={part as ToolUIPart} />)
         break
@@ -76,7 +60,7 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
   const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
 
-  const groupedParts = groupToolParts(filteredParts)
+  const groupedParts = groupMessageParts(filteredParts)
 
   const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
 

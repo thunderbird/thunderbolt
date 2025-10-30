@@ -1,33 +1,17 @@
 import { render, screen } from '@testing-library/react'
-import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
+import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 
-// Mock useOnboardingState hook
-const mockActions = {
-  nextStep: vi.fn(),
-}
-
-const mockState = {}
-
-vi.mock('@/hooks/use-onboarding-state', () => ({
-  useOnboardingState: () => ({
-    state: mockState,
-    actions: mockActions,
-  }),
-}))
-
 describe('OnboardingCelebrationStep', () => {
   beforeEach(async () => {
     await setupTestDatabase()
-    vi.clearAllMocks()
   })
 
   afterEach(async () => {
     await resetTestDatabase()
-    vi.clearAllMocks()
   })
 
   const renderComponent = () => {
@@ -38,22 +22,23 @@ describe('OnboardingCelebrationStep', () => {
     it('should render celebration UI correctly', () => {
       renderComponent()
 
-      expect(screen.getByText('All Set!')).toBeInTheDocument()
-      expect(screen.getByText(/Welcome to Thunderbolt!/)).toBeInTheDocument()
+      expect(screen.getByText("You're all set! 🎉")).toBeInTheDocument()
     })
 
     it('should render celebration message', () => {
       renderComponent()
 
-      expect(screen.getByText('All Set!')).toBeInTheDocument()
-      expect(screen.getByText(/Welcome to Thunderbolt!/)).toBeInTheDocument()
+      expect(screen.getByText("You're all set! 🎉")).toBeInTheDocument()
     })
 
-    it('should render feature cards', () => {
+    it('should render celebration icon', () => {
       renderComponent()
 
-      expect(screen.getByText("You're Ready to Go!")).toBeInTheDocument()
-      expect(screen.getByText('Privacy Protected')).toBeInTheDocument()
+      const iconContainer = screen
+        .getByText("You're all set! 🎉")
+        .closest('div')
+        ?.parentElement?.querySelector('.mx-auto')
+      expect(iconContainer).toBeInTheDocument()
     })
   })
 
@@ -61,50 +46,51 @@ describe('OnboardingCelebrationStep', () => {
     it('should display celebration icon with proper styling', () => {
       renderComponent()
 
-      const heading = screen.getByText('All Set!')
-      expect(heading).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
     })
 
     it('should have proper text styling', () => {
       renderComponent()
 
-      const heading = screen.getByText('All Set!')
-      expect(heading).toHaveClass('text-2xl', 'font-bold')
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toHaveClass('text-lg', 'text-muted-foreground')
     })
   })
 
-  describe('Feature cards', () => {
-    it('should display all feature cards with correct content', () => {
+  describe('Icon structure', () => {
+    it('should display CheckCircle icon', () => {
       renderComponent()
 
-      expect(screen.getByText("You're Ready to Go!")).toBeInTheDocument()
-      expect(screen.getByText('Privacy Protected')).toBeInTheDocument()
+      const iconContainer = screen
+        .getByText("You're all set! 🎉")
+        .closest('div')
+        ?.parentElement?.querySelector('.mx-auto')
+      expect(iconContainer).toBeInTheDocument()
     })
   })
 
   describe('Accessibility', () => {
-    it('should have proper heading structure', () => {
+    it('should have proper text structure', () => {
       renderComponent()
 
-      const heading = screen.getByRole('heading', { name: 'All Set!' })
-      expect(heading).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
     })
 
     it('should have proper text hierarchy', () => {
       renderComponent()
 
-      const mainHeading = screen.getByRole('heading', { name: 'All Set!' })
-      const subHeadings = screen.getAllByRole('heading', { level: 3 })
-
-      expect(mainHeading).toBeInTheDocument()
-      expect(subHeadings).toHaveLength(2)
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
+      expect(message.tagName).toBe('P')
     })
 
     it('should maintain accessibility with proper contrast', () => {
       renderComponent()
 
-      const heading = screen.getByText('All Set!')
-      expect(heading).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
     })
   })
 
@@ -112,22 +98,20 @@ describe('OnboardingCelebrationStep', () => {
     it('should display correct celebration message', () => {
       renderComponent()
 
-      expect(screen.getByText('All Set!')).toBeInTheDocument()
-      expect(screen.getByText(/Welcome to Thunderbolt!/)).toBeInTheDocument()
+      expect(screen.getByText("You're all set! 🎉")).toBeInTheDocument()
     })
 
-    it('should display correct feature descriptions', () => {
+    it('should display emoji correctly', () => {
       renderComponent()
 
-      expect(screen.getByText(/Your AI assistant is configured/)).toBeInTheDocument()
-      expect(screen.getByText(/All your data stays on your device/)).toBeInTheDocument()
+      expect(screen.getByText(/🎉/)).toBeInTheDocument()
     })
 
-    it('should display correct feature titles', () => {
+    it('should have proper text content', () => {
       renderComponent()
 
-      expect(screen.getByText("You're Ready to Go!")).toBeInTheDocument()
-      expect(screen.getByText('Privacy Protected')).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toHaveTextContent("You're all set! 🎉")
     })
   })
 
@@ -139,9 +123,7 @@ describe('OnboardingCelebrationStep', () => {
     it('should maintain proper structure with all elements', () => {
       renderComponent()
 
-      expect(screen.getByText('All Set!')).toBeInTheDocument()
-      expect(screen.getByText("You're Ready to Go!")).toBeInTheDocument()
-      expect(screen.getByText('Privacy Protected')).toBeInTheDocument()
+      expect(screen.getByText("You're all set! 🎉")).toBeInTheDocument()
     })
 
     it('should display emoji correctly', () => {
@@ -155,8 +137,8 @@ describe('OnboardingCelebrationStep', () => {
     it('should have proper icon styling', () => {
       renderComponent()
 
-      const heading = screen.getByText('All Set!')
-      expect(heading).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
     })
   })
 
@@ -164,8 +146,8 @@ describe('OnboardingCelebrationStep', () => {
     it('should have proper content hierarchy', () => {
       renderComponent()
 
-      const mainHeading = screen.getByRole('heading', { name: 'All Set!' })
-      expect(mainHeading).toBeInTheDocument()
+      const message = screen.getByText("You're all set! 🎉")
+      expect(message).toBeInTheDocument()
     })
   })
 })

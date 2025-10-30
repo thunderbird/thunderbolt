@@ -1,12 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { vi, describe, it, beforeEach, expect } from 'vitest'
+import { describe, it, beforeEach, expect, mock } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 
 describe('OnboardingActionButtons', () => {
-  const mockOnBack = vi.fn()
-  const mockOnSkip = vi.fn()
-  const mockOnContinue = vi.fn()
+  const mockOnBack = mock()
+  const mockOnSkip = mock()
+  const mockOnContinue = mock()
 
   const defaultProps = {
     onBack: mockOnBack,
@@ -15,7 +15,9 @@ describe('OnboardingActionButtons', () => {
   }
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockOnBack.mockClear()
+    mockOnSkip.mockClear()
+    mockOnContinue.mockClear()
   })
 
   const renderComponent = (props = {}) => {

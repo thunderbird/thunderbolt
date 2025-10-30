@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import '@testing-library/jest-dom'
 import { StepIndicators } from './step-indicators'
 

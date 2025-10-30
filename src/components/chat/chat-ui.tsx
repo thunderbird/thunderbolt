@@ -8,16 +8,16 @@ import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { ChatMessages } from './chat-messages'
 import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { useChatState } from '@/chats/chat-state-provider'
 import { useChatData } from '@/chats/chat-data-provider'
+import { ChatMessages } from './chat-messages'
 
 export default function ChatUI() {
-  const { chatThread, id: chatThreadId, models, triggerData } = useChatData()
+  const { chatThread, id: chatThreadId, models } = useChatData()
 
-  const { error, handleModelChange, handleSendMessage, handleStop, hasMessages, isStreaming, messages, selectedModel } =
+  const { handleModelChange, handleSendMessage, handleStop, hasMessages, isStreaming, messages, selectedModel } =
     useChatState()
 
   const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } = useChatScrollHandler(
@@ -104,14 +104,7 @@ export default function ChatUI() {
               exit={{ opacity: 0 }}
               className="flex-1 p-4 overflow-y-auto space-y-4 max-w-dvw"
             >
-              <ChatMessages
-                chatThreadId={chatThreadId}
-                error={error?.message ?? ''}
-                isEncrypted={chatThread?.isEncrypted === 1}
-                isStreaming={isStreaming}
-                messages={messages}
-                triggerAutomation={triggerData}
-              />
+              <ChatMessages />
               <div ref={scrollTargetRef} />
             </motion.div>
           )}

@@ -1,8 +1,6 @@
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useObjectView } from './object-view-provider'
-import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
 import { useMemo } from 'react'
@@ -104,32 +102,6 @@ export const ReasoningGroup = ({
             />
           )
         })}
-        {showLoadingNext && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{
-                  scale: 1,
-                }}
-              >
-                <ToolIcon
-                  toolName="processing"
-                  toolOutput={undefined}
-                  Icon={null}
-                  initials="..."
-                  isLoading={true}
-                  isError={false}
-                  tooltipKey="next-action-loading"
-                  onClick={() => {}}
-                />
-              </motion.div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="font-medium">Thinking...</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
       </div>
       <AnimatePresence>
         {lastReasoningPart?.state === 'streaming' && (

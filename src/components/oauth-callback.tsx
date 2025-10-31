@@ -44,12 +44,21 @@ export default function OAuthCallback() {
        * @todo try to switch to a sessionStorage envelope or a popup + postMessage flow, so this delay can be removed
        */
       const t = setTimeout(() => {
-        // If not a popup, redirect back to integrations page
-        navigate('/settings/integrations', {
-          state: {
-            oauth: { code, state, error: errorDescription || error },
-          },
-        })
+        const returnContext = sessionStorage.getItem('oauth_return_context')
+
+        if (returnContext === 'onboarding') {
+          navigate('/', {
+            state: {
+              oauth: { code, state, error: errorDescription || error },
+            },
+          })
+        } else {
+          navigate('/settings/integrations', {
+            state: {
+              oauth: { code, state, error: errorDescription || error },
+            },
+          })
+        }
       }, 500)
 
       return () => clearTimeout(t)

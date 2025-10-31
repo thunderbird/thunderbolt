@@ -46,8 +46,8 @@ Just ask! 😊"
     },
     "response": {
       "headers": {
-        "cache-control": "no-cache",
-        "content-type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/event-stream; charset=utf-8",
       },
       "id": "<DYNAMIC_ID>",
       "messages": [

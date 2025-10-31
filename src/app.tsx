@@ -30,6 +30,7 @@ import { ContentViewProvider } from './content-view/context'
 import SettingsLayout from './settings/layout'
 import { AppErrorScreen } from './components/app-error-screen'
 import type { InitData } from './types'
+import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 
 const queryClient = new QueryClient()
 
@@ -41,6 +42,7 @@ function AppContent({ initData }: { initData: InitData }) {
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
+      <OnboardingDialog />
     </BrowserRouter>
   )
 }

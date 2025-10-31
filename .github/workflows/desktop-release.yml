@@ -22,12 +22,14 @@ concurrency:
 jobs:
   draft:
     name: Create Draft Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.set-version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
 
       - name: Set version
         id: set-version
@@ -58,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             build_name: 'Linux'
           - os: macos-latest
@@ -78,6 +80,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
 
       - uses: actions/setup-node@v4
         with:
@@ -92,26 +96,34 @@ jobs:
           cache: false
           rustflags: ''
 
-      - name: Cache cargo registry and build
+      - name: Cache cargo dependencies
         uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-release-${{ inputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ inputs.version }}-
             ${{ runner.os }}-cargo-release-
-            ${{ runner.os }}-cargo-
 
       - name: install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # Install libfuse2 for running linuxdeploy (which is itself an AppImage)
+          # Ubuntu 24.04 uses libfuse2t64 as a transition package
+          sudo add-apt-repository universe -y
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
 
       - name: build Tauri app for Linux
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           bun install
           bun tauri build
@@ -119,6 +131,7 @@ jobs:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
+          NO_STRIP: true
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -192,7 +205,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload Linux artifacts to GitHub Release
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ inputs.version }}
@@ -229,10 +242,11 @@ jobs:
   publish:
     name: Publish Release
     needs: [draft, build]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: v${{ inputs.version }}
           fetch-depth: 0
 
       - name: Publish GitHub Release

@@ -108,7 +108,7 @@ export const startOAuthFlow = async (
 
   const callback = new Promise<{ code: string; state: string }>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
-      if (event.data.type === 'oauth-callback') {
+      if (event.data?.type === 'oauth-callback') {
         window.removeEventListener('message', handler)
         if (popup && !popup.closed) popup.close()
 

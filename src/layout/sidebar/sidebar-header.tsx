@@ -8,8 +8,9 @@ import {
 } from '@/components/ui/sidebar'
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { PanelLeft, Zap } from 'lucide-react'
+import { PanelLeft } from 'lucide-react'
 import { useState } from 'react'
+import { AppLogo } from '@/components/app-logo'
 
 type SidebarHeaderProps = {
   onToggle: () => void
@@ -45,7 +46,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
           </SidebarGroup>
         ) : (
           <>
-            <Zap className="size-4 shrink-0 fill-yellow-500" />
+            <AppLogo />
             {isExpanded && <span className="text-sm truncate">Thunderbolt</span>}
           </>
         )}

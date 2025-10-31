@@ -24,6 +24,30 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
+    
+    signingConfigs {
+        create("release") {
+            val signingProperties = Properties().apply {
+                val propFile = file("../signing.properties")
+                if (propFile.exists()) {
+                    propFile.inputStream().use { load(it) }
+                }
+            }
+            
+            val storeFile = signingProperties.getProperty("storeFile", "")
+            val storePassword = signingProperties.getProperty("storePassword", "")
+            val keyAlias = signingProperties.getProperty("keyAlias", "")
+            val keyPassword = signingProperties.getProperty("keyPassword", "")
+            
+            if (storeFile.isNotEmpty() && storePassword.isNotEmpty() && keyAlias.isNotEmpty() && keyPassword.isNotEmpty()) {
+                this.storeFile = file(storeFile)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+    
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -38,6 +62,15 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = true
+            val signingProperties = Properties().apply {
+                val propFile = file("../signing.properties")
+                if (propFile.exists()) {
+                    propFile.inputStream().use { load(it) }
+                }
+            }
+            if (signingProperties.getProperty("storeFile", "").isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))

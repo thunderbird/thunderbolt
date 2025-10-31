@@ -1,0 +1,46 @@
+name: 'Upload to Google Play Store'
+description: 'Upload AAB file to Google Play Store using service account'
+inputs:
+  serviceAccountJson:
+    description: 'Google Play service account JSON'
+    required: true
+  packageName:
+    description: 'Android package name'
+    required: true
+  aabPath:
+    description: 'Path to the AAB file'
+    required: true
+  track:
+    description: 'Release track (internal, alpha, beta, production)'
+    required: false
+    default: 'internal'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+
+    - name: Install dependencies
+      shell: bash
+      run: bun add googleapis
+
+    - name: Upload to Google Play Store
+      shell: bash
+      run: |
+        # Write service account JSON to file to avoid shell escaping issues
+        echo '${{ inputs.serviceAccountJson }}' > /tmp/service-account.json
+
+        # Set environment variables
+        export PACKAGE_NAME="${{ inputs.packageName }}"
+        export AAB_PATH="${{ inputs.aabPath }}"
+        export TRACK="${{ inputs.track }}"
+        export SERVICE_ACCOUNT_FILE="/tmp/service-account.json"
+
+        # Run the script
+        node ${{ github.workspace }}/scripts/upload-to-play.cjs
+
+        # Clean up
+        rm -f /tmp/service-account.json

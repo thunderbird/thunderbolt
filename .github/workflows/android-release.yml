@@ -28,16 +28,6 @@ on:
           - patch
           - minor
           - major
-      skip_version_bump:
-        description: 'Skip version bumping and use existing version'
-        required: false
-        default: false
-        type: boolean
-      skip_build:
-        description: 'Skip building and deploying (run version bump only)'
-        required: false
-        default: false
-        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
@@ -48,9 +38,11 @@ concurrency:
   group: android-release-${{ inputs.version }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build_and_deploy_android:
-    if: ${{ !inputs.skip_build }}
     runs-on: ubuntu-latest
     environment: thunderbolt_release
     outputs:
@@ -61,6 +53,18 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Ensure we have the version tag
+        run: |
+          git fetch origin --tags
+          # Verify the tag exists and matches our version
+          if ! git rev-parse v${{ inputs.version }} >/dev/null 2>&1; then
+            echo "❌ Tag v${{ inputs.version }} not found!"
+            exit 1
+          fi
+          # Ensure we're on a commit that contains the version tag
+          git pull origin ${{ github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
@@ -89,31 +93,73 @@ jobs:
       - name: Export build version env
         run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
 
-      - name: Set build version locally for Android
+      - name: Calculate versionCode from git history
+        id: version_code
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          # Base offset to ensure we stay above previous manual versionCode (1018)
+          # Using 1000 as base means we start at 1626 (1000 + 626 commits)
+          BASE_OFFSET=1000
+          VERSION_CODE=$((BASE_OFFSET + COMMIT_COUNT))
+          echo "versionCode=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "📱 Calculated versionCode: $VERSION_CODE (base $BASE_OFFSET + $COMMIT_COUNT commits)"
+
+      - name: Set build version and versionCode locally for Android
         run: |
           VERSION="$BUILD_VERSION"
-          echo "🔧 Applying version $VERSION locally for the build"
+          VERSION_CODE="${{ steps.version_code.outputs.versionCode }}"
+          echo "🔧 Applying version $VERSION and versionCode $VERSION_CODE locally for the build"
+
+          # Update package.json version
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = process.env.VERSION;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
+
           # Update Cargo.toml version
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
+          # Update tauri.conf.json with versionCode
+          node -e "
+            const fs = require('fs');
+            const path = 'src-tauri/tauri.conf.json';
+            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+            data.bundle = data.bundle || {};
+            data.bundle.android = data.bundle.android || {};
+            data.bundle.android.versionCode = Number(process.env.VERSION_CODE);
+            fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+            console.log('✅ Set versionCode to', data.bundle.android.versionCode);
+          "
+        env:
+          VERSION_CODE: ${{ steps.version_code.outputs.versionCode }}
+
       - name: Setup Java
-        uses: actions/setup-java@b1b4a0b7b0b4a0b7b0b4a0b7b0b4a0b7b0b4a0b7 # v4.0.1
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6 # v3.0.0
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           api-level: 36
           build-tools: 36.0.0
           ndk-version: 26.1.10909125
+
+      - name: Export Android SDK/NDK environment
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          if [ ! -d "$NDK_PATH" ]; then
+            NDK_PATH=$(ls -d "$ANDROID_SDK_ROOT/ndk/"* | head -1)
+          fi
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "Using ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "Using NDK at $NDK_PATH"
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
@@ -184,6 +230,23 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           NODE_OPTIONS: '--max-old-space-size=8192'
 
+      - name: Setup Android Signing Configuration
+        env:
+          ANDROID_UPLOAD_KEY: ${{ secrets.ANDROID_UPLOAD_KEY }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          # Create signing.properties file for Android build
+          cat > src-tauri/gen/android/signing.properties << EOF
+          storeFile=../upload-keystore.jks
+          storePassword=$ANDROID_UPLOAD_KEY_PASSWORD
+          keyAlias=$ANDROID_UPLOAD_KEY_ALIAS
+          keyPassword=$ANDROID_UPLOAD_KEY_PASSWORD
+          EOF
+
+          # Copy keystore to Android project directory
+          cp ~/.android/upload-keystore.jks src-tauri/gen/android/upload-keystore.jks
+
       - name: Build Tauri Android App
         env:
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
@@ -195,94 +258,27 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           bun install
-          bun tauri android build --release
+          bun tauri android build
 
-      - name: Setup Google Play Console API
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Find AAB file
+        id: find_aab
         run: |
-          if [ -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > ~/google-play-service-account.json
-            chmod 600 ~/google-play-service-account.json
-            echo "GOOGLE_PLAY_SERVICE_ACCOUNT_PATH=~/google-play-service-account.json" >> $GITHUB_ENV
-          else
-            echo "⚠️ Google Play service account not configured, skipping Play Store upload"
-          fi
-
-      - name: Upload to Google Play Store
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_PATH != ''
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_PATH: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_PATH }}
-        run: |
-          # Find the built AAB file
           AAB_PATH=$(find src-tauri/gen/android -name "*.aab" -type f | head -1)
-
           if [ -f "$AAB_PATH" ]; then
             echo "📱 Found AAB file: $AAB_PATH"
-            
-            # Install Google Play Console API tools
-            pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-
-            # Create upload script
-            cat > upload_to_play.py << 'EOF'
-          import json
-          import os
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-
-          # Load service account credentials
-          credentials = service_account.Credentials.from_service_account_file(
-              os.environ['GOOGLE_PLAY_SERVICE_ACCOUNT_PATH'],
-              scopes=['https://www.googleapis.com/auth/androidpublisher']
-          )
-
-          # Build the service
-          service = build('androidpublisher', 'v3', credentials=credentials)
-
-          # Get the package name from the AAB file (you may need to extract this differently)
-          package_name = 'net.thunderbird.thunderbolt'
-
-          # Create a new edit
-          edit_request = service.edits().insert(body={}, packageName=package_name)
-          edit_result = edit_request.execute()
-          edit_id = edit_result['id']
-
-          try:
-              # Upload the AAB file
-              media = MediaFileUpload('$AAB_PATH', mimetype='application/octet-stream')
-              upload_request = service.edits().bundles().upload(
-                  packageName=package_name,
-                  editId=edit_id,
-                  media_body=media
-              )
-              upload_result = upload_request.execute()
-              print(f"✅ Upload successful: {upload_result}")
-
-              # Commit the edit
-              commit_request = service.edits().commit(
-                  packageName=package_name,
-                  editId=edit_id
-              )
-              commit_result = commit_request.execute()
-              print(f"✅ Edit committed: {commit_result}")
-
-          except Exception as e:
-              print(f"❌ Upload failed: {e}")
-              # Abandon the edit on failure
-              service.edits().delete(packageName=package_name, editId=edit_id).execute()
-              raise
-          EOF
-
-            # Run the upload script
-            python upload_to_play.py
-            
-            # Clean up
-            rm -f upload_to_play.py
+            echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
           else
             echo "❌ No AAB file found in Android build directory"
             exit 1
           fi
+
+      - name: Upload to Google Play Store
+        uses: ./.github/actions/upload-to-play
+        with:
+          serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: 'net.thunderbird.thunderbolt'
+          aabPath: ${{ steps.find_aab.outputs.aab_path }}
+          track: 'internal'
 
       - name: Upload build artifacts (if build fails)
         if: failure()
@@ -299,13 +295,3 @@ jobs:
         run: |
           rm -f ~/.android/upload-keystore.jks
           rm -f ~/google-play-service-account.json
-
-  version_bump:
-    if: ${{ !inputs.skip_version_bump && (inputs.skip_build || needs.build_and_deploy_android.result == 'success') }}
-    needs: [build_and_deploy_android]
-    uses: ./.github/workflows/version-bump.yml
-    with:
-      platform: android
-      version: ${{ needs.build_and_deploy_android.outputs.build_version }}
-      version_type: ${{ inputs.version_type }}
-    secrets: inherit

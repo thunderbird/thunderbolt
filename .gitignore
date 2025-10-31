@@ -27,7 +27,7 @@ dist-isolation
 # Environment variables
 .env
 
-**/*/target
+target
 
 # Tauri signing keys
 *.key
@@ -47,3 +47,4 @@ mise.toml
 # iOS fastlane local bundle
 src-tauri/gen/apple/vendor/
 src-tauri/gen/apple/.bundle/
+

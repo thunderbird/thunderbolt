@@ -33,7 +33,7 @@ describe('useAppInitialization', () => {
         Object.defineProperty(window, 'location', {
           value: {
             ...window.location,
-            href: 'https://app.test/?sideview=chat:123',
+            href: 'https://app.test/?sideview=message:123',
           },
           writable: true,
           configurable: true,
@@ -89,7 +89,7 @@ describe('useAppInitialization', () => {
   it('parses sideview parameters from URL', async () => {
     Object.defineProperty(window, 'location', {
       value: {
-        href: 'https://app.test/?sideview=chat:123',
+        href: 'https://app.test/?sideview=message:123',
       },
       writable: true,
       configurable: true,
@@ -104,7 +104,7 @@ describe('useAppInitialization', () => {
       { timeout: 5000 },
     )
 
-    expect(result.current.initData?.sideviewType).toBe('chat')
+    expect(result.current.initData?.sideviewType).toBe('message')
     expect(result.current.initData?.sideviewId).toBe('123')
   })
 

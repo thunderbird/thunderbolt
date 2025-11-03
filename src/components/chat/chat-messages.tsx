@@ -4,13 +4,23 @@ import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
 import { useMemo } from 'react'
-import { useChatState } from '@/chats/chat-state-provider'
-import { useChatData } from '@/chats/chat-data-provider'
+import { useChatStore } from '@/chats/chat-store'
+import { useShallow } from 'zustand/react/shallow'
+import { useChat } from '@ai-sdk/react'
 
 export const ChatMessages = () => {
-  const { chatThread, id: chatThreadId, triggerData } = useChatData()
+  const { chatInstance, chatThread, chatThreadId, triggerData } = useChatStore(
+    useShallow((state) => ({
+      chatInstance: state.chatInstance!,
+      chatThread: state.chatThread,
+      chatThreadId: state.id!,
+      triggerData: state.triggerData,
+    })),
+  )
 
-  const { error, isStreaming, messages } = useChatState()
+  const { error, status, messages } = useChat({ chat: chatInstance })
+
+  const isStreaming = useMemo(() => status === 'streaming', [status])
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(

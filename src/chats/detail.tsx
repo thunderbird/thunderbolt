@@ -1,13 +1,25 @@
 import ChatUI from '@/components/chat/chat-ui'
-import { ChatDataProvider } from './chat-data-provider'
-import { ChatStateProvider } from './chat-state-provider'
+import { useHydrateChatStore } from './use-hydrate-chat-store'
+import { useEffect } from 'react'
+import { useChatAutomation } from './use-chat-automation'
+import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 
 export default function ChatDetailPage() {
+  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore()
+
+  useChatAutomation()
+
+  useEffect(() => {
+    hydrateChatStore()
+  }, [hydrateChatStore])
+
+  if (!isReady) {
+    return null
+  }
+
   return (
-    <ChatDataProvider>
-      <ChatStateProvider>
-        <ChatUI />
-      </ChatStateProvider>
-    </ChatDataProvider>
+    <SavePartialAssistantMessagesHandler saveMessages={saveMessages}>
+      <ChatUI />
+    </SavePartialAssistantMessagesHandler>
   )
 }

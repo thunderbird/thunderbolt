@@ -1,6 +1,6 @@
 import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { filterMessageParts, groupToolParts } from './assistant-message'
+import { filterMessageParts, groupMessageParts } from './assistant-message'
 
 const createToolPart = (toolName: string): ToolUIPart =>
   ({
@@ -12,41 +12,67 @@ const createToolPart = (toolName: string): ToolUIPart =>
   }) as unknown as ToolUIPart
 
 describe('assistant-message utilities', () => {
-  describe('groupToolParts', () => {
-    it('groups consecutive tool parts into a single group entry', () => {
+  describe('groupMessageParts', () => {
+    it('groups consecutive tool parts into a single reasoning_group entry', () => {
       const toolAlpha = createToolPart('alpha')
       const toolBeta = createToolPart('beta')
       const textPart: TextUIPart = { type: 'text', text: 'hello' }
 
       const parts = [toolAlpha, toolBeta, textPart]
 
-      const grouped = groupToolParts(parts)
+      const grouped = groupMessageParts(parts)
 
       expect(grouped).toHaveLength(2)
       expect(grouped[0]).toEqual({
-        type: 'group_tools',
-        tools: [toolAlpha, toolBeta],
+        type: 'reasoning_group',
+        items: [
+          { type: 'tool', content: toolAlpha },
+          { type: 'tool', content: toolBeta },
+        ],
       })
       expect(grouped[1]).toBe(textPart)
     })
 
-    it('flushes groups when encountering non-tool parts', () => {
+    it('groups reasoning parts together with tools', () => {
       const toolAlpha = createToolPart('alpha')
       const toolBeta = createToolPart('beta')
       const reasoningPart: ReasoningUIPart = { type: 'reasoning', text: 'because' }
       const toolGamma = createToolPart('gamma')
 
-      const grouped = groupToolParts([toolAlpha, toolBeta, reasoningPart, toolGamma])
+      const grouped = groupMessageParts([toolAlpha, toolBeta, reasoningPart, toolGamma])
+
+      expect(grouped).toHaveLength(1)
+      expect(grouped[0]).toEqual({
+        type: 'reasoning_group',
+        items: [
+          { type: 'tool', content: toolAlpha },
+          { type: 'tool', content: toolBeta },
+          { type: 'reasoning', content: reasoningPart },
+          { type: 'tool', content: toolGamma },
+        ],
+      })
+    })
+
+    it('flushes groups when encountering text parts', () => {
+      const toolAlpha = createToolPart('alpha')
+      const toolBeta = createToolPart('beta')
+      const textPart: TextUIPart = { type: 'text', text: 'hello' }
+      const toolGamma = createToolPart('gamma')
+
+      const grouped = groupMessageParts([toolAlpha, toolBeta, textPart, toolGamma])
 
       expect(grouped).toHaveLength(3)
       expect(grouped[0]).toEqual({
-        type: 'group_tools',
-        tools: [toolAlpha, toolBeta],
+        type: 'reasoning_group',
+        items: [
+          { type: 'tool', content: toolAlpha },
+          { type: 'tool', content: toolBeta },
+        ],
       })
-      expect(grouped[1]).toBe(reasoningPart)
+      expect(grouped[1]).toBe(textPart)
       expect(grouped[2]).toEqual({
-        type: 'group_tools',
-        tools: [toolGamma],
+        type: 'reasoning_group',
+        items: [{ type: 'tool', content: toolGamma }],
       })
     })
   })

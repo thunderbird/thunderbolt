@@ -1,4 +1,4 @@
-import type { GroupedUIPart, ToolGroupUIPart } from '@/lib/assistant-message'
+import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-message'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { mountMessageParts } from './assistant-message'
@@ -24,11 +24,16 @@ const createToolPart = (state: ToolUIPart['state'], toolName = 'search'): ToolUI
     output: state === 'output-available' ? { result: 'data' } : undefined,
   }) as unknown as ToolUIPart
 
-const createToolGroupPart = (tools: ToolUIPart[]): ToolGroupUIPart =>
+const createReasoningGroupPart = (
+  items: Array<{ type: 'reasoning' | 'tool'; content: ReasoningUIPart | ToolUIPart }>,
+): ReasoningGroupUIPart =>
   ({
-    type: 'group_tools',
-    tools,
-  }) as ToolGroupUIPart
+    type: 'reasoning_group',
+    items,
+  }) as ReasoningGroupUIPart
+
+const createToolGroupPart = (tools: ToolUIPart[]): ReasoningGroupUIPart =>
+  createReasoningGroupPart(tools.map((tool) => ({ type: 'tool' as const, content: tool })))
 
 describe('mountMessageParts', () => {
   const testMessageId = 'test-message-id'
@@ -45,7 +50,8 @@ describe('mountMessageParts', () => {
 
   describe('reasoning parts', () => {
     it('renders reasoning part', () => {
-      const parts: GroupedUIPart[] = [createReasoningPart('Let me think about this...')]
+      const reasoningPart = createReasoningPart('Let me think about this...')
+      const parts: GroupedUIPart[] = [createReasoningGroupPart([{ type: 'reasoning', content: reasoningPart }])]
       const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)
@@ -139,8 +145,9 @@ describe('mountMessageParts', () => {
 
   describe('mixed part types', () => {
     it('renders multiple different part types in order', () => {
+      const reasoningPart = createReasoningPart('Thinking...')
       const parts: GroupedUIPart[] = [
-        createReasoningPart('Thinking...'),
+        createReasoningGroupPart([{ type: 'reasoning', content: reasoningPart }]),
         createToolGroupPart([createToolPart('output-available')]),
         createTextPart('Here is the result'),
       ]
@@ -153,8 +160,9 @@ describe('mountMessageParts', () => {
     })
 
     it('handles complex message with reasoning, tools, and text', () => {
+      const reasoningPart = createReasoningPart('Let me search for that')
       const parts: GroupedUIPart[] = [
-        createReasoningPart('Let me search for that'),
+        createReasoningGroupPart([{ type: 'reasoning', content: reasoningPart }]),
         createToolGroupPart([
           createToolPart('output-available', 'search'),
           createToolPart('output-available', 'fetch_content'),
@@ -167,7 +175,11 @@ describe('mountMessageParts', () => {
     })
 
     it('handles message with only reasoning and text (no tools)', () => {
-      const parts: GroupedUIPart[] = [createReasoningPart('Thinking...'), createTextPart('Direct answer')]
+      const reasoningPart = createReasoningPart('Thinking...')
+      const parts: GroupedUIPart[] = [
+        createReasoningGroupPart([{ type: 'reasoning', content: reasoningPart }]),
+        createTextPart('Direct answer'),
+      ]
       const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(2)
@@ -216,7 +228,8 @@ describe('mountMessageParts', () => {
     })
 
     it('handles message with only reasoning', () => {
-      const parts: GroupedUIPart[] = [createReasoningPart('Just thinking out loud...')]
+      const reasoningPart = createReasoningPart('Just thinking out loud...')
+      const parts: GroupedUIPart[] = [createReasoningGroupPart([{ type: 'reasoning', content: reasoningPart }])]
       const result = mountMessageParts(parts, false, testMessageId)
 
       expect(result).toHaveLength(1)

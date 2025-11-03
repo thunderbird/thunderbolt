@@ -13,7 +13,7 @@ CREATE TABLE `__new_tasks` (
 	`is_complete` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-INSERT INTO `__new_tasks`("id", "item", "order", "is_complete") SELECT "id", "item", "order", "is_complete" FROM `tasks`;--> statement-breakpoint
+INSERT INTO `__new_tasks`(`id`, `item`, `order`, `is_complete`) SELECT `id`, `item`, `order`, `is_complete` FROM `tasks`;--> statement-breakpoint
 DROP TABLE `tasks`;--> statement-breakpoint
 ALTER TABLE `__new_tasks` RENAME TO `tasks`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

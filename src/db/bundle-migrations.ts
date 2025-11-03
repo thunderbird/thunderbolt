@@ -77,17 +77,19 @@ export interface Migration {
 }
 
 export const migrations: Migration[] = [
-  ${migrations
-    .map((migration) => {
-      // Use JSON.stringify for the SQL content to ensure proper escaping
-      return `{
+  ${
+    migrations
+      .map((migration) => {
+        // Use JSON.stringify for the SQL content to ensure proper escaping
+        return `{
     hash: ${JSON.stringify(migration.hash)},
     name: ${JSON.stringify(migration.name)},
     sql: ${JSON.stringify(migration.sql)},
   }`
-    })
-    .join(',\n  ')
-    .replace(/"/g, "'")}
+      })
+      .join(',\n  ')
+      .replace(/"/g, "'") + ','
+  }
 ]
 `
 

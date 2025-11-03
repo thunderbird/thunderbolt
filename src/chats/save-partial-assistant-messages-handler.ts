@@ -1,6 +1,6 @@
 import { useThrottledCallback } from '@/hooks/use-throttle'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { type PropsWithChildren, useEffect, useMemo } from 'react'
+import { type PropsWithChildren, useEffect } from 'react'
 import { useChatStore } from './chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'

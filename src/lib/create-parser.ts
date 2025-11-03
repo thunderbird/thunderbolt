@@ -22,14 +22,25 @@ export const createParser = <T extends z.ZodObject<any>>(
   const argsKeys = Object.keys(argsSchema.shape)
 
   return (attrs: Record<string, string>): z.infer<T> | null => {
-    // Quick check: ensure all required args are present
-    const hasAllArgs = argsKeys.every((key) => attrs[key] !== undefined && attrs[key] !== '')
-    if (!hasAllArgs) {
+    // Check which fields are optional by inspecting the schema
+    const isOptional = (key: string): boolean => {
+      const fieldSchema = argsSchema.shape[key]
+      if (!fieldSchema) return false
+      // Check if field is optional - in Zod v4, optional fields have def.type === 'optional'
+      return fieldSchema.def?.type === 'optional' || fieldSchema._def?.type === 'optional'
+    }
+
+    // Quick check: ensure all required (non-optional) args are present
+    const requiredKeys = argsKeys.filter((key) => !isOptional(key))
+    const hasAllRequiredArgs = requiredKeys.every((key) => attrs[key] !== undefined && attrs[key] !== '')
+    if (!hasAllRequiredArgs) {
       return null
     }
 
-    // Build the widget object from attrs
-    const args = Object.fromEntries(argsKeys.map((key) => [key, attrs[key]]))
+    // Build the widget object from attrs, only including provided values
+    const args = Object.fromEntries(
+      argsKeys.filter((key) => attrs[key] !== undefined && attrs[key] !== '').map((key) => [key, attrs[key]]),
+    )
 
     // Validate with schema
     const result = schema.safeParse({

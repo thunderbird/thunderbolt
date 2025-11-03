@@ -4,12 +4,13 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useRef } from 'react'
 import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
-import { useChatState } from '@/chats/chat-state-provider'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import { useChatStore } from '@/chats/chat-store'
+import { useShallow } from 'zustand/react/shallow'
 
 export default function ChatUI() {
-  const { hasMessages } = useChatState()
+  const { hasMessages } = useChatStore(useShallow((state) => ({ hasMessages: state.hasMessages })))
 
   const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
     useChatScrollHandler()

@@ -107,10 +107,9 @@ export const aiFetchStreamingResponse = async ({
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
   const abortSignal: AbortSignal | undefined = options.signal ?? undefined
+  const { messages, id } = body as { messages: ThunderboltUIMessage[]; id: string }
 
-  const { messages, chatId } = body as { messages: ThunderboltUIMessage[]; chatId: string }
-
-  await saveMessages({ id: chatId, messages })
+  await saveMessages({ id, messages })
 
   const db = DatabaseSingleton.instance.db
 

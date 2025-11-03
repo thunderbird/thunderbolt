@@ -1,13 +1,14 @@
 import { useContextTracking } from '@/hooks/use-context-tracking'
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { useChatState } from '@/chats/chat-state-provider'
-import { useChatData } from '@/chats/chat-data-provider'
 import { type Model } from '@/types'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { useNavigate } from 'react-router'
 import { trackEvent } from '@/lib/posthog'
+import { useChatStore } from '@/chats/chat-store'
+import { useShallow } from 'zustand/react/shallow'
+import { useChat } from '@ai-sdk/react'
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -23,9 +24,22 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ({ handleResetUserScroll, handleScrollToBottom }, ref) => {
     const navigate = useNavigate()
 
-    const { chatThread, id: chatThreadId, models } = useChatData()
+    const { chatInstance, chatThread, chatThreadId, models, sendMessage, selectedModel, setSelectedModel } =
+      useChatStore(
+        useShallow((state) => ({
+          chatInstance: state.chatInstance!,
+          chatThread: state.chatThread,
+          chatThreadId: state.id!,
+          models: state.models,
+          sendMessage: state.sendMessage,
+          selectedModel: state.selectedModel!,
+          setSelectedModel: state.setSelectedModel,
+        })),
+      )
 
-    const { handleModelChange, handleSendMessage, handleStop, isStreaming, messages, selectedModel } = useChatState()
+    const { messages, status, stop } = useChat({ chat: chatInstance })
+
+    const isStreaming = useMemo(() => status === 'streaming', [status])
 
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const [input, setInput] = useState('')
@@ -51,7 +65,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       // Clear the input immediately for responsive UX
       setInput('')
 
-      await handleSendMessage(textToSend)
+      await sendMessage(textToSend)
 
       // Reset user scroll state and scroll to bottom when submitting a new message
       handleResetUserScroll()
@@ -95,12 +109,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           placeholder="Say something..."
           models={models}
           selectedModelId={selectedModel.id}
-          onModelChange={handleModelChange}
+          onModelChange={setSelectedModel}
           showSubmitButton
           onSubmit={handleSubmit}
           isLoading={isStreaming}
           isStreaming={isStreaming}
-          onStop={handleStop}
+          onStop={stop}
           autoFocus
           submitOnEnter={!isStreaming}
           className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"

@@ -10,6 +10,8 @@ import { useChat, type UseChatHelpers } from '@ai-sdk/react'
 import { useQuery } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 
 interface ChatStateProps {
@@ -44,6 +46,8 @@ const useSavePartialAssistantMessages = ({ chatHelpers, id, saveMessages }: UseS
 
 export default function ChatState({ id, models, initialMessages, saveMessages }: ChatStateProps) {
   const { getEnabledClients } = useMCP()
+  const location = useLocation()
+  const queryClient = useQueryClient()
 
   const { selectedModel } = useSettings({
     selected_model: '',
@@ -160,6 +164,117 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])
+
+  // Check for OAuth retry trigger and regenerate to continue original request
+  const oauthRetryTriggeredRef = useRef(false)
+
+  const checkAndTriggerRetry = useCallback(() => {
+    if (oauthRetryTriggeredRef.current) return
+    if (!selectedModelId || status !== 'ready' || chatMessages.length === 0) return
+
+    const shouldRetry = sessionStorage.getItem('oauth_trigger_retry') === 'true'
+    if (!shouldRetry) return
+
+    const lastUserMessage = chatMessages
+      .slice()
+      .reverse()
+      .find((msg) => msg.role === 'user')
+
+    // Continue the action without removing the widget message
+    // We'll use regenerate() which removes the last assistant message (widget),
+    // but we'll restore it after streaming completes and preserve the sessionStorage flags
+    if (lastUserMessage && chatMessages[chatMessages.length - 1]?.role === 'assistant') {
+      oauthRetryTriggeredRef.current = true
+      sessionStorage.removeItem('oauth_trigger_retry')
+
+      // Store the widget message and its ID to restore it after regeneration
+      const widgetMessage = chatMessages[chatMessages.length - 1]
+      const widgetMessageId = widgetMessage.id
+
+      // Get and preserve the stored provider from sessionStorage
+      const storedProvider = sessionStorage.getItem(`oauth_widget_${widgetMessageId}_provider`) as
+        | 'google'
+        | 'microsoft'
+        | null
+      const wasCompleted = sessionStorage.getItem(`oauth_widget_${widgetMessageId}_completed`) === 'true'
+
+      // Delay to ensure state is stable after navigation
+      setTimeout(() => {
+        // Regenerate will remove the widget message, so we restore it after streaming completes
+        chatHelpers.regenerate().catch((err) => {
+          oauthRetryTriggeredRef.current = false
+          console.error('OAuth retry regenerate error', err)
+        })
+
+        // Watch for when regeneration completes (status changes to ready and new message appears)
+        // Then restore the widget message with its connected state
+        let lastMessageCount = chatHelpers.messages.length
+        const checkComplete = setInterval(() => {
+          const currentMessageCount = chatHelpers.messages.length
+          const isReady = chatHelpers.status === 'ready'
+
+          // Check if regeneration completed (new message appeared and streaming stopped)
+          if (isReady && currentMessageCount > lastMessageCount) {
+            // Regeneration completed - restore the widget
+            clearInterval(checkComplete)
+
+            if (widgetMessage && storedProvider && wasCompleted) {
+              // Re-set the sessionStorage flags BEFORE restoring the message
+              // so the widget component sees them on mount
+              sessionStorage.setItem(`oauth_widget_${widgetMessageId}_provider`, storedProvider)
+              sessionStorage.setItem(`oauth_widget_${widgetMessageId}_completed`, 'true')
+
+              // Restore the widget message with connected state flags
+              const currentMessages = [...chatHelpers.messages]
+              // Find the last user message index
+              let lastUserIndex = -1
+              for (let i = currentMessages.length - 1; i >= 0; i--) {
+                if (currentMessages[i]?.role === 'user') {
+                  lastUserIndex = i
+                  break
+                }
+              }
+              if (lastUserIndex >= 0) {
+                // Insert widget message after the user message, before the new assistant response
+                const newMessages = [
+                  ...currentMessages.slice(0, lastUserIndex + 1),
+                  widgetMessage,
+                  ...currentMessages.slice(lastUserIndex + 1),
+                ]
+                chatHelpers.setMessages(newMessages)
+                // Also update React Query cache to keep widget in memory without persisting to DB
+                queryClient.setQueryData(['chatMessages', id], newMessages)
+              }
+            }
+          }
+
+          lastMessageCount = currentMessageCount
+        }, 100)
+
+        // Clear interval after 30 seconds to prevent infinite loop
+        setTimeout(() => clearInterval(checkComplete), 30000)
+      }, 1000)
+    }
+  }, [selectedModelId, status, chatMessages, chatHelpers, id, queryClient])
+
+  // Check on mount and when dependencies change
+  useEffect(() => {
+    checkAndTriggerRetry()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, selectedModelId, chatMessages.length, location.pathname, location.state])
+
+  // Listen for custom event from widget
+  useEffect(() => {
+    const handleRetryTrigger = () => {
+      // Small delay to ensure sessionStorage is updated
+      setTimeout(() => {
+        checkAndTriggerRetry()
+      }, 100)
+    }
+
+    window.addEventListener('oauth-retry-trigger', handleRetryTrigger)
+    return () => window.removeEventListener('oauth-retry-trigger', handleRetryTrigger)
+  }, [checkAndTriggerRetry])
 
   // If we don't pass a selectedModelId to the ChatUI, it will warn about changing an input from uncontrolled to controlled
   if (!selectedModelId) {

@@ -1,4 +1,4 @@
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import type { ReasoningUIPart } from 'ai'
 import { motion } from 'framer-motion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { ToolIcon } from './tool-icon'
@@ -8,7 +8,7 @@ type ReasoningItemProps = {
   part: ReasoningUIPart
   index: number
   messageId: string
-  onOpenDetails: (tool: ToolUIPart) => void
+  onOpenDetails: (part: ReasoningUIPart) => void
 }
 
 export const ReasoningItem = ({ part, index, messageId, onOpenDetails }: ReasoningItemProps) => {
@@ -31,7 +31,7 @@ export const ReasoningItem = ({ part, index, messageId, onOpenDetails }: Reasoni
             isLoading={isLoading}
             isError={false}
             tooltipKey={`${messageId}_reasoning_${index}`}
-            onClick={() => {}}
+            onClick={() => onOpenDetails(part)}
           />
         </motion.div>
       </TooltipTrigger>

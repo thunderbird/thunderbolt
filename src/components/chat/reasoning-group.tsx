@@ -1,11 +1,11 @@
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useObjectView } from './object-view-provider'
 import { ToolItem } from './tool-item'
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
 import { useMemo } from 'react'
 import { ReasoningItem } from './reasoning-item'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { useObjectView } from '@/content-view/context'
 
 type UseReasoningGroupStateParams = {
   parts: ReasoningGroupItem[]

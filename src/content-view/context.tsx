@@ -1,18 +1,25 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/posthog'
-import type { ToolUIPart } from 'ai'
+import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { formatToolOutput, splitPartType } from '@/lib/utils'
+
+export type ObjectViewData = {
+  title: string
+  output: string
+}
 
 type ContentViewState =
   | { type: null; data: null }
-  | { type: 'object-view'; data: ToolUIPart }
+  | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: { sideviewType: string; sideviewId: string } }
 
 type ContentViewContextType = {
   state: ContentViewState
-  showObjectView: (content: ToolUIPart) => void
+  showObjectView: (content: ToolUIPart | ReasoningUIPart) => void
   showPreview: (url: string) => void
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
@@ -42,10 +49,29 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
-  const showObjectView = useCallback((content: ToolUIPart) => {
-    const [, toolName] = content?.type?.split(':') ?? ['', 'unknown']
+  const showObjectView = useCallback((content: ToolUIPart | ReasoningUIPart) => {
+    if (content.type === 'reasoning') {
+      trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
+      setState({
+        type: 'object-view',
+        data: {
+          title: 'Reasoning',
+          output: content.text,
+        },
+      })
+      return
+    }
+
+    const [, toolName] = splitPartType(content?.type ?? '')
+    const metadata = getToolMetadataSync(toolName, content?.input)
     trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
-    setState({ type: 'object-view', data: content })
+    setState({
+      type: 'object-view',
+      data: {
+        title: metadata.displayName,
+        output: formatToolOutput(content.output),
+      },
+    })
   }, [])
 
   const showPreview = useCallback((url: string) => {

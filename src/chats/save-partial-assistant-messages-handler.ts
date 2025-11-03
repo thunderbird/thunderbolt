@@ -22,7 +22,7 @@ export const SavePartialAssistantMessagesHandler = ({
 
   const { status, messages } = useChat({ chat: chatInstance })
 
-  const isStreaming = useMemo(() => status === 'streaming', [status])
+  const isStreaming = status === 'streaming'
 
   const throttledSave = useThrottledCallback((message: ThunderboltUIMessage) => {
     saveMessages({

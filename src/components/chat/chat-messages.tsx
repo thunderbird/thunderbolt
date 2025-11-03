@@ -20,7 +20,7 @@ export const ChatMessages = () => {
 
   const { error, status, messages } = useChat({ chat: chatInstance })
 
-  const isStreaming = useMemo(() => status === 'streaming', [status])
+  const isStreaming = status === 'streaming'
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(

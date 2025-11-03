@@ -1,5 +1,5 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore } from './chat-store'
 import { useChat } from '@ai-sdk/react'
@@ -14,7 +14,7 @@ export const useChatScrollHandler = () => {
 
   const { status, messages } = useChat({ chat: chatInstance })
 
-  const isStreaming = useMemo(() => status === 'streaming', [status])
+  const isStreaming = status === 'streaming'
 
   const {
     scrollContainerRef,

@@ -1,5 +1,5 @@
 import { useContextTracking } from '@/hooks/use-context-tracking'
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { type Model } from '@/types'
@@ -39,7 +39,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { messages, status, stop } = useChat({ chat: chatInstance })
 
-    const isStreaming = useMemo(() => status === 'streaming', [status])
+    const isStreaming = status === 'streaming'
 
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const [input, setInput] = useState('')

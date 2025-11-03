@@ -62,7 +62,7 @@ export const ReasoningGroup = ({
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
-  const { lastReasoningPart, showLoadingNext } = useReasoningGroupState({
+  const { lastReasoningPart } = useReasoningGroupState({
     parts,
     isStreaming,
     isLastPartInMessage,

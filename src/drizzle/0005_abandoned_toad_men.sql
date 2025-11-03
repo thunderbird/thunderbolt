@@ -9,7 +9,7 @@ CREATE TABLE `__new_chat_threads` (
 	FOREIGN KEY (`triggered_by`) REFERENCES `prompts`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-INSERT INTO `__new_chat_threads`("id", "title", "is_encrypted", "triggered_by", "was_triggered_by_automation", "context_size") SELECT "id", "title", "is_encrypted", "triggered_by", "was_triggered_by_automation", "context_size" FROM `chat_threads`;--> statement-breakpoint
+INSERT INTO `__new_chat_threads`(`id`, `title`, `is_encrypted`, `triggered_by`, `was_triggered_by_automation`, `context_size`) SELECT `id`, `title`, `is_encrypted`, `triggered_by`, `was_triggered_by_automation`, `context_size` FROM `chat_threads`;--> statement-breakpoint
 DROP TABLE `chat_threads`;--> statement-breakpoint
 ALTER TABLE `__new_chat_threads` RENAME TO `chat_threads`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

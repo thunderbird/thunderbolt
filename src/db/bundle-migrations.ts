@@ -71,9 +71,9 @@ export async function bundleMigrations(options?: {
  */
 
 export interface Migration {
-  hash: string;
-  name: string;
-  sql: string;
+  hash: string
+  name: string
+  sql: string
 }
 
 export const migrations: Migration[] = [
@@ -81,13 +81,14 @@ export const migrations: Migration[] = [
     .map((migration) => {
       // Use JSON.stringify for the SQL content to ensure proper escaping
       return `{
-    "hash": ${JSON.stringify(migration.hash)},
-    "name": ${JSON.stringify(migration.name)},
-    "sql": ${JSON.stringify(migration.sql)}
+    hash: ${JSON.stringify(migration.hash)},
+    name: ${JSON.stringify(migration.name)},
+    sql: ${JSON.stringify(migration.sql)},
   }`
     })
-    .join(',\n  ')}
-];
+    .join(',\n  ')
+    .replace(/"/g, "'")}
+]
 `
 
   // Write the output file

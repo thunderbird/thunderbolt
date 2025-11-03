@@ -94,7 +94,7 @@ CREATE UNIQUE INDEX `embeddings_email_thread_id_unique` ON `embeddings` (`email_
 CREATE TABLE `mcp_servers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
-	`type` text DEFAULT 'http' NOT NULL,
+	`type` text DEFAULT `http` NOT NULL,
 	`url` text,
 	`command` text,
 	`args` text,

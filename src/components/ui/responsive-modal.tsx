@@ -78,7 +78,7 @@ const ResponsiveModalContent = forwardRef<ElementRef<typeof DialogPrimitive.Cont
             // Keep the sheet inside the visible viewport when raised.
             maxHeight: 'calc(80dvh - var(--kb, 0px))',
             // Ensure content isn’t hidden behind the iOS home indicator notch.
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--kb, 0px))',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }
         : undefined
 

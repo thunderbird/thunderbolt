@@ -9,6 +9,7 @@ import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createOpenAIRoutes } from '@/openai/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { withAppCreation, withServerListen, withSettingsValidation } from '@/utils/startup-errors'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
@@ -67,7 +68,7 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
  * Start the server
  */
 const startServer = async () => {
-  const settings = getSettings()
+  const settings = withSettingsValidation(() => getSettings())
   const log = createStandaloneLogger(settings)
 
   // Set up logging
@@ -83,7 +84,7 @@ const startServer = async () => {
   )
 
   try {
-    const app = await createApp()
+    const app = await withAppCreation(() => createApp())
 
     const hostname = process.env.HOST
       ? process.env.HOST
@@ -91,31 +92,39 @@ const startServer = async () => {
         ? '0.0.0.0'
         : 'localhost'
 
-    app.listen(
-      {
-        hostname,
-        port: settings.port,
-        reusePort: process.env.NODE_ENV === 'production',
-      },
-      () => {
-        log.info(
-          {
-            hostname,
-            port: settings.port,
-            url: `http://localhost:${settings.port}/v1`,
-          },
-          '🦊 Elysia server started',
-        )
-
-        if (process.env.NODE_ENV !== 'production') {
-          log.info(
+    await withServerListen(
+      () =>
+        new Promise<void>((resolve) => {
+          app.listen(
             {
-              swaggerUrl: `http://localhost:${settings.port}/v1/swagger`,
+              hostname,
+              port: settings.port,
+              reusePort: process.env.NODE_ENV === 'production',
             },
-            '📚 Swagger documentation available',
+            () => {
+              log.info(
+                {
+                  hostname,
+                  port: settings.port,
+                  url: `http://localhost:${settings.port}/v1`,
+                },
+                '🦊 Elysia server started',
+              )
+
+              if (process.env.NODE_ENV !== 'production') {
+                log.info(
+                  {
+                    swaggerUrl: `http://localhost:${settings.port}/v1/swagger`,
+                  },
+                  '📚 Swagger documentation available',
+                )
+              }
+              resolve()
+            },
           )
-        }
-      },
+        }),
+      settings.port,
+      hostname,
     )
 
     // Graceful shutdown
@@ -129,7 +138,16 @@ const startServer = async () => {
       process.exit(0)
     })
   } catch (error) {
-    log.error({ error }, 'Failed to start server')
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+
+    console.error('\n❌ Server startup failed:')
+    console.error(errorMessage)
+    if (errorStack && process.env.NODE_ENV !== 'production') {
+      console.error('\nStack trace:')
+      console.error(errorStack)
+    }
+
     process.exit(1)
   }
 }

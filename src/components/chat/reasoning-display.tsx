@@ -13,6 +13,7 @@ type ReasoningDisplayProps = {
  * - Fades out 3 seconds after the reasoning step finishes
  * - Instantly replaced by the next reasoning step if it appears before fade-out
  * - Cleans up timers properly
+ * - Scrollable with max height and auto-scrolls to bottom as text generates
  */
 export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
   const [displayText, setDisplayText] = useState(text)
@@ -20,6 +21,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
   const [currentKey, setCurrentKey] = useState(instanceKey)
   const displayStartTimeRef = useRef(Date.now())
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Update display text and reset timers when text or key changes
   useEffect(() => {
@@ -77,6 +79,13 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
     }
   }, [isStreaming, shouldShow])
 
+  // Auto-scroll to bottom as text generates
+  useEffect(() => {
+    if (scrollContainerRef.current && isStreaming) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [displayText, isStreaming])
+
   return (
     <AnimatePresence mode="wait">
       {shouldShow && displayText && (
@@ -86,9 +95,15 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
-          className="px-4 py-3 text-muted-foreground leading-relaxed text-sm"
+          className="px-4 mt-2"
         >
-          {displayText}
+          <div
+            ref={scrollContainerRef}
+            className="py-3 text-muted-foreground text-sm overflow-y-auto"
+            style={{ lineHeight: '1.5', maxHeight: '7.5em' }}
+          >
+            {displayText}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

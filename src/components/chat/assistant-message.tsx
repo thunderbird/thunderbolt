@@ -43,8 +43,10 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
     hasTools: false,
   }
 
-  if (filteredParts.length === 0) {
-    currentGroup.others.push(<SyntheticLoadingPart key="loading" isStreaming={true} />)
+  // Show loading state when streaming with no parts at all
+  if (filteredParts.length === 0 && isStreaming) {
+    currentGroup.expandables.push(<SyntheticLoadingPart key="loading" isStreaming={true} />)
+    currentGroup.hasTools = true
   }
 
   // Build allSteps array from timing data for passing to components
@@ -79,13 +81,21 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
     .sort((a, b) => a.startTime - b.startTime)
 
   // Find the most recent reasoning part for displaying text below accordions
+  // But only if there's no text part yet (hide reasoning when text starts streaming)
   let currentReasoningPart: ReasoningUIPart | null = null
-  for (let i = filteredParts.length - 1; i >= 0; i--) {
-    const part = filteredParts[i]
+  const hasTextPart = filteredParts.some((part) => {
     const [partType] = splitPartType(part.type)
-    if (partType === 'reasoning') {
-      currentReasoningPart = part as ReasoningUIPart
-      break
+    return partType === 'text'
+  })
+
+  if (!hasTextPart) {
+    for (let i = filteredParts.length - 1; i >= 0; i--) {
+      const part = filteredParts[i]
+      const [partType] = splitPartType(part.type)
+      if (partType === 'reasoning') {
+        currentReasoningPart = part as ReasoningUIPart
+        break
+      }
     }
   }
 
@@ -97,6 +107,8 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
   // Track tool indices for each group
   const toolIndicesByGroup: number[][] = []
   let currentToolIndices: number[] = []
+
+  let hasAnyTools = false
 
   filteredParts.forEach((part, index) => {
     const [partType] = splitPartType(part.type)
@@ -110,6 +122,7 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
         break
       }
       case 'tool': {
+        hasAnyTools = true
         const element = (
           <ToolInvocationPart
             key={`${partType}-${index}`}
@@ -139,6 +152,12 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
       }
     }
   })
+
+  // Add loading state when streaming and no tools yet (only reasoning or nothing)
+  if (isStreaming && !hasAnyTools && currentGroup.expandables.length === 0 && currentGroup.others.length === 0) {
+    currentGroup.expandables.push(<SyntheticLoadingPart key="loading" isStreaming={true} />)
+    currentGroup.hasTools = true
+  }
 
   // Add the last group if it has content
   if (currentGroup.expandables.length > 0 || currentGroup.others.length > 0) {

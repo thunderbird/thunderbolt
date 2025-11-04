@@ -159,8 +159,7 @@ export const ConnectIntegrationWidget = memo(
             return
           }
 
-          const serviceAvailable =
-            service === 'email' || service === 'both' ? googleConnected || microsoftConnected : googleConnected
+          const serviceAvailable = googleConnected || microsoftConnected
 
           if (serviceAvailable) {
             const connectedProvider = googleConnected ? 'google' : 'microsoft'

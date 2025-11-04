@@ -94,8 +94,8 @@ const startServer = async () => {
 
     await withServerListen(
       () =>
-        new Promise<void>((resolve) => {
-          app.listen(
+        new Promise<void>((resolve, reject) => {
+          const server = app.listen(
             {
               hostname,
               port: settings.port,
@@ -122,6 +122,10 @@ const startServer = async () => {
               resolve()
             },
           )
+
+          server.on('error', (error) => {
+            reject(error)
+          })
         }),
       settings.port,
       hostname,

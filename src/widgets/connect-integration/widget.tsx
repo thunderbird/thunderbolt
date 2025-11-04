@@ -10,6 +10,7 @@ import {
 } from '@/components/provider-icons'
 import { getSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
+import { useSettings } from '@/hooks/use-settings'
 import { type OAuthProvider } from '@/lib/auth'
 import { oauthRetryFlag, oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
 import { Check } from 'lucide-react'
@@ -60,6 +61,7 @@ export const ConnectIntegrationWidget = memo(
   ({ provider, service, reason, messageId }: ConnectIntegrationWidgetProps) => {
     const location = useLocation()
     const navigate = useNavigate()
+    const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
     const [isConnecting, setIsConnecting] = useState(false)
     const [isDismissed, setIsDismissed] = useState(false)
     const [isConnected, setIsConnected] = useState(false)
@@ -124,6 +126,7 @@ export const ConnectIntegrationWidget = memo(
 
           const googleConnected = !!integrationsGoogleCredentials && integrationsGoogleCredentials !== ''
           const microsoftConnected = !!integrationsMicrosoftCredentials && integrationsMicrosoftCredentials !== ''
+          const serviceAvailable = googleConnected || microsoftConnected
 
           setAvailableProviders({
             google: googleConnected,
@@ -158,8 +161,6 @@ export const ConnectIntegrationWidget = memo(
             }
             return
           }
-
-          const serviceAvailable = googleConnected || microsoftConnected
 
           if (serviceAvailable) {
             const connectedProvider = googleConnected ? 'google' : 'microsoft'
@@ -268,13 +269,22 @@ export const ConnectIntegrationWidget = memo(
       }
     }
 
-    const handleDismiss = () => {
+    const handleNotNow = () => {
       setIsDismissed(true)
+    }
+
+    const handleDoNotAskAgain = async () => {
+      await integrationsDoNotAskAgain.setValue(true)
+      setIsDismissed(true)
+    }
+
+    if (integrationsDoNotAskAgain.value) {
+      return null
     }
 
     if (isDismissed) {
       return (
-        <Card className="border border-border rounded-lg my-4">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground text-center">You can connect integrations later in Settings.</p>
           </CardContent>
@@ -290,7 +300,7 @@ export const ConnectIntegrationWidget = memo(
         return null
       }
       return (
-        <Card className="border border-border rounded-lg my-4 max-w-md mx-auto">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <div className="flex items-center justify-center">
               <p className="text-sm text-muted-foreground">Loading...</p>
@@ -305,22 +315,23 @@ export const ConnectIntegrationWidget = memo(
       const MicrosoftIconComp = getIconComponent('microsoft', service)
 
       return (
-        <Card className="border border-border rounded-lg my-4 max-w-md mx-auto">
-          <CardContent className="p-6">
-            <div className="flex flex-col items-center space-y-4">
+        <Card className="w-full border border-border rounded-lg my-4">
+          <CardContent className="p-6 flex flex-col min-h-[400px]">
+            <div className="flex flex-col items-center space-y-4 flex-1">
               <div className="text-center space-y-2">
-                <h3 className="text-lg font-semibold">Choose your email provider to connect {serviceName}</h3>
-                <p className="text-sm text-muted-foreground">{displayReason}</p>
+                <h3 className="text-lg font-semibold">Choose your email provider {displayReason}</h3>
               </div>
 
               <div className="w-full grid grid-cols-2 gap-3">
                 <button
                   onClick={() => setSelectedProvider('google')}
                   disabled={isConnecting}
-                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <div className="flex items-center justify-center w-12 h-12 mb-2">
-                    <GoogleIconComp />
+                  <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
+                    <div className="scale-[2.5] origin-center">
+                      <GoogleIconComp />
+                    </div>
                   </div>
                   <span className="text-sm font-medium">Google</span>
                   <span className="text-xs text-muted-foreground">
@@ -331,10 +342,12 @@ export const ConnectIntegrationWidget = memo(
                 <button
                   onClick={() => setSelectedProvider('microsoft')}
                   disabled={isConnecting}
-                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <div className="flex items-center justify-center w-12 h-12 mb-2">
-                    <MicrosoftIconComp />
+                  <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
+                    <div className="scale-[2.5] origin-center">
+                      <MicrosoftIconComp />
+                    </div>
                   </div>
                   <span className="text-sm font-medium">Microsoft</span>
                   <span className="text-xs text-muted-foreground">
@@ -342,10 +355,17 @@ export const ConnectIntegrationWidget = memo(
                   </span>
                 </button>
               </div>
+            </div>
 
-              <Button onClick={handleDismiss} disabled={isConnecting} variant="ghost" className="w-full">
-                Do not connect
-              </Button>
+            <div className="mt-auto w-full">
+              <div className="w-full space-y-2">
+                <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="w-full">
+                  Not now
+                </Button>
+                <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="w-full">
+                  Do not ask again
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -369,7 +389,7 @@ export const ConnectIntegrationWidget = memo(
       const ConnectedIconComponent = getIconComponent(connectedProvider, service)
 
       return (
-        <Card className="border border-border rounded-lg my-4 max-w-md mx-auto">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <div className="flex flex-col items-center space-y-4">
               <div className="flex items-center justify-center w-20 h-20 overflow-hidden">
@@ -398,9 +418,9 @@ export const ConnectIntegrationWidget = memo(
     }
 
     return (
-      <Card className="border border-border rounded-lg my-4 max-w-md mx-auto">
-        <CardContent className="p-6">
-          <div className="flex flex-col items-center space-y-4">
+      <Card className="w-full border border-border rounded-lg my-4">
+        <CardContent className="p-6 flex flex-col min-h-[400px]">
+          <div className="flex flex-col items-center space-y-4 flex-1">
             <div className="flex items-center justify-center w-20 h-20 overflow-hidden">
               <div className="scale-[3.2] origin-center">
                 <IconComponent />
@@ -434,8 +454,16 @@ export const ConnectIntegrationWidget = memo(
                   Choose different provider
                 </Button>
               )}
-              <Button onClick={handleDismiss} disabled={isConnecting} variant="ghost" className="w-full">
-                Do not connect
+            </div>
+          </div>
+
+          <div className="self-end w-full">
+            <div className="w-full space-y-2">
+              <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="w-full">
+                Not now
+              </Button>
+              <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="w-full">
+                Do not ask again
               </Button>
             </div>
           </div>

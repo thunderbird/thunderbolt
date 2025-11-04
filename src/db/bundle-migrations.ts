@@ -5,6 +5,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
+import prettier from 'prettier'
 
 interface Migration {
   hash: string
@@ -90,8 +91,20 @@ export const migrations: Migration[] = [
 ];
 `
 
-  // Write the output file
-  writeFileSync(OUTPUT_FILE, fileContent)
+  try {
+    // Load Prettier config if available
+    const prettierConfig = (await prettier.resolveConfig(OUTPUT_FILE)) ?? {}
+    const formatted = await prettier.format(fileContent, {
+      ...prettierConfig,
+      filepath: OUTPUT_FILE, // ensures correct parser detection
+    })
+
+    writeFileSync(OUTPUT_FILE, formatted)
+  } catch (err) {
+    // Fallback: write unformatted content if Prettier fails
+    writeFileSync(OUTPUT_FILE, fileContent)
+    console.warn('⚠️ Failed to format _migrations.ts with Prettier:', err)
+  }
 
   if (!silent) {
     console.log(`Generated ${OUTPUT_FILE} with ${migrations.length} migrations`)

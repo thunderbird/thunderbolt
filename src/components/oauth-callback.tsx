@@ -46,8 +46,6 @@ export default function OAuthCallback() {
       const t = setTimeout(() => {
         const returnContext = sessionStorage.getItem('oauth_return_context')
 
-        // If returnContext is a path (starts with '/'), use it directly
-        // Otherwise treat it as a named context
         if (returnContext?.startsWith('/')) {
           navigate(returnContext, {
             state: {

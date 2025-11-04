@@ -141,13 +141,12 @@ const startServer = async () => {
     const errorMessage = error instanceof Error ? error.message : String(error)
     const errorStack = error instanceof Error ? error.stack : undefined
 
-    console.error('\n❌ Server startup failed:')
-    console.error(errorMessage)
-    if (errorStack && process.env.NODE_ENV !== 'production') {
-      console.error('\nStack trace:')
-      console.error(errorStack)
+    const output = ['\n❌ Server startup failed:', errorMessage]
+    if (errorStack) {
+      output.push('\nStack trace:', errorStack)
     }
 
+    console.error(output.join('\n'))
     process.exit(1)
   }
 }

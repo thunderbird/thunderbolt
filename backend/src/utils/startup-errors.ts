@@ -6,12 +6,18 @@ import { ZodError } from 'zod'
 class StartupError extends Error {
   constructor(
     message: string,
-    public readonly context: string,
     public readonly originalError?: unknown,
   ) {
     super(message)
     this.name = 'StartupError'
   }
+}
+
+/**
+ * Extract error message from unknown error type
+ */
+const getErrorMessage = (error: unknown): string => {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -33,14 +39,10 @@ export const withSettingsValidation = <T>(fn: () => T): T => {
     return fn()
   } catch (error) {
     if (error instanceof ZodError) {
-      throw new StartupError(`Failed to validate server settings${formatZodError(error)}`, 'settings_validation', error)
+      throw new StartupError(`Failed to validate server settings${formatZodError(error)}`, error)
     }
 
-    throw new StartupError(
-      `Failed to load server settings: ${error instanceof Error ? error.message : String(error)}`,
-      'settings_validation',
-      error,
-    )
+    throw new StartupError(`Failed to load server settings: ${getErrorMessage(error)}`, error)
   }
 }
 
@@ -51,8 +53,7 @@ export const withAppCreation = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    throw new StartupError(`Failed to initialize application: ${errorMessage}`, 'app_creation', error)
+    throw new StartupError(`Failed to initialize application: ${getErrorMessage(error)}`, error)
   }
 }
 
@@ -89,7 +90,6 @@ export const withServerListen = async <T>(fn: () => Promise<T>, port: number, ho
   try {
     return await fn()
   } catch (error) {
-    const message = getServerListenErrorMessage(error, hostname, port)
-    throw new StartupError(message, 'server_listen', error)
+    throw new StartupError(getServerListenErrorMessage(error, hostname, port), error)
   }
 }

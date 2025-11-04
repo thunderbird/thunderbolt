@@ -8,13 +8,14 @@ interface ReasoningPartProps {
 
 export const ReasoningPart = ({ part }: ReasoningPartProps) => {
   const state = part.state
+  const isStreaming = state === 'streaming'
 
   return (
     <Expandable
       title={<span className="text-muted-foreground">Thinking</span>}
       className="shadow-none"
       icon={
-        state === 'streaming' ? (
+        isStreaming ? (
           <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" data-testid="reasoning-loading" />
         ) : (
           <Check className="h-4 w-4 text-green-600 dark:text-green-400" data-testid="reasoning-completed" />
@@ -22,7 +23,7 @@ export const ReasoningPart = ({ part }: ReasoningPartProps) => {
       }
       defaultOpen={false}
     >
-      <div className="text-muted-foreground leading-relaxed text-sm">{part.text}</div>
+      {null}
     </Expandable>
   )
 }

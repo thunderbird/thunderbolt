@@ -8,81 +8,72 @@ import { splitPartType } from './utils'
 export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
 
 /**
- * A synthetic UI part type that represents multiple consecutive reasoning/tool parts grouped together.
- * Created by `groupMessageParts` to render related reasoning + tool calls in a single group
+ * A synthetic UI part type that represents multiple consecutive tool parts grouped together.
+ * Created by `groupMessageParts` to render related tool calls in a single group
  * for better UX (showing them as a batch rather than scattered individually).
  */
-export type ReasoningGroupItem = { type: 'tool' | 'reasoning'; content: unknown }
-
-export type ReasoningGroupUIPart = {
-  type: 'reasoning_group'
-  items: ReasoningGroupItem[]
+export type ToolGroupUIPart = {
+  type: 'group_tools'
+  tools: ToolUIPart[]
 }
 
 /**
  * Union type representing all possible parts after grouping transformation.
- * Either an original part (reasoning, text, or individual tool) or a synthetic `ReasoningGroupUIPart`.
+ * Either an original part (reasoning, text, or individual tool) or a synthetic `ToolGroupUIPart`.
  * Used as output from `groupMessageParts` and input to `mountMessageParts` for rendering.
  */
-export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
+export type GroupedUIPart = GroupableUIPart | ToolGroupUIPart
 
 const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 /**
- * Groups consecutive reasoning/tool parts into `reasoning_group` nodes for batch rendering.
+ * Groups consecutive tool parts into `group_tools` nodes for batch rendering.
  *
  * **Context**: Called by `AssistantMessage` component after filtering to organize tool calls for display.
- * Reasoning and Tool calls (like `read_file`, `grep`, etc.) are grouped together to show as a compact
+ * Tool calls (like `read_file`, `grep`, etc.) are grouped together to show as a compact
  * panel rather than scattered individually throughout the message.
  *
  * **Grouping logic**:
- * - Consecutive reasoning/tool parts → grouped into single `ReasoningGroupUIPart`
- * - Text parts → kept as-is and break any active group
+ * - Consecutive tool parts → grouped into single `ToolGroupUIPart`
+ * - Text and reasoning parts → kept as-is and break any active group
  *
  * **Example transformation**:
  * ```
- * [tool-read_file, reasoning, tool-grep, text, tool-search] →
- * [ReasoningGroupUIPart([...]), text, ReasoningGroupUIPart([...])]
+ * [tool-read_file, tool-grep, text, tool-search] →
+ * [ToolGroupUIPart([...]), text, ToolGroupUIPart([...])]
  * ```
  *
  * @param parts - Filtered message parts (output from `filterMessageParts`)
- * @param messageId - Message id used to compute stable ids for grouped items
- * @returns Parts with consecutive reasoning/tool parts grouped into `ReasoningGroupUIPart` nodes
+ * @returns Parts with consecutive tool parts grouped into `ToolGroupUIPart` nodes
  */
 export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
   const grouped: GroupedUIPart[] = []
-  let currentItems: ReasoningGroupItem[] = []
+  let currentGroup: ToolUIPart[] = []
 
-  // Collects the currently buffered items into a single group node so they render via a group component.
+  // Collects the currently buffered tool parts into a single group node so they render via ToolGroup.
   const flushGroup = () => {
-    if (currentItems.length === 0) {
+    if (currentGroup.length === 0) {
       return
     }
 
     grouped.push({
-      type: 'reasoning_group',
-      items: [...currentItems],
+      type: 'group_tools',
+      tools: [...currentGroup],
     })
 
-    currentItems = []
+    currentGroup = []
   }
 
   // Walk through the incoming parts and buffer every consecutive tool call.
   parts.forEach((part) => {
     const [partType] = splitPartType(part.type)
 
-    if (partType === 'tool' || partType === 'reasoning') {
-      if (partType === 'tool') {
-        const toolPart = part as ToolUIPart
-        currentItems.push({ type: 'tool', content: toolPart })
-      } else {
-        const reasoningPart = part as ReasoningUIPart
-        currentItems.push({ type: 'reasoning', content: reasoningPart })
-      }
+    if (partType === 'tool') {
+      currentGroup.push(part as ToolUIPart)
       return
     }
 
-    // Non-groupable parts break the current streak, so flush first then append the part itself.
+    // Non-tool parts break the current streak, so flush first then append the part itself.
     flushGroup()
     grouped.push(part)
   })

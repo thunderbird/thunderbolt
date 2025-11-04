@@ -1,25 +1,18 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { trackEvent } from '@/lib/posthog'
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import type { ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
-import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { formatToolOutput, splitPartType } from '@/lib/utils'
-
-export type ObjectViewData = {
-  title: string
-  output: string
-}
 
 type ContentViewState =
   | { type: null; data: null }
-  | { type: 'object-view'; data: ObjectViewData }
+  | { type: 'object-view'; data: ToolUIPart }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: { sideviewType: string; sideviewId: string } }
 
 type ContentViewContextType = {
   state: ContentViewState
-  showObjectView: (content: ToolUIPart | ReasoningUIPart) => void
+  showObjectView: (content: ToolUIPart) => void
   showPreview: (url: string) => void
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
@@ -49,29 +42,10 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
-  const showObjectView = useCallback((content: ToolUIPart | ReasoningUIPart) => {
-    if (content.type === 'reasoning') {
-      trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
-      setState({
-        type: 'object-view',
-        data: {
-          title: 'Reasoning',
-          output: content.text,
-        },
-      })
-      return
-    }
-
-    const [, toolName] = splitPartType(content?.type ?? '')
-    const metadata = getToolMetadataSync(toolName, content?.input)
+  const showObjectView = useCallback((content: ToolUIPart) => {
+    const [, toolName] = content?.type?.split(':') ?? ['', 'unknown']
     trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
-    setState({
-      type: 'object-view',
-      data: {
-        title: metadata.displayName,
-        output: formatToolOutput(content.output),
-      },
-    })
+    setState({ type: 'object-view', data: content })
   }, [])
 
   const showPreview = useCallback((url: string) => {
@@ -103,7 +77,7 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
       trackEvent('content_view_close', { view_type: state.type })
     }
     setState({ type: null, data: null })
-  }, [])
+  }, [state.type])
 
   // Initialize with sideview if provided
   useEffect(() => {

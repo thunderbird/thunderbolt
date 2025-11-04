@@ -1,12 +1,12 @@
+import { useChatStore } from '@/chats/chat-store'
+import { useChat } from '@ai-sdk/react'
+import { Lock } from 'lucide-react'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { AssistantMessage } from './assistant-message'
+import TimelineMessage from './timeline-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
-import { EncryptionMessage } from './encryption-message'
-import { ErrorMessage } from './error-message'
-import { useMemo } from 'react'
-import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
-import { useChat } from '@ai-sdk/react'
 
 export const ChatMessages = () => {
   const { chatInstance, chatThread, chatThreadId, triggerData } = useChatStore(
@@ -33,7 +33,14 @@ export const ChatMessages = () => {
 
   return (
     <div>
-      {!!chatThread?.isEncrypted && <EncryptionMessage />}
+      {chatThread?.isEncrypted === 1 && (
+        <TimelineMessage>
+          <div className="flex flex-row items-center gap-2">
+            <Lock className="size-4 text-blue-600 dark:text-blue-400" />
+            <p className="text-blue-700 dark:text-blue-300">This conversation is encrypted</p>
+          </div>
+        </TimelineMessage>
+      )}
       {/* Automation trigger banner */}
       {triggerData?.wasTriggeredByAutomation && (
         <TriggerMessage
@@ -66,7 +73,14 @@ export const ChatMessages = () => {
       })}
 
       {/* Show error message if there's an error */}
-      {!!error && <ErrorMessage message={error.message} />}
+      {error && (
+        <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 mr-auto w-full">
+          <p className="text-destructive font-medium mb-1">Error</p>
+          <p className="text-destructive/80 text-sm">
+            {error.message || 'An unexpected error occurred. Please try again.'}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

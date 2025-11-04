@@ -2,6 +2,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
 
@@ -83,16 +84,22 @@ export const ToolIcon = ({
 
   return (
     <Avatar
-      className={cn(
-        'border-2 border-background size-9 overflow-hidden cursor-pointer',
-        favicon && 'grayscale-0',
-        isLoading && 'shimmer-container',
-        className,
-      )}
+      className={cn('border-2 border-background size-9 cursor-pointer', favicon && 'grayscale-0', className)}
       onClick={onClick}
     >
       <AvatarFallback>
-        {favicon ? (
+        {isLoading ? (
+          <motion.div
+            key={`${tooltipKey}-loading`}
+            initial={{ scale: 0 }}
+            animate={{
+              scale: isLoading ? 1 : 0,
+            }}
+            exit={{ scale: 0 }}
+          >
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </motion.div>
+        ) : favicon ? (
           <motion.div
             key={`${tooltipKey}-favicon`}
             initial={{ scale: 0 }}
@@ -109,7 +116,16 @@ export const ToolIcon = ({
             />
           </motion.div>
         ) : Icon ? (
-          <Icon className={cn('size-4', isError && 'text-yellow-500')} />
+          <motion.div
+            key={`${tooltipKey}-icon`}
+            initial={{ scale: 0 }}
+            animate={{
+              scale: isLoading ? 0 : 1,
+            }}
+            exit={{ scale: 0 }}
+          >
+            <Icon className={cn('size-4', isError && 'text-yellow-500')} />
+          </motion.div>
         ) : (
           initials
         )}

@@ -12,19 +12,23 @@ import { getSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
 import { type OAuthProvider } from '@/lib/auth'
-import { oauthRetryFlag, oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
+import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
+import {
+  type OAuthProviderOrEmpty,
+  useConnectIntegrationWidgetState,
+} from '@/hooks/use-connect-integration-widget-state'
 import { Check } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 type ConnectIntegrationWidgetProps = {
-  provider: 'google' | 'microsoft' | ''
+  provider: OAuthProviderOrEmpty
   service: 'email' | 'calendar' | 'both'
   reason: string
   messageId: string
 }
 
-const getProviderName = (provider: 'google' | 'microsoft'): string => {
+const getProviderName = (provider: OAuthProvider): string => {
   return provider === 'google' ? 'Google' : 'Microsoft'
 }
 
@@ -39,7 +43,7 @@ const getServiceName = (service: 'email' | 'calendar' | 'both'): string => {
   }
 }
 
-const getIconComponent = (provider: 'google' | 'microsoft', service: 'email' | 'calendar' | 'both') => {
+const getIconComponent = (provider: OAuthProvider, service: 'email' | 'calendar' | 'both') => {
   if (service === 'email') {
     return provider === 'google' ? GmailIcon : OutlookIcon
   }
@@ -62,25 +66,11 @@ export const ConnectIntegrationWidget = memo(
     const location = useLocation()
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
-    const [isConnecting, setIsConnecting] = useState(false)
-    const [isDismissed, setIsDismissed] = useState(false)
-    const [isConnected, setIsConnected] = useState(false)
-    const [connectedProvider, setConnectedProvider] = useState<'google' | 'microsoft' | null>(null)
-    const [showConnectedState, setShowConnectedState] = useState(false)
-    const [availableProviders, setAvailableProviders] = useState<{
-      google: boolean
-      microsoft: boolean
-    } | null>(null)
-    const [selectedProvider, setSelectedProvider] = useState<'google' | 'microsoft' | null>(
-      provider === '' ? null : provider,
-    )
+    const [state, dispatch] = useConnectIntegrationWidgetState(provider)
     const displayReason = reason === '' ? getDefaultReason(service) : reason
 
     useEffect(() => {
-      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as
-        | 'google'
-        | 'microsoft'
-        | null
+      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
       const oauthCompleted = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'completed')) === 'true'
 
       if (storedProvider && oauthCompleted) {
@@ -98,26 +88,26 @@ export const ConnectIntegrationWidget = memo(
             if (isProviderConnected) {
               sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'provider'))
               sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'completed'))
-              setIsConnected(true)
-              setConnectedProvider(storedProvider)
-              setSelectedProvider(storedProvider)
+              dispatch({ type: 'SET_CONNECTED', payload: true })
+              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
+              dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
               return
             }
 
-            setConnectedProvider(storedProvider)
-            setIsConnected(false)
-            setSelectedProvider(storedProvider)
+            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
+            dispatch({ type: 'SET_CONNECTED', payload: false })
+            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
           } catch (err) {
             console.error('Failed to check integration status:', err)
-            setConnectedProvider(storedProvider)
-            setIsConnected(false)
-            setSelectedProvider(storedProvider)
+            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
+            dispatch({ type: 'SET_CONNECTED', payload: false })
+            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
           }
         }
 
         checkIntegrationStatus()
       }
-    }, [messageId])
+    }, [messageId, dispatch])
 
     useEffect(() => {
       const checkIntegrations = async () => {
@@ -131,26 +121,28 @@ export const ConnectIntegrationWidget = memo(
           const microsoftConnected = !!integrationsMicrosoftCredentials && integrationsMicrosoftCredentials !== ''
           const serviceAvailable = googleConnected || microsoftConnected
 
-          setAvailableProviders({
-            google: googleConnected,
-            microsoft: microsoftConnected,
+          dispatch({
+            type: 'SET_AVAILABLE_PROVIDERS',
+            payload: {
+              google: googleConnected,
+              microsoft: microsoftConnected,
+            },
           })
 
-          if (showConnectedState) return
+          if (state.showConnectedState) return
 
-          const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as
-            | 'google'
-            | 'microsoft'
-            | null
-          if (storedProvider && !selectedProvider) {
-            setSelectedProvider(storedProvider)
+          const storedProvider = sessionStorage.getItem(
+            getOAuthWidgetKey(messageId, 'provider'),
+          ) as OAuthProvider | null
+          if (storedProvider && !state.selectedProvider) {
+            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
           }
 
-          if (isConnected && connectedProvider) {
-            const isProviderConnected = connectedProvider === 'google' ? googleConnected : microsoftConnected
+          if (state.isConnected && state.connectedProvider) {
+            const isProviderConnected = state.connectedProvider === 'google' ? googleConnected : microsoftConnected
             if (!isProviderConnected) {
-              setIsConnected(false)
-              setConnectedProvider(null)
+              dispatch({ type: 'SET_CONNECTED', payload: false })
+              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: null })
             }
             return
           }
@@ -158,46 +150,62 @@ export const ConnectIntegrationWidget = memo(
           if (provider !== '') {
             const isProviderConnected = provider === 'google' ? googleConnected : microsoftConnected
             if (isProviderConnected) {
-              setIsConnected(true)
-              setConnectedProvider(provider)
-              setSelectedProvider(provider)
+              dispatch({ type: 'SET_CONNECTED', payload: true })
+              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: provider })
+              dispatch({ type: 'SET_SELECTED_PROVIDER', payload: provider })
             }
             return
           }
 
           if (serviceAvailable) {
             const connectedProvider = googleConnected ? 'google' : 'microsoft'
-            setIsConnected(true)
-            setConnectedProvider(connectedProvider)
-            setSelectedProvider(connectedProvider)
+            dispatch({ type: 'SET_CONNECTED', payload: true })
+            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: connectedProvider })
+            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: connectedProvider })
           }
         } catch (err) {
           console.error('Failed to check integrations:', err)
-          setAvailableProviders({ google: false, microsoft: false })
+          dispatch({
+            type: 'SET_AVAILABLE_PROVIDERS',
+            payload: { google: false, microsoft: false },
+          })
         }
       }
 
       checkIntegrations()
-    }, [provider, service, isConnected, showConnectedState, connectedProvider, messageId, selectedProvider])
+    }, [
+      provider,
+      service,
+      state.isConnected,
+      state.showConnectedState,
+      state.connectedProvider,
+      messageId,
+      state.selectedProvider,
+      dispatch,
+    ])
 
     const { connect, processCallback, error } = useOAuthConnect({
       onSuccess: () => {
-        setIsConnecting(false)
-        setIsConnected(true)
-        if (selectedProvider) {
-          setConnectedProvider(selectedProvider)
-          setShowConnectedState(true)
-          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), selectedProvider)
+        if (state.selectedProvider) {
+          dispatch({ type: 'CONNECT_SUCCESS', payload: state.selectedProvider })
+          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
           sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
-          sessionStorage.setItem(oauthRetryFlag, 'true')
 
           setTimeout(() => {
-            setShowConnectedState(false)
+            window.dispatchEvent(
+              new CustomEvent(oauthRetryEvent, {
+                detail: { widgetMessageId: messageId },
+              }),
+            )
+          }, 500)
+
+          setTimeout(() => {
+            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
           }, connectedStateDisplayDuration)
         }
       },
       onError: (err) => {
-        setIsConnecting(false)
+        dispatch({ type: 'SET_CONNECTING', payload: false })
         if (err.message === 'Redirecting for OAuth') {
           return
         }
@@ -206,40 +214,36 @@ export const ConnectIntegrationWidget = memo(
     })
 
     const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {
-      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as
-        | 'google'
-        | 'microsoft'
-        | null
+      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
 
       if (!storedProvider) return
 
-      setSelectedProvider(storedProvider)
+      dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
 
       try {
         const success = await processCallback(oauth)
 
         if (success) {
           sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
-          setConnectedProvider(storedProvider)
-          setIsConnected(true)
-          setShowConnectedState(true)
+          dispatch({ type: 'CONNECT_SUCCESS', payload: storedProvider })
 
           setTimeout(() => {
-            sessionStorage.setItem(oauthRetryFlag, 'true')
-            window.dispatchEvent(new CustomEvent(oauthRetryEvent))
+            window.dispatchEvent(
+              new CustomEvent(oauthRetryEvent, {
+                detail: { widgetMessageId: messageId },
+              }),
+            )
           }, 500)
 
           setTimeout(() => {
-            setShowConnectedState(false)
+            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
           }, connectedStateDisplayDuration)
         } else {
-          setConnectedProvider(null)
-          setIsConnected(false)
+          dispatch({ type: 'CONNECT_FAILED', payload: null })
         }
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
-        setConnectedProvider(null)
-        setIsConnected(false)
+        dispatch({ type: 'CONNECT_FAILED', payload: null })
       } finally {
         navigate(location.pathname, { replace: true, state: null })
       }
@@ -256,36 +260,36 @@ export const ConnectIntegrationWidget = memo(
     }, [location.state, messageId])
 
     const handleConnect = async () => {
-      if (!selectedProvider) return
-      setIsConnecting(true)
+      if (!state.selectedProvider) return
+      dispatch({ type: 'SET_CONNECTING', payload: true })
 
-      sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), selectedProvider)
+      sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
 
       if (!location.pathname.startsWith('/settings/integrations')) {
         sessionStorage.setItem('oauth_return_context', location.pathname)
       }
 
       try {
-        await connect(selectedProvider as OAuthProvider)
+        await connect(state.selectedProvider as OAuthProvider)
       } catch (err) {
         console.error('Failed to connect integration:', err)
       }
     }
 
     const handleNotNow = () => {
-      setIsDismissed(true)
+      dispatch({ type: 'SET_DISMISSED', payload: true })
     }
 
     const handleDoNotAskAgain = async () => {
       await integrationsDoNotAskAgain.setValue(true)
-      setIsDismissed(true)
+      dispatch({ type: 'SET_DISMISSED', payload: true })
     }
 
     if (integrationsDoNotAskAgain.value) {
       return null
     }
 
-    if (isDismissed) {
+    if (state.isDismissed) {
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
@@ -297,8 +301,8 @@ export const ConnectIntegrationWidget = memo(
 
     const serviceName = getServiceName(service)
 
-    if (availableProviders === null) {
-      if (isConnected && connectedProvider && !showConnectedState) {
+    if (state.availableProviders === null) {
+      if (state.isConnected && state.connectedProvider && !state.showConnectedState) {
         return null
       }
       return (
@@ -312,7 +316,7 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    if (!selectedProvider && !isConnected) {
+    if (!state.selectedProvider && !state.isConnected) {
       const GoogleIconComp = getIconComponent('google', service)
       const MicrosoftIconComp = getIconComponent('microsoft', service)
 
@@ -326,8 +330,8 @@ export const ConnectIntegrationWidget = memo(
 
               <div className="w-full grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => setSelectedProvider('google')}
-                  disabled={isConnecting}
+                  onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'google' })}
+                  disabled={state.isConnecting}
                   className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
@@ -342,8 +346,8 @@ export const ConnectIntegrationWidget = memo(
                 </button>
 
                 <button
-                  onClick={() => setSelectedProvider('microsoft')}
-                  disabled={isConnecting}
+                  onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'microsoft' })}
+                  disabled={state.isConnecting}
                   className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
@@ -361,10 +365,10 @@ export const ConnectIntegrationWidget = memo(
 
             <div className="mt-auto w-full">
               <div className="w-full space-y-2">
-                <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="w-full">
+                <Button onClick={handleNotNow} disabled={state.isConnecting} variant="ghost" className="w-full">
                   Not now
                 </Button>
-                <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="w-full">
+                <Button onClick={handleDoNotAskAgain} disabled={state.isConnecting} variant="ghost" className="w-full">
                   Do not ask again
                 </Button>
               </div>
@@ -374,21 +378,22 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    if (!selectedProvider) return null
+    if (!state.selectedProvider) return null
 
-    const providerName = getProviderName(selectedProvider)
-    const IconComponent = getIconComponent(selectedProvider, service)
+    const providerName = getProviderName(state.selectedProvider)
+    const IconComponent = getIconComponent(state.selectedProvider, service)
 
     const isProviderAvailable =
-      availableProviders && (connectedProvider === 'google' ? availableProviders.google : availableProviders.microsoft)
+      state.availableProviders &&
+      (state.connectedProvider === 'google' ? state.availableProviders.google : state.availableProviders.microsoft)
 
-    if (isConnected && connectedProvider && isProviderAvailable && !showConnectedState) {
+    if (state.isConnected && state.connectedProvider && isProviderAvailable && !state.showConnectedState) {
       return null
     }
 
-    if (isConnected && connectedProvider && showConnectedState) {
-      const connectedProviderName = getProviderName(connectedProvider)
-      const ConnectedIconComponent = getIconComponent(connectedProvider, service)
+    if (state.isConnected && state.connectedProvider && state.showConnectedState) {
+      const connectedProviderName = getProviderName(state.connectedProvider)
+      const ConnectedIconComponent = getIconComponent(state.connectedProvider, service)
 
       return (
         <Card className="w-full border border-border rounded-lg my-4">
@@ -443,13 +448,18 @@ export const ConnectIntegrationWidget = memo(
             )}
 
             <div className="w-full space-y-2">
-              <Button onClick={handleConnect} disabled={isConnecting || !selectedProvider} className="w-full" size="lg">
-                {isConnecting ? 'Connecting...' : `Connect ${providerName}`}
+              <Button
+                onClick={handleConnect}
+                disabled={state.isConnecting || !state.selectedProvider}
+                className="w-full"
+                size="lg"
+              >
+                {state.isConnecting ? 'Connecting...' : `Connect ${providerName}`}
               </Button>
               {provider === '' && (
                 <Button
-                  onClick={() => setSelectedProvider(null)}
-                  disabled={isConnecting}
+                  onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: null })}
+                  disabled={state.isConnecting}
                   variant="ghost"
                   className="w-full"
                 >
@@ -461,10 +471,10 @@ export const ConnectIntegrationWidget = memo(
 
           <div className="self-end w-full">
             <div className="w-full space-y-2">
-              <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="w-full">
+              <Button onClick={handleNotNow} disabled={state.isConnecting} variant="ghost" className="w-full">
                 Not now
               </Button>
-              <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="w-full">
+              <Button onClick={handleDoNotAskAgain} disabled={state.isConnecting} variant="ghost" className="w-full">
                 Do not ask again
               </Button>
             </div>

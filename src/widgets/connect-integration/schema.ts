@@ -7,9 +7,9 @@ import { z } from 'zod'
 export const schema = z.object({
   widget: z.literal('connect-integration'),
   args: z.object({
-    provider: z.enum(['google', 'microsoft']).optional(),
+    provider: z.enum(['google', 'microsoft', '']),
     service: z.enum(['email', 'calendar', 'both']),
-    reason: z.string().optional(),
+    reason: z.string(),
   }),
 })
 

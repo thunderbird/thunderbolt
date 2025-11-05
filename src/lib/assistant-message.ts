@@ -12,7 +12,7 @@ export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
  * Created by `groupMessageParts` to render related reasoning + tool calls in a single group
  * for better UX (showing them as a batch rather than scattered individually).
  */
-export type ReasoningGroupItem = { type: 'tool' | 'reasoning'; content: unknown }
+export type ReasoningGroupItem<T = unknown> = { type: 'tool' | 'reasoning'; content: T }
 
 export type ReasoningGroupUIPart = {
   type: 'reasoning_group'

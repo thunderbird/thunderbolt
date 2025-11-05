@@ -1,49 +1,13 @@
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
-import { AnimatePresence, motion } from 'framer-motion'
-import { ToolItem } from './tool-item'
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
-import { useMemo } from 'react'
-import { ReasoningItem } from './reasoning-item'
+import { Expandable } from '../ui/expandable'
+import { Brain, CheckIcon, Loader2 } from 'lucide-react'
+import { cn, splitPartType } from '@/lib/utils'
+import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { tool, type ReasoningUIPart, type ToolUIPart } from 'ai'
+import { ReasoningDisplay } from './reasoning-display'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { useObjectView } from '@/content-view/context'
-
-type UseReasoningGroupStateParams = {
-  parts: ReasoningGroupItem[]
-  isStreaming: boolean
-  isLastPartInMessage: boolean
-  hasTextInMessage: boolean
-}
-
-/**
- * Computes the display state for a tool group, including completion status
- * and whether to show a loading indicator for the next action.
- * @internal - Exported for testing only
- */
-export const useReasoningGroupState = ({
-  parts,
-  isStreaming,
-  isLastPartInMessage,
-  hasTextInMessage,
-}: UseReasoningGroupStateParams) => {
-  const allItemsComplete = parts.every((item) => {
-    const content = item.content as ToolUIPart | ReasoningUIPart
-    return content.state === 'output-available' || content.state === 'output-error' || content.state === 'streaming'
-  })
-
-  const showLoadingNext = isStreaming && isLastPartInMessage && allItemsComplete && !hasTextInMessage
-
-  const lastReasoningPart = useMemo<ReasoningUIPart | null>(() => {
-    const lastPart = parts[parts.length - 1]
-
-    if (lastPart && lastPart.type === 'reasoning') {
-      return lastPart.content as ReasoningUIPart
-    }
-
-    return null
-  }, [parts])
-
-  return { lastReasoningPart, showLoadingNext, allItemsComplete }
-}
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
@@ -53,6 +17,57 @@ type ReasoningGroupProps = {
   messageId: string
 }
 
+type ReasoningGroupTitleProps = {
+  tools: ToolUIPart[]
+}
+
+const ReasoningGroupTitle = ({ tools }: ReasoningGroupTitleProps) => {
+  const runningTools = tools.filter((tool) => tool.state === 'output-available')
+
+  const [activeIndex, setActiveIndex] = useState(runningTools.length - 1)
+
+  useEffect(() => {
+    setActiveIndex(runningTools.length - 1)
+  }, [runningTools.length])
+
+  return (
+    <div className="relative">
+      <AnimatePresence mode="wait">
+        {runningTools.map((tool, index) => {
+          const isActive = index === activeIndex
+          const isBelow = index < activeIndex
+
+          const [, toolName] = splitPartType(tool.type)
+          const metadata = getToolMetadataSync(toolName, tool.input)
+
+          return (
+            <motion.div
+              key={index}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{
+                y: isActive ? 0 : isBelow ? -10 : 20,
+                opacity: isActive ? 1 : 0,
+                scale: isActive ? 1 : 0.98,
+                zIndex: isActive ? 10 : isBelow ? index : 0,
+              }}
+              exit={{ y: -20, opacity: 0 }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1], // Custom easing function
+              }}
+              className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
+            >
+              <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
+                {metadata.loadingMessage}
+              </span>
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export const ReasoningGroup = ({
   parts,
   isStreaming,
@@ -60,64 +75,116 @@ export const ReasoningGroup = ({
   hasTextInMessage,
   messageId,
 }: ReasoningGroupProps) => {
-  const { openObjectSidebar } = useObjectView()
+  const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
 
-  const { lastReasoningPart } = useReasoningGroupState({
-    parts,
-    isStreaming,
-    isLastPartInMessage,
-    hasTextInMessage,
-  })
+  const isThinking = isLastPartInMessage && isStreaming
 
-  const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
-    dependencies: [lastReasoningPart?.text],
-    isStreaming: lastReasoningPart?.state === 'streaming',
-    smooth: false,
+  const lastPart = parts[parts.length - 1]
+
+  const currentReasoningPart = lastPart.type === 'reasoning' ? (lastPart as ReasoningGroupItem<ReasoningUIPart>) : null
+
+  // Create unique instance key for reasoning display
+  const reasoningInstanceKey = currentReasoningPart
+    ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
+    : ''
+
+  const titleNode = isThinking ? <ReasoningGroupTitle tools={tools} /> : `Used ${tools.length} tools in xx`
+
+  const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
+    dependencies: [parts.length],
+    smooth: true,
+    isStreaming: false,
+    rootMargin: '0px',
   })
 
   return (
-    <div>
-      <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 -space-y-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale p-1 mt-6 mb-4 flex-wrap">
-        {parts.map((item, index) => {
-          if (item.type === 'tool') {
-            const tool = item.content as ToolUIPart
-            return (
-              <ToolItem
-                key={tool.toolCallId ?? `${tool.type}-${index}`}
-                tool={tool}
-                index={index}
-                onOpenDetails={openObjectSidebar}
-              />
-            )
-          }
-
-          const reasoningPart = item.content as ReasoningUIPart
-          return (
-            <ReasoningItem
-              key={`${messageId}_reasoning_${index}`}
-              part={reasoningPart}
-              index={index}
-              messageId={messageId}
-              onOpenDetails={openObjectSidebar}
-            />
+    <div className="mt-4">
+      <Expandable
+        className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
+        icon={
+          isThinking ? (
+            <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
+          ) : (
+            <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
           )
-        })}
-      </div>
-      <AnimatePresence>
-        {lastReasoningPart?.state === 'streaming' && (
-          <motion.div
-            className="px-4 max-h-20 flex flex-1 overflow-scroll"
-            initial={{ opacity: 0 }}
-            exit={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            ref={scrollContainerRef}
-            {...scrollHandlers}
-          >
-            <p className="text-muted-foreground text-sm ">{lastReasoningPart?.text}</p>
-            <div ref={scrollTargetRef} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        }
+        defaultOpen={false}
+        title={titleNode}
+      >
+        <div
+          className="max-h-[200px] overflow-y-auto"
+          ref={(el) => {
+            scrollContainerRef.current = el
+          }}
+        >
+          {parts.map((part, index) => {
+            let Icon
+            let displayName
+            let isLoading
+
+            if (part.type === 'tool') {
+              const toolPart = part.content as ToolUIPart
+              const [, toolName] = splitPartType(toolPart.type)
+              const metadata = getToolMetadataSync(toolName)
+
+              Icon = metadata.icon
+              displayName = metadata.displayName
+            }
+
+            switch (part.type) {
+              case 'reasoning': {
+                const reasoningPart = part.content as ReasoningUIPart
+
+                Icon = Brain
+                displayName = 'Thinking'
+                isLoading = reasoningPart.state === 'streaming'
+                break
+              }
+
+              case 'tool': {
+                const toolPart = part.content as ToolUIPart
+                const [, toolName] = splitPartType(toolPart.type)
+                const metadata = getToolMetadataSync(toolName)
+
+                Icon = metadata.icon
+                displayName = metadata.displayName
+                isLoading = toolPart.state !== 'output-available' && toolPart.state !== 'output-error'
+
+                break
+              }
+
+              default:
+                return null
+            }
+
+            return (
+              <button
+                key={index}
+                // onClick={() => handleStepClick(step)}
+                className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
+              >
+                <div className="flex gap-3 flex-row flex-1 items-center">
+                  {isLoading ? (
+                    <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
+                  ) : (
+                    !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium truncate text-foreground">{displayName}</span>
+                </div>
+                <span className="text-xs text-muted-foreground flex-shrink-0">xx</span>
+              </button>
+            )
+          })}
+          <div ref={scrollTargetRef} />
+        </div>
+      </Expandable>
+      {currentReasoningPart && (
+        <ReasoningDisplay
+          text={currentReasoningPart.content.text}
+          isStreaming={currentReasoningPart.content.state === 'streaming'}
+          instanceKey={reasoningInstanceKey}
+        />
+      )}
     </div>
   )
 }

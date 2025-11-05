@@ -7,11 +7,10 @@ import {
 } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
-import type { TextUIPart, ToolUIPart } from 'ai'
+import type { TextUIPart } from 'ai'
 import { memo, type ReactNode } from 'react'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ToolPart } from './tool-part'
 import { ReasoningGroup } from './reasoning-group'
 
 interface AssistantMessageProps {
@@ -58,9 +57,6 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
         )
         break
       }
-      case 'tool':
-        partElements.push(<ToolPart part={part as ToolUIPart} />)
-        break
       case 'text':
         partElements.push(<TextPart part={part as TextUIPart} messageId={messageId} />)
         break

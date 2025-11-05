@@ -1,6 +1,6 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, sanitizeUrl, trackError } from './posthog'
+import { initPosthog, resetPosthog, sanitizeUrl, trackError } from './posthog'
 import type { HandleError } from '@/types/handle-errors'
 
 type PosthogOptions = {
@@ -71,6 +71,8 @@ describe('analytics sanitizeUrl', () => {
 
 describe('analytics before_send sanitization', () => {
   beforeEach(() => {
+    resetPosthog()
+    capturedOptions = null
     mockKyGet.mockReset()
     mockKyPost.mockReset()
     mockKyJson.mockReset()
@@ -123,6 +125,8 @@ describe('analytics before_send sanitization', () => {
 
 describe('trackError test cases', () => {
   beforeEach(() => {
+    resetPosthog()
+    capturedOptions = null
     mockCaptureException.mockReset()
     mockKyGet.mockReset()
     mockKyPost.mockReset()

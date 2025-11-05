@@ -189,56 +189,55 @@ export const ConnectIntegrationWidget = memo(
       returnContext: 'integrations',
     })
 
-    const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {
-      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
-
-      if (!storedProvider) return
-
-      dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-
-      try {
-        const success = await processCallback(oauth)
-
-        if (success) {
-          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
-          dispatch({ type: 'CONNECT_SUCCESS', payload: storedProvider })
-
-          const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
-          if (!eventDispatched) {
-            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-              window.dispatchEvent(
-                new CustomEvent(oauthRetryEvent, {
-                  detail: { widgetMessageId: messageId },
-                }),
-              )
-            }, connectedStateDisplayDuration)
-          } else {
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-            }, connectedStateDisplayDuration)
-          }
-        } else {
-          dispatch({ type: 'CONNECT_FAILED', payload: null })
-        }
-      } catch (err) {
-        console.error('Failed to complete OAuth:', err)
-        dispatch({ type: 'CONNECT_FAILED', payload: null })
-      } finally {
-        navigate(location.pathname, { replace: true, state: null })
-      }
-    }
-
     useEffect(() => {
       const locationState = location.state as { oauth?: { code?: string; state?: string; error?: string } } | null
       const oauth = locationState?.oauth
 
-      if (oauth) {
-        handleOAuthCallback(oauth)
+      if (!oauth) return
+
+      const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {
+        const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
+
+        if (!storedProvider) return
+
+        dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
+
+        try {
+          const success = await processCallback(oauth)
+
+          if (success) {
+            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
+            dispatch({ type: 'CONNECT_SUCCESS', payload: storedProvider })
+
+            const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
+            if (!eventDispatched) {
+              sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
+              setTimeout(() => {
+                dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+                window.dispatchEvent(
+                  new CustomEvent(oauthRetryEvent, {
+                    detail: { widgetMessageId: messageId },
+                  }),
+                )
+              }, connectedStateDisplayDuration)
+            } else {
+              setTimeout(() => {
+                dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+              }, connectedStateDisplayDuration)
+            }
+          } else {
+            dispatch({ type: 'CONNECT_FAILED', payload: null })
+          }
+        } catch (err) {
+          console.error('Failed to complete OAuth:', err)
+          dispatch({ type: 'CONNECT_FAILED', payload: null })
+        } finally {
+          navigate(location.pathname, { replace: true, state: null })
+        }
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.state, messageId])
+
+      handleOAuthCallback(oauth)
+    }, [location, messageId, dispatch, processCallback, navigate])
 
     const handleConnect = async () => {
       if (!state.selectedProvider) return

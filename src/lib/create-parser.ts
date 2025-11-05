@@ -22,8 +22,8 @@ export const createParser = <T extends z.ZodObject<any>>(
   const argsKeys = Object.keys(argsSchema.shape)
 
   return (attrs: Record<string, string>): z.infer<T> | null => {
-    // Quick check: ensure all required args are present
-    const hasAllArgs = argsKeys.every((key) => attrs[key] !== undefined && attrs[key] !== '')
+    // Quick check: ensure all required args are present (but allow empty strings as valid values)
+    const hasAllArgs = argsKeys.every((key) => attrs[key] !== undefined)
     if (!hasAllArgs) {
       return null
     }

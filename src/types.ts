@@ -46,6 +46,7 @@ export type AutomationRun = {
 export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
+  oauthRetry?: boolean
 }
 
 export type SideviewType = 'message' | 'thread' | 'imap'

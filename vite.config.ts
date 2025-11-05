@@ -86,6 +86,9 @@ export default defineConfig({
       ignored: ['**/src-tauri/**'],
     },
   },
+  optimizeDeps: {
+    exclude: ['sqlocal'],
+  },
   worker: {
     format: 'es',
   },

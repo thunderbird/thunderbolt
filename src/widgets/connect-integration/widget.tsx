@@ -18,9 +18,9 @@ import { memo, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 type ConnectIntegrationWidgetProps = {
-  provider?: 'google' | 'microsoft'
+  provider: 'google' | 'microsoft' | ''
   service: 'email' | 'calendar' | 'both'
-  reason?: string
+  reason: string
   messageId: string
 }
 
@@ -71,7 +71,10 @@ export const ConnectIntegrationWidget = memo(
       google: boolean
       microsoft: boolean
     } | null>(null)
-    const [selectedProvider, setSelectedProvider] = useState<'google' | 'microsoft' | null>(provider || null)
+    const [selectedProvider, setSelectedProvider] = useState<'google' | 'microsoft' | null>(
+      provider === '' ? null : provider,
+    )
+    const displayReason = reason === '' ? getDefaultReason(service) : reason
 
     useEffect(() => {
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as
@@ -152,7 +155,7 @@ export const ConnectIntegrationWidget = memo(
             return
           }
 
-          if (provider) {
+          if (provider !== '') {
             const isProviderConnected = provider === 'google' ? googleConnected : microsoftConnected
             if (isProviderConnected) {
               setIsConnected(true)
@@ -293,7 +296,6 @@ export const ConnectIntegrationWidget = memo(
     }
 
     const serviceName = getServiceName(service)
-    const displayReason = reason || getDefaultReason(service)
 
     if (availableProviders === null) {
       if (isConnected && connectedProvider && !showConnectedState) {
@@ -444,7 +446,7 @@ export const ConnectIntegrationWidget = memo(
               <Button onClick={handleConnect} disabled={isConnecting || !selectedProvider} className="w-full" size="lg">
                 {isConnecting ? 'Connecting...' : `Connect ${providerName}`}
               </Button>
-              {!provider && (
+              {provider === '' && (
                 <Button
                   onClick={() => setSelectedProvider(null)}
                   disabled={isConnecting}

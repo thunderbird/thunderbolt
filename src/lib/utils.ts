@@ -1,6 +1,5 @@
-import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
-import { getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
 import { twMerge } from 'tailwind-merge'
@@ -49,43 +48,6 @@ export function convertUIMessageToDbChatMessage(
 
 export function snakeCased(str: string): string {
   return str.replace(/([A-Z])/g, (match) => `_${match.toLowerCase()}`)
-}
-
-/**
- * Finds the index of the last user message in an array of messages
- */
-export const findLastUserMessageIndex = (messages: ThunderboltUIMessage[]): number => {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.role === 'user') {
-      return i
-    }
-  }
-  return -1
-}
-
-/**
- * Restores a widget message after OAuth completion by inserting it after the last user message
- */
-export const restoreWidgetMessage = (
-  messages: ThunderboltUIMessage[],
-  widgetMsg: ThunderboltUIMessage,
-  widgetMsgId: string,
-  provider: string,
-  setMessages: (
-    messages: ThunderboltUIMessage[] | ((messages: ThunderboltUIMessage[]) => ThunderboltUIMessage[]),
-  ) => void,
-  setQueryData: (queryKey: string[], data: ThunderboltUIMessage[]) => void,
-  chatThreadId: string,
-): void => {
-  const lastUserIndex = findLastUserMessageIndex(messages)
-  if (lastUserIndex < 0) return
-
-  sessionStorage.setItem(getOAuthWidgetKey(widgetMsgId, 'provider'), provider)
-  sessionStorage.setItem(getOAuthWidgetKey(widgetMsgId, 'completed'), 'true')
-
-  const newMessages = [...messages.slice(0, lastUserIndex + 1), widgetMsg, ...messages.slice(lastUserIndex + 1)]
-  setMessages(newMessages)
-  setQueryData(['chatMessages', chatThreadId], newMessages)
 }
 
 export function snakeCasedProperties<T extends Record<string, any>>(obj: T): SnakeCasedProperties<T> {

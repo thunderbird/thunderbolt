@@ -8,7 +8,7 @@ import { useMCP } from '@/lib/mcp-provider'
 import { oauthRetryEvent } from '@/widgets/connect-integration/constants'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat, type UseChatHelpers } from '@ai-sdk/react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -153,11 +153,16 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])
 
+  const queryClient = useQueryClient()
+  const oauthRetryHandledRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     const handleOAuthRetry = async (event: CustomEvent<{ widgetMessageId: string }>) => {
       const { widgetMessageId } = event.detail
 
       if (!widgetMessageId || status !== 'ready') return
+
+      if (oauthRetryHandledRef.current.has(widgetMessageId)) return
 
       const widgetMessageIndex = chatMessages.findIndex((msg) => msg.id === widgetMessageId)
       if (widgetMessageIndex < 0) return
@@ -175,26 +180,47 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
       const originalUserText = textPart.text
       if (!originalUserText) return
 
-      const systemMessage: ThunderboltUIMessage = {
+      oauthRetryHandledRef.current.add(widgetMessageId)
+      hasTriggeredRef.current = false
+
+      queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      const retryMessage: ThunderboltUIMessage = {
         id: uuidv7(),
         role: 'user',
-        parts: [{ type: 'text', text: originalUserText }],
+        parts: [
+          {
+            type: 'text',
+            text: `${originalUserText}\n\n[Note: Email integration has been successfully connected. Please proceed with the requested action using the appropriate tools.]`,
+          },
+        ],
+        metadata: {
+          oauthRetry: true,
+        },
       }
 
-      chatHelpers.setMessages((messages) => [...messages, systemMessage])
+      const messagesBeforeWidget = chatMessages.slice(0, widgetMessageIndex)
+      const newMessages = [...messagesBeforeWidget, retryMessage]
+
+      chatHelpers.setMessages(newMessages)
       try {
         await saveMessages({
           id,
-          messages: [systemMessage],
+          messages: [retryMessage],
         })
+
+        await chatHelpers.regenerate()
       } catch (err) {
-        console.error('Failed to save OAuth retry message:', err)
+        console.error('Failed to process OAuth retry:', err)
+        oauthRetryHandledRef.current.delete(widgetMessageId)
       }
     }
 
     window.addEventListener(oauthRetryEvent, handleOAuthRetry as unknown as (event: Event) => void)
     return () => window.removeEventListener(oauthRetryEvent, handleOAuthRetry as unknown as (event: Event) => void)
-  }, [status, chatMessages, chatHelpers, id, saveMessages])
+  }, [status, chatMessages, chatHelpers, id, saveMessages, queryClient])
 
   if (!selectedModelId) {
     return null

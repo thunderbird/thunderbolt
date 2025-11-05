@@ -249,6 +249,11 @@ export default function ChatUI({
                 return null
               }
 
+              // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
+              if (message.metadata?.oauthRetry === true) {
+                return null
+              }
+
               if (message.role === 'assistant') {
                 return (
                   <AssistantMessage

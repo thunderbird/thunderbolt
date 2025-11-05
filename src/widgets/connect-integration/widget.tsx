@@ -8,9 +8,9 @@ import {
   MicrosoftIcon,
   OutlookIcon,
 } from '@/components/provider-icons'
-import { getSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
+import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { type OAuthProvider } from '@/lib/auth'
 import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
 import {
@@ -67,122 +67,93 @@ export const ConnectIntegrationWidget = memo(
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
     const [state, dispatch] = useConnectIntegrationWidgetState(provider)
+    const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
     const displayReason = reason === '' ? getDefaultReason(service) : reason
+
+    useEffect(() => {
+      if (!integrationStatus) return
+
+      dispatch({
+        type: 'SET_AVAILABLE_PROVIDERS',
+        payload: integrationStatus.availableProviders,
+      })
+    }, [integrationStatus, dispatch])
 
     useEffect(() => {
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
       const oauthCompleted = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'completed')) === 'true'
 
-      if (storedProvider && oauthCompleted) {
-        const checkIntegrationStatus = async () => {
-          try {
-            const { integrationsGoogleCredentials, integrationsMicrosoftCredentials } = await getSettings({
-              integrations_google_credentials: '',
-              integrations_microsoft_credentials: '',
-            })
+      if (storedProvider && oauthCompleted && integrationStatus) {
+        const isProviderConnected =
+          storedProvider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
 
-            const googleConnected = !!integrationsGoogleCredentials && integrationsGoogleCredentials !== ''
-            const microsoftConnected = !!integrationsMicrosoftCredentials && integrationsMicrosoftCredentials !== ''
-            const isProviderConnected = storedProvider === 'google' ? googleConnected : microsoftConnected
+        if (isProviderConnected) {
+          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'provider'))
+          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'completed'))
+          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
+          dispatch({ type: 'SET_CONNECTED', payload: true })
+          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
+          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
+          dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: true })
 
-            if (isProviderConnected) {
-              sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'provider'))
-              sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'completed'))
-              dispatch({ type: 'SET_CONNECTED', payload: true })
-              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
-              dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-              return
-            }
-
-            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
-            dispatch({ type: 'SET_CONNECTED', payload: false })
-            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-          } catch (err) {
-            console.error('Failed to check integration status:', err)
-            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
-            dispatch({ type: 'SET_CONNECTED', payload: false })
-            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-          }
+          setTimeout(() => {
+            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+          }, connectedStateDisplayDuration)
+        } else {
+          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
+          dispatch({ type: 'SET_CONNECTED', payload: false })
+          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
         }
-
-        checkIntegrationStatus()
       }
-    }, [messageId, dispatch])
+    }, [messageId, integrationStatus, dispatch])
 
     useEffect(() => {
-      const checkIntegrations = async () => {
-        try {
-          const { integrationsGoogleCredentials, integrationsMicrosoftCredentials } = await getSettings({
-            integrations_google_credentials: '',
-            integrations_microsoft_credentials: '',
-          })
+      if (!integrationStatus || state.showConnectedState) return
 
-          const googleConnected = !!integrationsGoogleCredentials && integrationsGoogleCredentials !== ''
-          const microsoftConnected = !!integrationsMicrosoftCredentials && integrationsMicrosoftCredentials !== ''
-          const serviceAvailable = googleConnected || microsoftConnected
+      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
+      if (storedProvider && !state.selectedProvider) {
+        dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
+      }
+    }, [messageId, integrationStatus, state.showConnectedState, state.selectedProvider, dispatch])
 
-          dispatch({
-            type: 'SET_AVAILABLE_PROVIDERS',
-            payload: {
-              google: googleConnected,
-              microsoft: microsoftConnected,
-            },
-          })
+    useEffect(() => {
+      if (!integrationStatus || !state.isConnected || !state.connectedProvider) return
 
-          if (state.showConnectedState) return
+      const isProviderConnected =
+        state.connectedProvider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
 
-          const storedProvider = sessionStorage.getItem(
-            getOAuthWidgetKey(messageId, 'provider'),
-          ) as OAuthProvider | null
-          if (storedProvider && !state.selectedProvider) {
-            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
+      if (!isProviderConnected) {
+        dispatch({ type: 'SET_CONNECTED', payload: false })
+        dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: null })
+      }
+    }, [integrationStatus, state.isConnected, state.connectedProvider, dispatch])
+
+    useEffect(() => {
+      if (!integrationStatus || state.isConnected || state.showConnectedState) return
+
+      if (provider !== '') {
+        const isProviderConnected =
+          provider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
+        if (isProviderConnected) {
+          dispatch({ type: 'SET_CONNECTED', payload: true })
+          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: provider as OAuthProvider })
+          if (!state.selectedProvider) {
+            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: provider as OAuthProvider })
           }
-
-          if (state.isConnected && state.connectedProvider) {
-            const isProviderConnected = state.connectedProvider === 'google' ? googleConnected : microsoftConnected
-            if (!isProviderConnected) {
-              dispatch({ type: 'SET_CONNECTED', payload: false })
-              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: null })
-            }
-            return
-          }
-
-          if (provider !== '') {
-            const isProviderConnected = provider === 'google' ? googleConnected : microsoftConnected
-            if (isProviderConnected) {
-              dispatch({ type: 'SET_CONNECTED', payload: true })
-              dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: provider })
-              dispatch({ type: 'SET_SELECTED_PROVIDER', payload: provider })
-            }
-            return
-          }
-
-          if (serviceAvailable) {
-            const connectedProvider = googleConnected ? 'google' : 'microsoft'
-            dispatch({ type: 'SET_CONNECTED', payload: true })
-            dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: connectedProvider })
-            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: connectedProvider })
-          }
-        } catch (err) {
-          console.error('Failed to check integrations:', err)
-          dispatch({
-            type: 'SET_AVAILABLE_PROVIDERS',
-            payload: { google: false, microsoft: false },
-          })
         }
+        return
       }
 
-      checkIntegrations()
-    }, [
-      provider,
-      service,
-      state.isConnected,
-      state.showConnectedState,
-      state.connectedProvider,
-      messageId,
-      state.selectedProvider,
-      dispatch,
-    ])
+      if (!state.selectedProvider) {
+        const serviceAvailable = integrationStatus.googleConnected || integrationStatus.microsoftConnected
+        if (serviceAvailable) {
+          const connectedProvider: OAuthProvider = integrationStatus.googleConnected ? 'google' : 'microsoft'
+          dispatch({ type: 'SET_CONNECTED', payload: true })
+          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: connectedProvider })
+          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: connectedProvider })
+        }
+      }
+    }, [integrationStatus, provider, state.isConnected, state.showConnectedState, state.selectedProvider, dispatch])
 
     const { connect, processCallback, error } = useOAuthConnect({
       onSuccess: () => {
@@ -191,17 +162,22 @@ export const ConnectIntegrationWidget = memo(
           sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
           sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
 
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent(oauthRetryEvent, {
-                detail: { widgetMessageId: messageId },
-              }),
-            )
-          }, 500)
-
-          setTimeout(() => {
-            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-          }, connectedStateDisplayDuration)
+          const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
+          if (!eventDispatched) {
+            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
+            setTimeout(() => {
+              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+              window.dispatchEvent(
+                new CustomEvent(oauthRetryEvent, {
+                  detail: { widgetMessageId: messageId },
+                }),
+              )
+            }, connectedStateDisplayDuration)
+          } else {
+            setTimeout(() => {
+              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+            }, connectedStateDisplayDuration)
+          }
         }
       },
       onError: (err) => {
@@ -227,17 +203,22 @@ export const ConnectIntegrationWidget = memo(
           sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
           dispatch({ type: 'CONNECT_SUCCESS', payload: storedProvider })
 
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent(oauthRetryEvent, {
-                detail: { widgetMessageId: messageId },
-              }),
-            )
-          }, 500)
-
-          setTimeout(() => {
-            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-          }, connectedStateDisplayDuration)
+          const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
+          if (!eventDispatched) {
+            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
+            setTimeout(() => {
+              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+              window.dispatchEvent(
+                new CustomEvent(oauthRetryEvent, {
+                  detail: { widgetMessageId: messageId },
+                }),
+              )
+            }, connectedStateDisplayDuration)
+          } else {
+            setTimeout(() => {
+              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+            }, connectedStateDisplayDuration)
+          }
         } else {
           dispatch({ type: 'CONNECT_FAILED', payload: null })
         }
@@ -301,10 +282,7 @@ export const ConnectIntegrationWidget = memo(
 
     const serviceName = getServiceName(service)
 
-    if (state.availableProviders === null) {
-      if (state.isConnected && state.connectedProvider && !state.showConnectedState) {
-        return null
-      }
+    if (isLoadingIntegrationStatus || state.availableProviders === null) {
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">

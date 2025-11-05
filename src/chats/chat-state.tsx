@@ -5,10 +5,10 @@ import { useThrottledCallback } from '@/hooks/use-throttle'
 import { trackEvent } from '@/lib/posthog'
 import { getDefaultModelForThread, getTriggerPromptForThread } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
-import { oauthRetryEvent } from '@/widgets/connect-integration/constants'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useChat, type UseChatHelpers } from '@ai-sdk/react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -153,74 +153,14 @@ export default function ChatState({ id, models, initialMessages, saveMessages }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, selectedModelId])
 
-  const queryClient = useQueryClient()
-  const oauthRetryHandledRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    const handleOAuthRetry = async (event: CustomEvent<{ widgetMessageId: string }>) => {
-      const { widgetMessageId } = event.detail
-
-      if (!widgetMessageId || status !== 'ready') return
-
-      if (oauthRetryHandledRef.current.has(widgetMessageId)) return
-
-      const widgetMessageIndex = chatMessages.findIndex((msg) => msg.id === widgetMessageId)
-      if (widgetMessageIndex < 0) return
-
-      const userMessage = chatMessages
-        .slice(0, widgetMessageIndex)
-        .reverse()
-        .find((msg) => msg.role === 'user')
-
-      if (!userMessage) return
-
-      const textPart = userMessage.parts?.find((part) => part.type === 'text')
-      if (!textPart || textPart.type !== 'text') return
-
-      const originalUserText = textPart.text
-      if (!originalUserText) return
-
-      oauthRetryHandledRef.current.add(widgetMessageId)
-      hasTriggeredRef.current = false
-
-      queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
-
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      const retryMessage: ThunderboltUIMessage = {
-        id: uuidv7(),
-        role: 'user',
-        parts: [
-          {
-            type: 'text',
-            text: `${originalUserText}\n\n[Note: Email integration has been successfully connected. Please proceed with the requested action using the appropriate tools.]`,
-          },
-        ],
-        metadata: {
-          oauthRetry: true,
-        },
-      }
-
-      const messagesBeforeWidget = chatMessages.slice(0, widgetMessageIndex)
-      const newMessages = [...messagesBeforeWidget, retryMessage]
-
-      chatHelpers.setMessages(newMessages)
-      try {
-        await saveMessages({
-          id,
-          messages: [retryMessage],
-        })
-
-        await chatHelpers.regenerate()
-      } catch (err) {
-        console.error('Failed to process OAuth retry:', err)
-        oauthRetryHandledRef.current.delete(widgetMessageId)
-      }
-    }
-
-    window.addEventListener(oauthRetryEvent, handleOAuthRetry as unknown as (event: Event) => void)
-    return () => window.removeEventListener(oauthRetryEvent, handleOAuthRetry as unknown as (event: Event) => void)
-  }, [status, chatMessages, chatHelpers, id, saveMessages, queryClient])
+  useHandleIntegrationCompletion({
+    chatHelpers,
+    saveMessages,
+    id,
+    status,
+    chatMessages,
+    hasTriggeredRef,
+  })
 
   if (!selectedModelId) {
     return null

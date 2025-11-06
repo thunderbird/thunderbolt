@@ -1,13 +1,12 @@
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
 import { Expandable } from '../ui/expandable'
-import { Brain, CheckIcon, Loader2 } from 'lucide-react'
-import { cn, splitPartType } from '@/lib/utils'
-import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { CheckIcon, Loader2 } from 'lucide-react'
 import { type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { ReasoningDisplay } from './reasoning-display'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { ReasoningItem } from './reasoning-item'
+import { ReasoningGroupTitle } from './reasoning-group-title'
+import { useEffect, useState } from 'react'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
@@ -15,136 +14,51 @@ type ReasoningGroupProps = {
   isLastPartInMessage: boolean
 }
 
-type ReasoningItemProps = {
-  part: ReasoningGroupItem
-}
+/**
+ * Hook to calculate total duration from all parts
+ * Handles both existing durations from metadata (old messages) and live tracking
+ */
+const useTotalDuration = (parts: ReasoningGroupItem[]) => {
+  // Track durations by part index
+  const [durations, setDurations] = useState<Map<number, number>>(new Map())
 
-type ReasoningGroupTitleProps = {
-  isThinking: boolean
-  tools: ToolUIPart[]
-}
-
-const ReasoningGroupTitle = ({ isThinking, tools }: ReasoningGroupTitleProps) => {
-  const runningTools = tools.filter((tool) => tool.state !== 'output-available')
-
-  const [activeIndex, setActiveIndex] = useState(runningTools.length - 1)
-
+  // Initialize durations from metadata for old messages
+  // Only set if we don't already have a duration for that index (live updates take precedence)
   useEffect(() => {
-    setActiveIndex(runningTools.length - 1)
-  }, [runningTools.length])
+    setDurations((prev) => {
+      const next = new Map(prev)
+      let hasChanges = false
 
-  return (
-    <div className="relative">
-      <AnimatePresence mode="wait">
-        {isThinking ? (
-          runningTools.map((tool, index) => {
-            const isActive = index === activeIndex
-            const isBelow = index < activeIndex
+      parts.forEach((part, index) => {
+        // Only initialize from metadata if we don't already have a duration for this index
+        if (!next.has(index)) {
+          const existingDuration = (part as any).metadata?.duration
+          if (existingDuration !== undefined) {
+            next.set(index, existingDuration)
+            hasChanges = true
+          }
+        }
+      })
 
-            const [, toolName] = splitPartType(tool.type)
-            const metadata = getToolMetadataSync(toolName, tool.input)
+      return hasChanges ? next : prev
+    })
+  }, [parts])
 
-            return (
-              <motion.div
-                key={index}
-                initial={{ y: 20, opacity: 0 }}
-                animate={{
-                  y: isActive ? 0 : isBelow ? -10 : 20,
-                  opacity: isActive ? 1 : 0,
-                  scale: isActive ? 1 : 0.98,
-                  zIndex: isActive ? 10 : isBelow ? index : 0,
-                }}
-                exit={{ y: -20, opacity: 0 }}
-                transition={{
-                  duration: 0.3,
-                  ease: [0.4, 0, 0.2, 1], // Custom easing function
-                }}
-                className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
-              >
-                <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
-                  {metadata.loadingMessage}
-                </span>
-              </motion.div>
-            )
-          })
-        ) : (
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{
-              y: 0,
-              opacity: 1,
-              scale: 1,
-            }}
-            transition={{
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1], // Custom easing function
-            }}
-            className="w-full"
-          >
-            {`Used ${tools.length} tools in xx`}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-const ReasoningItem = ({ part }: ReasoningItemProps) => {
-  let Icon
-  let displayName
-  let isLoading
-
-  if (part.type === 'tool') {
-    const toolPart = part.content as ToolUIPart
-    const [, toolName] = splitPartType(toolPart.type)
-    const metadata = getToolMetadataSync(toolName)
-
-    Icon = metadata.icon
-    displayName = metadata.displayName
+  /**
+   * Updates duration for a specific part index
+   */
+  const updateDuration = (index: number, duration: number) => {
+    setDurations((prev) => {
+      const next = new Map(prev)
+      next.set(index, duration)
+      return next
+    })
   }
 
-  switch (part.type) {
-    case 'reasoning': {
-      const reasoningPart = part.content as ReasoningUIPart
+  // Calculate total duration (sum of all individual durations)
+  const totalDuration = Array.from(durations.values()).reduce((sum, duration) => sum + duration, 0)
 
-      Icon = Brain
-      displayName = 'Thinking'
-      isLoading = reasoningPart.state === 'streaming'
-      break
-    }
-
-    case 'tool': {
-      const toolPart = part.content as ToolUIPart
-      const [, toolName] = splitPartType(toolPart.type)
-      const metadata = getToolMetadataSync(toolName)
-
-      Icon = metadata.icon
-      displayName = metadata.displayName
-      isLoading = toolPart.state !== 'output-available' && toolPart.state !== 'output-error'
-
-      break
-    }
-
-    default:
-      return null
-  }
-
-  return (
-    <button
-      // onClick={() => handleStepClick(step)}
-      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
-    >
-      <div className="flex gap-3 flex-row flex-1 items-center">
-        {isLoading ? (
-          <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
-        ) : (
-          !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
-        )}
-        <span className="text-sm font-medium truncate text-foreground">{displayName}</span>
-      </div>
-      <span className="text-xs text-muted-foreground flex-shrink-0">xx</span>
-    </button>
-  )
+  return { totalDuration, updateDuration }
 }
 
 export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: ReasoningGroupProps) => {
@@ -160,6 +74,8 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
   const reasoningInstanceKey = currentReasoningPart
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
+
+  const { totalDuration, updateDuration } = useTotalDuration(parts)
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],
@@ -180,7 +96,7 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
           )
         }
         defaultOpen={false}
-        title={<ReasoningGroupTitle isThinking={isThinking} tools={tools} />}
+        title={<ReasoningGroupTitle totalDuration={totalDuration} isThinking={isThinking} tools={tools} />}
       >
         <div
           className="max-h-[200px] overflow-y-auto"
@@ -189,7 +105,13 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
           }}
         >
           {parts.map((part, index) => (
-            <ReasoningItem key={index} part={part} />
+            <ReasoningItem
+              key={index}
+              onChangeDuration={(duration) => {
+                updateDuration(index, duration)
+              }}
+              part={part}
+            />
           ))}
           <div ref={scrollTargetRef} />
         </div>

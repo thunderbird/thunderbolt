@@ -224,3 +224,11 @@ export const formatToolOutput = (output: unknown): string => {
   }
   return JSON.stringify(output, null, 2)
 }
+
+export const formatDuration = (ms: number): string => {
+  const seconds = ms / 1000
+  if (seconds < 1) {
+    return `${Math.round(ms)}ms`
+  }
+  return `${seconds.toFixed(1)}s`
+}

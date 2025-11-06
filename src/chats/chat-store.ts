@@ -8,7 +8,6 @@ import { create } from 'zustand'
 type ChatStoreState = {
   chatInstance: Chat<ThunderboltUIMessage> | null
   chatThread: ChatThread | null
-  hasMessages: boolean
   id: string | null
   mcpClients: MCPClient[]
   models: Model[]
@@ -28,7 +27,6 @@ type ChatStore = ChatStoreState & ChatStoreActions
 const initialState = {
   chatInstance: null,
   chatThread: null,
-  hasMessages: false,
   id: null,
   mcpClients: [],
   models: [],
@@ -60,14 +58,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       )
     }
 
-    await chatInstance.sendMessage({
+    chatInstance.sendMessage({
       text,
       metadata: {
         modelId: selectedModel.id,
       },
     })
-
-    set({ hasMessages: true })
 
     trackEvent('chat_send_prompt', {
       model: selectedModel,

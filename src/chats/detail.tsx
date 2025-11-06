@@ -1,7 +1,6 @@
 import ChatUI from '@/components/chat/chat-ui'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useMemo } from 'react'
-import { useChatAutomation } from './use-chat-automation'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -14,13 +13,9 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
   const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
 
-  useChatAutomation()
-
   useEffect(() => {
     hydrateChatStore()
-  }, [hydrateChatStore])
-
-  console.log(isReady)
+  }, [id])
 
   if (!isReady) {
     return null

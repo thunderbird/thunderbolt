@@ -12,7 +12,7 @@ import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
@@ -85,57 +85,51 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const queryClient = useQueryClient()
 
-  const updateThreadTitle = useCallback(
-    async (messages: ThunderboltUIMessage[], threadId: string) => {
-      const firstUserMessage = messages.find((msg) => msg.role === 'user')
-      if (!firstUserMessage) return
+  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
+    const firstUserMessage = messages.find((msg) => msg.role === 'user')
+    if (!firstUserMessage) return
 
-      const textContent = firstUserMessage.parts
-        ?.filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join(' ')
+    const textContent = firstUserMessage.parts
+      ?.filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join(' ')
 
-      if (!textContent) return
+    if (!textContent) return
 
-      const title = await generateTitle(textContent)
-      await updateChatThread(threadId, { title })
+    const title = await generateTitle(textContent)
+    await updateChatThread(threadId, { title })
 
-      // Also invalidate chat threads to update the sidebar
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
-    },
-    [queryClient],
-  )
+    // Also invalidate chat threads to update the sidebar
+    queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+  }
 
-  const saveMessages = useCallback<SaveMessagesFunction>(
-    async ({ messages }) => {
-      const selectedModel = useChatStore.getState().selectedModel
+  const saveMessages: SaveMessagesFunction = async ({ messages }) => {
+    const selectedModel = useChatStore.getState().selectedModel
 
-      if (!selectedModel) {
-        throw new Error('No selected model')
-      }
+    if (!selectedModel) {
+      throw new Error('No selected model')
+    }
 
-      // Fetch thread info to check if we need to generate a title
-      const thread = await getOrCreateChatThread(id!, selectedModel.id)
+    // Fetch thread info to check if we need to generate a title
+    const thread = await getOrCreateChatThread(id!, selectedModel.id)
 
-      // Save messages and update context size using DAL
-      await saveMessagesWithContextUpdate(id!, messages)
+    // Save messages and update context size using DAL
+    await saveMessagesWithContextUpdate(id!, messages)
 
-      // Invalidate context size query to trigger re-fetch
-      queryClient.invalidateQueries({ queryKey: ['contextSize', id] })
+    // Invalidate context size query to trigger re-fetch
+    queryClient.invalidateQueries({ queryKey: ['contextSize', id] })
 
-      // Generate title in background if needed
-      if (thread?.title === 'New Chat') {
-        updateThreadTitle(messages, id!)
-      }
+    // Generate title in background if needed
+    if (thread?.title === 'New Chat') {
+      updateThreadTitle(messages, id!)
+    }
 
-      if (isNew) {
-        navigate(`/chats/${id}`, { relative: 'path' })
-      }
-    },
-    [id, isNew, navigate, queryClient, updateThreadTitle],
-  )
+    if (isNew) {
+      navigate(`/chats/${id}`, { relative: 'path' })
+    }
+  }
 
-  const hydrateChatStore = useCallback(async () => {
+  const hydrateChatStore = async () => {
     const settings = await getSettings({ selected_model: String })
 
     const [defaultModel, chatThread, initialMessages, models, triggerData, mcpClients] = await Promise.all([
@@ -160,7 +154,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     hydrate({
       chatInstance,
       chatThread,
-      hasMessages: initialMessages.length > 0,
       id,
       mcpClients,
       models,
@@ -169,7 +162,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     })
 
     setIsReady(true)
-  }, [getEnabledClients, id, saveMessages])
+  }
 
   return { hydrateChatStore, isReady, saveMessages }
 }

@@ -5,14 +5,15 @@ import { useChatStore } from './chat-store'
 import { useChat } from '@ai-sdk/react'
 
 export const useChatScrollHandler = () => {
-  const { chatInstance, hasMessages } = useChatStore(
+  const { chatInstance } = useChatStore(
     useShallow((state) => ({
       chatInstance: state.chatInstance!,
-      hasMessages: state.hasMessages,
     })),
   )
 
   const { status, messages } = useChat({ chat: chatInstance })
+
+  const hasMessages = messages.length
 
   const isStreaming = status === 'streaming'
 

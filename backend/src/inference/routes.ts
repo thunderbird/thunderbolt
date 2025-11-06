@@ -57,7 +57,6 @@ export const createInferenceRoutes = () => {
         stream: true,
         ...(isPostHogConfigured() && {
           posthogProperties: {
-            privacy_mode: true,
             model_provider: provider,
             endpoint: '/chat/completions',
             has_tools: !!body.tools,

@@ -19,6 +19,11 @@ export const getPostHogClient = (): PostHog => {
       host: settings.posthogHost,
       privacyMode: true,
     })
+
+    // Workaround: PostHog AI library checks for `privacy_mode` property (snake_case)
+    // but PostHog Node client only stores it in `options.privacyMode`
+    // Manually set it so the AI library can detect it
+    ;(phClient as any).privacy_mode = true
   }
 
   return phClient

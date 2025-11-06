@@ -211,7 +211,6 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           posthogProperties: expect.objectContaining({
-            privacy_mode: true,
             model_provider: 'fireworks',
             endpoint: '/chat/completions',
             has_tools: false,

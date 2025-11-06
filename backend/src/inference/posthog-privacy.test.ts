@@ -1,0 +1,279 @@
+import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test'
+import { getInferenceClient } from './client'
+import { isPostHogConfigured } from '@/posthog/client'
+
+type FetchCall = {
+  url: string
+  options: RequestInit
+  body: any
+}
+
+/**
+ * Integration tests to verify PostHog privacy mode works correctly
+ * in the actual inference routes with real client creation
+ */
+describe('Inference Routes - PostHog Privacy Integration', () => {
+  let capturedFetches: FetchCall[] = []
+  let mockFetch: jest.Mock
+  let originalEnv: Record<string, string | undefined>
+
+  beforeEach(() => {
+    // Save original env vars
+    originalEnv = {
+      POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
+      POSTHOG_HOST: process.env.POSTHOG_HOST,
+      FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
+      THUNDERBOLT_INFERENCE_URL: process.env.THUNDERBOLT_INFERENCE_URL,
+      THUNDERBOLT_INFERENCE_API_KEY: process.env.THUNDERBOLT_INFERENCE_API_KEY,
+    }
+
+    capturedFetches = []
+    mockFetch = jest.fn(async (url: string, options: RequestInit) => {
+      // Capture all fetch calls
+      capturedFetches.push({
+        url,
+        options,
+        body: options.body ? JSON.parse(options.body as string) : null,
+      })
+
+      // Return appropriate mock responses based on URL
+      if (url.includes('posthog.com') || url.includes('/batch') || url.includes('/capture')) {
+        return new Response(JSON.stringify({ status: 1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Mock OpenAI/Fireworks completion response
+      return new Response(
+        JSON.stringify({
+          id: 'chatcmpl-test',
+          object: 'chat.completion',
+          created: Date.now(),
+          model: 'gpt-4',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Secret conversation response',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    })
+
+    // Mock global fetch
+    global.fetch = mockFetch as any
+  })
+
+  afterEach(() => {
+    // Restore original env vars
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    capturedFetches = []
+  })
+
+  describe('PostHog client privacy_mode property', () => {
+    it('should properly set privacy_mode when PostHog is configured', () => {
+      // Set up env for PostHog
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+
+      // This will trigger client initialization
+      const configured = isPostHogConfigured()
+      expect(configured).toBe(true)
+
+      // Import and check the client
+      const { getPostHogClient } = require('@/posthog/client')
+      const client = getPostHogClient()
+
+      // Verify our workaround is in place
+      expect((client as any).privacy_mode).toBe(true)
+      expect(client.options.privacyMode).toBe(true)
+    })
+  })
+
+  describe('Inference client with PostHog wrapper', () => {
+    it('should create PostHogOpenAI client when PostHog is configured', () => {
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      const { client } = getInferenceClient('fireworks')
+
+      // Verify it's a PostHog-wrapped client
+      expect(client.constructor.name).toBe('PostHogOpenAI')
+    })
+
+    it('should handle client creation even without PostHog configuration', () => {
+      // Note: In this test environment, PostHog might be cached from previous tests
+      // The important thing is that the client is created successfully
+      delete process.env.POSTHOG_API_KEY
+      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      const { client } = getInferenceClient('fireworks')
+
+      // Verify client exists and is functional
+      expect(client).toBeDefined()
+      expect(client.chat).toBeDefined()
+      expect(client.chat.completions).toBeDefined()
+    })
+  })
+
+  describe('End-to-end privacy verification', () => {
+    it('should not send conversation content to PostHog when making completions', async () => {
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      // Get the wrapped client
+      const { client } = getInferenceClient('fireworks')
+
+      // Make a completion with sensitive data
+      const completion = await client.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'user',
+            content: 'This is highly sensitive information that must not be logged to PostHog',
+          },
+        ],
+        posthogDistinctId: 'test-user',
+        posthogProperties: {
+          model_provider: 'fireworks',
+          endpoint: '/chat/completions',
+        },
+      })
+
+      // Verify the completion works
+      expect(completion).toBeDefined()
+
+      // Wait for any async PostHog operations
+      await new Promise((resolve) => setTimeout(resolve, 200))
+
+      // Find PostHog requests
+      const posthogRequests = capturedFetches.filter(
+        (call) =>
+          call.url.includes('posthog.com') ||
+          call.url.includes('/batch') ||
+          call.url.includes('/capture') ||
+          call.url.includes('/e'),
+      )
+
+      // If PostHog sent events, verify they don't contain conversation content
+      for (const request of posthogRequests) {
+        const batch = request.body?.batch || [request.body]
+
+        for (const event of batch) {
+          const properties = event.properties || {}
+
+          // CRITICAL: Conversation content must NOT be present
+          expect(properties.$ai_input).toBeNullOrUndefined()
+          expect(properties.$ai_output_choices).toBeNullOrUndefined()
+
+          // But metadata should still be present
+          if (event.event === '$ai_generation') {
+            // Metadata is allowed
+            expect(properties.model_provider || properties.$ai_provider).toBeDefined()
+          }
+        }
+      }
+
+      // Verify that fetch was called for the actual completion
+      const completionCalls = capturedFetches.filter((call) => !call.url.includes('posthog'))
+      expect(completionCalls.length).toBeGreaterThan(0)
+    })
+
+    it('should verify privacy mode prevents content leakage in batch operations', async () => {
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      const { client } = getInferenceClient('fireworks')
+
+      // Make multiple completions
+      const conversations = [
+        'Secret project details',
+        'Confidential user information',
+        'Private API keys and credentials',
+      ]
+
+      for (const message of conversations) {
+        await client.chat.completions.create({
+          model: 'gpt-4',
+          messages: [{ role: 'user', content: message }],
+          posthogDistinctId: 'test-user',
+        })
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 200))
+
+      // Check ALL captured PostHog requests
+      const posthogRequests = capturedFetches.filter(
+        (call) =>
+          call.url.includes('posthog.com') ||
+          call.url.includes('/batch') ||
+          call.url.includes('/capture') ||
+          call.url.includes('/e'),
+      )
+
+      // Verify NONE of the secret messages appear in any request
+      for (const request of posthogRequests) {
+        const requestStr = JSON.stringify(request)
+
+        // Verify the secret content is NOT in the request
+        expect(requestStr.includes('Secret project details')).toBe(false)
+        expect(requestStr.includes('Confidential user information')).toBe(false)
+        expect(requestStr.includes('Private API keys')).toBe(false)
+
+        // Also check the structured data
+        const batch = request.body?.batch || [request.body]
+        for (const event of batch) {
+          const properties = event.properties || {}
+          expect(properties.$ai_input).toBeNullOrUndefined()
+          expect(properties.$ai_output_choices).toBeNullOrUndefined()
+        }
+      }
+    })
+  })
+})
+
+/**
+ * Custom matcher to check if a value is null or undefined
+ */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace jest {
+    interface Matchers<R> {
+      toBeNullOrUndefined(): R
+    }
+  }
+}
+
+expect.extend({
+  toBeNullOrUndefined(received: any) {
+    const pass = received === null || received === undefined
+    return {
+      pass,
+      message: () =>
+        pass
+          ? `Expected ${received} not to be null or undefined`
+          : `Expected ${received} to be null or undefined, but got ${typeof received}`,
+    }
+  },
+})

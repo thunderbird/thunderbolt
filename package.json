@@ -77,7 +77,7 @@
     "ky": "^1.9.0",
     "lucide-react": "^0.540.0",
     "marked": "^16.4.1",
-    "posthog-js": "^1.260.2",
+    "posthog-js": "^1.288.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-hook-form": "^7.62.0",

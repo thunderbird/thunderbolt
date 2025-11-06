@@ -34,6 +34,8 @@ describe('Main Routes', () => {
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
       fireworksApiKey: 'test-api-key',
       exaApiKey: '',
+      thunderboltInferenceUrl: '',
+      thunderboltInferenceApiKey: '',
       monitoringToken: '',
       googleClientId: '',
       googleClientSecret: '',

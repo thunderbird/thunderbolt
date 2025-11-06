@@ -7,6 +7,8 @@ const settingsSchema = z.object({
   // API Keys
   fireworksApiKey: z.string().default(''),
   exaApiKey: z.string().default(''),
+  thunderboltInferenceUrl: z.string().default(''),
+  thunderboltInferenceApiKey: z.string().default(''),
 
   // Health Check Configuration
   monitoringToken: z.string().default(''),
@@ -49,6 +51,8 @@ const parseSettings = (): Settings => {
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
+    thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
+    thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

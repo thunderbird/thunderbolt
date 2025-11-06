@@ -6,7 +6,7 @@ import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createOpenAIRoutes } from '@/openai/routes'
+import { createInferenceRoutes } from '@/inference/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { cors } from '@elysiajs/cors'
@@ -58,7 +58,7 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
       .use(createProToolsRoutes(fetchFn))
-      .use(createOpenAIRoutes())
+      .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
   )
 }

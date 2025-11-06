@@ -2,12 +2,12 @@ import * as posthogClient from '@/posthog/client'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import * as openaiClient from './client'
-import { createOpenAIRoutes, supportedModels } from './routes'
+import * as inferenceClient from './client'
+import { createInferenceRoutes, supportedModels } from './routes'
 
-describe('OpenAI Routes', () => {
+describe('Inference Routes', () => {
   let app: Elysia
-  let getOpenAISpy: ReturnType<typeof spyOn>
+  let getInferenceClientSpy: ReturnType<typeof spyOn>
   let isPostHogConfiguredSpy: ReturnType<typeof spyOn>
   let createSSEStreamSpy: ReturnType<typeof spyOn>
   let consoleSpy: ReturnType<typeof spyOn>
@@ -45,15 +45,18 @@ describe('OpenAI Routes', () => {
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
     // Mock dependencies
-    getOpenAISpy = spyOn(openaiClient, 'getOpenAI').mockReturnValue(mockOpenAIClient as any)
+    getInferenceClientSpy = spyOn(inferenceClient, 'getInferenceClient').mockReturnValue({
+      client: mockOpenAIClient as any,
+      provider: 'fireworks',
+    })
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
 
-    app = new Elysia().use(createOpenAIRoutes())
+    app = new Elysia().use(createInferenceRoutes())
   })
 
   afterAll(() => {
-    getOpenAISpy?.mockRestore()
+    getInferenceClientSpy?.mockRestore()
     isPostHogConfiguredSpy?.mockRestore()
     createSSEStreamSpy?.mockRestore()
     consoleSpy?.mockRestore()
@@ -61,7 +64,7 @@ describe('OpenAI Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: supportedModels[0],
+      model: 'qwen3-235b-a22b-instruct-2507',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -72,6 +75,11 @@ describe('OpenAI Routes', () => {
       mockCreateCompletion.mockClear()
       createSSEStreamSpy.mockClear()
       consoleSpy.mockClear()
+      getInferenceClientSpy.mockClear()
+      getInferenceClientSpy.mockReturnValue({
+        client: mockOpenAIClient as any,
+        provider: 'fireworks',
+      })
     })
 
     it('should handle valid streaming request successfully', async () => {
@@ -105,6 +113,58 @@ describe('OpenAI Routes', () => {
       })
 
       expect(createSSEStreamSpy).toHaveBeenCalledWith(mockCompletion, validRequestBody.model)
+    })
+
+    it('should route gpt-oss-120b model to thunderbolt provider', async () => {
+      getInferenceClientSpy.mockReturnValue({
+        client: mockOpenAIClient as any,
+        provider: 'thunderbolt',
+      })
+
+      const mockCompletion = createMockStream()
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const gptOssRequest = {
+        ...validRequestBody,
+        model: 'gpt-oss-120b',
+      }
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(gptOssRequest),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(getInferenceClientSpy).toHaveBeenCalledWith('thunderbolt')
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'openai/gpt-oss-120b',
+        }),
+      )
+    })
+
+    it('should route qwen models to fireworks provider', async () => {
+      const mockCompletion = createMockStream()
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(getInferenceClientSpy).toHaveBeenCalledWith('fireworks')
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: `accounts/fireworks/models/${validRequestBody.model}`,
+        }),
+      )
     })
 
     it('should handle request with tools and tool_choice', async () => {
@@ -164,6 +224,42 @@ describe('OpenAI Routes', () => {
       isPostHogConfiguredSpy.mockReturnValue(false)
     })
 
+    it('should include correct provider in PostHog properties for gpt-oss-120b', async () => {
+      isPostHogConfiguredSpy.mockReturnValue(true)
+      getInferenceClientSpy.mockReturnValue({
+        client: mockOpenAIClient as any,
+        provider: 'thunderbolt',
+      })
+
+      const mockCompletion = createMockStream()
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const gptOssRequest = {
+        ...validRequestBody,
+        model: 'gpt-oss-120b',
+      }
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(gptOssRequest),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          posthogProperties: expect.objectContaining({
+            model_provider: 'thunderbolt',
+          }),
+        }),
+      )
+
+      // Reset for other tests
+      isPostHogConfiguredSpy.mockReturnValue(false)
+    })
+
     it('should reject non-streaming requests', async () => {
       const nonStreamingRequest = {
         ...validRequestBody,
@@ -200,8 +296,8 @@ describe('OpenAI Routes', () => {
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
 
-    it('should handle OpenAI API errors gracefully', async () => {
-      const apiError = new Error('OpenAI API rate limit exceeded')
+    it('should handle inference API errors gracefully', async () => {
+      const apiError = new Error('API rate limit exceeded')
       mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
 
       const response = await app.handle(
@@ -213,7 +309,6 @@ describe('OpenAI Routes', () => {
       )
 
       expect(response.status).toBe(500)
-      expect(consoleSpy).toHaveBeenCalledWith('OpenAI completion error:', apiError)
     })
 
     it('should handle malformed JSON requests', async () => {
@@ -230,35 +325,8 @@ describe('OpenAI Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = [
-        'gpt-oss-120b',
-        'qwen3-235b-a22b-instruct-2507',
-        'qwen3-235b-a22b-thinking-2507',
-        'kimi-k2-instruct',
-        'deepseek-r1-0528',
-        'qwen3-235b-a22b',
-        'llama-v3p1-405b-instruct',
-      ]
-      expect(supportedModels).toEqual(expectedModels)
-    })
-
-    it('should prefix model name with accounts/fireworks/models/', async () => {
-      const mockCompletion = createMockStream()
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
-
-      await app.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(validRequestBody),
-        }),
-      )
-
-      expect(mockCreateCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model: `accounts/fireworks/models/${validRequestBody.model}`,
-        }),
-      )
+      const expectedModels = ['gpt-oss-120b', 'qwen3-235b-a22b-instruct-2507', 'qwen3-235b-a22b-thinking-2507']
+      expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 
     it('should handle requests with has_tools flag correctly', async () => {

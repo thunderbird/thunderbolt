@@ -35,7 +35,7 @@ export const defaultModelGptOss120b: Model = {
   model: 'gpt-oss-120b',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
+  isConfidential: 1,
   contextWindow: 131072,
   toolUsage: 1,
   startWithReasoning: 0,

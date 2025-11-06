@@ -8,7 +8,7 @@ import {
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
 import type { TextUIPart } from 'ai'
-import { memo, type ReactNode } from 'react'
+import { memo, useEffect, useRef, type ReactNode } from 'react'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ReasoningGroup } from './reasoning-group'
@@ -59,10 +59,47 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
   return partElements
 }
 
+const useTrackMessagePartDuration = (parts: GroupableUIPart[]) => {
+  const partsStartTimes = useRef(new Map<number, number>())
+  const partsEndTimes = useRef(new Map<number, number>())
+
+  useEffect(() => {
+    parts.forEach((part, index) => {
+      const isPartStreaming =
+        part.state !== 'done' && part.state !== 'output-available' && part.state !== 'output-error'
+
+      if (isPartStreaming && !partsStartTimes.current.has(index)) {
+        partsStartTimes.current.set(index, Date.now())
+      }
+
+      if (!isPartStreaming && !partsEndTimes.current.has(index)) {
+        partsEndTimes.current.set(index, Date.now())
+      }
+    })
+  }, [parts])
+
+  return parts.map((item, index) => {
+    const startTime = partsStartTimes.current.get(index)
+    const endTime = partsEndTimes.current.get(index)
+    const duration = endTime && startTime ? endTime - startTime : 0
+
+    return {
+      ...item,
+      metadata: {
+        //@ts-ignore
+        ...item.metadata,
+        duration,
+      },
+    }
+  })
+}
+
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
   const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
 
-  const groupedParts = groupMessageParts(filteredParts)
+  const partsWithDuration = useTrackMessagePartDuration(filteredParts)
+
+  const groupedParts = groupMessageParts(partsWithDuration)
 
   const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
 

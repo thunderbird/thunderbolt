@@ -159,7 +159,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           model_provider: 'fireworks',
           endpoint: '/chat/completions',
         },
-      })
+      } as any)
 
       // Verify the completion works
       expect(completion).toBeDefined()
@@ -218,7 +218,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           model: 'gpt-4',
           messages: [{ role: 'user', content: message }],
           posthogDistinctId: 'test-user',
-        })
+        } as any)
       }
 
       await new Promise((resolve) => setTimeout(resolve, 200))
@@ -252,18 +252,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     })
   })
 })
-
-/**
- * Custom matcher to check if a value is null or undefined
- */
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace jest {
-    interface Matchers<R> {
-      toBeNullOrUndefined(): R
-    }
-  }
-}
 
 expect.extend({
   toBeNullOrUndefined(received: any) {

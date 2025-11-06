@@ -11,9 +11,23 @@ type InferenceClient = {
 }
 
 /**
+ * Lazily initialized Fireworks client
+ */
+let fireworksClient: OpenAI | PostHogOpenAI | null = null
+
+/**
+ * Lazily initialized Thunderbolt client
+ */
+let thunderboltClient: OpenAI | PostHogOpenAI | null = null
+
+/**
  * Get the Fireworks AI client
  */
 const getFireworksClient = (): OpenAI | PostHogOpenAI => {
+  if (fireworksClient) {
+    return fireworksClient
+  }
+
   const settings = getSettings()
 
   if (!settings.fireworksApiKey) {
@@ -25,18 +39,24 @@ const getFireworksClient = (): OpenAI | PostHogOpenAI => {
     baseURL: 'https://api.fireworks.ai/inference/v1',
   }
 
-  return isPostHogConfigured()
+  fireworksClient = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
         posthog: getPostHogClient(),
       })
     : new OpenAI(params)
+
+  return fireworksClient
 }
 
 /**
  * Get the Thunderbolt inference client for gpt-oss
  */
 const getThunderboltClient = (): OpenAI | PostHogOpenAI => {
+  if (thunderboltClient) {
+    return thunderboltClient
+  }
+
   const settings = getSettings()
 
   if (!settings.thunderboltInferenceUrl || !settings.thunderboltInferenceApiKey) {
@@ -48,16 +68,19 @@ const getThunderboltClient = (): OpenAI | PostHogOpenAI => {
     baseURL: settings.thunderboltInferenceUrl,
   }
 
-  return isPostHogConfigured()
+  thunderboltClient = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
         posthog: getPostHogClient(),
       })
     : new OpenAI(params)
+
+  return thunderboltClient
 }
 
 /**
  * Get the appropriate inference client based on provider
+ * Clients are lazily initialized and reused across requests
  */
 export const getInferenceClient = (provider: InferenceProvider): InferenceClient => {
   const client = provider === 'thunderbolt' ? getThunderboltClient() : getFireworksClient()

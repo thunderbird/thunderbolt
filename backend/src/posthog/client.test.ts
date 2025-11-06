@@ -328,18 +328,6 @@ describe('PostHog Privacy Mode', () => {
   })
 })
 
-/**
- * Custom matcher to check if a value is null or undefined
- */
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace jest {
-    interface Matchers<R> {
-      toBeNullOrUndefined(): R
-    }
-  }
-}
-
 expect.extend({
   toBeNullOrUndefined(received: any) {
     const pass = received === null || received === undefined

@@ -105,6 +105,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
 
+      // Clear settings cache so new env vars are picked up
+      clearSettingsCache()
+
       // This will trigger client initialization
       const configured = isPostHogConfigured()
       expect(configured).toBe(true)
@@ -124,6 +127,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
 
+      // Clear caches so new env vars are picked up
+      clearSettingsCache()
+      clearInferenceClientCache()
+
       const { client } = getInferenceClient('fireworks')
 
       // Verify it's a PostHog-wrapped client
@@ -135,6 +142,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // The important thing is that the client is created successfully
       delete process.env.POSTHOG_API_KEY
       process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      // Clear caches so new env vars are picked up
+      clearSettingsCache()
+      clearInferenceClientCache()
 
       const { client } = getInferenceClient('fireworks')
 
@@ -150,6 +161,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
       process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      // Clear caches so new env vars are picked up
+      clearSettingsCache()
+      clearInferenceClientCache()
 
       // Get the wrapped client
       const { client } = getInferenceClient('fireworks')
@@ -212,6 +227,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     it('should verify privacy mode prevents content leakage in batch operations', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+
+      // Clear caches so new env vars are picked up
+      clearSettingsCache()
+      clearInferenceClientCache()
 
       const { client } = getInferenceClient('fireworks')
 

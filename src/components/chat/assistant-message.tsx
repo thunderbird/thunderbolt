@@ -59,7 +59,7 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
   return partElements
 }
 
-const useTrackMessagePartDuration = (parts: GroupableUIPart[]) => {
+const useTrackMessagePartDuration = (parts: any[]) => {
   const partsStartTimes = useRef(new Map<number, number>())
   const partsEndTimes = useRef(new Map<number, number>())
 
@@ -81,25 +81,29 @@ const useTrackMessagePartDuration = (parts: GroupableUIPart[]) => {
   return parts.map((item, index) => {
     const startTime = partsStartTimes.current.get(index)
     const endTime = partsEndTimes.current.get(index)
-    const duration = endTime && startTime ? endTime - startTime : 0
+    const duration = endTime && startTime ? endTime - startTime : null
+
+    const [partType] = splitPartType(item.type)
 
     return {
       ...item,
-      metadata: {
-        //@ts-ignore
-        ...item.metadata,
-        duration,
-      },
+      ...(['tool', 'reasoning'].includes(partType) && duration
+        ? {
+            metadata: {
+              ...(item as any).metadata,
+              duration,
+            },
+          }
+        : {}),
     }
   })
 }
 
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
-  const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
+  const partsWithDuration = useTrackMessagePartDuration(message.parts)
+  const filteredParts = filterMessageParts(partsWithDuration) as GroupableUIPart[]
 
-  const partsWithDuration = useTrackMessagePartDuration(filteredParts)
-
-  const groupedParts = groupMessageParts(partsWithDuration)
+  const groupedParts = groupMessageParts(filteredParts)
 
   const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
 

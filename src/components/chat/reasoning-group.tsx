@@ -42,7 +42,7 @@ const useTotalDuration = (parts: ReasoningGroupItem[]) => {
 
       return hasChanges ? next : prev
     })
-  }, [parts])
+  }, [])
 
   /**
    * Updates duration for a specific part index
@@ -95,7 +95,7 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
             <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
           )
         }
-        defaultOpen={false}
+        defaultOpen={true}
         title={<ReasoningGroupTitle totalDuration={totalDuration} isThinking={isThinking} tools={tools} />}
       >
         <div

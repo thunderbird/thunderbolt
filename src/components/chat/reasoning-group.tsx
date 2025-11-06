@@ -6,59 +6,12 @@ import { ReasoningDisplay } from './reasoning-display'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { ReasoningItem } from './reasoning-item'
 import { ReasoningGroupTitle } from './reasoning-group-title'
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
   isStreaming: boolean
   isLastPartInMessage: boolean
-}
-
-/**
- * Hook to calculate total duration from all parts
- * Handles both existing durations from metadata (old messages) and live tracking
- */
-const useTotalDuration = (parts: ReasoningGroupItem[]) => {
-  // Track durations by part index
-  const [durations, setDurations] = useState<Map<number, number>>(new Map())
-
-  // Initialize durations from metadata for old messages
-  // Only set if we don't already have a duration for that index (live updates take precedence)
-  useEffect(() => {
-    setDurations((prev) => {
-      const next = new Map(prev)
-      let hasChanges = false
-
-      parts.forEach((part, index) => {
-        // Only initialize from metadata if we don't already have a duration for this index
-        if (!next.has(index)) {
-          const existingDuration = (part as any).metadata?.duration
-          if (existingDuration !== undefined) {
-            next.set(index, existingDuration)
-            hasChanges = true
-          }
-        }
-      })
-
-      return hasChanges ? next : prev
-    })
-  }, [])
-
-  /**
-   * Updates duration for a specific part index
-   */
-  const updateDuration = (index: number, duration: number) => {
-    setDurations((prev) => {
-      const next = new Map(prev)
-      next.set(index, duration)
-      return next
-    })
-  }
-
-  // Calculate total duration (sum of all individual durations)
-  const totalDuration = Array.from(durations.values()).reduce((sum, duration) => sum + duration, 0)
-
-  return { totalDuration, updateDuration }
 }
 
 export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: ReasoningGroupProps) => {
@@ -75,7 +28,13 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
 
-  const { totalDuration, updateDuration } = useTotalDuration(parts)
+  const totalDuration = useMemo(
+    () =>
+      parts.reduce((previous, current) => {
+        return (previous + ((current.content as any).metadata?.duration ?? 0)) as number
+      }, 0),
+    [parts],
+  )
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],
@@ -105,13 +64,7 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
           }}
         >
           {parts.map((part, index) => (
-            <ReasoningItem
-              key={index}
-              onChangeDuration={(duration) => {
-                updateDuration(index, duration)
-              }}
-              part={part}
-            />
+            <ReasoningItem key={index} onChangeDuration={() => {}} part={part} />
           ))}
           <div ref={scrollTargetRef} />
         </div>

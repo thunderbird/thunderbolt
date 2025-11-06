@@ -94,7 +94,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
-          className="relative mt-4 text-muted-foreground leading-relaxed text-sm"
+          className="relative text-muted-foreground leading-relaxed text-sm mt-1"
           ref={(el) => {
             scrollContainerRef.current = el
           }}

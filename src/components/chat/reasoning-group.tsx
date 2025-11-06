@@ -3,7 +3,7 @@ import { Expandable } from '../ui/expandable'
 import { Brain, CheckIcon, Loader2 } from 'lucide-react'
 import { cn, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { tool, type ReasoningUIPart, type ToolUIPart } from 'ai'
+import { type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { ReasoningDisplay } from './reasoning-display'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
@@ -13,16 +13,19 @@ type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
   isStreaming: boolean
   isLastPartInMessage: boolean
-  hasTextInMessage: boolean
-  messageId: string
+}
+
+type ReasoningItemProps = {
+  part: ReasoningGroupItem
 }
 
 type ReasoningGroupTitleProps = {
+  isThinking: boolean
   tools: ToolUIPart[]
 }
 
-const ReasoningGroupTitle = ({ tools }: ReasoningGroupTitleProps) => {
-  const runningTools = tools.filter((tool) => tool.state === 'output-available')
+const ReasoningGroupTitle = ({ isThinking, tools }: ReasoningGroupTitleProps) => {
+  const runningTools = tools.filter((tool) => tool.state !== 'output-available')
 
   const [activeIndex, setActiveIndex] = useState(runningTools.length - 1)
 
@@ -33,48 +36,118 @@ const ReasoningGroupTitle = ({ tools }: ReasoningGroupTitleProps) => {
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
-        {runningTools.map((tool, index) => {
-          const isActive = index === activeIndex
-          const isBelow = index < activeIndex
+        {isThinking ? (
+          runningTools.map((tool, index) => {
+            const isActive = index === activeIndex
+            const isBelow = index < activeIndex
 
-          const [, toolName] = splitPartType(tool.type)
-          const metadata = getToolMetadataSync(toolName, tool.input)
+            const [, toolName] = splitPartType(tool.type)
+            const metadata = getToolMetadataSync(toolName, tool.input)
 
-          return (
-            <motion.div
-              key={index}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{
-                y: isActive ? 0 : isBelow ? -10 : 20,
-                opacity: isActive ? 1 : 0,
-                scale: isActive ? 1 : 0.98,
-                zIndex: isActive ? 10 : isBelow ? index : 0,
-              }}
-              exit={{ y: -20, opacity: 0 }}
-              transition={{
-                duration: 0.3,
-                ease: [0.4, 0, 0.2, 1], // Custom easing function
-              }}
-              className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
-            >
-              <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
-                {metadata.loadingMessage}
-              </span>
-            </motion.div>
-          )
-        })}
+            return (
+              <motion.div
+                key={index}
+                initial={{ y: 20, opacity: 0 }}
+                animate={{
+                  y: isActive ? 0 : isBelow ? -10 : 20,
+                  opacity: isActive ? 1 : 0,
+                  scale: isActive ? 1 : 0.98,
+                  zIndex: isActive ? 10 : isBelow ? index : 0,
+                }}
+                exit={{ y: -20, opacity: 0 }}
+                transition={{
+                  duration: 0.3,
+                  ease: [0.4, 0, 0.2, 1], // Custom easing function
+                }}
+                className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
+              >
+                <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
+                  {metadata.loadingMessage}
+                </span>
+              </motion.div>
+            )
+          })
+        ) : (
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{
+              y: 0,
+              opacity: 1,
+              scale: 1,
+            }}
+            transition={{
+              duration: 0.3,
+              ease: [0.4, 0, 0.2, 1], // Custom easing function
+            }}
+            className="w-full"
+          >
+            {`Used ${tools.length} tools in xx`}
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   )
 }
 
-export const ReasoningGroup = ({
-  parts,
-  isStreaming,
-  isLastPartInMessage,
-  hasTextInMessage,
-  messageId,
-}: ReasoningGroupProps) => {
+const ReasoningItem = ({ part }: ReasoningItemProps) => {
+  let Icon
+  let displayName
+  let isLoading
+
+  if (part.type === 'tool') {
+    const toolPart = part.content as ToolUIPart
+    const [, toolName] = splitPartType(toolPart.type)
+    const metadata = getToolMetadataSync(toolName)
+
+    Icon = metadata.icon
+    displayName = metadata.displayName
+  }
+
+  switch (part.type) {
+    case 'reasoning': {
+      const reasoningPart = part.content as ReasoningUIPart
+
+      Icon = Brain
+      displayName = 'Thinking'
+      isLoading = reasoningPart.state === 'streaming'
+      break
+    }
+
+    case 'tool': {
+      const toolPart = part.content as ToolUIPart
+      const [, toolName] = splitPartType(toolPart.type)
+      const metadata = getToolMetadataSync(toolName)
+
+      Icon = metadata.icon
+      displayName = metadata.displayName
+      isLoading = toolPart.state !== 'output-available' && toolPart.state !== 'output-error'
+
+      break
+    }
+
+    default:
+      return null
+  }
+
+  return (
+    <button
+      // onClick={() => handleStepClick(step)}
+      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
+    >
+      <div className="flex gap-3 flex-row flex-1 items-center">
+        {isLoading ? (
+          <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
+        ) : (
+          !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
+        )}
+        <span className="text-sm font-medium truncate text-foreground">{displayName}</span>
+      </div>
+      <span className="text-xs text-muted-foreground flex-shrink-0">xx</span>
+    </button>
+  )
+}
+
+export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: ReasoningGroupProps) => {
   const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
 
   const isThinking = isLastPartInMessage && isStreaming
@@ -87,8 +160,6 @@ export const ReasoningGroup = ({
   const reasoningInstanceKey = currentReasoningPart
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
-
-  const titleNode = isThinking ? <ReasoningGroupTitle tools={tools} /> : `Used ${tools.length} tools in xx`
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],
@@ -109,7 +180,7 @@ export const ReasoningGroup = ({
           )
         }
         defaultOpen={false}
-        title={titleNode}
+        title={<ReasoningGroupTitle isThinking={isThinking} tools={tools} />}
       >
         <div
           className="max-h-[200px] overflow-y-auto"
@@ -117,64 +188,9 @@ export const ReasoningGroup = ({
             scrollContainerRef.current = el
           }}
         >
-          {parts.map((part, index) => {
-            let Icon
-            let displayName
-            let isLoading
-
-            if (part.type === 'tool') {
-              const toolPart = part.content as ToolUIPart
-              const [, toolName] = splitPartType(toolPart.type)
-              const metadata = getToolMetadataSync(toolName)
-
-              Icon = metadata.icon
-              displayName = metadata.displayName
-            }
-
-            switch (part.type) {
-              case 'reasoning': {
-                const reasoningPart = part.content as ReasoningUIPart
-
-                Icon = Brain
-                displayName = 'Thinking'
-                isLoading = reasoningPart.state === 'streaming'
-                break
-              }
-
-              case 'tool': {
-                const toolPart = part.content as ToolUIPart
-                const [, toolName] = splitPartType(toolPart.type)
-                const metadata = getToolMetadataSync(toolName)
-
-                Icon = metadata.icon
-                displayName = metadata.displayName
-                isLoading = toolPart.state !== 'output-available' && toolPart.state !== 'output-error'
-
-                break
-              }
-
-              default:
-                return null
-            }
-
-            return (
-              <button
-                key={index}
-                // onClick={() => handleStepClick(step)}
-                className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
-              >
-                <div className="flex gap-3 flex-row flex-1 items-center">
-                  {isLoading ? (
-                    <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
-                  ) : (
-                    !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="text-sm font-medium truncate text-foreground">{displayName}</span>
-                </div>
-                <span className="text-xs text-muted-foreground flex-shrink-0">xx</span>
-              </button>
-            )
-          })}
+          {parts.map((part, index) => (
+            <ReasoningItem key={index} part={part} />
+          ))}
           <div ref={scrollTargetRef} />
         </div>
       </Expandable>

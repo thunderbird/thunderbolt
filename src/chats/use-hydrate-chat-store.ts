@@ -12,8 +12,8 @@ import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useCallback, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
 import { aiFetchStreamingResponse } from '@/ai/fetch'
@@ -21,6 +21,11 @@ import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useQueryClient } from '@tanstack/react-query'
+
+type UseHydrateChatStoreParams = {
+  id: string
+  isNew: boolean
+}
 
 const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMessages: SaveMessagesFunction) => {
   // Stable fetch function that always reads the latest model id from the ref
@@ -71,13 +76,8 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
   return instance
 }
 
-export const useHydrateChatStore = () => {
+export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
   const navigate = useNavigate()
-  const params = useParams()
-
-  const isNew = useMemo(() => params.chatThreadId === 'new', [params.chatThreadId])
-
-  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [isNew, params.chatThreadId])
 
   const [isReady, setIsReady] = useState(false)
 
@@ -136,10 +136,6 @@ export const useHydrateChatStore = () => {
   )
 
   const hydrateChatStore = useCallback(async () => {
-    if (!id) {
-      throw new Error('No chat thread ID')
-    }
-
     const settings = await getSettings({ selected_model: String })
 
     const [defaultModel, chatThread, initialMessages, models, triggerData, mcpClients] = await Promise.all([
@@ -157,7 +153,9 @@ export const useHydrateChatStore = () => {
       saveMessages,
     )
 
-    const { hydrate } = useChatStore.getState()
+    const { hydrate, reset } = useChatStore.getState()
+
+    reset()
 
     hydrate({
       chatInstance,

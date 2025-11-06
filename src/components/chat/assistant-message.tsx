@@ -34,11 +34,6 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
     partElements.push(<SyntheticLoadingPart isStreaming={true} />)
   }
 
-  const hasTextPart = groupedParts.some((part) => {
-    const [partType] = splitPartType(part.type)
-    return partType === 'text'
-  })
-
   groupedParts.forEach((part, index) => {
     const [partType] = splitPartType(part.type)
     const isLastPart = index === groupedParts.length - 1
@@ -51,8 +46,6 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
             parts={reasoningGroupPart.items}
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
-            hasTextInMessage={hasTextPart}
-            messageId={messageId}
           />,
         )
         break

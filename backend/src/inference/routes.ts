@@ -1,5 +1,6 @@
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
+import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import { getInferenceClient, type InferenceProvider } from './client'
@@ -48,7 +49,7 @@ export const createInferenceRoutes = () => {
     console.log(`Routing model "${body.model}" to ${provider} provider`)
 
     try {
-      const completion = await (client as any).chat.completions.create({
+      const completion = await (client as PostHogOpenAI).chat.completions.create({
         model: internalName,
         messages: body.messages,
         temperature: body.temperature,

@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test'
-import { getInferenceClient } from './client'
-import { isPostHogConfigured } from '@/posthog/client'
+import { clearSettingsCache } from '@/config/settings'
+import { isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { OpenAI as PostHogOpenAI } from '@posthog/ai'
+import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { clearInferenceClientCache, getInferenceClient } from './client'
 
 type FetchCall = {
   url: string
@@ -78,7 +80,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     global.fetch = mockFetch as any
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clear inference client cache for test isolation
+    clearInferenceClientCache()
+
+    // Clear settings and PostHog caches
+    clearSettingsCache()
+    await shutdownPostHog()
+
     // Restore original env vars
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) {
@@ -146,7 +155,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       const { client } = getInferenceClient('fireworks')
 
       // Make a completion with sensitive data
-      const completion = await client.chat.completions.create({
+      const completion = await (client as PostHogOpenAI).chat.completions.create({
         model: 'gpt-4',
         messages: [
           {
@@ -159,7 +168,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           model_provider: 'fireworks',
           endpoint: '/chat/completions',
         },
-      } as any)
+      })
 
       // Verify the completion works
       expect(completion).toBeDefined()
@@ -214,11 +223,11 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       ]
 
       for (const message of conversations) {
-        await client.chat.completions.create({
+        await (client as PostHogOpenAI).chat.completions.create({
           model: 'gpt-4',
           messages: [{ role: 'user', content: message }],
           posthogDistinctId: 'test-user',
-        } as any)
+        })
       }
 
       await new Promise((resolve) => setTimeout(resolve, 200))

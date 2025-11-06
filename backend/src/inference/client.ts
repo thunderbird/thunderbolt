@@ -92,6 +92,15 @@ export const getInferenceClient = (provider: InferenceProvider): InferenceClient
 }
 
 /**
+ * Clear cached inference clients
+ * Used for testing purposes to ensure test isolation
+ */
+export const clearInferenceClientCache = () => {
+  fireworksClient = null
+  thunderboltClient = null
+}
+
+/**
  * Legacy export for backward compatibility
  * @deprecated Use getInferenceClient instead
  */

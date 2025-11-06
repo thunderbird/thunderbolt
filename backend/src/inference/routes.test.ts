@@ -2,6 +2,7 @@ import * as posthogClient from '@/posthog/client'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
+import type OpenAI from 'openai'
 import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
 
@@ -46,7 +47,7 @@ describe('Inference Routes', () => {
 
     // Mock dependencies
     getInferenceClientSpy = spyOn(inferenceClient, 'getInferenceClient').mockReturnValue({
-      client: mockOpenAIClient as any,
+      client: mockOpenAIClient as unknown as OpenAI,
       provider: 'fireworks',
     })
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
@@ -77,7 +78,7 @@ describe('Inference Routes', () => {
       consoleSpy.mockClear()
       getInferenceClientSpy.mockClear()
       getInferenceClientSpy.mockReturnValue({
-        client: mockOpenAIClient as any,
+        client: mockOpenAIClient as unknown as OpenAI,
         provider: 'fireworks',
       })
     })
@@ -117,7 +118,7 @@ describe('Inference Routes', () => {
 
     it('should route gpt-oss-120b model to thunderbolt provider', async () => {
       getInferenceClientSpy.mockReturnValue({
-        client: mockOpenAIClient as any,
+        client: mockOpenAIClient as unknown as OpenAI,
         provider: 'thunderbolt',
       })
 
@@ -226,7 +227,7 @@ describe('Inference Routes', () => {
     it('should include correct provider in PostHog properties for gpt-oss-120b', async () => {
       isPostHogConfiguredSpy.mockReturnValue(true)
       getInferenceClientSpy.mockReturnValue({
-        client: mockOpenAIClient as any,
+        client: mockOpenAIClient as unknown as OpenAI,
         provider: 'thunderbolt',
       })
 

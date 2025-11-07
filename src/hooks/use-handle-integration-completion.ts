@@ -7,7 +7,6 @@ import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integr
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { getMessage, updateMessage } from '@/dal/chat-messages'
-import type { UIMessageMetadata } from '@/types'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
@@ -181,21 +180,28 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
           messages: [retryMessage],
         })
 
-        // Mark the widget message as completed so it doesn't show again
         try {
           const widgetMessage = await getMessage(widgetMessageId)
-          if (widgetMessage) {
-            const currentMetadata = (widgetMessage.metadata as UIMessageMetadata | undefined) ?? {}
-            await updateMessage(widgetMessageId, {
-              metadata: {
-                ...currentMetadata,
-                widgetCompleted: true,
-              },
-            })
-            queryClient.invalidateQueries({ queryKey: ['message', widgetMessageId] })
-          }
+          if (!widgetMessage?.parts) return
+
+          const updatedParts = widgetMessage.parts.map((part) => {
+            if (part.type === 'text' && part.text?.includes('<widget:connect-integration')) {
+              const partWithMetadata = part as { metadata?: { isHidden?: boolean } }
+              return {
+                ...part,
+                metadata: {
+                  ...(partWithMetadata.metadata || {}),
+                  isHidden: true,
+                },
+              }
+            }
+            return part
+          })
+
+          await updateMessage(widgetMessageId, { parts: updatedParts })
+          queryClient.invalidateQueries({ queryKey: ['message', widgetMessageId] })
         } catch (err) {
-          console.warn('Failed to mark widget as completed:', err)
+          console.warn('Failed to mark widget as hidden:', err)
         }
 
         await waitForChatReady(chatInstance!)

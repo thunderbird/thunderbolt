@@ -6,12 +6,14 @@
  */
 
 import type { Widget } from '@/ai/widget-types'
+import type { TextUIPart } from 'ai'
 import { widgetRegistry } from '@/widgets'
 import { createElement, memo } from 'react'
 
 type WidgetRendererProps = {
   widget: Widget
   messageId: string
+  part: TextUIPart
 }
 
 /**
@@ -19,8 +21,14 @@ type WidgetRendererProps = {
  * Passes messageId to each component - they handle their own enrichment
  *
  * Components are auto-loaded from the widget registry
+ * Filters out widgets marked as hidden via part metadata
  */
-export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) => {
+export const WidgetRenderer = memo(({ widget, messageId, part }: WidgetRendererProps) => {
+  const partWithMetadata = part as TextUIPart & { metadata?: { isHidden?: boolean } }
+  if (partWithMetadata.metadata?.isHidden === true) {
+    return null
+  }
+
   const widgetConfig = widgetRegistry.find((w) => w.name === widget.widget)
 
   if (!widgetConfig) {

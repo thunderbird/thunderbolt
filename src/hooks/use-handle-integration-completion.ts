@@ -6,6 +6,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integration-status'
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
+import { getMessage, updateMessage } from '@/dal/chat-messages'
+import type { UIMessageMetadata } from '@/types'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
@@ -25,7 +27,7 @@ const findOriginalUserText = (chatMessages: ThunderboltUIMessage[], widgetMessag
   const textPart = userMessage.parts?.find((part) => part.type === 'text')
   if (!textPart || textPart.type !== 'text') return null
 
-  return textPart.text || null
+  return textPart.text ?? null
 }
 
 /**
@@ -56,9 +58,8 @@ const waitForProviderConnection = async (
   maxAttempts = 20,
 ): Promise<IntegrationStatus | null> => {
   let currentStatus: IntegrationStatus | null = initialStatus
-  let attempts = 0
 
-  while (attempts < maxAttempts) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (!currentStatus) {
       currentStatus = await queryClient.fetchQuery<IntegrationStatus>({ queryKey: ['integrationStatus'] })
     }
@@ -76,10 +77,38 @@ const waitForProviderConnection = async (
 
     await new Promise((resolve) => setTimeout(resolve, 100))
     currentStatus = await queryClient.fetchQuery<IntegrationStatus>({ queryKey: ['integrationStatus'] })
-    attempts++
   }
 
   return null
+}
+
+/**
+ * Waits for the chat instance to be ready before sending a message.
+ */
+const waitForChatReady = async (chatInstance: { status: string }): Promise<void> => {
+  while (chatInstance.status !== 'ready') {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+}
+
+/**
+ * Waits for a message to appear in the chat instance's messages array.
+ * Returns the message index if found, or -1 if timeout is reached.
+ */
+const waitForMessageInChat = async (
+  chatInstance: { messages: ThunderboltUIMessage[] },
+  messageId: string,
+  maxAttempts = 10,
+  delayMs = 200,
+): Promise<number> => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const index = chatInstance.messages.findIndex((msg) => msg.id === messageId)
+    if (index >= 0) {
+      return index
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+  return -1
 }
 
 /**
@@ -89,7 +118,6 @@ const waitForProviderConnection = async (
  */
 export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
-  const pendingRetriesRef = useRef<Map<string, { provider: 'google' | 'microsoft' | null }>>(new Map())
 
   const { chatInstance, chatThreadId } = useChatStore(
     useShallow((state) => ({
@@ -101,24 +129,20 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
   const { data: integrationStatus } = useIntegrationStatus()
   const queryClient = useQueryClient()
 
-  // Listen for OAuth completion events and store pending retries
+  // Listen for OAuth completion events and process retries
   useEffect(() => {
     const handleOAuthComplete = (event: CustomEvent<{ widgetMessageId: string }>) => {
       const { widgetMessageId } = event.detail
-      if (!widgetMessageId) return
+      if (!widgetMessageId || !chatInstance || !chatThreadId) return
 
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(widgetMessageId, 'provider')) as
         | 'google'
         | 'microsoft'
         | null
 
-      pendingRetriesRef.current.set(widgetMessageId, { provider: storedProvider })
-
       // Trigger processing immediately (don't wait for integrationStatus to change)
       // The processRetry function will poll until status is confirmed
-      if (chatInstance && chatThreadId) {
-        processRetryForWidget(widgetMessageId, storedProvider)
-      }
+      processRetryForWidget(widgetMessageId, storedProvider)
     }
 
     const processRetryForWidget = async (widgetMessageId: string, provider: 'google' | 'microsoft' | null) => {
@@ -129,44 +153,27 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
 
       if (!confirmedStatus) {
         console.warn('Provider not connected after waiting:', provider)
-        pendingRetriesRef.current.delete(widgetMessageId)
         return
       }
 
-      const findWidgetMessage = (currentMessages: ThunderboltUIMessage[]) => {
-        return currentMessages.findIndex((msg) => msg.id === widgetMessageId)
-      }
-
-      let currentMessages = chatInstance!.messages
-      let widgetMessageIndex = findWidgetMessage(currentMessages)
-      if (widgetMessageIndex < 0) {
-        for (let i = 0; i < 10; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 200))
-          currentMessages = chatInstance!.messages
-          widgetMessageIndex = findWidgetMessage(currentMessages)
-          if (widgetMessageIndex >= 0) break
-        }
-      }
+      // Find widget message in chat history (with retry for race conditions)
+      const widgetMessageIndex = await waitForMessageInChat(chatInstance!, widgetMessageId)
 
       if (widgetMessageIndex < 0) {
         console.warn('Widget message not found:', widgetMessageId)
-        pendingRetriesRef.current.delete(widgetMessageId)
         return
       }
 
-      const originalUserText = findOriginalUserText(currentMessages, widgetMessageIndex)
+      const originalUserText = findOriginalUserText(chatInstance!.messages, widgetMessageIndex)
       if (!originalUserText) {
         console.warn('Original user text not found for widget message:', widgetMessageId)
-        pendingRetriesRef.current.delete(widgetMessageId)
         return
       }
 
       oauthRetryHandledRef.current.add(widgetMessageId)
-      pendingRetriesRef.current.delete(widgetMessageId)
 
       const retryMessage = createRetryMessage(originalUserText)
-      const textPart = retryMessage.parts[0]
-      const retryText = textPart.type === 'text' ? textPart.text : ''
+      const retryText = retryMessage.parts[0]?.type === 'text' ? retryMessage.parts[0].text : ''
 
       try {
         await saveMessages({
@@ -174,9 +181,24 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
           messages: [retryMessage],
         })
 
-        while (chatInstance!.status !== 'ready') {
-          await new Promise((resolve) => setTimeout(resolve, 100))
+        // Mark the widget message as completed so it doesn't show again
+        try {
+          const widgetMessage = await getMessage(widgetMessageId)
+          if (widgetMessage) {
+            const currentMetadata = (widgetMessage.metadata as UIMessageMetadata | undefined) ?? {}
+            await updateMessage(widgetMessageId, {
+              metadata: {
+                ...currentMetadata,
+                widgetCompleted: true,
+              },
+            })
+            queryClient.invalidateQueries({ queryKey: ['message', widgetMessageId] })
+          }
+        } catch (err) {
+          console.warn('Failed to mark widget as completed:', err)
         }
+
+        await waitForChatReady(chatInstance!)
 
         await chatInstance!.sendMessage({
           text: retryText,

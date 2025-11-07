@@ -59,4 +59,9 @@ export const migrations: Migration[] = [
     name: '0009_deep_the_hood.sql',
     sql: 'ALTER TABLE `chat_messages` ADD `cache` text;',
   },
+  {
+    hash: '0010_tricky_squadron_supreme',
+    name: '0010_tricky_squadron_supreme.sql',
+    sql: 'ALTER TABLE `chat_messages` ADD `metadata` text;',
+  },
 ]

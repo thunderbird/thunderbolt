@@ -47,6 +47,7 @@ export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
+  widgetCompleted?: boolean
 }
 
 export type SideviewType = 'message' | 'thread' | 'imap'

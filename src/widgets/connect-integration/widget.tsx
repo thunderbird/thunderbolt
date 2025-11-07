@@ -13,7 +13,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { type OAuthProvider } from '@/lib/auth'
 import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import {
   type OAuthProviderOrEmpty,
   useConnectIntegrationWidgetState,
@@ -21,6 +21,7 @@ import {
 import { Check } from 'lucide-react'
 import { memo, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { getMessage } from '@/dal/chat-messages'
 
 type ConnectIntegrationWidgetProps = {
   provider: OAuthProviderOrEmpty
@@ -60,6 +61,17 @@ const getDefaultReason = (service: 'email' | 'calendar' | 'both'): string => {
 }
 
 /**
+ * Checks if a provider is connected based on integration status.
+ */
+const isProviderConnected = (
+  provider: OAuthProvider | null,
+  integrationStatus: { googleConnected: boolean; microsoftConnected: boolean } | null,
+): boolean => {
+  if (!provider || !integrationStatus) return false
+  return provider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
+}
+
+/**
  * Widget that prompts users to connect their email/calendar accounts
  */
 export const ConnectIntegrationWidget = memo(
@@ -72,9 +84,16 @@ export const ConnectIntegrationWidget = memo(
     const queryClient = useQueryClient()
     const displayReason = reason === '' ? getDefaultReason(service) : reason
 
+    // Check if this widget was already completed (integration was connected)
+    const { data: widgetMessage, isLoading: isLoadingWidgetMessage } = useQuery({
+      queryKey: ['message', messageId],
+      queryFn: () => getMessage(messageId),
+      staleTime: Infinity,
+      gcTime: Infinity,
+    })
+
     const { connect, processCallback, error } = useOAuthConnect({
       onSuccess: async () => {
-        // Get provider from sessionStorage (it was stored before OAuth flow started)
         const connectedProvider = sessionStorage.getItem(
           getOAuthWidgetKey(messageId, 'provider'),
         ) as OAuthProvider | null
@@ -84,16 +103,11 @@ export const ConnectIntegrationWidget = memo(
           return
         }
 
-        // Update UI state immediately (optimistic update)
-        // CONNECT_SUCCESS already sets isConnecting to false and showConnectedState to true
         dispatch({ type: 'CONNECT_SUCCESS', payload: connectedProvider })
-
-        // Refetch integration status and wait for it to update
         await queryClient.refetchQueries({ queryKey: ['integrationStatus'] })
 
         setTimeout(() => {
           dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-          // Dispatch event for hook to detect integration completion
           window.dispatchEvent(
             new CustomEvent(oauthRetryEvent, {
               detail: { widgetMessageId: messageId },
@@ -116,7 +130,6 @@ export const ConnectIntegrationWidget = memo(
         if (!success) {
           dispatch({ type: 'CONNECT_FAILED', payload: null })
         }
-        // onSuccess callback handles state updates and query invalidation
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
         dispatch({ type: 'CONNECT_FAILED', payload: null })
@@ -158,6 +171,10 @@ export const ConnectIntegrationWidget = memo(
       dispatch({ type: 'SET_DISMISSED', payload: true })
     }
 
+    if (!isLoadingWidgetMessage && widgetMessage?.metadata?.widgetCompleted === true) {
+      return null
+    }
+
     if (integrationsDoNotAskAgain.value) {
       return null
     }
@@ -186,30 +203,19 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    // Check if provider is already connected (handles page refresh case)
-    // If integrationStatus shows the provider is connected, hide the widget
-    if (integrationStatus) {
-      // Determine which provider to check
-      const providerToCheck = state.selectedProvider || (provider !== '' ? provider : null)
+    if (integrationStatus && !state.showConnectedState) {
+      const providerToCheck = (state.selectedProvider || (provider !== '' ? provider : null)) as OAuthProvider | null
 
-      if (providerToCheck) {
-        // Specific provider specified - check if it's connected
-        const isConnected =
-          providerToCheck === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
+      if (providerToCheck && isProviderConnected(providerToCheck, integrationStatus)) {
+        return null
+      }
 
-        if (isConnected && !state.showConnectedState) {
-          // Provider is connected and we're not showing the connected state - hide widget
-          return null
-        }
-      } else if (provider === '') {
-        // No provider specified - if either provider is connected, hide widget
-        // (after refresh, if user already connected, don't show widget again)
-        if (integrationStatus.googleConnected || integrationStatus.microsoftConnected) {
-          // But only hide if we're not in the middle of showing connected state
-          if (!state.showConnectedState) {
-            return null
-          }
-        }
+      if (
+        !providerToCheck &&
+        provider === '' &&
+        (integrationStatus.googleConnected || integrationStatus.microsoftConnected)
+      ) {
+        return null
       }
     }
 
@@ -280,7 +286,6 @@ export const ConnectIntegrationWidget = memo(
     const providerName = getProviderName(state.selectedProvider)
     const IconComponent = getIconComponent(state.selectedProvider, service)
 
-    // Show connected state if we're showing it (regardless of integrationStatus, which may be stale)
     if (state.isConnected && state.connectedProvider && state.showConnectedState) {
       const connectedProviderName = getProviderName(state.connectedProvider)
       const ConnectedIconComponent = getIconComponent(state.connectedProvider, service)
@@ -314,14 +319,12 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    // Hide widget if connected and not showing connected state (after timeout)
-    const isProviderAvailable = integrationStatus
-      ? state.connectedProvider === 'google'
-        ? integrationStatus.googleConnected
-        : integrationStatus.microsoftConnected
-      : false
-
-    if (state.isConnected && state.connectedProvider && isProviderAvailable && !state.showConnectedState) {
+    if (
+      state.isConnected &&
+      state.connectedProvider &&
+      !state.showConnectedState &&
+      isProviderConnected(state.connectedProvider, integrationStatus)
+    ) {
       return null
     }
 

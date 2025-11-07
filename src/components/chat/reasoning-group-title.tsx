@@ -11,19 +11,17 @@ type ReasoningGroupTitleProps = {
 }
 
 export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: ReasoningGroupTitleProps) => {
-  const runningTools = tools.filter((tool) => tool.state !== 'output-available')
-
-  const [activeIndex, setActiveIndex] = useState(runningTools.length - 1)
+  const [activeIndex, setActiveIndex] = useState(tools.length - 1)
 
   useEffect(() => {
-    setActiveIndex(runningTools.length - 1)
-  }, [runningTools.length])
+    setActiveIndex(tools.length - 1)
+  }, [tools.length])
 
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
         {isThinking ? (
-          runningTools.map((tool, index) => {
+          tools.map((tool, index) => {
             const isActive = index === activeIndex
             const isBelow = index < activeIndex
 

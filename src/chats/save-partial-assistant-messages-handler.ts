@@ -4,6 +4,7 @@ import { type PropsWithChildren, useEffect } from 'react'
 import { useChatStore } from './chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
+import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 
 type SavePartialAssistantMessagesHandlerProps = PropsWithChildren<{
   saveMessages: SaveMessagesFunction
@@ -23,6 +24,8 @@ export const SavePartialAssistantMessagesHandler = ({
   const { status, messages } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
+
+  useHandleIntegrationCompletion({ saveMessages })
 
   const throttledSave = useThrottledCallback((message: ThunderboltUIMessage) => {
     saveMessages({

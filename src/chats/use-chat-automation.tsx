@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useChatStore } from './chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
@@ -14,17 +14,21 @@ export const useChatAutomation = () => {
 
   const hasMessages = messages.length
 
+  const hasTriggeredRef = useRef(false)
+
   // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet
   useEffect(() => {
     if (
+      !hasTriggeredRef.current &&
       chatInstance?.status === 'ready' &&
       hasMessages &&
       chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user'
     ) {
+      hasTriggeredRef.current = true
       // Regenerate assistant response for the last user message
       chatInstance?.regenerate().catch((err) => {
         console.error('Auto regenerate error', err)
       })
     }
-  }, [chatInstance, chatInstance?.status, hasMessages])
+  }, [chatInstance, hasMessages])
 }

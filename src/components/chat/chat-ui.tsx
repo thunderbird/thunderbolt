@@ -1,3 +1,4 @@
+import { getChatThread } from '@/dal'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useContextTracking } from '@/hooks/use-context-tracking'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -5,7 +6,9 @@ import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { AutomationRun, Model, ThunderboltUIMessage } from '@/types'
 import type { UseChatHelpers } from '@ai-sdk/react'
+import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -13,12 +16,9 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { Button } from '../ui/button'
 import { PromptInput } from '../ui/prompt-input'
 import { AssistantMessage } from './assistant-message'
+import TimelineMessage from './timeline-message'
 import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
-import { Lock } from 'lucide-react'
-import TimelineMessage from './timeline-message'
-import { useQuery } from '@tanstack/react-query'
-import { getChatThread } from '@/dal'
 
 interface ChatUIProps {
   chatHelpers: UseChatHelpers<ThunderboltUIMessage>
@@ -249,8 +249,8 @@ export default function ChatUI({
                 return null
               }
 
-              // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
-              if (message.metadata?.oauthRetry === true) {
+              // Hide synthetic system messages (like OAuth completion notifications)
+              if (message.metadata?.hideFromUser === true) {
                 return null
               }
 

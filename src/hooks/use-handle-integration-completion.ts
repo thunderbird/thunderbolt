@@ -1,5 +1,5 @@
-import { oauthRetryEvent } from '@/widgets/connect-integration/constants'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import { oauthRetryEvent } from '@/widgets/connect-integration/constants'
 import type { UseChatHelpers } from '@ai-sdk/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, type RefObject } from 'react'
@@ -15,43 +15,27 @@ type UseHandleIntegrationCompletionParams = {
 }
 
 /**
- * Finds the original user message text before the widget message.
+ * Creates a synthetic message to notify the LLM that integration is connected.
+ * This message is persisted to the database but hidden from the UI via metadata flag.
  */
-const findOriginalUserText = (chatMessages: ThunderboltUIMessage[], widgetMessageIndex: number): string | null => {
-  const userMessage = chatMessages
-    .slice(0, widgetMessageIndex)
-    .reverse()
-    .find((msg) => msg.role === 'user')
-
-  if (!userMessage) return null
-
-  const textPart = userMessage.parts?.find((part) => part.type === 'text')
-  if (!textPart || textPart.type !== 'text') return null
-
-  return textPart.text || null
-}
-
-/**
- * Creates a retry message with the original user text and a note about successful integration.
- */
-const createRetryMessage = (originalUserText: string): ThunderboltUIMessage => ({
+const createContinuationMessage = (): ThunderboltUIMessage => ({
   id: uuidv7(),
   role: 'user',
   parts: [
     {
       type: 'text',
-      text: `${originalUserText}\n\n[Note: Email integration has been successfully connected. Please proceed with the requested action using the appropriate tools.]`,
+      text: '[The user has successfully connected their email/calendar integration. Please proceed with their previous request using the available tools.]',
     },
   ],
   metadata: {
-    oauthRetry: true,
+    hideFromUser: true,
   },
 })
 
 /**
  * Hook that handles OAuth integration completion events.
- * When an integration is connected, it automatically retries the user's original request
- * by creating a new message with the original text and triggering regeneration.
+ * When an integration is connected, it appends a synthetic message that notifies
+ * the LLM that tools are now available. The message is hidden from users via metadata.
  */
 export const useHandleIntegrationCompletion = ({
   chatHelpers,
@@ -74,27 +58,29 @@ export const useHandleIntegrationCompletion = ({
       const widgetMessageIndex = chatMessages.findIndex((msg) => msg.id === widgetMessageId)
       if (widgetMessageIndex < 0) return
 
-      const originalUserText = findOriginalUserText(chatMessages, widgetMessageIndex)
-      if (!originalUserText) return
-
       oauthRetryHandledRef.current.add(widgetMessageId)
       hasTriggeredRef.current = false
 
+      // Invalidate integration status so tools become available
       queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+
+      // Wait for integration status to update
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      const retryMessage = createRetryMessage(originalUserText)
-      const messagesBeforeWidget = chatMessages.slice(0, widgetMessageIndex)
-      const newMessages = [...messagesBeforeWidget, retryMessage]
-
-      chatHelpers.setMessages(newMessages)
-
       try {
+        // Add synthetic message to state and save it with hideFromUser flag
+        const continuationMessage = createContinuationMessage()
+        const newMessages = [...chatMessages, continuationMessage]
+
+        chatHelpers.setMessages(newMessages)
+
+        // Save the synthetic message to DB (it will be hidden in UI via metadata)
         await saveMessages({
           id,
-          messages: [retryMessage],
+          messages: [continuationMessage],
         })
 
+        // Trigger LLM response now that tools are available
         await chatHelpers.regenerate()
       } catch (err) {
         console.error('Failed to process OAuth retry:', err)

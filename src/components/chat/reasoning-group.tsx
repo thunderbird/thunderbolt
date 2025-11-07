@@ -44,7 +44,7 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
   })
 
   return (
-    <div className="mt-4">
+    <div className="mt-6">
       <Expandable
         className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
         icon={

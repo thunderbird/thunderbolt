@@ -64,7 +64,7 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
           }}
         >
           {parts.map((part, index) => (
-            <ReasoningItem key={index} onChangeDuration={() => {}} part={part} />
+            <ReasoningItem key={index} part={part} />
           ))}
           <div ref={scrollTargetRef} />
         </div>

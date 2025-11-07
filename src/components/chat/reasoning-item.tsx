@@ -7,7 +7,6 @@ import { useObjectView } from '@/content-view/context'
 
 type ReasoningItemProps = {
   part: ReasoningGroupItem
-  onChangeDuration(duration: number): void
 }
 
 const getItemData = (part: ReasoningGroupItem) => {
@@ -19,7 +18,7 @@ const getItemData = (part: ReasoningGroupItem) => {
         Icon: Brain,
         displayName: 'Thinking',
         isLoading: reasoningPart.state === 'streaming',
-        duration: reasoningPart.metadata?.duration,
+        duration: (reasoningPart as any).metadata?.duration,
       }
     }
 
@@ -32,7 +31,7 @@ const getItemData = (part: ReasoningGroupItem) => {
         Icon: metadata.icon || DotIcon,
         displayName: metadata.displayName,
         isLoading: toolPart.state !== 'output-available' && toolPart.state !== 'output-error',
-        duration: toolPart.metadata?.duration,
+        duration: (toolPart as any).metadata?.duration,
       }
     }
 
@@ -41,7 +40,7 @@ const getItemData = (part: ReasoningGroupItem) => {
   }
 }
 
-export const ReasoningItem = ({ onChangeDuration, part }: ReasoningItemProps) => {
+export const ReasoningItem = ({ part }: ReasoningItemProps) => {
   const itemData = getItemData(part)
 
   const { openObjectSidebar } = useObjectView()

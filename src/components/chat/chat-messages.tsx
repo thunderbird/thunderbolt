@@ -45,6 +45,11 @@ export const ChatMessages = () => {
       )}
 
       {messages.map((message, i) => {
+        // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
+        if (message.metadata?.oauthRetry === true) {
+          return null
+        }
+
         // Skip the very first user message if it was the automation prompt (already shown above)
         if (triggerData?.wasTriggeredByAutomation && i === 0) {
           return null

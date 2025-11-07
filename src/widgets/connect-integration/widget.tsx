@@ -13,6 +13,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { type OAuthProvider } from '@/lib/auth'
 import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   type OAuthProviderOrEmpty,
   useConnectIntegrationWidgetState,
@@ -68,123 +69,37 @@ export const ConnectIntegrationWidget = memo(
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
     const [state, dispatch] = useConnectIntegrationWidgetState(provider)
     const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
+    const queryClient = useQueryClient()
     const displayReason = reason === '' ? getDefaultReason(service) : reason
 
-    useEffect(() => {
-      if (!integrationStatus) return
-
-      dispatch({
-        type: 'SET_AVAILABLE_PROVIDERS',
-        payload: integrationStatus.availableProviders,
-      })
-    }, [integrationStatus, dispatch])
-
-    useEffect(() => {
-      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
-      const oauthCompleted = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'completed')) === 'true'
-
-      if (storedProvider && oauthCompleted && integrationStatus) {
-        const isProviderConnected =
-          storedProvider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
-
-        if (isProviderConnected) {
-          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'provider'))
-          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'completed'))
-          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
-          dispatch({ type: 'SET_CONNECTED', payload: true })
-          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
-          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-          dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: true })
-
-          setTimeout(() => {
-            dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-          }, connectedStateDisplayDuration)
-        } else {
-          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: storedProvider })
-          dispatch({ type: 'SET_CONNECTED', payload: false })
-          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-        }
-      }
-    }, [messageId, integrationStatus, dispatch])
-
-    useEffect(() => {
-      if (!integrationStatus || state.showConnectedState) return
-
-      const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
-      if (storedProvider && !state.selectedProvider) {
-        dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-      }
-    }, [messageId, integrationStatus, state.showConnectedState, state.selectedProvider, dispatch])
-
-    useEffect(() => {
-      if (!integrationStatus || !state.isConnected || !state.connectedProvider) return
-
-      const isProviderConnected =
-        state.connectedProvider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
-
-      if (!isProviderConnected) {
-        dispatch({ type: 'SET_CONNECTED', payload: false })
-        dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: null })
-      }
-    }, [integrationStatus, state.isConnected, state.connectedProvider, dispatch])
-
-    useEffect(() => {
-      if (!integrationStatus || state.isConnected || state.showConnectedState) return
-
-      if (provider !== '') {
-        const isProviderConnected =
-          provider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
-        if (isProviderConnected) {
-          dispatch({ type: 'SET_CONNECTED', payload: true })
-          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: provider as OAuthProvider })
-          if (!state.selectedProvider) {
-            dispatch({ type: 'SET_SELECTED_PROVIDER', payload: provider as OAuthProvider })
-          }
-        }
-        return
-      }
-
-      if (!state.selectedProvider) {
-        const serviceAvailable = integrationStatus.googleConnected || integrationStatus.microsoftConnected
-        if (serviceAvailable) {
-          const connectedProvider: OAuthProvider = integrationStatus.googleConnected ? 'google' : 'microsoft'
-          dispatch({ type: 'SET_CONNECTED', payload: true })
-          dispatch({ type: 'SET_CONNECTED_PROVIDER', payload: connectedProvider })
-          dispatch({ type: 'SET_SELECTED_PROVIDER', payload: connectedProvider })
-        }
-      }
-    }, [integrationStatus, provider, state.isConnected, state.showConnectedState, state.selectedProvider, dispatch])
-
     const { connect, processCallback, error } = useOAuthConnect({
-      onSuccess: () => {
-        if (state.selectedProvider) {
-          dispatch({ type: 'CONNECT_SUCCESS', payload: state.selectedProvider })
-          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
-          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
+      onSuccess: async () => {
+        // Get provider from sessionStorage (it was stored before OAuth flow started)
+        const connectedProvider = sessionStorage.getItem(
+          getOAuthWidgetKey(messageId, 'provider'),
+        ) as OAuthProvider | null
 
-          const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
-          if (!eventDispatched) {
-            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-              window.dispatchEvent(
-                new CustomEvent(oauthRetryEvent, {
-                  detail: { widgetMessageId: messageId },
-                }),
-              )
-            }, connectedStateDisplayDuration)
-          } else {
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-            }, connectedStateDisplayDuration)
-          }
-        }
-      },
-      onError: (err) => {
-        dispatch({ type: 'SET_CONNECTING', payload: false })
-        if (err.message === 'Redirecting for OAuth') {
+        if (!connectedProvider) {
+          console.warn('No provider found in sessionStorage for OAuth completion')
           return
         }
+
+        // Update UI state immediately (optimistic update)
+        // CONNECT_SUCCESS already sets isConnecting to false and showConnectedState to true
+        dispatch({ type: 'CONNECT_SUCCESS', payload: connectedProvider })
+
+        // Refetch integration status and wait for it to update
+        await queryClient.refetchQueries({ queryKey: ['integrationStatus'] })
+
+        setTimeout(() => {
+          dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
+          // Dispatch event for hook to detect integration completion
+          window.dispatchEvent(
+            new CustomEvent(oauthRetryEvent, {
+              detail: { widgetMessageId: messageId },
+            }),
+          )
+        }, connectedStateDisplayDuration)
       },
       returnContext: 'integrations',
     })
@@ -198,30 +113,10 @@ export const ConnectIntegrationWidget = memo(
 
       try {
         const success = await processCallback(oauth)
-
-        if (success) {
-          sessionStorage.setItem(getOAuthWidgetKey(messageId, 'completed'), 'true')
-          dispatch({ type: 'CONNECT_SUCCESS', payload: storedProvider })
-
-          const eventDispatched = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'eventDispatched'))
-          if (!eventDispatched) {
-            sessionStorage.setItem(getOAuthWidgetKey(messageId, 'eventDispatched'), 'true')
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-              window.dispatchEvent(
-                new CustomEvent(oauthRetryEvent, {
-                  detail: { widgetMessageId: messageId },
-                }),
-              )
-            }, connectedStateDisplayDuration)
-          } else {
-            setTimeout(() => {
-              dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
-            }, connectedStateDisplayDuration)
-          }
-        } else {
+        if (!success) {
           dispatch({ type: 'CONNECT_FAILED', payload: null })
         }
+        // onSuccess callback handles state updates and query invalidation
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
         dispatch({ type: 'CONNECT_FAILED', payload: null })
@@ -245,10 +140,7 @@ export const ConnectIntegrationWidget = memo(
       dispatch({ type: 'SET_CONNECTING', payload: true })
 
       sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
-
-      if (!location.pathname.startsWith('/settings/integrations')) {
-        sessionStorage.setItem('oauth_return_context', location.pathname)
-      }
+      sessionStorage.setItem('oauth_return_context', location.pathname)
 
       try {
         await connect(state.selectedProvider as OAuthProvider)
@@ -282,7 +174,7 @@ export const ConnectIntegrationWidget = memo(
 
     const serviceName = getServiceName(service)
 
-    if (isLoadingIntegrationStatus || state.availableProviders === null) {
+    if (isLoadingIntegrationStatus) {
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
@@ -292,6 +184,33 @@ export const ConnectIntegrationWidget = memo(
           </CardContent>
         </Card>
       )
+    }
+
+    // Check if provider is already connected (handles page refresh case)
+    // If integrationStatus shows the provider is connected, hide the widget
+    if (integrationStatus) {
+      // Determine which provider to check
+      const providerToCheck = state.selectedProvider || (provider !== '' ? provider : null)
+
+      if (providerToCheck) {
+        // Specific provider specified - check if it's connected
+        const isConnected =
+          providerToCheck === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
+
+        if (isConnected && !state.showConnectedState) {
+          // Provider is connected and we're not showing the connected state - hide widget
+          return null
+        }
+      } else if (provider === '') {
+        // No provider specified - if either provider is connected, hide widget
+        // (after refresh, if user already connected, don't show widget again)
+        if (integrationStatus.googleConnected || integrationStatus.microsoftConnected) {
+          // But only hide if we're not in the middle of showing connected state
+          if (!state.showConnectedState) {
+            return null
+          }
+        }
+      }
     }
 
     if (!state.selectedProvider && !state.isConnected) {
@@ -361,14 +280,7 @@ export const ConnectIntegrationWidget = memo(
     const providerName = getProviderName(state.selectedProvider)
     const IconComponent = getIconComponent(state.selectedProvider, service)
 
-    const isProviderAvailable =
-      state.availableProviders &&
-      (state.connectedProvider === 'google' ? state.availableProviders.google : state.availableProviders.microsoft)
-
-    if (state.isConnected && state.connectedProvider && isProviderAvailable && !state.showConnectedState) {
-      return null
-    }
-
+    // Show connected state if we're showing it (regardless of integrationStatus, which may be stale)
     if (state.isConnected && state.connectedProvider && state.showConnectedState) {
       const connectedProviderName = getProviderName(state.connectedProvider)
       const ConnectedIconComponent = getIconComponent(state.connectedProvider, service)
@@ -400,6 +312,17 @@ export const ConnectIntegrationWidget = memo(
           </CardContent>
         </Card>
       )
+    }
+
+    // Hide widget if connected and not showing connected state (after timeout)
+    const isProviderAvailable = integrationStatus
+      ? state.connectedProvider === 'google'
+        ? integrationStatus.googleConnected
+        : integrationStatus.microsoftConnected
+      : false
+
+    if (state.isConnected && state.connectedProvider && isProviderAvailable && !state.showConnectedState) {
+      return null
     }
 
     return (

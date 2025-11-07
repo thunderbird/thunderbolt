@@ -1,7 +1,7 @@
 import { getSettings } from '@/dal'
 import { useQuery } from '@tanstack/react-query'
 
-type IntegrationStatus = {
+export type IntegrationStatus = {
   googleConnected: boolean
   microsoftConnected: boolean
   availableProviders: {

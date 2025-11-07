@@ -35,7 +35,7 @@ export {
 } from './chat-threads'
 
 // Chat Messages
-export { getChatMessages, getLastMessage, saveMessagesWithContextUpdate } from './chat-messages'
+export { getChatMessages, getLastMessage, saveMessagesWithContextUpdate, updateMessage } from './chat-messages'
 
 // Tasks
 export { getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'

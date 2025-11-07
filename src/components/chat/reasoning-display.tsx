@@ -17,7 +17,7 @@ type ReasoningDisplayProps = {
  */
 export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
   const [displayText, setDisplayText] = useState(text)
-  const [shouldShow, setShouldShow] = useState(true)
+  const [shouldShow, setShouldShow] = useState(isStreaming)
   const [currentKey, setCurrentKey] = useState(instanceKey)
   const displayStartTimeRef = useRef(Date.now())
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)

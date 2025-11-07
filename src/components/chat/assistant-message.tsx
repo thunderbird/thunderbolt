@@ -12,6 +12,7 @@ import { memo, useEffect, useRef, type ReactNode } from 'react'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ReasoningGroup } from './reasoning-group'
+import { updateMessage } from '@/dal'
 
 interface AssistantMessageProps {
   message: ThunderboltUIMessage
@@ -99,8 +100,34 @@ const useTrackMessagePartDuration = (parts: any[]) => {
   })
 }
 
+type UseSaveMessagePartsDurationParams = {
+  isStreaming: boolean
+  message: ThunderboltUIMessage
+  updatedParts: any[]
+}
+
+const useSaveMessagePartsDuration = ({ isStreaming, message, updatedParts }: UseSaveMessagePartsDurationParams) => {
+  const refIsStreaming = useRef(isStreaming)
+
+  useEffect(() => {
+    if (refIsStreaming.current && !isStreaming) {
+      refIsStreaming.current = false
+
+      // delay the update to ensure the parts are updated in the database
+      const timeout = setTimeout(async () => {
+        await updateMessage(message.id, { parts: updatedParts })
+      }, 500)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [isStreaming, message, updatedParts])
+}
+
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
   const partsWithDuration = useTrackMessagePartDuration(message.parts)
+
+  useSaveMessagePartsDuration({ isStreaming, message, updatedParts: partsWithDuration })
+
   const filteredParts = filterMessageParts(partsWithDuration) as GroupableUIPart[]
 
   const groupedParts = groupMessageParts(filteredParts)

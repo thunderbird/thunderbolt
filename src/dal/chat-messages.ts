@@ -114,3 +114,8 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
   const updatedCache = { ...(message.cache || {}), [cacheKey]: value } as typeof message.cache
   await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
 }
+
+export const updateMessage = async (messageId: string, message: Partial<ChatMessage>): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
+}

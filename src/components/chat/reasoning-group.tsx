@@ -19,9 +19,9 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage }: Reas
 
   const isThinking = isLastPartInMessage && isStreaming
 
-  const lastPart = parts[parts.length - 1]
-
-  const currentReasoningPart = lastPart.type === 'reasoning' ? (lastPart as ReasoningGroupItem<ReasoningUIPart>) : null
+  const currentReasoningPart = parts
+    .filter((part) => part.type === 'reasoning')
+    .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
   // Create unique instance key for reasoning display
   const reasoningInstanceKey = currentReasoningPart

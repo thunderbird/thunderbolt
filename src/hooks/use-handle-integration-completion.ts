@@ -83,9 +83,15 @@ const waitForProviderConnection = async (
 
 /**
  * Waits for the chat instance to be ready before sending a message.
+ * Throws an error if the timeout is reached.
  */
-const waitForChatReady = async (chatInstance: { status: string }): Promise<void> => {
+const waitForChatReady = async (chatInstance: { status: string }, timeoutMs = 5000): Promise<void> => {
+  const startTime = Date.now()
+
   while (chatInstance.status !== 'ready') {
+    if (Date.now() - startTime > timeoutMs) {
+      throw new Error(`Chat instance not ready after ${timeoutMs}ms`)
+    }
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
 }

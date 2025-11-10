@@ -16,9 +16,12 @@ export const schema = z.object({
 export type ConnectIntegrationWidget = z.infer<typeof schema>
 
 /**
- * Type of data cached by this widget (none - this widget doesn't fetch data)
+ * Type of data cached by this widget
+ * isHidden: Whether the widget should be hidden after integration completion
  */
-export type CacheData = null
+export type CacheData = {
+  isHidden?: boolean
+}
 
 /**
  * Parse function - auto-generated from schema

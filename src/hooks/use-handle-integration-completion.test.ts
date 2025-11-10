@@ -322,8 +322,8 @@ describe('useHandleIntegrationCompletion', () => {
         const updatedWidgetMessage = await getMessage(widgetMessageId)
         expect(updatedWidgetMessage).toBeDefined()
         expect(updatedWidgetMessage?.cache).toBeDefined()
-        const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget/isHidden']
-        expect(cacheEntry).toBe(true)
+        const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
+        expect(cacheEntry).toEqual({ isHidden: true })
       },
       { timeout: 3000 },
     )

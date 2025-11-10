@@ -181,9 +181,9 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
         })
 
         try {
-          await updateMessageCache(widgetMessageId, 'connectIntegrationWidget/isHidden', true)
+          await updateMessageCache(widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
           queryClient.invalidateQueries({
-            queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget', 'isHidden'],
+            queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget'],
           })
         } catch (err) {
           console.warn('Failed to mark widget as hidden:', err)

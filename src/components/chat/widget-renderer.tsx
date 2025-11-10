@@ -23,7 +23,7 @@ type WidgetRendererProps = {
  * Filters out widgets marked as hidden via message cache
  */
 export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) => {
-  const isHidden = useWidgetHiddenState(messageId)
+  const isHidden = useWidgetHiddenState(messageId, widget.widget)
 
   if (widget.widget === 'connect-integration' && isHidden) {
     return null

@@ -106,7 +106,6 @@ export const useSidebarWebview = (
         }
 
         webviewRef.current = webview
-        setIsInitialized(true)
 
         // Set up ResizeObserver to track container size changes
         resizeObserverRef.current = new ResizeObserver(() => {
@@ -126,6 +125,11 @@ export const useSidebarWebview = (
         unlistenMove = await windowRef.current.onMoved(() => {
           requestPositionUpdate()
         })
+
+        // Mark as initialized only after all async operations complete
+        if (isActive) {
+          setIsInitialized(true)
+        }
       } catch (error) {
         console.error('Failed to initialize sidebar webview:', error)
       }

@@ -6,7 +6,6 @@
  */
 
 import type { Widget } from '@/ai/widget-types'
-import type { TextUIPart } from 'ai'
 import { widgetRegistry } from '@/widgets'
 import { createElement, memo } from 'react'
 import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-hidden-state'
@@ -14,7 +13,6 @@ import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-h
 type WidgetRendererProps = {
   widget: Widget
   messageId: string
-  part: TextUIPart
 }
 
 /**

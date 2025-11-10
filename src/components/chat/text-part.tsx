@@ -26,7 +26,7 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
         }
         return (
           <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
-            <WidgetRenderer widget={contentPart.widget} messageId={messageId} part={part} />
+            <WidgetRenderer widget={contentPart.widget} messageId={messageId} />
           </div>
         )
       })}

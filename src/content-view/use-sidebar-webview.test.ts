@@ -220,11 +220,12 @@ describe('useSidebarWebview', () => {
       // Wait for initialization
       await waitFor(() => {
         expect(result.current.isInitialized).toBe(true)
+        expect(result.current.webview).not.toBeNull()
       })
 
-      // Ensure all async operations have settled
+      // Give extra time for CI - ensure all event listeners are attached
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100))
+        await new Promise((resolve) => setTimeout(resolve, 200))
       })
 
       // Trigger unload event

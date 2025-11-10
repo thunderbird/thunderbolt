@@ -199,7 +199,6 @@ describe('useSidebarWebview', () => {
     })
 
     it('should close webview on page unload event', async () => {
-      const { act } = await import('@testing-library/react')
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
       container.getBoundingClientRect = mock(() => ({
@@ -217,20 +216,24 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      // Wait for initialization
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
-        expect(result.current.webview).not.toBeNull()
-      })
+      // Wait for initialization and webview instance
+      await waitFor(
+        () => {
+          expect(result.current.isInitialized).toBe(true)
+          expect(result.current.webview).not.toBeNull()
+        },
+        { timeout: 3000 },
+      )
 
-      // Give extra time for CI - ensure all event listeners are attached
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 200))
-      })
+      // Give CI extra time to ensure event handler closure has captured webview ref
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Trigger unload event
       const unloadEvent = new Event('unload')
       window.dispatchEvent(unloadEvent)
+
+      // Wait for async close to complete
+      await new Promise((resolve) => setTimeout(resolve, 50))
 
       // Verify webview.close was called
       expect(mockWebview.close).toHaveBeenCalled()

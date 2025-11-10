@@ -9,6 +9,7 @@ import type { Widget } from '@/ai/widget-types'
 import type { TextUIPart } from 'ai'
 import { widgetRegistry } from '@/widgets'
 import { createElement, memo } from 'react'
+import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-hidden-state'
 
 type WidgetRendererProps = {
   widget: Widget
@@ -21,11 +22,12 @@ type WidgetRendererProps = {
  * Passes messageId to each component - they handle their own enrichment
  *
  * Components are auto-loaded from the widget registry
- * Filters out widgets marked as hidden via part metadata
+ * Filters out widgets marked as hidden via message cache
  */
-export const WidgetRenderer = memo(({ widget, messageId, part }: WidgetRendererProps) => {
-  const partWithMetadata = part as TextUIPart & { metadata?: { isHidden?: boolean } }
-  if (partWithMetadata.metadata?.isHidden === true) {
+export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) => {
+  const isHidden = useWidgetHiddenState(messageId)
+
+  if (widget.widget === 'connect-integration' && isHidden) {
     return null
   }
 

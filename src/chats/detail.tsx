@@ -4,6 +4,7 @@ import { type PropsWithChildren, useEffect, useMemo } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
+import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   id: string
@@ -12,6 +13,8 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 
 const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
   const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
+
+  useHandleIntegrationCompletion({ saveMessages })
 
   useEffect(() => {
     hydrateChatStore()

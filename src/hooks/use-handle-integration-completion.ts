@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integration-status'
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
-import { getMessage, updateMessage } from '@/dal/chat-messages'
+import { updateMessageCache } from '@/dal/chat-messages'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
@@ -181,25 +181,10 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
         })
 
         try {
-          const widgetMessage = await getMessage(widgetMessageId)
-          if (!widgetMessage?.parts) return
-
-          const updatedParts = widgetMessage.parts.map((part) => {
-            if (part.type === 'text' && part.text?.includes('<widget:connect-integration')) {
-              const partWithMetadata = part as { metadata?: { isHidden?: boolean } }
-              return {
-                ...part,
-                metadata: {
-                  ...(partWithMetadata.metadata || {}),
-                  isHidden: true,
-                },
-              }
-            }
-            return part
+          await updateMessageCache(widgetMessageId, 'connectIntegrationWidget/isHidden', true)
+          queryClient.invalidateQueries({
+            queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget', 'isHidden'],
           })
-
-          await updateMessage(widgetMessageId, { parts: updatedParts })
-          queryClient.invalidateQueries({ queryKey: ['message', widgetMessageId] })
         } catch (err) {
           console.warn('Failed to mark widget as hidden:', err)
         }

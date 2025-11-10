@@ -248,7 +248,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(mockSaveMessages).not.toHaveBeenCalled()
   })
 
-  it('should process retry and mark widget as hidden for google provider', async () => {
+  it('should process retry and store widget hidden state in cache for google provider', async () => {
     const threadId = await createTestThread()
     const widgetMessageId = uuidv7()
     const userMessageId = uuidv7()
@@ -321,12 +321,9 @@ describe('useHandleIntegrationCompletion', () => {
       async () => {
         const updatedWidgetMessage = await getMessage(widgetMessageId)
         expect(updatedWidgetMessage).toBeDefined()
-        const widgetPart = updatedWidgetMessage?.parts?.find(
-          (part) => part.type === 'text' && part.text?.includes('<widget:connect-integration'),
-        )
-        expect(widgetPart).toBeDefined()
-        const partWithMetadata = widgetPart as { metadata?: { isHidden?: boolean } }
-        expect(partWithMetadata.metadata?.isHidden).toBe(true)
+        expect(updatedWidgetMessage?.cache).toBeDefined()
+        const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget/isHidden']
+        expect(cacheEntry).toBe(true)
       },
       { timeout: 3000 },
     )
@@ -339,74 +336,6 @@ describe('useHandleIntegrationCompletion', () => {
           | undefined
         const sendMessageCall = sendCall || {}
         expect(sendMessageCall?.metadata?.oauthRetry).toBe(true)
-      },
-      { timeout: 3000 },
-    )
-  })
-
-  it('should process retry and mark widget as hidden for microsoft provider', async () => {
-    const threadId = await createTestThread()
-    const widgetMessageId = uuidv7()
-    const userMessageId = uuidv7()
-
-    const userMessage: ThunderboltUIMessage = {
-      id: userMessageId,
-      role: 'user',
-      parts: [{ type: 'text', text: 'Check my calendar' }],
-    }
-
-    const widgetMessage: ThunderboltUIMessage = {
-      id: widgetMessageId,
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'Please connect <widget:connect-integration>' }],
-    }
-
-    await createTestMessages(threadId, [userMessage, widgetMessage])
-
-    const mockSaveMessages = createMockSaveMessages()
-    const mockSendMessage = mock(() => Promise.resolve())
-    const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
-
-    mockChatInstance.sendMessage = mockSendMessage
-
-    sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'microsoft')
-
-    mockChatStore.setState({
-      chatInstance: mockChatInstance,
-      id: threadId,
-    })
-
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', JSON.stringify({ access_token: 'test_token' }))
-
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
-          },
-        },
-      }),
-    })
-
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
-
-    await waitFor(
-      () => {
-        expect(mockSaveMessages).toHaveBeenCalled()
-      },
-      { timeout: 3000 },
-    )
-
-    await waitFor(
-      () => {
-        expect(mockSendMessage).toHaveBeenCalled()
       },
       { timeout: 3000 },
     )

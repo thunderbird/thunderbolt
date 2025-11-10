@@ -199,6 +199,7 @@ describe('useSidebarWebview', () => {
     })
 
     it('should close webview on page unload event', async () => {
+      const { act } = await import('@testing-library/react')
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
       container.getBoundingClientRect = mock(() => ({
@@ -219,6 +220,11 @@ describe('useSidebarWebview', () => {
       // Wait for initialization
       await waitFor(() => {
         expect(result.current.isInitialized).toBe(true)
+      })
+
+      // Ensure all async operations have settled
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100))
       })
 
       // Trigger unload event

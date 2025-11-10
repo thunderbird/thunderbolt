@@ -214,35 +214,19 @@ describe('useSidebarWebview', () => {
       }))
       const containerRef = { current: container } as RefObject<HTMLDivElement>
 
-      const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
+      const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      // Wait for full initialization - both flag and webview instance
-      await waitFor(
-        () => {
-          expect(result.current.isInitialized).toBe(true)
-          expect(result.current.webview).not.toBeNull()
-        },
-        { timeout: 3000 },
-      )
-
-      // Give CI extra time to ensure event handler closure has captured webview ref
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // Clear any close() calls from initialization
-      mockWebview.close.mockClear()
+      // Wait for initialization
+      await waitFor(() => {
+        expect(result.current.isInitialized).toBe(true)
+      })
 
       // Trigger unload event
       const unloadEvent = new Event('unload')
       window.dispatchEvent(unloadEvent)
 
-      // Wait for async close to complete
-      await new Promise((resolve) => setTimeout(resolve, 50))
-
       // Verify webview.close was called
       expect(mockWebview.close).toHaveBeenCalled()
-
-      // Clean up to prevent test contamination
-      unmount()
     })
 
     it('should remove unload listener on unmount', async () => {

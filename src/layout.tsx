@@ -22,7 +22,7 @@ export default function Layout() {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <main className="flex flex-row h-[100dvh] w-full overflow-hidden">
+      <main className="flex flex-row h-full w-full overflow-hidden">
         <SidebarComponent />
         <div className="flex-1 overflow-hidden">
           <Outlet />

@@ -145,7 +145,13 @@ export const MobileSidebar = ({
           data-slot="sidebar"
           data-mobile="true"
         >
-          <div className="relative h-full">
+          <div
+            className="relative h-full"
+            style={{
+              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingTop: 'env(safe-area-inset-top)',
+            }}
+          >
             <div className="flex h-full w-full flex-col">{children}</div>
           </div>
         </motion.div>

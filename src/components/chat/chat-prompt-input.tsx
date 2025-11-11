@@ -97,7 +97,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     useEffect(() => {
       if (!openMobile) {
         const textareaElement = formRef.current?.querySelector('textarea')
-        textareaElement?.focus()
+        // wait sidebar to be closed, so layout is stable
+        setTimeout(() => {
+          textareaElement?.focus()
+        }, 500)
       }
     }, [openMobile])
 

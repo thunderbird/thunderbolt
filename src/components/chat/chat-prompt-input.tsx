@@ -1,5 +1,5 @@
 import { useContextTracking } from '@/hooks/use-context-tracking'
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { type Model } from '@/types'
@@ -9,6 +9,7 @@ import { trackEvent } from '@/lib/posthog'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
+import { useSidebar } from '../ui/sidebar'
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -87,6 +88,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       })
     }, [])
 
+    const { isMobile, openMobile } = useSidebar()
+
+    /**
+     * This ensures that the textarea is focused when the mobile sidebar is closed.
+     * Before the textarea was focused when the mobile sidebar was open.
+     */
+    useEffect(() => {
+      if (!openMobile) {
+        const textareaElement = formRef.current?.querySelector('textarea')
+        textareaElement?.focus()
+      }
+    }, [openMobile])
+
     useImperativeHandle(ref, () => ({
       focus: () => {
         const textareaElement = formRef.current?.querySelector('textarea')
@@ -115,7 +129,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           isLoading={isStreaming}
           isStreaming={isStreaming}
           onStop={stop}
-          autoFocus
+          autoFocus={!isMobile}
           submitOnEnter={!isStreaming}
           className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
           footerStartElements={

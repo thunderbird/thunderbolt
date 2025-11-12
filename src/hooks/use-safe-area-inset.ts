@@ -1,5 +1,18 @@
+import { isTauri } from '@/lib/platform'
 import { useEffect } from 'react'
 import { M3 } from 'tauri-plugin-m3'
+
+const createCSSVars = (insets: { bottom: number; top: number }) => {
+  document.documentElement.style.setProperty(
+    '--safe-area-top-padding',
+    insets?.top > 0 ? `${insets.top}px` : 'env(safe-area-inset-top, 24px)',
+  )
+
+  document.documentElement.style.setProperty(
+    '--safe-area-bottom-padding',
+    insets?.bottom > 0 ? `${insets.bottom}px` : 'env(safe-area-inset-bottom, 24px)',
+  )
+}
 
 export const useSafeAreaInset = () => {
   /**
@@ -9,18 +22,22 @@ export const useSafeAreaInset = () => {
    * So in your CSS instead of using env(safe-area-inset-*) use can/should use var(--safe-area-top-padding) and var(--safe-area-bottom-padding).
    */
   useEffect(() => {
-    M3.getInsets().then((insetsScheme) => {
-      const insets = insetsScheme || null
+    if (isTauri()) {
+      M3.getInsets().then((insetsScheme) => {
+        const insets = insetsScheme || null
 
-      document.documentElement.style.setProperty(
-        '--safe-area-top-padding',
-        insets?.adjustedInsetTop ? `${insets?.adjustedInsetTop}px` : 'env(safe-area-inset-top, 24px)',
-      )
+        createCSSVars({
+          bottom: insets?.adjustedInsetBottom ?? 0,
+          top: insets?.adjustedInsetTop ?? 0,
+        })
+      })
 
-      document.documentElement.style.setProperty(
-        '--safe-area-bottom-padding',
-        insets?.adjustedInsetBottom ? `${insets?.adjustedInsetBottom}px` : 'env(safe-area-inset-bottom, 24px)',
-      )
+      return
+    }
+
+    createCSSVars({
+      bottom: 0,
+      top: 0,
     })
   }, [])
 }

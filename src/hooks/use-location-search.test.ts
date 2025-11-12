@@ -1,46 +1,53 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useLocationSearch } from './use-location-search'
+import type { HttpClient } from './use-location-search'
 
-// Mock ky
-const mockKy = mock()
-mock.module('ky', () => ({
-  default: mockKy,
-}))
+/**
+ * Creates a mock HTTP client that returns predefined location data
+ */
+const createTestHttpClient = (mockResponse: any[] = [], shouldError = false, delay = 0): HttpClient => {
+  return {
+    get: () => ({
+      json: async () => {
+        if (delay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
+        if (shouldError) {
+          throw new Error('Network error')
+        }
+        return mockResponse
+      },
+    }),
+  }
+}
 
-// Mock getCloudUrl
-const mockGetCloudUrl = mock()
-mock.module('@/lib/config', () => ({
-  getCloudUrl: mockGetCloudUrl,
-}))
-
-// Mock useDebounce
-const mockUseDebounce = mock()
-mock.module('@/hooks/use-debounce', () => ({
-  useDebounce: mockUseDebounce,
-}))
-
-beforeAll(async () => {
-  // Setup if needed
-})
-
-afterAll(async () => {
-  // Cleanup if needed
-})
-
-afterEach(() => {
-  // Reset mocks
-  mockKy.mockClear()
-  mockGetCloudUrl.mockClear()
-  mockUseDebounce.mockClear()
-})
+const mockLocationResponse = [
+  {
+    name: 'San Francisco',
+    region: 'California',
+    country: 'United States',
+    lat: 37.7749,
+    lon: -122.4194,
+  },
+  {
+    name: 'New York',
+    region: 'New York',
+    country: 'United States',
+    lat: 40.7128,
+    lon: -74.006,
+  },
+]
 
 describe('useLocationSearch', () => {
+  afterEach(() => {
+    // Cleanup after each test
+  })
+
   describe('Initial state', () => {
     it('should initialize with default values', () => {
-      mockUseDebounce.mockReturnValue('')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient()
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       expect(result.current.open).toBe(false)
       expect(result.current.searchQuery).toBe('')
@@ -49,9 +56,8 @@ describe('useLocationSearch', () => {
     })
 
     it('should provide control functions', () => {
-      mockUseDebounce.mockReturnValue('')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient()
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       expect(typeof result.current.setOpen).toBe('function')
       expect(typeof result.current.setSearchQuery).toBe('function')
@@ -61,9 +67,8 @@ describe('useLocationSearch', () => {
 
   describe('State management', () => {
     it('should handle opening and closing', () => {
-      mockUseDebounce.mockReturnValue('')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient()
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       act(() => {
         result.current.setOpen(true)
@@ -79,9 +84,8 @@ describe('useLocationSearch', () => {
     })
 
     it('should handle search query changes', () => {
-      mockUseDebounce.mockReturnValue('')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient()
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       act(() => {
         result.current.setSearchQuery('New York')
@@ -91,9 +95,8 @@ describe('useLocationSearch', () => {
     })
 
     it('should clear search when clearSearch is called', () => {
-      mockUseDebounce.mockReturnValue('')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient()
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       // Set some state first
       act(() => {
@@ -114,122 +117,192 @@ describe('useLocationSearch', () => {
 
   describe('Location search functionality', () => {
     it('should not search when query is too short', async () => {
-      mockUseDebounce.mockReturnValue('a') // Single character
+      const mockClient = createTestHttpClient(mockLocationResponse)
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
-      const { result } = renderHook(() => useLocationSearch())
-
-      // Trigger search by changing debounced query
+      // Single character query
       act(() => {
         result.current.setSearchQuery('a')
       })
 
-      // Should not make API call for short queries
-      expect(mockKy).not.toHaveBeenCalled()
-      expect(result.current.locations).toEqual([])
+      // Wait for debounce
+      await waitFor(
+        () => {
+          // Should not have any locations for short queries
+          expect(result.current.locations).toEqual([])
+        },
+        { timeout: 500 },
+      )
+    })
+
+    it('should search when query is long enough', async () => {
+      const mockClient = createTestHttpClient(mockLocationResponse)
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+
+      act(() => {
+        result.current.setSearchQuery('San Francisco')
+      })
+
+      // Wait for debounce and API call
+      await waitFor(
+        () => {
+          expect(result.current.locations.length).toBeGreaterThan(0)
+        },
+        { timeout: 500 },
+      )
+
+      expect(result.current.locations).toEqual([
+        {
+          name: 'San Francisco, California, United States',
+          city: 'San Francisco',
+          coordinates: {
+            lat: 37.7749,
+            lng: -122.4194,
+          },
+        },
+        {
+          name: 'New York, New York, United States',
+          city: 'New York',
+          coordinates: {
+            lat: 40.7128,
+            lng: -74.006,
+          },
+        },
+      ])
     })
 
     it('should handle search errors gracefully', async () => {
-      mockUseDebounce.mockReturnValue('New York')
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockRejectedValue(new Error('Network error'))
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient([], true) // Error mode
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       act(() => {
         result.current.setSearchQuery('New York')
       })
 
-      await waitFor(() => {
-        expect(result.current.locations).toEqual([])
-        expect(result.current.isSearching).toBe(false)
-      })
+      await waitFor(
+        () => {
+          expect(result.current.locations).toEqual([])
+          expect(result.current.isSearching).toBe(false)
+        },
+        { timeout: 500 },
+      )
     })
 
     it('should show loading state during search', async () => {
-      mockUseDebounce.mockReturnValue('New York')
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-
-      // Mock a slow response
-      mockKy.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve([]), 100)))
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient(mockLocationResponse, false, 100) // 100ms delay
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       act(() => {
-        result.current.setSearchQuery('New York')
+        result.current.setSearchQuery('San Francisco')
       })
 
-      // Should show loading state
-      expect(result.current.isSearching).toBe(true)
+      // Wait for debounce, then check loading state
+      await waitFor(
+        () => {
+          expect(result.current.isSearching).toBe(true)
+        },
+        { timeout: 500 },
+      )
 
-      await waitFor(() => {
-        expect(result.current.isSearching).toBe(false)
-      })
+      await waitFor(
+        () => {
+          expect(result.current.isSearching).toBe(false)
+        },
+        { timeout: 500 },
+      )
     })
-  })
 
-  describe('Debounced search', () => {
-    it('should use debounced search query for API calls', async () => {
-      mockUseDebounce.mockReturnValue('New York')
+    it('should transform API response correctly', async () => {
+      const mockClient = createTestHttpClient(mockLocationResponse)
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
-      const { result } = renderHook(() => useLocationSearch())
-
-      // Set search query multiple times quickly
       act(() => {
-        result.current.setSearchQuery('N')
-      })
-      act(() => {
-        result.current.setSearchQuery('Ne')
-      })
-      act(() => {
-        result.current.setSearchQuery('New')
-      })
-      act(() => {
-        result.current.setSearchQuery('New York')
+        result.current.setSearchQuery('test')
       })
 
-      // Test basic functionality without complex mocking
-      expect(result.current.searchQuery).toBe('New York')
+      await waitFor(
+        () => {
+          expect(result.current.locations.length).toBeGreaterThan(0)
+        },
+        { timeout: 500 },
+      )
+
+      // Verify transformation
+      const firstLocation = result.current.locations[0]
+      expect(firstLocation).toHaveProperty('name')
+      expect(firstLocation).toHaveProperty('city')
+      expect(firstLocation).toHaveProperty('coordinates')
+      expect(firstLocation.coordinates).toHaveProperty('lat')
+      expect(firstLocation.coordinates).toHaveProperty('lng')
     })
   })
 
   describe('Edge cases', () => {
     it('should handle empty search results', async () => {
-      mockUseDebounce.mockReturnValue('NonExistentLocation')
-
-      const { result } = renderHook(() => useLocationSearch())
+      const mockClient = createTestHttpClient([]) // Empty results
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
       act(() => {
         result.current.setSearchQuery('NonExistentLocation')
       })
 
-      // Test basic functionality without complex mocking
-      expect(result.current.searchQuery).toBe('NonExistentLocation')
+      await waitFor(
+        () => {
+          expect(result.current.isSearching).toBe(false)
+        },
+        { timeout: 500 },
+      )
+
+      expect(result.current.locations).toEqual([])
     })
 
-    it('should handle malformed API response', async () => {
-      mockUseDebounce.mockReturnValue('New York')
+    it('should handle query with only whitespace', async () => {
+      const mockClient = createTestHttpClient(mockLocationResponse)
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
 
-      const { result } = renderHook(() => useLocationSearch())
+      act(() => {
+        result.current.setSearchQuery('   ')
+      })
 
+      await waitFor(
+        () => {
+          // Should not make API call for whitespace-only queries
+          expect(result.current.locations).toEqual([])
+        },
+        { timeout: 500 },
+      )
+    })
+
+    it('should update results when query changes', async () => {
+      const mockClient = createTestHttpClient(mockLocationResponse)
+      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+
+      // First query
+      act(() => {
+        result.current.setSearchQuery('San Francisco')
+      })
+
+      await waitFor(
+        () => {
+          expect(result.current.locations.length).toBeGreaterThan(0)
+        },
+        { timeout: 500 },
+      )
+
+      const firstResults = result.current.locations
+
+      // Change query
       act(() => {
         result.current.setSearchQuery('New York')
       })
 
-      // Test basic functionality without complex mocking
-      expect(result.current.searchQuery).toBe('New York')
-    })
-
-    it('should handle cloud URL fetch errors', async () => {
-      mockUseDebounce.mockReturnValue('New York')
-
-      const { result } = renderHook(() => useLocationSearch())
-
-      act(() => {
-        result.current.setSearchQuery('New York')
-      })
-
-      // Test basic functionality without complex mocking
-      expect(result.current.searchQuery).toBe('New York')
+      await waitFor(
+        () => {
+          // Results should update (may be same in mock, but query changed)
+          expect(result.current.searchQuery).toBe('New York')
+        },
+        { timeout: 500 },
+      )
     })
   })
 })

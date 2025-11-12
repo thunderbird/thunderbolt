@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { useChatStore } from './chat-store'
 import type { Chat } from '@ai-sdk/react'
 import type { ChatThread, Model, ThunderboltUIMessage, AutomationRun } from '@/types'
-import { MCPClient } from '@/lib/mcp-provider'
+import type { MCPClient } from '@/lib/mcp-provider'
 
 const mockUpdateSetting = mock()
 const mockTrackEvent = mock()

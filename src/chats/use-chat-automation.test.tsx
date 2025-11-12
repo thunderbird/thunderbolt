@@ -315,7 +315,7 @@ describe('useChatAutomation', () => {
       const readyChatInstance = {
         ...mockChatInstance,
         status: 'ready' as const,
-      }
+      } as unknown as Chat<ThunderboltUIMessage>
 
       act(() => {
         useChatStore.getState().hydrate({

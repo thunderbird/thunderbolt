@@ -23,7 +23,7 @@ mock.module('@ai-sdk/react', () => ({
 }))
 
 mock.module('@/hooks/use-auto-scroll', () => ({
-  useAutoScroll: mock((options) => ({
+  useAutoScroll: mock(() => ({
     scrollContainerRef: mockScrollContainerRef,
     scrollTargetRef: mockScrollTargetRef,
     scrollToBottom: mockScrollToBottom,

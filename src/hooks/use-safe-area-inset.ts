@@ -9,18 +9,18 @@ export const useSafeAreaInset = () => {
    * So in your CSS instead of using env(safe-area-inset-*) use can/should use var(--safe-area-top-padding) and var(--safe-area-bottom-padding).
    */
   useEffect(() => {
-    M3.getInsets().then((insets) => {
-      if (insets) {
-        document.documentElement.style.setProperty(
-          '--safe-area-top-padding',
-          insets.adjustedInsetTop ? `${insets.adjustedInsetTop}px` : 'env(safe-area-inset-top, 24px)',
-        )
+    M3.getInsets().then((insetsScheme) => {
+      const insets = insetsScheme || null
 
-        document.documentElement.style.setProperty(
-          '--safe-area-bottom-padding',
-          insets.adjustedInsetBottom ? `${insets.adjustedInsetBottom}px` : 'env(safe-area-inset-bottom, 24px)',
-        )
-      }
+      document.documentElement.style.setProperty(
+        '--safe-area-top-padding',
+        insets?.adjustedInsetTop ? `${insets?.adjustedInsetTop}px` : 'env(safe-area-inset-top, 24px)',
+      )
+
+      document.documentElement.style.setProperty(
+        '--safe-area-bottom-padding',
+        insets?.adjustedInsetBottom ? `${insets?.adjustedInsetBottom}px` : 'env(safe-area-inset-bottom, 24px)',
+      )
     })
   }, [])
 }

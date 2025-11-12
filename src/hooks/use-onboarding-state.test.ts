@@ -1,10 +1,38 @@
-import { renderHook, act } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import ky, { type KyInstance } from 'ky'
 import { useOnboardingState } from './use-onboarding-state'
 
-// No mocking needed - use real implementations
+/**
+ * Creates a ky HTTP client with a custom fetch function that returns mock country units data
+ */
+const createMockHttpClient = (): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        unit: 'metric',
+        temperature: 'c',
+        timeFormat: '24h',
+        dateFormatExample: 'DD/MM/YYYY',
+        currency: {
+          code: 'EUR',
+          symbol: '€',
+          name: 'Euro',
+        },
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  }
+
+  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+}
+
+const mockHttpClient = createMockHttpClient()
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -21,7 +49,7 @@ describe('useOnboardingState', () => {
 
   describe('Initial state', () => {
     it('should initialize with correct default state', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -44,7 +72,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should provide all required actions', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -70,7 +98,7 @@ describe('useOnboardingState', () => {
 
   describe('Reducer logic', () => {
     it('should handle SET_CURRENT_STEP action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -85,7 +113,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle SET_PRIVACY_AGREED action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -98,7 +126,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle SET_PROVIDER_CONNECTED action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -111,7 +139,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle SET_NAME_VALUE action with validation', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -125,7 +153,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle SET_NAME_VALUE with empty string', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -139,7 +167,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle SET_LOCATION_VALUE action with validation', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -153,7 +181,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle nextStep action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -168,7 +196,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle prevStep action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -189,7 +217,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle skipStep action', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -204,7 +232,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should not go beyond step 5', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -223,7 +251,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should not go below step 1', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -239,7 +267,7 @@ describe('useOnboardingState', () => {
 
   describe('Async actions', () => {
     it('should handle submitName action successfully', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -255,7 +283,7 @@ describe('useOnboardingState', () => {
     it('should handle submitName action with error', async () => {
       // This test verifies that the submitName action works correctly
       // Error handling is tested at the database layer
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -269,7 +297,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle submitLocation action successfully', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -289,7 +317,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle submitLocation action without country extraction', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -311,7 +339,7 @@ describe('useOnboardingState', () => {
     it('should handle submitLocation action with error', async () => {
       // This test verifies that the submitLocation action works correctly
       // Error handling is tested at the database layer
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -331,7 +359,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle nextStep with persistence', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -343,7 +371,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle prevStep with persistence', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -360,7 +388,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle skipStep with persistence', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -376,7 +404,7 @@ describe('useOnboardingState', () => {
     it('should load existing name from database on mount', async () => {
       // This test would require setting up the database with existing data
       // For now, we'll test that the hook initializes properly
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -385,7 +413,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should load existing provider connection status on mount', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -395,7 +423,7 @@ describe('useOnboardingState', () => {
 
   describe('Edge cases', () => {
     it('should handle empty location name in submitLocation', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -414,7 +442,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle country units fetch gracefully', async () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -434,7 +462,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle step boundaries correctly', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -466,7 +494,7 @@ describe('useOnboardingState', () => {
 
   describe('State consistency', () => {
     it('should maintain consistent state after multiple actions', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -493,7 +521,7 @@ describe('useOnboardingState', () => {
     })
 
     it('should handle rapid state changes correctly', () => {
-      const { result } = renderHook(() => useOnboardingState(), {
+      const { result } = renderHook(() => useOnboardingState(mockHttpClient), {
         wrapper: createQueryTestWrapper(),
       })
 

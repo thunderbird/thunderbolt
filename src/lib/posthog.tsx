@@ -1,9 +1,9 @@
 import { getSettings } from '@/dal'
-import ky from 'ky'
-import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import type { HandleResult, HandleError } from '@/types/handle-errors'
 import { createHandleError } from '@/lib/error-utils'
+import type { HandleError, HandleResult } from '@/types/handle-errors'
+import ky, { type KyInstance } from 'ky'
 import posthog, { type PostHog } from 'posthog-js'
+import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
 import type { ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
@@ -34,8 +34,9 @@ export const sanitizeUrl = (url: string): string => {
 
 /**
  * Initialize Posthog analytics and return the client
+ * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a ky instance with cloudUrl from settings as prefixUrl
  */
-export const initPosthog = async (): Promise<HandleResult<PostHog | null>> => {
+export const initPosthog = async (httpClient?: KyInstance): Promise<HandleResult<PostHog | null>> => {
   try {
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',
@@ -43,7 +44,8 @@ export const initPosthog = async (): Promise<HandleResult<PostHog | null>> => {
       debug_posthog: false,
     })
 
-    const { posthog_api_key: apiKey } = await ky.get(`${cloudUrl}/posthog/config`).json<{ posthog_api_key?: string }>()
+    const client = httpClient ?? ky.create({ prefixUrl: cloudUrl })
+    const { posthog_api_key: apiKey } = await client.get('posthog/config').json<{ posthog_api_key?: string }>()
 
     if (!apiKey) {
       console.warn('Posthog analytics disabled - no API key provided')

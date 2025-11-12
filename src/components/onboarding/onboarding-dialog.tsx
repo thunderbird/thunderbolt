@@ -11,20 +11,19 @@ import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import type { HttpClient } from '@/hooks/use-location-search'
+import type { KyInstance } from 'ky'
 
 type OnboardingDialogProps = {
-  httpClient?: HttpClient
-  cloudUrl?: string
+  httpClient?: KyInstance
 }
 
-export const OnboardingDialog = ({ httpClient, cloudUrl }: OnboardingDialogProps = {}) => {
+export const OnboardingDialog = ({ httpClient }: OnboardingDialogProps = {}) => {
   const { isMobile } = useIsMobile()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
   const [isOpen, setIsOpen] = useState(false)
-  const { state, actions } = useOnboardingState()
+  const { state, actions } = useOnboardingState(httpClient)
 
   useEffect(() => {
     if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
@@ -133,7 +132,6 @@ export const OnboardingDialog = ({ httpClient, cloudUrl }: OnboardingDialogProps
                 actions={actions}
                 onFormDirtyChange={setIsFormDirty}
                 httpClient={httpClient}
-                cloudUrl={cloudUrl}
               />
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}

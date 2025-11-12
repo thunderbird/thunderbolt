@@ -1,9 +1,9 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import { getThemeSetting } from '@/dal'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { M3 } from 'tauri-plugin-m3'
 
 type Theme = 'dark' | 'light' | 'system'
 
@@ -73,6 +73,7 @@ export function ThemeProvider({
       root.classList.add(systemTheme)
 
       metaThemeColor?.setAttribute('content', systemTheme === 'dark' ? '#0a0a0a' : '#fff')
+      M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
 
       return
     }
@@ -80,6 +81,7 @@ export function ThemeProvider({
     root.classList.add(theme)
 
     metaThemeColor?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#fff')
+    M3.setBarColor(theme === 'dark' ? 'light' : 'dark')
   }, [theme])
 
   useEffect(() => {

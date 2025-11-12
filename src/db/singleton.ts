@@ -38,22 +38,24 @@ export class DatabaseSingleton {
       return this.#database.db
     }
 
+    const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST || process.env.BUN_TEST
+
     if (type === 'libsql-tauri') {
-      console.log('Initializing LibSQL for Tauri Database')
+      if (!isTest) console.log('Initializing LibSQL for Tauri Database')
       // Lazy load LibSQLTauriDatabase (only used in Tauri/mobile, not browser)
       const { LibSQLTauriDatabase } = await import('./libsql-tauri-database')
       this.#database = new LibSQLTauriDatabase()
     } else if (type === 'bun-sqlite') {
-      console.log('Initializing Bun SQLite Database')
+      if (!isTest) console.log('Initializing Bun SQLite Database')
       // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
     } else {
-      console.log('Initializing SQLocal Database')
+      if (!isTest) console.log('Initializing SQLocal Database')
       this.#database = new SQLocalDatabase()
     }
 
-    console.log('Initializing database at path:', path)
+    if (!isTest) console.log('Initializing database at path:', path)
 
     await this.#database.initialize(path)
     DatabaseSingleton.#initialized = true

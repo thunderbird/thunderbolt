@@ -1,19 +1,19 @@
-import type { HttpClient } from '@/hooks/use-location-search'
+import ky, { type KyInstance } from 'ky'
 
 /**
- * Creates a mock HTTP client for testing that returns mock location data
+ * Creates a ky HTTP client with a custom fetch function that returns mock data
+ * @param mockResponse - The mock data to return
+ * @param prefixUrl - Optional base URL for the client (defaults to http://test-api.local)
  */
-export const createMockHttpClient = (mockLocations: any[] = []): HttpClient => {
-  return {
-    get: (url: string, options?: { searchParams?: Record<string, string> }) => {
-      return {
-        json: async <T>() => {
-          // Return mock locations based on the query
-          return mockLocations as T
-        },
-      }
-    },
+export const createMockHttpClient = (mockResponse: unknown = [], prefixUrl = 'http://test-api.local'): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    return new Response(JSON.stringify(mockResponse), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
+
+  return ky.create({ fetch: mockFetch, prefixUrl })
 }
 
 /**

@@ -2,10 +2,11 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useLocationSearch, type HttpClient, type LocationData } from '@/hooks/use-location-search'
+import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { cn } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { KyInstance } from 'ky'
 import { ChevronsUpDown, MapPin } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -45,17 +46,11 @@ type OnboardingLocationStepProps = {
     skipStep: () => Promise<void>
   }
   onFormDirtyChange?: (isDirty: boolean) => void
-  httpClient?: HttpClient
-  cloudUrl?: string
+  httpClient?: KyInstance
 }
 
-export const OnboardingLocationStep = ({
-  actions,
-  onFormDirtyChange,
-  httpClient,
-  cloudUrl,
-}: OnboardingLocationStepProps) => {
-  const locationSearch = useLocationSearch(httpClient, cloudUrl)
+export const OnboardingLocationStep = ({ actions, onFormDirtyChange, httpClient }: OnboardingLocationStepProps) => {
+  const locationSearch = useLocationSearch(httpClient)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)

@@ -23,6 +23,8 @@ function splitSqlStatements(sql: string): string[] {
  * @returns A promise that resolves when the migrations are complete.
  */
 export async function migrate(db: AnyDrizzleDatabase) {
+  const isTest = process.env.NODE_ENV === 'test'
+
   await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +69,7 @@ export async function migrate(db: AnyDrizzleDatabase) {
         await db.run(
           sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`,
         )
-        console.info(`Applied migration: ${migration.name}`)
+        if (!isTest) console.info(`Applied migration: ${migration.name}`)
       } catch (error) {
         console.error(`Failed to apply migration ${migration.name}:`, error)
         throw error
@@ -75,7 +77,7 @@ export async function migrate(db: AnyDrizzleDatabase) {
     }
   }
 
-  console.info('Migrations complete')
+  if (!isTest) console.info('Migrations complete')
 
   return Promise.resolve()
 }

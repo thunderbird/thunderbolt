@@ -1,25 +1,31 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { renderHook, act, waitFor } from '@testing-library/react'
+import ky, { type KyInstance } from 'ky'
 import { useLocationSearch } from './use-location-search'
-import type { HttpClient } from './use-location-search'
+
+beforeAll(() => {
+  // Suppress console.error for expected error scenarios in tests
+  spyOn(console, 'error').mockImplementation(() => {})
+})
 
 /**
- * Creates a mock HTTP client that returns predefined location data
+ * Creates a ky HTTP client with a custom fetch function that returns mock location data
  */
-const createTestHttpClient = (mockResponse: any[] = [], shouldError = false, delay = 0): HttpClient => {
-  return {
-    get: () => ({
-      json: async () => {
-        if (delay > 0) {
-          await new Promise((resolve) => setTimeout(resolve, delay))
-        }
-        if (shouldError) {
-          throw new Error('Network error')
-        }
-        return mockResponse
-      },
-    }),
+const createTestHttpClient = (mockResponse: unknown[] = [], shouldError = false, delay = 0): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+    if (shouldError) {
+      throw new Error('Network error')
+    }
+    return new Response(JSON.stringify(mockResponse), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
+
+  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
 }
 
 const mockLocationResponse = [
@@ -47,7 +53,7 @@ describe('useLocationSearch', () => {
   describe('Initial state', () => {
     it('should initialize with default values', () => {
       const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       expect(result.current.open).toBe(false)
       expect(result.current.searchQuery).toBe('')
@@ -57,7 +63,7 @@ describe('useLocationSearch', () => {
 
     it('should provide control functions', () => {
       const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       expect(typeof result.current.setOpen).toBe('function')
       expect(typeof result.current.setSearchQuery).toBe('function')
@@ -68,7 +74,7 @@ describe('useLocationSearch', () => {
   describe('State management', () => {
     it('should handle opening and closing', () => {
       const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setOpen(true)
@@ -85,7 +91,7 @@ describe('useLocationSearch', () => {
 
     it('should handle search query changes', () => {
       const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('New York')
@@ -96,7 +102,7 @@ describe('useLocationSearch', () => {
 
     it('should clear search when clearSearch is called', () => {
       const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       // Set some state first
       act(() => {
@@ -118,7 +124,7 @@ describe('useLocationSearch', () => {
   describe('Location search functionality', () => {
     it('should not search when query is too short', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       // Single character query
       act(() => {
@@ -137,7 +143,7 @@ describe('useLocationSearch', () => {
 
     it('should search when query is long enough', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('San Francisco')
@@ -173,7 +179,7 @@ describe('useLocationSearch', () => {
 
     it('should handle search errors gracefully', async () => {
       const mockClient = createTestHttpClient([], true) // Error mode
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('New York')
@@ -190,7 +196,7 @@ describe('useLocationSearch', () => {
 
     it('should show loading state during search', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse, false, 100) // 100ms delay
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('San Francisco')
@@ -214,7 +220,7 @@ describe('useLocationSearch', () => {
 
     it('should transform API response correctly', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('test')
@@ -240,7 +246,7 @@ describe('useLocationSearch', () => {
   describe('Edge cases', () => {
     it('should handle empty search results', async () => {
       const mockClient = createTestHttpClient([]) // Empty results
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('NonExistentLocation')
@@ -258,7 +264,7 @@ describe('useLocationSearch', () => {
 
     it('should handle query with only whitespace', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       act(() => {
         result.current.setSearchQuery('   ')
@@ -275,7 +281,7 @@ describe('useLocationSearch', () => {
 
     it('should update results when query changes', async () => {
       const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient, 'http://test-api.local'))
+      const { result } = renderHook(() => useLocationSearch(mockClient))
 
       // First query
       act(() => {

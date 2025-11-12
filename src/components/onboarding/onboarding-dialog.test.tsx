@@ -53,7 +53,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -75,7 +75,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -97,7 +97,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -105,7 +105,7 @@ describe('OnboardingDialog', () => {
 
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
-      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} />, {
         wrapper: createQueryTestWrapper(),
       })
 

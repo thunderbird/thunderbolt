@@ -1,7 +1,8 @@
-import { useReducer, useEffect } from 'react'
-import { useSettings } from './use-settings'
-import { useCountryUnits } from './use-country-units'
 import { extractCountryFromLocation } from '@/lib/country-utils'
+import type { KyInstance } from 'ky'
+import { useEffect, useReducer } from 'react'
+import { useCountryUnits } from './use-country-units'
+import { useSettings } from './use-settings'
 
 type OnboardingStep = 1 | 2 | 3 | 4 | 5
 
@@ -186,7 +187,11 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
   }
 }
 
-export const useOnboardingState = () => {
+/**
+ * Hook for managing onboarding state and actions
+ * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a ky instance with cloudUrl from settings as prefixUrl
+ */
+export const useOnboardingState = (httpClient?: KyInstance) => {
   const [state, dispatch] = useReducer(onboardingReducer, initialState)
 
   // Settings integration for persistence
@@ -218,7 +223,7 @@ export const useOnboardingState = () => {
     integrations_google_is_enabled: false,
   })
 
-  const { fetchCountryUnits } = useCountryUnits()
+  const { fetchCountryUnits } = useCountryUnits(undefined, httpClient)
 
   // Sync with saved step on mount
   useEffect(() => {
@@ -334,4 +339,4 @@ export const useOnboardingState = () => {
   return { state, actions }
 }
 
-export type { OnboardingState, OnboardingAction }
+export type { OnboardingAction, OnboardingState }

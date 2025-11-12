@@ -1,30 +1,27 @@
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
-import type { HttpClient } from '@/hooks/use-location-search'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import '@testing-library/jest-dom'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { KyInstance } from 'ky'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
 const TestOnboardingLocationStep = ({
   onFormDirtyChange,
   httpClient,
-  cloudUrl,
 }: {
   onFormDirtyChange?: (isDirty: boolean) => void
-  httpClient?: HttpClient
-  cloudUrl?: string
+  httpClient?: KyInstance
 }) => {
-  const { state, actions } = useOnboardingState()
+  const { state, actions } = useOnboardingState(httpClient)
   return (
     <OnboardingLocationStep
       state={state}
       actions={actions}
       onFormDirtyChange={onFormDirtyChange}
       httpClient={httpClient}
-      cloudUrl={cloudUrl}
     />
   )
 }
@@ -41,16 +38,9 @@ describe('OnboardingLocationStep', () => {
   })
 
   const renderComponent = (onFormDirtyChange?: (isDirty: boolean) => void) => {
-    return render(
-      <TestOnboardingLocationStep
-        onFormDirtyChange={onFormDirtyChange}
-        httpClient={mockHttpClient}
-        cloudUrl="http://test-api.local"
-      />,
-      {
-        wrapper: createQueryTestWrapper(),
-      },
-    )
+    return render(<TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient} />, {
+      wrapper: createQueryTestWrapper(),
+    })
   }
 
   describe('Component rendering', () => {

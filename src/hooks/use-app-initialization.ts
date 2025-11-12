@@ -1,20 +1,20 @@
-import { useEffect, useState } from 'react'
-import { initPosthog } from '@/lib/posthog'
-import { reconcileDefaults } from '@/lib/reconcile-defaults'
-import { parseSideviewParam } from '@/lib/sideview-url'
-import { createAppDir, resetAppDir } from '@/lib/fs'
-import { getDatabasePath, getDatabaseType } from '@/lib/platform'
-import { TrayManager } from '@/lib/tray'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
+import { createHandleError } from '@/lib/error-utils'
+import { createAppDir, resetAppDir } from '@/lib/fs'
+import { getDatabasePath, getDatabaseType } from '@/lib/platform'
+import { initPosthog, trackError } from '@/lib/posthog'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { parseSideviewParam } from '@/lib/sideview-url'
+import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
-import { createHandleError } from '@/lib/error-utils'
-import { trackError } from '@/lib/posthog'
-import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
+import type { KyInstance } from 'ky'
 import type { PostHog } from 'posthog-js'
+import { useEffect, useState } from 'react'
 
 const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
@@ -42,12 +42,12 @@ const initializeTray = async (): Promise<{ tray: TrayIcon | undefined; window: W
   return await TrayManager.initIfSupported()
 }
 
-const initializePostHog = async (): Promise<PostHog | null> => {
-  const result = await initPosthog()
+const initializePostHog = async (httpClient?: KyInstance): Promise<PostHog | null> => {
+  const result = await initPosthog(httpClient)
   return result.success ? result.data : null
 }
 
-const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => {
+const executeInitializationSteps = async (httpClient?: KyInstance): Promise<HandleResult<InitData>> => {
   // Step 1: App directory creation
   let appDirPath: string
   try {
@@ -111,7 +111,7 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   // Step 6: PostHog initialization (non-critical)
   let posthogClient: PostHog | null = null
   try {
-    posthogClient = await initializePostHog()
+    posthogClient = await initializePostHog(httpClient)
   } catch (error) {
     console.warn('Unexpected error during PostHog initialization:', error)
   }
@@ -130,7 +130,11 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   }
 }
 
-export const useAppInitialization = () => {
+/**
+ * Hook for managing app initialization
+ * @param httpClient - Optional HTTP client for dependency injection (defaults to ky)
+ */
+export const useAppInitialization = (httpClient?: KyInstance) => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<HandleError>()
   const [isInitializing, setIsInitializing] = useState(true)
@@ -138,7 +142,7 @@ export const useAppInitialization = () => {
   const initialize = async () => {
     setIsInitializing(true)
     try {
-      const result = await executeInitializationSteps()
+      const result = await executeInitializationSteps(httpClient)
       if (result.success) {
         setInitData(result.data)
         setInitError(undefined)

@@ -1,5 +1,6 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import ky, { type KyInstance } from 'ky'
 import { initPosthog, sanitizeUrl, trackError } from './posthog'
 import type { HandleError } from '@/types/handle-errors'
 
@@ -12,19 +13,9 @@ type PosthogEvent = {
   properties: Record<string, unknown>
 }
 
-const mockKyGet = mock()
-const mockKyPost = mock()
-const mockKyJson = mock()
 const mockPosthogInit = mock()
 const mockCaptureException = mock()
 let capturedOptions: PosthogOptions | null = null
-
-mock.module('ky', () => ({
-  default: {
-    get: mockKyGet,
-    post: mockKyPost,
-  },
-}))
 
 mock.module('posthog-js', () => ({
   default: {
@@ -42,6 +33,25 @@ mock.module('posthog-js', () => ({
     captureException: mockCaptureException,
   },
 }))
+
+/**
+ * Creates a ky HTTP client with a custom fetch function that returns mock PostHog config
+ */
+const createMockHttpClient = (apiKey = 'test-key'): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        posthog_api_key: apiKey,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  }
+
+  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -71,19 +81,13 @@ describe('analytics sanitizeUrl', () => {
 
 describe('analytics before_send sanitization', () => {
   beforeEach(() => {
-    mockKyGet.mockReset()
-    mockKyPost.mockReset()
-    mockKyJson.mockReset()
     mockPosthogInit.mockReset()
     mockCaptureException.mockReset()
-    mockKyGet.mockReturnValue({ json: mockKyJson })
-    // Ensure a stable ky.post shape for any accidental use during this file's run
-    mockKyPost.mockReturnValue({ json: mockKyJson })
-    mockKyJson.mockResolvedValue({ posthog_api_key: 'test-key' })
   })
 
   it('sanitizes $current_url, url, and $pathname when strings', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
     expect(capturedOptions).toBeTruthy()
 
     const event: PosthogEvent = {
@@ -102,7 +106,8 @@ describe('analytics before_send sanitization', () => {
   })
 
   it('ignores non-string URL-like properties', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
     expect(capturedOptions).toBeTruthy()
 
     const event: PosthogEvent = {
@@ -124,17 +129,12 @@ describe('analytics before_send sanitization', () => {
 describe('trackError test cases', () => {
   beforeEach(() => {
     mockCaptureException.mockReset()
-    mockKyGet.mockReset()
-    mockKyPost.mockReset()
-    mockKyJson.mockReset()
     mockPosthogInit.mockReset()
-    mockKyGet.mockReturnValue({ json: mockKyJson })
-    mockKyPost.mockReturnValue({ json: mockKyJson })
-    mockKyJson.mockResolvedValue({ posthog_api_key: 'test-key' })
   })
 
   it('tracks non-PostHog errors with PostHog client', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
 
     const error: HandleError = {
       code: 'DATABASE_INIT_FAILED',
@@ -152,7 +152,8 @@ describe('trackError test cases', () => {
   })
 
   it('includes context data when provided', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
 
     const error: HandleError = {
       code: 'MIGRATION_FAILED',
@@ -193,7 +194,8 @@ describe('trackError test cases', () => {
   })
 
   it('handles tracking errors gracefully without throwing', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
     mockCaptureException.mockImplementation(() => {
       throw new Error('PostHog tracking failed')
     })
@@ -213,7 +215,8 @@ describe('trackError test cases', () => {
   })
 
   it('tracks errors with minimal required fields', async () => {
-    await initPosthog()
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
 
     const error: HandleError = {
       code: 'APP_DIR_CREATION_FAILED',

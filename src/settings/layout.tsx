@@ -9,14 +9,14 @@ export default function SettingsLayout() {
         <div
           className="flex flex-col h-full"
           style={{
-            paddingTop: 'env(safe-area-inset-top)',
+            paddingTop: 'var(--safe-area-top-padding)',
           }}
         >
           <Header />
           <div
             className="flex-1 overflow-auto"
             style={{
-              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingBottom: 'var(--safe-area-bottom-padding)',
             }}
           >
             <Outlet />

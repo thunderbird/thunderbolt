@@ -102,8 +102,8 @@ export const OnboardingDialog = () => {
         <div
           className="flex flex-col items-center"
           style={{
-            paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px + var(--kb, 0px))',
-            paddingTop: 'calc(env(safe-area-inset-top) + 32px)',
+            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
+            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
           }}
         >
           <div className="flex items-center justify-center px-4">

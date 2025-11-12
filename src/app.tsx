@@ -31,6 +31,7 @@ import SettingsLayout from './settings/layout'
 import { AppErrorScreen } from './components/app-error-screen'
 import type { InitData } from './types'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
+import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 
 const queryClient = new QueryClient()
 
@@ -38,6 +39,7 @@ function AppContent({ initData }: { initData: InitData }) {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
+  useSafeAreaInset()
 
   return (
     <BrowserRouter>

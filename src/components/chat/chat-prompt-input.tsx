@@ -95,14 +95,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
      * Before the textarea was focused when the mobile sidebar was open.
      */
     useEffect(() => {
-      if (!openMobile) {
+      if (isMobile && !openMobile) {
         const textareaElement = formRef.current?.querySelector('textarea')
         // wait sidebar to be closed, so layout is stable
         setTimeout(() => {
           textareaElement?.focus()
         }, 500)
       }
-    }, [openMobile])
+    }, [isMobile, openMobile])
 
     useImperativeHandle(ref, () => ({
       focus: () => {

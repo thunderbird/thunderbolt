@@ -91,7 +91,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const textContent = firstUserMessage.parts
       ?.filter((part) => part.type === 'text')
-      .map((part) => part.text)
+      .map((part) => (part.type === 'text' ? part.text : ''))
       .join(' ')
 
     if (!textContent) return

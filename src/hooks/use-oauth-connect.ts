@@ -76,7 +76,10 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
-        sessionStorage.setItem('oauth_return_context', returnContext)
+        // Only set returnContext if it's not already set (e.g., by widget with a specific path)
+        if (!sessionStorage.getItem('oauth_return_context')) {
+          sessionStorage.setItem('oauth_return_context', returnContext)
+        }
         await redirectOAuthFlow(provider)
       }
     } catch (e: unknown) {

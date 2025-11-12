@@ -82,6 +82,7 @@ export const saveMessagesWithContextUpdate = async (
         parts: sql`excluded.parts`,
         role: sql`excluded.role`,
         parentId: sql`excluded.parent_id`,
+        metadata: sql`excluded.metadata`,
       },
     })
 

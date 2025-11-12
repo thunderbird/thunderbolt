@@ -46,7 +46,13 @@ export default function OAuthCallback() {
       const t = setTimeout(() => {
         const returnContext = sessionStorage.getItem('oauth_return_context')
 
-        if (returnContext === 'onboarding') {
+        if (returnContext?.startsWith('/')) {
+          navigate(returnContext, {
+            state: {
+              oauth: { code, state, error: errorDescription || error },
+            },
+          })
+        } else if (returnContext === 'onboarding') {
           navigate('/', {
             state: {
               oauth: { code, state, error: errorDescription || error },

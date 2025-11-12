@@ -531,4 +531,60 @@ describe('parseContentParts', () => {
       expect((result2[1] as ContentPart & { type: 'widget' }).widget.widget).toBe('link-preview')
     })
   })
+
+  describe('connect-integration widgets', () => {
+    it('parses connect-integration with all attributes', () => {
+      const text = '<widget:connect-integration provider="google" service="email" reason="to check your inbox" />'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([
+        {
+          type: 'widget',
+          widget: {
+            widget: 'connect-integration',
+            args: {
+              provider: 'google',
+              service: 'email',
+              reason: 'to check your inbox',
+            },
+          },
+        },
+      ])
+    })
+
+    it('parses connect-integration with empty provider and reason', () => {
+      const text = '<widget:connect-integration provider="" service="email" reason="" />'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([
+        {
+          type: 'widget',
+          widget: {
+            widget: 'connect-integration',
+            args: {
+              provider: '',
+              service: 'email',
+              reason: '',
+            },
+          },
+        },
+      ])
+    })
+
+    it('rejects connect-integration with missing attributes', () => {
+      const text1 = '<widget:connect-integration service="email" reason="" />'
+      const result1 = parseContentParts(text1)
+      // When widget fails to parse, it's ignored and returns empty array
+      expect(result1).toEqual([])
+
+      const text2 = '<widget:connect-integration provider="google" reason="" />'
+      const result2 = parseContentParts(text2)
+      expect(result2).toEqual([])
+
+      // With text before, invalid widget is ignored but text remains
+      const text3 = 'Some text <widget:connect-integration service="email" reason="" />'
+      const result3 = parseContentParts(text3)
+      expect(result3).toEqual([{ type: 'text', content: 'Some text' }])
+    })
+  })
 })

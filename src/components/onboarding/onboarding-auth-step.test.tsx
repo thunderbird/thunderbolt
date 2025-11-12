@@ -10,7 +10,7 @@ const mockOnConnectionChange = mock()
 
 // Mock useOAuthConnect hook
 const mockOAuthConnect = {
-  connect: mock(),
+  connect: mock(() => Promise.resolve()),
   processCallback: mock(),
 }
 
@@ -70,13 +70,15 @@ describe('OnboardingAuthStep', () => {
   })
 
   describe('User interactions', () => {
-    it('should handle connect button click', () => {
+    it('should handle connect button click', async () => {
       renderComponent()
 
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
-      expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+      await waitFor(() => {
+        expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+      })
     })
 
     it('should handle connection error gracefully', async () => {
@@ -85,17 +87,21 @@ describe('OnboardingAuthStep', () => {
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
-      // Component should still render without crashing
-      expect(connectButton).toBeInTheDocument()
+      // Wait for async state updates
+      await waitFor(() => {
+        expect(connectButton).toBeInTheDocument()
+      })
     })
 
-    it('should handle loading state during connection', () => {
+    it('should handle loading state during connection', async () => {
       renderComponent()
 
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
-      expect(connectButton).toBeInTheDocument()
+      await waitFor(() => {
+        expect(connectButton).toBeInTheDocument()
+      })
     })
 
     it('should not call connect when button is disabled', () => {
@@ -585,7 +591,9 @@ describe('OnboardingAuthStep', () => {
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
-      expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+      await waitFor(() => {
+        expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+      })
     })
 
     it('should handle OAuth processing failure without crashing', async () => {

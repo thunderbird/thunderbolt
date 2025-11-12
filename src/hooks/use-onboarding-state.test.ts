@@ -1,6 +1,6 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
 import { useOnboardingState } from './use-onboarding-state'
@@ -275,9 +275,11 @@ describe('useOnboardingState', () => {
         await result.current.actions.submitName('John Doe')
       })
 
-      expect(result.current.state.nameValue).toBe('John Doe')
-      expect(result.current.state.isNameValid).toBe(true)
-      expect(result.current.state.isSubmittingName).toBe(false)
+      await waitFor(() => {
+        expect(result.current.state.nameValue).toBe('John Doe')
+        expect(result.current.state.isNameValid).toBe(true)
+        expect(result.current.state.isSubmittingName).toBe(false)
+      })
     })
 
     it('should handle submitName action with error', async () => {
@@ -291,9 +293,11 @@ describe('useOnboardingState', () => {
         await result.current.actions.submitName('John Doe')
       })
 
-      expect(result.current.state.nameValue).toBe('John Doe')
-      expect(result.current.state.isNameValid).toBe(true)
-      expect(result.current.state.isSubmittingName).toBe(false)
+      await waitFor(() => {
+        expect(result.current.state.nameValue).toBe('John Doe')
+        expect(result.current.state.isNameValid).toBe(true)
+        expect(result.current.state.isSubmittingName).toBe(false)
+      })
     })
 
     it('should handle submitLocation action successfully', async () => {
@@ -367,7 +371,9 @@ describe('useOnboardingState', () => {
         await result.current.actions.nextStep()
       })
 
-      expect(result.current.state.currentStep).toBe(2)
+      await waitFor(() => {
+        expect(result.current.state.currentStep).toBe(2)
+      })
     })
 
     it('should handle prevStep with persistence', async () => {
@@ -376,7 +382,7 @@ describe('useOnboardingState', () => {
       })
 
       // First go to step 3
-      act(() => {
+      await act(async () => {
         result.current.actions.setCurrentStep(3)
       })
 
@@ -384,7 +390,9 @@ describe('useOnboardingState', () => {
         await result.current.actions.prevStep()
       })
 
-      expect(result.current.state.currentStep).toBe(2)
+      await waitFor(() => {
+        expect(result.current.state.currentStep).toBe(2)
+      })
     })
 
     it('should handle skipStep with persistence', async () => {
@@ -396,7 +404,9 @@ describe('useOnboardingState', () => {
         await result.current.actions.skipStep()
       })
 
-      expect(result.current.state.currentStep).toBe(2)
+      await waitFor(() => {
+        expect(result.current.state.currentStep).toBe(2)
+      })
     })
   })
 

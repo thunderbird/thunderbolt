@@ -1,7 +1,7 @@
-import { useEffect, useReducer } from 'react'
-import { useDebounce } from '@/hooks/use-debounce'
 import { getSettings } from '@/dal'
+import { useDebounce } from '@/hooks/use-debounce'
 import ky from 'ky'
+import { useEffect, useReducer } from 'react'
 
 type LocationData = {
   name: string
@@ -25,6 +25,15 @@ type LocationAction =
   | { type: 'SET_LOCATIONS'; payload: LocationData[] }
   | { type: 'SET_IS_SEARCHING'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
+
+type HttpClient = {
+  get: (
+    url: string,
+    options?: { searchParams?: Record<string, string> },
+  ) => {
+    json: <T>() => Promise<T>
+  }
+}
 
 const initialLocationState: LocationState = {
   open: false,
@@ -52,8 +61,10 @@ const locationReducer = (state: LocationState, action: LocationAction): Location
 
 /**
  * Custom hook for location search functionality
+ * @param httpClient - Optional HTTP client for dependency injection (defaults to ky)
+ * @param cloudUrl - Optional cloud URL for dependency injection (fetches from settings by default)
  */
-export const useLocationSearch = () => {
+export const useLocationSearch = (httpClient: HttpClient = ky, cloudUrl?: string) => {
   const [locationState, dispatch] = useReducer(locationReducer, initialLocationState)
   const { open, searchQuery, locations, isSearching } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -67,9 +78,9 @@ export const useLocationSearch = () => {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-        const data = await ky
-          .get(`${cloudUrl}/locations`, {
+        const apiUrl = cloudUrl ?? (await getSettings({ cloud_url: 'http://localhost:8000/v1' })).cloudUrl
+        const data = await httpClient
+          .get(`${apiUrl}/locations`, {
             searchParams: { query: debouncedSearchQuery },
           })
           .json<
@@ -100,7 +111,7 @@ export const useLocationSearch = () => {
     }
 
     searchLocations()
-  }, [debouncedSearchQuery])
+  }, [debouncedSearchQuery, httpClient, cloudUrl])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })
@@ -117,4 +128,4 @@ export const useLocationSearch = () => {
   }
 }
 
-export type { LocationData }
+export type { HttpClient, LocationData }

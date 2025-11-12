@@ -1,17 +1,37 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
-import '@testing-library/jest-dom'
-import { OnboardingLocationStep } from './onboarding-location-step'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
+import type { HttpClient } from '@/hooks/use-location-search'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
+import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
+import '@testing-library/jest-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { OnboardingLocationStep } from './onboarding-location-step'
 
-const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
+const TestOnboardingLocationStep = ({
+  onFormDirtyChange,
+  httpClient,
+  cloudUrl,
+}: {
+  onFormDirtyChange?: (isDirty: boolean) => void
+  httpClient?: HttpClient
+  cloudUrl?: string
+}) => {
   const { state, actions } = useOnboardingState()
-  return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
+  return (
+    <OnboardingLocationStep
+      state={state}
+      actions={actions}
+      onFormDirtyChange={onFormDirtyChange}
+      httpClient={httpClient}
+      cloudUrl={cloudUrl}
+    />
+  )
 }
 
 describe('OnboardingLocationStep', () => {
+  const mockHttpClient = createMockHttpClient(mockLocationData)
+
   beforeEach(async () => {
     await setupTestDatabase()
   })
@@ -21,9 +41,16 @@ describe('OnboardingLocationStep', () => {
   })
 
   const renderComponent = (onFormDirtyChange?: (isDirty: boolean) => void) => {
-    return render(<TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} />, {
-      wrapper: createQueryTestWrapper(),
-    })
+    return render(
+      <TestOnboardingLocationStep
+        onFormDirtyChange={onFormDirtyChange}
+        httpClient={mockHttpClient}
+        cloudUrl="http://test-api.local"
+      />,
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
   }
 
   describe('Component rendering', () => {

@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { OnboardingDialog } from './onboarding-dialog'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
 
 // Mock React Router
 const mockNavigate = mock()
@@ -39,6 +40,8 @@ afterEach(async () => {
 })
 
 describe('OnboardingDialog', () => {
+  const mockHttpClient = createMockHttpClient(mockLocationData)
+
   describe('Component rendering', () => {
     it('should render without crashing', () => {
       // Ensure location has proper state
@@ -50,7 +53,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -72,7 +75,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -94,7 +97,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -102,7 +105,7 @@ describe('OnboardingDialog', () => {
 
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
-      render(<OnboardingDialog />, {
+      render(<OnboardingDialog httpClient={mockHttpClient} cloudUrl="http://test-api.local" />, {
         wrapper: createQueryTestWrapper(),
       })
 

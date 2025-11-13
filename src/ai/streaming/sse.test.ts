@@ -1,11 +1,22 @@
+import { installFakeTimers } from '@/test-utils/fake-timers'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import type { InstalledClock } from '@sinonjs/fake-timers'
 import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
-import { describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import fs from 'fs'
 import { join } from 'path'
 import { createSimulatedFetch, normalizeStepResult, parseSseLog } from './util'
 
 describe('sse', async () => {
+  let clock: InstalledClock
+
+  beforeEach(() => {
+    clock = installFakeTimers()
+  })
+
+  afterEach(() => {
+    clock.uninstall()
+  })
   const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/002-reasoning-property.sse'), 'utf8'))
 
   const simulatedFetch = createSimulatedFetch(chunks, {
@@ -32,8 +43,11 @@ describe('sse', async () => {
       prompt: 'Hello, test!',
     })
 
-    // Consume the stream and get the steps
-    await result.consumeStream()
+    // Run timers to process stream delays
+    const consumePromise = result.consumeStream()
+    await clock.runAllAsync()
+    await consumePromise
+
     const steps = await result.steps
 
     // Verify we got steps
@@ -57,7 +71,9 @@ describe('sse', async () => {
         middleware: [extractReasoningMiddleware({ tagName: 'think', startWithReasoning: false })],
       })
       const result = streamText({ model: wrappedModel, prompt: 'test' })
-      await result.consumeStream()
+      const consumePromise = result.consumeStream()
+      await clock.runAllAsync()
+      await consumePromise
       results.push(await result.steps)
     }
 

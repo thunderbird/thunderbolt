@@ -1,11 +1,23 @@
-import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { installFakeTimers } from '@/test-utils/fake-timers'
+import type { InstalledClock } from '@sinonjs/fake-timers'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
 import { useLocationSearch } from './use-location-search'
+
+let clock: InstalledClock
 
 beforeAll(() => {
   // Suppress console.error for expected error scenarios in tests
   spyOn(console, 'error').mockImplementation(() => {})
+})
+
+beforeEach(() => {
+  clock = installFakeTimers()
+})
+
+afterEach(() => {
+  clock.uninstall()
 })
 
 /**
@@ -46,10 +58,6 @@ const mockLocationResponse = [
 ]
 
 describe('useLocationSearch', () => {
-  afterEach(() => {
-    // Cleanup after each test
-  })
-
   describe('Initial state', () => {
     it('should initialize with default values', () => {
       const mockClient = createTestHttpClient()
@@ -131,14 +139,13 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('a')
       })
 
-      // Wait for debounce
-      await waitFor(
-        () => {
-          // Should not have any locations for short queries
-          expect(result.current.locations).toEqual([])
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
+
+      // Should not have any locations for short queries
+      expect(result.current.locations).toEqual([])
     })
 
     it('should search when query is long enough', async () => {
@@ -149,13 +156,10 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('San Francisco')
       })
 
-      // Wait for debounce and API call
-      await waitFor(
-        () => {
-          expect(result.current.locations.length).toBeGreaterThan(0)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms) and API call
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
 
       expect(result.current.locations).toEqual([
         {
@@ -185,13 +189,18 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('New York')
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.locations).toEqual([])
-          expect(result.current.isSearching).toBe(false)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms) and all async operations to complete
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+
+      // Additional act to ensure state updates from the finally block are processed
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+
+      expect(result.current.locations).toEqual([])
+      expect(result.current.isSearching).toBe(false)
     })
 
     it('should show loading state during search', async () => {
@@ -202,20 +211,20 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('San Francisco')
       })
 
-      // Wait for debounce, then check loading state
-      await waitFor(
-        () => {
-          expect(result.current.isSearching).toBe(true)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms) to trigger search
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
 
-      await waitFor(
-        () => {
-          expect(result.current.isSearching).toBe(false)
-        },
-        { timeout: 500 },
-      )
+      // Check loading state
+      expect(result.current.isSearching).toBe(true)
+
+      // Wait for API response (100ms delay)
+      await act(async () => {
+        await clock.tickAsync(100)
+      })
+
+      expect(result.current.isSearching).toBe(false)
     })
 
     it('should transform API response correctly', async () => {
@@ -226,12 +235,12 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('test')
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.locations.length).toBeGreaterThan(0)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
+
+      expect(result.current.locations.length).toBeGreaterThan(0)
 
       // Verify transformation
       const firstLocation = result.current.locations[0]
@@ -252,13 +261,12 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('NonExistentLocation')
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isSearching).toBe(false)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
 
+      expect(result.current.isSearching).toBe(false)
       expect(result.current.locations).toEqual([])
     })
 
@@ -270,13 +278,13 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('   ')
       })
 
-      await waitFor(
-        () => {
-          // Should not make API call for whitespace-only queries
-          expect(result.current.locations).toEqual([])
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
+
+      // Should not make API call for whitespace-only queries
+      expect(result.current.locations).toEqual([])
     })
 
     it('should update results when query changes', async () => {
@@ -288,25 +296,25 @@ describe('useLocationSearch', () => {
         result.current.setSearchQuery('San Francisco')
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.locations.length).toBeGreaterThan(0)
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
+
+      expect(result.current.locations.length).toBeGreaterThan(0)
 
       // Change query
       act(() => {
         result.current.setSearchQuery('New York')
       })
 
-      await waitFor(
-        () => {
-          // Results should update (may be same in mock, but query changed)
-          expect(result.current.searchQuery).toBe('New York')
-        },
-        { timeout: 500 },
-      )
+      // Wait for debounce (300ms)
+      await act(async () => {
+        await clock.tickAsync(300)
+      })
+
+      // Results should update (may be same in mock, but query changed)
+      expect(result.current.searchQuery).toBe('New York')
     })
   })
 })

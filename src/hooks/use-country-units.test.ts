@@ -1,9 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { renderHook } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { useCountryUnits } from './use-country-units'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { installFakeTimers } from '@/test-utils/fake-timers'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import type { InstalledClock } from '@sinonjs/fake-timers'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
+import { useCountryUnits } from './use-country-units'
 
 /**
  * Creates a ky HTTP client with a custom fetch function that returns mock country units data
@@ -32,6 +34,8 @@ const mockCountryUnitsData = {
 
 const mockHttpClient = createMockHttpClient(mockCountryUnitsData)
 
+let clock: InstalledClock
+
 beforeAll(async () => {
   await setupTestDatabase()
   // Suppress console.error for expected error scenarios in tests
@@ -42,7 +46,12 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+beforeEach(() => {
+  clock = installFakeTimers()
+})
+
 afterEach(async () => {
+  clock.uninstall()
   await resetTestDatabase()
 })
 
@@ -75,7 +84,11 @@ describe('useCountryUnits', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      const data = await result.current.fetchCountryUnits('US')
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const data = await promise
       expect(data).toEqual(mockCountryUnitsData)
     })
 
@@ -85,7 +98,11 @@ describe('useCountryUnits', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      const data = await result.current.fetchCountryUnits('US')
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const data = await promise
       expect(data).toBeNull()
     })
 
@@ -94,8 +111,17 @@ describe('useCountryUnits', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      const firstFetch = await result.current.fetchCountryUnits('US')
-      const secondFetch = await result.current.fetchCountryUnits('US')
+      const firstPromise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const firstFetch = await firstPromise
+
+      const secondPromise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const secondFetch = await secondPromise
 
       expect(firstFetch).toEqual(mockCountryUnitsData)
       expect(secondFetch).toEqual(mockCountryUnitsData)
@@ -118,10 +144,17 @@ describe('useCountryUnits', () => {
       })
 
       // Fetch data
-      await result.current.fetchCountryUnits('US')
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const data = await promise
 
-      // Data should be cached
-      expect(result.current.data).toBeUndefined() // Query is disabled, so data won't be in the hook state
+      // Data should be returned from the fetch
+      expect(data).toEqual(mockCountryUnitsData)
+
+      // After runAllAsync, React Query's cache updates propagate to the query
+      expect(result.current.data).toBeDefined()
     })
   })
 
@@ -133,7 +166,11 @@ describe('useCountryUnits', () => {
       })
 
       // Should handle parse errors gracefully
-      const data = await result.current.fetchCountryUnits('US')
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const data = await promise
       expect(data).toBeNull()
     })
 
@@ -143,7 +180,11 @@ describe('useCountryUnits', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      const data = await result.current.fetchCountryUnits('US')
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await clock.runAllAsync()
+      })
+      const data = await promise
       expect(data).toBeNull()
     })
   })

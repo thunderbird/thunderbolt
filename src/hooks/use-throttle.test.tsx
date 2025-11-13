@@ -1,12 +1,16 @@
+import { installFakeTimers } from '@/test-utils/fake-timers'
+import type { InstalledClock } from '@sinonjs/fake-timers'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 describe('useThrottledCallback', () => {
+  let clock: InstalledClock
+
   beforeEach(() => {
-    // Bun test uses real timers by default
+    clock = installFakeTimers()
   })
 
   afterEach(() => {
-    // Clean up any pending timers
+    clock.uninstall()
   })
 
   it('should call callback immediately on first invocation', () => {
@@ -70,7 +74,7 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for throttle to complete
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await clock.tickAsync(150)
 
     // Should have been called with the last value
     expect(callback).toHaveBeenCalledTimes(2)
@@ -96,7 +100,7 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for interval to pass
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await clock.tickAsync(60)
 
     // Next call should be immediate
     throttledFn('second')

@@ -3,8 +3,6 @@ import { isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { clearInferenceClientCache, getInferenceClient } from './client'
-import FakeTimers from '@sinonjs/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 
 type FetchCall = {
   url: string
@@ -20,11 +18,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: jest.Mock
   let originalEnv: Record<string, string | undefined>
-  let clock: InstalledClock
 
   beforeEach(() => {
-    clock = FakeTimers.install()
-
     // Save original env vars
     originalEnv = {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
@@ -90,8 +85,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   afterEach(async () => {
-    clock.uninstall()
-
     // Clear inference client cache for test isolation
     clearInferenceClientCache()
 
@@ -199,9 +192,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Verify the completion works
       expect(completion).toBeDefined()
 
-      // Advance timers for PostHog operations
-      await clock.runAllAsync()
-
       // Find PostHog requests
       const posthogRequests = capturedFetches.filter(
         (call) =>
@@ -259,8 +249,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           posthogDistinctId: 'test-user',
         })
       }
-
-      await clock.runAllAsync()
 
       // Check ALL captured PostHog requests
       const posthogRequests = capturedFetches.filter(

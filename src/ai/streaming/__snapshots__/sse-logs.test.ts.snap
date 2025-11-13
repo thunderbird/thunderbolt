@@ -126,3 +126,34 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 1`
   ]
 }"
 `;
+
+exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5." 2`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n",
+      "state": "done"
+    },
+    {
+      "type": "tool-getTasks",
+      "toolCallId": "<DYNAMIC_ID>",
+      "state": "input-available",
+      "input": {}
+    }
+  ]
+}"
+`;

@@ -14,15 +14,14 @@ import { type InstalledClock, install } from '@sinonjs/fake-timers'
  */
 export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: boolean }): InstalledClock => {
   const clock = install({
-    now: config?.now,
+    now: config?.now ?? Date.now(),
     shouldAdvanceTime: config?.shouldAdvanceTime ?? false,
     toFake: [
       'setTimeout',
       'clearTimeout',
       'setInterval',
       'clearInterval',
-      // Note: Date is intentionally NOT faked to prevent issues with UUID generation
-      // in libraries like PostHog that depend on real timestamps
+      'Date',
       'requestAnimationFrame',
       'cancelAnimationFrame',
     ],

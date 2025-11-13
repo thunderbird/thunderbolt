@@ -1,8 +1,6 @@
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { PostHog } from 'posthog-node'
-import FakeTimers from '@sinonjs/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 
 type FetchCall = {
   url: string
@@ -17,10 +15,8 @@ type FetchCall = {
 describe('PostHog Privacy Mode', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: jest.Mock
-  let clock: InstalledClock
 
   beforeEach(() => {
-    clock = FakeTimers.install()
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
       // Capture the fetch call
@@ -39,7 +35,6 @@ describe('PostHog Privacy Mode', () => {
   })
 
   afterEach(() => {
-    clock.uninstall()
     capturedFetches = []
   })
 
@@ -137,9 +132,6 @@ describe('PostHog Privacy Mode', () => {
 
       // Flush PostHog to ensure events are sent
       await phClient.flush()
-
-      // Advance timers for async operations
-      await clock.runAllAsync()
 
       // Find PostHog capture requests (check various URL patterns)
       const posthogRequests = capturedFetches.filter(

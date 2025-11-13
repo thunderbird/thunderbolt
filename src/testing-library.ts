@@ -1,24 +1,18 @@
 import { afterEach, beforeEach, expect } from 'bun:test'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 
 expect.extend(matchers)
 
-// CRITICAL FIX: Disable @testing-library/react's fake timer detection
-// This prevents it from trying to use jest.advanceTimersByTime
-// We'll manage our own fake timers instead
-// @ts-ignore - monkey-patch the internal function that checks for fake timers
-const rtl = await import('@testing-library/react')
-if (rtl && typeof rtl === 'object') {
-  // Find and disable jestFakeTimersAreEnabled
-  Object.defineProperty(globalThis, 'jestFakeTimersAreEnabled', {
-    value: () => false,
-    writable: false,
-    configurable: false,
-  })
-}
+// CRITICAL FIX: Configure @testing-library to not use fake timers
+// This prevents @testing-library from trying to call jest.advanceTimersByTime
+// which doesn't work reliably in CI
+configure({
+  // Custom async wrapper that doesn't try to use fake timers
+  asyncWrapper: async (cb) => await cb(),
+})
 
 // Global fake timers setup - we manage our own
 let globalClock: InstalledClock | null = null

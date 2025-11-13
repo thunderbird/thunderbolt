@@ -28,6 +28,7 @@ export default [
         ...globals.browser,
         ...globals.node,
         React: 'readonly',
+        Bun: 'readonly',
         // TypeScript types
         NodeJS: 'readonly',
         RequestInfo: 'readonly',

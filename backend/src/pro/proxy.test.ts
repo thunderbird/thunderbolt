@@ -6,6 +6,7 @@ describe('Proxy Routes', () => {
   let app: Elysia
   let consoleSpy: ReturnType<typeof spyOn>
   let mockFetch: ReturnType<typeof mock>
+  let originalLogLevel: string | undefined
 
   const createMockResponse = (body: string, options: ResponseInit = {}) => {
     const defaultOptions = {
@@ -22,6 +23,10 @@ describe('Proxy Routes', () => {
   }
 
   beforeAll(async () => {
+    // Save and set LOG_LEVEL to valid value
+    originalLogLevel = process.env.LOG_LEVEL
+    process.env.LOG_LEVEL = 'INFO'
+
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
@@ -33,6 +38,12 @@ describe('Proxy Routes', () => {
   })
 
   afterAll(() => {
+    // Restore LOG_LEVEL
+    if (originalLogLevel === undefined) {
+      delete process.env.LOG_LEVEL
+    } else {
+      process.env.LOG_LEVEL = originalLogLevel
+    }
     consoleSpy?.mockRestore()
   })
 

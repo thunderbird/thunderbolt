@@ -1,22 +1,12 @@
-import { installFakeTimers } from '@/test-utils/fake-timers'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
+import { getClock } from '../../../testing-library'
 import fs from 'fs'
 import { join } from 'path'
 import { createSimulatedFetch, normalizeStepResult, parseSseLog } from './util'
 
 describe('sse', async () => {
-  let clock: InstalledClock
-
-  beforeEach(() => {
-    clock = installFakeTimers()
-  })
-
-  afterEach(() => {
-    clock.uninstall()
-  })
   const chunks = parseSseLog(fs.readFileSync(join(__dirname, 'sse-logs/002-reasoning-property.sse'), 'utf8'))
 
   const simulatedFetch = createSimulatedFetch(chunks, {
@@ -45,7 +35,7 @@ describe('sse', async () => {
 
     // Run timers to process stream delays
     const consumePromise = result.consumeStream()
-    await clock.runAllAsync()
+    await getClock().runAllAsync()
     await consumePromise
 
     const steps = await result.steps
@@ -72,7 +62,7 @@ describe('sse', async () => {
       })
       const result = streamText({ model: wrappedModel, prompt: 'test' })
       const consumePromise = result.consumeStream()
-      await clock.runAllAsync()
+      await getClock().runAllAsync()
       await consumePromise
       results.push(await result.steps)
     }

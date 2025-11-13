@@ -1,14 +1,13 @@
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { updateSetting } from '@/dal/settings'
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
-import { installFakeTimers } from '@/test-utils/fake-timers'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 import '@testing-library/jest-dom'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
 import type { ReactNode } from 'react'
+import { getClock } from '@/testing-library'
 import { useUnitsOptions } from './use-units-options'
 
 const mockUnitsOptionsData = {
@@ -74,22 +73,18 @@ const createTestWrapper = (httpClient: KyInstance) => {
 }
 
 describe('useUnitsOptions', () => {
-  let clock: InstalledClock
-
   beforeEach(async () => {
-    clock = installFakeTimers()
     await setupTestDatabase()
     // Set up the cloud_url setting in the database
     await updateSetting('cloud_url', 'https://api.example.com')
   })
 
   afterEach(async () => {
-    clock.uninstall()
     await resetTestDatabase()
   })
 
   describe('Hook functionality', () => {
-    it('should return loading state initially', () => {
+    it('should return loading state initially', async () => {
       const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
         wrapper: createTestWrapper(httpClient),
@@ -98,6 +93,11 @@ describe('useUnitsOptions', () => {
       expect(result.current.isLoading).toBe(true)
       expect(result.current.data).toBeUndefined()
       expect(result.current.error).toBeNull()
+
+      // Advance timers to complete the query
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
     })
 
     it('should fetch and return units options data', async () => {
@@ -108,7 +108,7 @@ describe('useUnitsOptions', () => {
 
       // Wait for query to execute
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.data).toEqual(mockUnitsOptionsData)
@@ -125,7 +125,7 @@ describe('useUnitsOptions', () => {
       // Wait for retries to complete - react-query retries with exponential backoff
       // First retry after ~1000ms, second after ~2000ms
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.error).toBeDefined()
@@ -142,7 +142,7 @@ describe('useUnitsOptions', () => {
 
       // Wait for the hook to complete successfully
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.data).toBeDefined()
@@ -184,7 +184,7 @@ describe('useUnitsOptions', () => {
       })
 
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       const data = result.current.data
@@ -258,7 +258,7 @@ describe('useUnitsOptions', () => {
       })
 
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.data).toEqual(emptyData)
@@ -280,7 +280,7 @@ describe('useUnitsOptions', () => {
 
       // Wait for schema validation to fail
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.error).toBeDefined()

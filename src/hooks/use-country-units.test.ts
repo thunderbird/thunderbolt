@@ -1,10 +1,9 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { installFakeTimers } from '@/test-utils/fake-timers'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
+import { getClock } from '@/testing-library'
 import { useCountryUnits } from './use-country-units'
 
 /**
@@ -34,8 +33,6 @@ const mockCountryUnitsData = {
 
 const mockHttpClient = createMockHttpClient(mockCountryUnitsData)
 
-let clock: InstalledClock
-
 beforeAll(async () => {
   await setupTestDatabase()
   // Suppress console.error for expected error scenarios in tests
@@ -46,12 +43,7 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-beforeEach(() => {
-  clock = installFakeTimers()
-})
-
 afterEach(async () => {
-  clock.uninstall()
   await resetTestDatabase()
 })
 
@@ -86,7 +78,7 @@ describe('useCountryUnits', () => {
 
       const promise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const data = await promise
       expect(data).toEqual(mockCountryUnitsData)
@@ -100,7 +92,7 @@ describe('useCountryUnits', () => {
 
       const promise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const data = await promise
       expect(data).toBeNull()
@@ -113,13 +105,13 @@ describe('useCountryUnits', () => {
 
       const firstPromise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const firstFetch = await firstPromise
 
       const secondPromise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const secondFetch = await secondPromise
 
@@ -146,7 +138,7 @@ describe('useCountryUnits', () => {
       // Fetch data
       const promise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const data = await promise
 
@@ -168,7 +160,7 @@ describe('useCountryUnits', () => {
       // Should handle parse errors gracefully
       const promise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const data = await promise
       expect(data).toBeNull()
@@ -182,7 +174,7 @@ describe('useCountryUnits', () => {
 
       const promise = result.current.fetchCountryUnits('US')
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
       const data = await promise
       expect(data).toBeNull()

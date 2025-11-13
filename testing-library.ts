@@ -1,10 +1,39 @@
-import { afterEach, expect } from 'bun:test'
+import { afterEach, beforeEach, expect } from 'bun:test'
 import { cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
+import { installFakeTimers } from '@/test-utils/fake-timers'
+import type { InstalledClock } from '@sinonjs/fake-timers'
 
 expect.extend(matchers)
 
-// Optional: cleans up `render` after each test
+// Global fake timers setup - installed before each test
+let globalClock: InstalledClock | null = null
+
+beforeEach(() => {
+  globalClock = installFakeTimers()
+})
+
 afterEach(() => {
+  // Clean up fake timers before cleaning up React components
+  if (globalClock) {
+    globalClock.uninstall()
+    globalClock = null
+  }
   cleanup()
 })
+
+/**
+ * Get the current global fake clock instance for the test.
+ * Use this when you need to manually advance time in tests.
+ *
+ * @example
+ * await act(async () => {
+ *   await getClock().runAllAsync()
+ * })
+ */
+export const getClock = (): InstalledClock => {
+  if (!globalClock) {
+    throw new Error('Clock is not installed. This should not happen in tests.')
+  }
+  return globalClock
+}

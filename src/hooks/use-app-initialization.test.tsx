@@ -1,8 +1,8 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import { getClock } from '@/testing-library'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import ky, { type KyInstance } from 'ky'
 import { useAppInitialization } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({

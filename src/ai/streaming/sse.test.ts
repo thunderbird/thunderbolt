@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { extractReasoningMiddleware, streamText, wrapLanguageModel } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { getClock } from '../../../testing-library'
+import { getClock } from '@/testing-library'
 import fs from 'fs'
 import { join } from 'path'
 import { createSimulatedFetch, normalizeStepResult, parseSseLog } from './util'

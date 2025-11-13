@@ -51,12 +51,7 @@ describe('OnboardingLocationStep', () => {
       },
     )
 
-    // Advance timers for component initialization
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-
-    // Wait for the search input to appear (don't throw if it doesn't, let individual tests handle that)
+    // Wait for the component to render
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/Search for locations/i)).toBeInTheDocument()
     })

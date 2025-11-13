@@ -2,6 +2,7 @@ import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
+import { isTestEnv } from '@/lib/env'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -213,7 +214,7 @@ export const aiFetchStreamingResponse = async ({
       //   } satisfies OpenAICompatibleProviderOptions,
       // },
       onStepFinish: (step) => {
-        if (process.env.NODE_ENV === 'test') return
+        if (isTestEnv()) return
 
         console.log('step', {
           text: step.text,
@@ -229,7 +230,7 @@ export const aiFetchStreamingResponse = async ({
         })
       },
       onFinish: async (finish) => {
-        if (process.env.NODE_ENV === 'test') return
+        if (isTestEnv()) return
 
         console.log('finish', {
           text: finish.text,

@@ -1,3 +1,4 @@
+import { isTestEnv } from '@/lib/env'
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 import { SQLocalDatabase } from './sqlocal-database'
 
@@ -38,7 +39,7 @@ export class DatabaseSingleton {
       return this.#database.db
     }
 
-    const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST || process.env.BUN_TEST
+    const isTest = isTestEnv()
 
     if (type === 'libsql-tauri') {
       if (!isTest) console.log('Initializing LibSQL for Tauri Database')

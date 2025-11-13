@@ -1,4 +1,5 @@
 import { migrations } from '@/drizzle/_migrations'
+import { isTestEnv } from '@/lib/env'
 import { sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from './database-interface'
 
@@ -23,7 +24,7 @@ function splitSqlStatements(sql: string): string[] {
  * @returns A promise that resolves when the migrations are complete.
  */
 export async function migrate(db: AnyDrizzleDatabase) {
-  const isTest = process.env.NODE_ENV === 'test'
+  const isTest = isTestEnv()
 
   await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (

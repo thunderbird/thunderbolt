@@ -53,6 +53,7 @@ const executeInitializationSteps = async (httpClient?: KyInstance): Promise<Hand
   try {
     appDirPath = await createAppDirectory()
   } catch (error) {
+    console.error('Failed to create app directory:', error)
     const appDirError = createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error)
     trackError(appDirError, { initialization_step: 'app_directory' })
     return {
@@ -66,6 +67,7 @@ const executeInitializationSteps = async (httpClient?: KyInstance): Promise<Hand
   try {
     db = await initializeDatabase(appDirPath)
   } catch (error) {
+    console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
     trackError(dbError, { initialization_step: 'database_init' })
     return {
@@ -78,6 +80,7 @@ const executeInitializationSteps = async (httpClient?: KyInstance): Promise<Hand
   try {
     await runDatabaseMigrations(db)
   } catch (error) {
+    console.error('Failed to run database migrations:', error)
     const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
     trackError(migrationError, { initialization_step: 'database_migration' })
     return {
@@ -90,6 +93,7 @@ const executeInitializationSteps = async (httpClient?: KyInstance): Promise<Hand
   try {
     await reconcileDefaultSettings(db)
   } catch (error) {
+    console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
     trackError(reconcileError, { initialization_step: 'reconcile_defaults' })
     return {

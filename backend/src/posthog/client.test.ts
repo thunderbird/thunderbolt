@@ -117,7 +117,6 @@ describe('PostHog Privacy Mode', () => {
         posthog: phClient,
         dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
-        dangerouslyAllowBrowser: true,
       })
 
       // Make a completion with sensitive content
@@ -205,7 +204,6 @@ describe('PostHog Privacy Mode', () => {
         posthog: phClient,
         dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
-        dangerouslyAllowBrowser: true,
       })
 
       // Make streaming completion
@@ -280,7 +278,6 @@ describe('PostHog Privacy Mode', () => {
         posthog: phClient,
         dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
-        dangerouslyAllowBrowser: true,
       })
 
       // Override with posthogPrivacyMode parameter

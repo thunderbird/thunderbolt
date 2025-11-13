@@ -18,9 +18,20 @@ export const ChatMessages = () => {
     })),
   )
 
-  const { error, status, messages } = useChat({ chat: chatInstance })
+  const { error: chatError, status, messages } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
+
+  const error = useMemo(() => {
+    if (chatError) {
+      return chatError.message
+    }
+
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming) {
+      return 'Something went wrong. Please try again.'
+    }
+  }, [chatError, messages, isStreaming])
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
@@ -66,7 +77,7 @@ export const ChatMessages = () => {
       })}
 
       {/* Show error message if there's an error */}
-      {!!error && <ErrorMessage message={error.message} />}
+      {!!error && <ErrorMessage message={error} />}
     </div>
   )
 }

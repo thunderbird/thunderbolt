@@ -33,18 +33,26 @@ export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: b
     // @ts-ignore
     globalThis.jest = {}
   }
+  // @ts-ignore
+  if (!global.jest || typeof global.jest !== 'object') {
+    // @ts-ignore
+    global.jest = {}
+  }
 
   // Update Jest-compatible API implementations for @testing-library/react compatibility
+  // Update both globalThis.jest and global.jest for maximum compatibility
+  const jestImpl = {
+    advanceTimersByTime: (ms: number) => clock.tick(ms),
+    runAllTimers: () => clock.runAll(),
+    runOnlyPendingTimers: () => clock.runToLast(),
+    clearAllTimers: () => clock.reset(),
+    getTimerCount: () => clock.countTimers(),
+  }
+
   // @ts-ignore
-  globalThis.jest.advanceTimersByTime = (ms: number) => clock.tick(ms)
+  Object.assign(globalThis.jest, jestImpl)
   // @ts-ignore
-  globalThis.jest.runAllTimers = () => clock.runAll()
-  // @ts-ignore
-  globalThis.jest.runOnlyPendingTimers = () => clock.runToLast()
-  // @ts-ignore
-  globalThis.jest.clearAllTimers = () => clock.reset()
-  // @ts-ignore
-  globalThis.jest.getTimerCount = () => clock.countTimers()
+  Object.assign(global.jest, jestImpl)
 
   return clock
 }

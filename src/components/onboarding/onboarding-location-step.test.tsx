@@ -351,10 +351,12 @@ describe('OnboardingLocationStep', () => {
       const form = document.querySelector('form')!
       fireEvent.submit(form)
 
-      await waitFor(() => {
-        const errorMessage = screen.queryByText('Location is required.')
-        expect(errorMessage).toBeInTheDocument()
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      const errorMessage = screen.queryByText('Location is required.')
+      expect(errorMessage).toBeInTheDocument()
     })
   })
 

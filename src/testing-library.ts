@@ -1,42 +1,27 @@
 import { afterEach, beforeEach, expect } from 'bun:test'
 import { cleanup } from '@testing-library/react'
-import { configure as configureDomTesting } from '@testing-library/dom'
 import * as matchers from '@testing-library/jest-dom/matchers'
-import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 
 expect.extend(matchers)
 
-// Configure @testing-library/dom to work with our fake timers
-// This prevents it from trying to use Jest's timer APIs
-configureDomTesting({
-  asyncWrapper: async (cb) => {
-    // Just run the callback without trying to call jest.advanceTimersByTime
-    return await cb()
-  },
-  unstable_advanceTimersWrapper: (cb) => {
-    // Don't try to advance Jest timers, just run the callback
-    return cb()
-  },
-})
+// Get the global clock that was installed in happydom.ts
+// This ensures fake timers are available before any module loads
+// @ts-ignore
+const globalClock: InstalledClock = globalThis.__GLOBAL_FAKE_CLOCK__
 
-// Global fake timers setup - installed before each test
-let globalClock: InstalledClock | null = null
-
-// Note: globalThis.jest is set up in happydom.ts (preloaded first)
-// to ensure it exists before @testing-library/react checks for it
+if (!globalClock) {
+  throw new Error('Global fake clock not initialized. happydom.ts must be preloaded first.')
+}
 
 beforeEach(() => {
-  globalClock = installFakeTimers()
+  // Reset the clock to a clean state for each test
+  // Don't uninstall/reinstall - just reset to avoid timing issues
+  globalClock.reset()
 })
 
 afterEach(() => {
-  // Clean up fake timers before cleaning up React components
-  // Note: We don't delete globalThis.jest because it needs to persist for @testing-library/react
-  if (globalClock) {
-    globalClock.uninstall()
-    globalClock = null
-  }
+  // Clean up React components
   cleanup()
 })
 
@@ -50,8 +35,5 @@ afterEach(() => {
  * })
  */
 export const getClock = (): InstalledClock => {
-  if (!globalClock) {
-    throw new Error('Clock is not installed. This should not happen in tests.')
-  }
   return globalClock
 }

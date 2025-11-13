@@ -58,7 +58,7 @@ const parseSettings = (): Settings => {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
-    logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
+    logLevel: process.env.LOG_LEVEL || 'INFO',
     port: process.env.PORT || '8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',

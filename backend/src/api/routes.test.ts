@@ -24,9 +24,6 @@ describe('Main Routes', () => {
   }
 
   beforeAll(async () => {
-    // Set LOG_LEVEL to valid value before getSettings is called
-    process.env.LOG_LEVEL = 'INFO'
-
     // Mock console methods to reduce test noise
     spyOn(console, 'log').mockImplementation(() => {})
     spyOn(console, 'info').mockImplementation(() => {})

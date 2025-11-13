@@ -195,3 +195,14 @@ body {
     transform: translateX(100%); /* Move across to the right */
   }
 }
+
+.hide-scrollbar {
+  -ms-overflow-style: none; /* For Internet Explorer and Edge */
+  scrollbar-width: none; /* For Firefox */
+  overflow-y: scroll; /* or overflow: auto; to only show scrollbar when needed */
+}
+
+/* For Chrome, Safari, and Opera */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

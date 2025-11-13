@@ -20,28 +20,36 @@ if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer
 }
 
-// Set up jest global IMMEDIATELY so @testing-library/react can detect fake timers
-// This must be set up before any test code runs to avoid race conditions in CI
-// The actual implementations will be set in testing-library.ts
-// Set on both globalThis and global for maximum compatibility
+// Set up jest global with fake timer support IMMEDIATELY
+// This MUST be set up before @testing-library loads to avoid race conditions
+import { install } from '@sinonjs/fake-timers'
+
+// Install fake timers globally at module load time
+// This ensures they're always available when @testing-library checks for them
+// Note: We don't fake requestAnimationFrame because happy-dom hasn't fully initialized yet
+const globalClock = install({
+  now: Date.now(),
+  shouldAdvanceTime: false,
+  toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+})
+
+// Set up jest global with methods connected to the global clock
 const jestApi = {
-  advanceTimersByTime: (ms: number) => {
-    // This will be replaced by the real implementation in installFakeTimers
-    console.warn('jest.advanceTimersByTime called before fake timers initialized')
-  },
-  runAllTimers: () => {
-    console.warn('jest.runAllTimers called before fake timers initialized')
-  },
-  runOnlyPendingTimers: () => {
-    console.warn('jest.runOnlyPendingTimers called before fake timers initialized')
-  },
-  clearAllTimers: () => {
-    console.warn('jest.clearAllTimers called before fake timers initialized')
-  },
-  getTimerCount: () => 0,
+  advanceTimersByTime: (ms: number) => globalClock.tick(ms),
+  runAllTimers: () => globalClock.runAll(),
+  runOnlyPendingTimers: () => globalClock.runToLast(),
+  clearAllTimers: () => globalClock.reset(),
+  getTimerCount: () => globalClock.countTimers(),
 }
 
-// @ts-ignore
+// @ts-ignore - Set on globalThis
 globalThis.jest = jestApi
+// @ts-ignore - Also set on global for compatibility
+if (typeof global !== 'undefined') {
+  // @ts-ignore
+  global.jest = jestApi
+}
+
+// Export the clock so testing-library.ts can access it
 // @ts-ignore
-global.jest = jestApi
+globalThis.__GLOBAL_FAKE_CLOCK__ = globalClock

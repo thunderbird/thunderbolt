@@ -4,7 +4,7 @@ import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import '@testing-library/jest-dom'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import type { KyInstance } from 'ky'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
@@ -27,7 +27,12 @@ const TestOnboardingLocationStep = ({
 }
 
 describe('OnboardingLocationStep', () => {
-  const mockHttpClient = createMockHttpClient(mockLocationData)
+  const mockHttpClient = () => createMockHttpClient(mockLocationData)
+
+  beforeAll(() => {
+    // Suppress console.error for expected error scenarios in tests
+    spyOn(console, 'error').mockImplementation(() => {})
+  })
 
   beforeEach(async () => {
     await setupTestDatabase()
@@ -39,7 +44,7 @@ describe('OnboardingLocationStep', () => {
 
   const renderComponent = async (onFormDirtyChange?: (isDirty: boolean) => void) => {
     const result = render(
-      <TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient} />,
+      <TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient()} />,
       {
         wrapper: createQueryTestWrapper(),
       },

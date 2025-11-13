@@ -27,8 +27,14 @@ export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: b
     ],
   })
 
+  // Ensure jest global exists (should be created in happydom.ts, but recreate if missing)
+  // @ts-ignore
+  if (!globalThis.jest || typeof globalThis.jest !== 'object') {
+    // @ts-ignore
+    globalThis.jest = {}
+  }
+
   // Update Jest-compatible API implementations for @testing-library/react compatibility
-  // The jest global is already set up in testing-library.ts, we just update the implementations
   // @ts-ignore
   globalThis.jest.advanceTimersByTime = (ms: number) => clock.tick(ms)
   // @ts-ignore

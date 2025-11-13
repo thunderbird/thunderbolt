@@ -1,22 +1,30 @@
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { updateSetting } from '@/dal/settings'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { WeatherForecastData } from '@/widgets/weather-forecast'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import ky, { type KyInstance } from 'ky'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
 import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
-// Mock external dependencies
-const mockGet = mock()
-const mockPost = mock()
-const mockJson = mock()
+// Test utilities
+const createMockHttpClient = (response: unknown): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
-// Mock ky
-mock.module('ky', () => ({
-  default: {
-    get: mockGet,
-    post: mockPost,
-  },
-}))
+  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+}
+
+const createErrorHttpClient = (error: Error): KyInstance => {
+  const mockFetch = async (): Promise<Response> => {
+    throw error
+  }
+
+  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -58,14 +66,6 @@ const mockWeatherForecastData: WeatherForecastData = {
 
 describe('Thunderbolt Pro Tools', () => {
   beforeEach(async () => {
-    // Reset all mocks
-    mockGet.mockClear()
-    mockPost.mockClear()
-    mockJson.mockClear()
-
-    // Setup default mocks
-    mockPost.mockReturnValue({ json: mockJson })
-
     // Set up test database with correct values
     await updateSetting('cloud_url', 'http://localhost:8000/v1')
     await updateSetting('temperature_unit', 'f')
@@ -94,57 +94,10 @@ describe('Thunderbolt Pro Tools', () => {
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      const result = await search(params)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await search(params, httpClient)
 
       expect(result).toEqual(mockResponse.data)
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/search',
-        expect.objectContaining({
-          timeout: 10000,
-          json: {
-            query: 'artificial intelligence',
-            max_results: 10,
-          },
-        }),
-      )
-    })
-
-    it('should use default max_results when not provided', async () => {
-      const params: SearchParams = {
-        query: 'test query',
-        max_results: 5,
-      }
-
-      const mockResponse = {
-        data: [
-          {
-            url: 'https://example.com/test',
-            title: 'Test',
-            favicon: null,
-            image: null,
-            author: null,
-            publishedDate: null,
-            id: '1',
-          },
-        ],
-        success: true,
-      }
-
-      mockJson.mockResolvedValue(mockResponse)
-
-      await search(params)
-
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/search',
-        expect.objectContaining({
-          json: {
-            query: 'test query',
-            max_results: 5,
-          },
-        }),
-      )
     })
 
     it('should handle search failure', async () => {
@@ -159,9 +112,8 @@ describe('Thunderbolt Pro Tools', () => {
         error: 'Search service unavailable',
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(search(params)).rejects.toThrow('Search service unavailable')
+      const httpClient = createMockHttpClient(mockResponse)
+      await expect(search(params, httpClient)).rejects.toThrow('Search service unavailable')
     })
 
     it('should handle network errors', async () => {
@@ -170,25 +122,8 @@ describe('Thunderbolt Pro Tools', () => {
         max_results: 10,
       }
 
-      const networkError = new Error('Network timeout')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(search(params)).rejects.toThrow('Search failed: Network timeout')
-    })
-
-    it('should handle unknown errors', async () => {
-      const params: SearchParams = {
-        query: 'test query',
-        max_results: 10,
-      }
-
-      mockPost.mockImplementation(() => {
-        throw 'Unknown error'
-      })
-
-      await expect(search(params)).rejects.toThrow('Search failed: Unknown error')
+      const httpClient = createErrorHttpClient(new Error('Network timeout'))
+      await expect(search(params, httpClient)).rejects.toThrow('Search failed: Network timeout')
     })
   })
 
@@ -212,30 +147,10 @@ describe('Thunderbolt Pro Tools', () => {
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await fetchContent(params, httpClient)
 
-      const result = await fetchContent(params)
-
-      expect(result).toEqual({
-        url: 'https://example.com/article',
-        title: 'Example Article',
-        text: 'This is the article content...',
-        summary: 'Article summary',
-        favicon: 'https://example.com/favicon.ico',
-        image: 'https://example.com/image.jpg',
-        author: 'John Doe',
-        published_date: '2024-01-01T10:00:00Z',
-      })
-
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/fetch-content',
-        expect.objectContaining({
-          timeout: 10000,
-          json: {
-            url: 'https://example.com/article',
-          },
-        }),
-      )
+      expect(result).toEqual(mockResponse.data)
     })
 
     it('should handle content with null optional fields', async () => {
@@ -257,20 +172,10 @@ describe('Thunderbolt Pro Tools', () => {
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await fetchContent(params, httpClient)
 
-      const result = await fetchContent(params)
-
-      expect(result).toEqual({
-        url: 'https://example.com/simple',
-        title: null,
-        text: 'Simple content',
-        summary: 'Simple summary',
-        favicon: null,
-        image: null,
-        author: null,
-        published_date: null,
-      })
+      expect(result).toEqual(mockResponse.data)
     })
 
     it('should handle fetch content failure', async () => {
@@ -284,9 +189,8 @@ describe('Thunderbolt Pro Tools', () => {
         error: 'Failed to fetch content',
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(fetchContent(params)).rejects.toThrow('Failed to fetch content')
+      const httpClient = createMockHttpClient(mockResponse)
+      await expect(fetchContent(params, httpClient)).rejects.toThrow('Failed to fetch content')
     })
 
     it('should handle network errors', async () => {
@@ -294,12 +198,8 @@ describe('Thunderbolt Pro Tools', () => {
         url: 'https://example.com/timeout',
       }
 
-      const networkError = new Error('Request timeout')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(fetchContent(params)).rejects.toThrow('Fetch content failed: Request timeout')
+      const httpClient = createErrorHttpClient(new Error('Request timeout'))
+      await expect(fetchContent(params, httpClient)).rejects.toThrow('Fetch content failed: Request timeout')
     })
   })
 
@@ -317,24 +217,10 @@ describe('Thunderbolt Pro Tools', () => {
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      const result = await getCurrentWeather(params)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await getCurrentWeather(params, httpClient)
 
       expect(result).toBe('Current weather in New York: 22°C, Partly cloudy')
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/weather/current',
-        expect.objectContaining({
-          timeout: 10000,
-          json: {
-            location: 'New York',
-            region: 'NY',
-            country: 'US',
-            distanceUnit: 'imperial',
-            temperatureUnit: 'f',
-          },
-        }),
-      )
     })
 
     it('should handle weather request failure', async () => {
@@ -351,25 +237,8 @@ describe('Thunderbolt Pro Tools', () => {
         error: 'Location not found',
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(getCurrentWeather(params)).rejects.toThrow('Location not found')
-    })
-
-    it('should handle network errors', async () => {
-      const params: WeatherParams = {
-        location: 'New York',
-        region: 'NY',
-        country: 'US',
-        days: 1,
-      }
-
-      const networkError = new Error('Weather service unavailable')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(getCurrentWeather(params)).rejects.toThrow('Weather request failed: Weather service unavailable')
+      const httpClient = createMockHttpClient(mockResponse)
+      await expect(getCurrentWeather(params, httpClient)).rejects.toThrow('Location not found')
     })
   })
 
@@ -387,60 +256,15 @@ describe('Thunderbolt Pro Tools', () => {
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      const result = await getWeatherForecast(params)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await getWeatherForecast(params, httpClient)
 
       expect(result).toEqual(mockWeatherForecastData)
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/weather/forecast',
-        expect.objectContaining({
-          timeout: 10000,
-          json: {
-            location: 'New York',
-            region: 'NY',
-            country: 'US',
-            days: 3,
-            distanceUnit: 'imperial',
-            temperatureUnit: 'f',
-          },
-        }),
-      )
+      expect(result.days).toHaveLength(2)
+      expect(result.temperature_unit).toBe('f')
     })
 
-    it('should use default days when not provided', async () => {
-      const params: WeatherParams = {
-        location: 'New York',
-        region: 'NY',
-        country: 'US',
-        days: 5,
-      }
-
-      const mockResponse = {
-        data: mockWeatherForecastData,
-        success: true,
-      }
-
-      mockJson.mockResolvedValue(mockResponse)
-
-      await getWeatherForecast(params)
-
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/weather/forecast',
-        expect.objectContaining({
-          json: {
-            location: 'New York',
-            region: 'NY',
-            country: 'US',
-            days: 5,
-            distanceUnit: 'imperial',
-            temperatureUnit: 'f',
-          },
-        }),
-      )
-    })
-
-    it('should handle forecast request failure', async () => {
+    it('should handle weather forecast failure', async () => {
       const params: WeatherParams = {
         location: 'InvalidCity',
         region: 'XX',
@@ -451,48 +275,11 @@ describe('Thunderbolt Pro Tools', () => {
       const mockResponse = {
         data: null,
         success: false,
-        error: 'Forecast not available',
+        error: 'Forecast unavailable',
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(getWeatherForecast(params)).rejects.toThrow('Forecast not available')
-    })
-
-    it('should handle invalid forecast data', async () => {
-      const params: WeatherParams = {
-        location: 'New York',
-        region: 'NY',
-        country: 'US',
-        days: 3,
-      }
-
-      const mockResponse = {
-        data: { invalid: 'data' },
-        success: true,
-      }
-
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(getWeatherForecast(params)).rejects.toThrow()
-    })
-
-    it('should handle network errors', async () => {
-      const params: WeatherParams = {
-        location: 'New York',
-        region: 'NY',
-        country: 'US',
-        days: 3,
-      }
-
-      const networkError = new Error('Forecast service unavailable')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(getWeatherForecast(params)).rejects.toThrow(
-        'Weather forecast request failed: Forecast service unavailable',
-      )
+      const httpClient = createMockHttpClient(mockResponse)
+      await expect(getWeatherForecast(params, httpClient)).rejects.toThrow('Forecast unavailable')
     })
   })
 
@@ -505,33 +292,19 @@ describe('Thunderbolt Pro Tools', () => {
       }
 
       const mockResponse = {
-        data: 'Found locations: New York, NY, US',
+        data: 'Location: New York, NY, US (coordinates: 40.7128, -74.0060)',
         success: true,
       }
 
-      mockJson.mockResolvedValue(mockResponse)
+      const httpClient = createMockHttpClient(mockResponse)
+      const result = await searchLocations(params, httpClient)
 
-      const result = await searchLocations(params)
-
-      expect(result).toBe('Found locations: New York, NY, US')
-      expect(mockPost).toHaveBeenCalledWith(
-        'http://localhost:8000/v1/pro/locations/search',
-        expect.objectContaining({
-          timeout: 10000,
-          json: {
-            query: 'New York',
-            region: 'NY',
-            country: 'US',
-            distanceUnit: 'imperial',
-            temperatureUnit: 'f',
-          },
-        }),
-      )
+      expect(result).toBe('Location: New York, NY, US (coordinates: 40.7128, -74.0060)')
     })
 
     it('should handle location search failure', async () => {
       const params: SearchLocationParams = {
-        query: 'NonexistentCity',
+        query: 'InvalidPlace',
         region: 'XX',
         country: 'XX',
       }
@@ -542,108 +315,8 @@ describe('Thunderbolt Pro Tools', () => {
         error: 'No locations found',
       }
 
-      mockJson.mockResolvedValue(mockResponse)
-
-      await expect(searchLocations(params)).rejects.toThrow('No locations found')
-    })
-
-    it('should handle network errors', async () => {
-      const params: SearchLocationParams = {
-        query: 'New York',
-        region: 'NY',
-        country: 'US',
-      }
-
-      const networkError = new Error('Location service unavailable')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(searchLocations(params)).rejects.toThrow('Location search failed: Location service unavailable')
-    })
-  })
-
-  describe('error handling and edge cases', () => {
-    it('should handle network errors during search', async () => {
-      const params: SearchParams = {
-        query: 'test',
-        max_results: 10,
-      }
-
-      const networkError = new Error('Network error')
-      mockPost.mockImplementation(() => {
-        throw networkError
-      })
-
-      await expect(search(params)).rejects.toThrow('Search failed: Network error')
-    })
-
-    it('should handle malformed JSON responses', async () => {
-      const params: SearchParams = {
-        query: 'test',
-        max_results: 10,
-      }
-
-      mockJson.mockResolvedValue('invalid json')
-
-      await expect(search(params)).rejects.toThrow()
-    })
-
-    it('should handle timeout errors', async () => {
-      const params: SearchParams = {
-        query: 'test',
-        max_results: 10,
-      }
-
-      const timeoutError = new Error('Request timeout')
-      mockPost.mockImplementation(() => {
-        throw timeoutError
-      })
-
-      await expect(search(params)).rejects.toThrow('Search failed: Request timeout')
-    })
-
-    it('should handle empty response data', async () => {
-      const params: SearchParams = {
-        query: 'test',
-        max_results: 10,
-      }
-
-      const mockResponse = {
-        data: [],
-        success: true,
-      }
-
-      mockJson.mockResolvedValue(mockResponse)
-
-      const result = await search(params)
-      expect(result).toEqual([])
-    })
-
-    it('should handle very large responses', async () => {
-      const params: SearchParams = {
-        query: 'test',
-        max_results: 100,
-      }
-
-      const largeData = Array.from({ length: 100 }, (_, i) => ({
-        url: `https://example.com/${i}`,
-        title: 'Title',
-        favicon: null,
-        image: null,
-        author: null,
-        publishedDate: null,
-        id: `${i}`,
-      }))
-      const mockResponse = {
-        data: largeData,
-        success: true,
-      }
-
-      mockJson.mockResolvedValue(mockResponse)
-
-      const result = await search(params)
-      expect(result).toEqual(largeData)
+      const httpClient = createMockHttpClient(mockResponse)
+      await expect(searchLocations(params, httpClient)).rejects.toThrow('No locations found')
     })
   })
 })

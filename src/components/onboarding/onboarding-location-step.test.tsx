@@ -37,15 +37,30 @@ describe('OnboardingLocationStep', () => {
     await resetTestDatabase()
   })
 
-  const renderComponent = (onFormDirtyChange?: (isDirty: boolean) => void) => {
-    return render(<TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient} />, {
-      wrapper: createQueryTestWrapper(),
-    })
+  const renderComponent = async (onFormDirtyChange?: (isDirty: boolean) => void) => {
+    const result = render(
+      <TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient} />,
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
+
+    // Wait for popover to fully initialize (component auto-clicks trigger on mount)
+    // Note: Radix UI Popover components (FocusScope, DismissableLayer, Presence, PopperContent)
+    // update internally after opening. These warnings are expected from the third-party library.
+    await waitFor(
+      () => {
+        expect(screen.getByPlaceholderText(/Search for locations/i)).toBeInTheDocument()
+      },
+      { timeout: 1500 },
+    )
+
+    return result
   }
 
   describe('Component rendering', () => {
-    it('should render location step UI correctly', () => {
-      renderComponent()
+    it('should render location step UI correctly', async () => {
+      await renderComponent()
 
       expect(screen.getByText('Where are you located?')).toBeInTheDocument()
       expect(
@@ -54,8 +69,8 @@ describe('OnboardingLocationStep', () => {
       expect(screen.getByText('Select location...')).toBeInTheDocument()
     })
 
-    it('should render MapPin icon', () => {
-      renderComponent()
+    it('should render MapPin icon', async () => {
+      await renderComponent()
 
       // The MapPin icon is an SVG with aria-hidden="true", so we check the container
       const iconContainer = screen
@@ -67,27 +82,27 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Form interaction', () => {
-    it('should toggle location search when combobox is clicked', () => {
-      renderComponent()
+    it('should toggle location search when combobox is clicked', async () => {
+      await renderComponent()
 
       // Get the trigger button by its text content
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
       fireEvent.click(triggerButton!)
 
-      // The real hook will handle the state change internally
+      // Button should still be in document after click
       expect(triggerButton).toBeInTheDocument()
     })
 
-    it('should have proper form structure', () => {
-      renderComponent()
+    it('should have proper form structure', async () => {
+      await renderComponent()
 
       const form = document.querySelector('form')
       expect(form).toBeInTheDocument()
     })
 
-    it('should have proper combobox structure', () => {
-      renderComponent()
+    it('should have proper combobox structure', async () => {
+      await renderComponent()
 
       // Get the trigger button by its text content
       const triggerButton = screen.getByText('Select location...').closest('button')
@@ -98,8 +113,12 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Accessibility', () => {
-    it('should have proper form labels and structure', () => {
-      renderComponent()
+    it('should have proper form labels and structure', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       // The component exposes a trigger button and search input
       const triggerButton = screen.getByText('Select location...').closest('button')
@@ -109,21 +128,31 @@ describe('OnboardingLocationStep', () => {
       expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
     })
 
-    it('should maintain accessibility during interactions', () => {
-      renderComponent()
+    it('should maintain accessibility during interactions', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       fireEvent.click(triggerButton!)
 
-      expect(triggerButton).toBeInTheDocument()
+      await waitFor(() => {
+        expect(triggerButton).toBeInTheDocument()
+      })
       // The real hook behavior may vary - just check that the attribute exists
       expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
     })
   })
 
   describe('Edge cases', () => {
-    it('should handle rapid button clicks', () => {
-      renderComponent()
+    it('should handle rapid button clicks', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
 
@@ -132,12 +161,18 @@ describe('OnboardingLocationStep', () => {
       fireEvent.click(triggerButton!)
       fireEvent.click(triggerButton!)
 
-      // The real hook will handle the state changes internally
-      expect(triggerButton).toBeInTheDocument()
+      // Wait for all state updates to settle
+      await waitFor(() => {
+        expect(triggerButton).toBeInTheDocument()
+      })
     })
 
-    it('should maintain accessibility during error states', () => {
-      renderComponent()
+    it('should maintain accessibility during error states', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
@@ -147,7 +182,7 @@ describe('OnboardingLocationStep', () => {
 
   describe('Form Validation Business Logic', () => {
     it('should show validation error when submitting empty form', async () => {
-      renderComponent()
+      await renderComponent()
 
       const form = document.querySelector('form')
       expect(form).toBeInTheDocument()
@@ -161,7 +196,7 @@ describe('OnboardingLocationStep', () => {
     })
 
     it('should require valid location data for submission', async () => {
-      renderComponent()
+      await renderComponent()
 
       const form = document.querySelector('form')
       expect(form).toBeInTheDocument()
@@ -176,28 +211,42 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Location Selection Business Logic', () => {
-    it('should have clickable trigger button', () => {
-      renderComponent()
+    it('should have clickable trigger button', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
       expect(triggerButton?.getAttribute('role')).toBe('combobox')
     })
 
-    it('should handle trigger button clicks', () => {
-      renderComponent()
+    it('should handle trigger button clicks', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')!
       fireEvent.click(triggerButton)
 
-      // Button should still be in document after click
-      expect(triggerButton).toBeInTheDocument()
+      // Wait for state updates and verify button is still in document
+      await waitFor(() => {
+        expect(triggerButton).toBeInTheDocument()
+      })
     })
   })
 
   describe('State Management Business Logic', () => {
-    it('should initialize form with empty values', () => {
-      renderComponent()
+    it('should initialize form with empty values', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
@@ -220,8 +269,12 @@ describe('OnboardingLocationStep', () => {
       expect(screen.getByText('Where are you located?')).toBeInTheDocument()
     })
 
-    it('should reset form state on initialization', () => {
-      renderComponent()
+    it('should reset form state on initialization', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
@@ -230,31 +283,42 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Error Handling Business Logic', () => {
-    it('should render component even when errors occur', () => {
-      renderComponent()
+    it('should render component even when errors occur', async () => {
+      await renderComponent()
 
-      expect(screen.getByText('Where are you located?')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getByText('Where are you located?')).toBeInTheDocument()
+      })
+
       expect(screen.getByText('Select location...')).toBeInTheDocument()
     })
   })
 
   describe('Component Initialization Business Logic', () => {
-    it('should auto-focus search input on mount', () => {
-      renderComponent()
+    it('should auto-focus search input on mount', async () => {
+      await renderComponent()
 
-      const searchInput = screen.getByPlaceholderText(/Search for locations/i)
-      expect(searchInput).toBeInTheDocument()
+      await waitFor(() => {
+        const searchInput = screen.getByPlaceholderText(/Search for locations/i)
+        expect(searchInput).toBeInTheDocument()
+      })
     })
 
-    it('should auto-click trigger button on mount', () => {
-      renderComponent()
+    it('should auto-click trigger button on mount', async () => {
+      await renderComponent()
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
-      expect(triggerButton).toBeInTheDocument()
+      await waitFor(() => {
+        const triggerButton = screen.getByText('Select location...').closest('button')
+        expect(triggerButton).toBeInTheDocument()
+      })
     })
 
-    it('should initialize form with correct default values', () => {
-      renderComponent()
+    it('should initialize form with correct default values', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
@@ -263,15 +327,21 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Form Submission Business Logic', () => {
-    it('should have form element for submission', () => {
-      renderComponent()
+    it('should have form element for submission', async () => {
+      await renderComponent()
 
-      const form = document.querySelector('form')
-      expect(form).toBeInTheDocument()
+      await waitFor(() => {
+        const form = document.querySelector('form')
+        expect(form).toBeInTheDocument()
+      })
     })
 
     it('should prevent submission of invalid form', async () => {
-      renderComponent()
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const form = document.querySelector('form')!
       fireEvent.submit(form)
@@ -284,8 +354,12 @@ describe('OnboardingLocationStep', () => {
   })
 
   describe('Location Search Integration Business Logic', () => {
-    it('should integrate with real location search hook', () => {
-      renderComponent()
+    it('should integrate with real location search hook', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const searchInput = screen.getByPlaceholderText(/Search for locations/i)
       const triggerButton = screen.getByText('Select location...').closest('button')
@@ -294,39 +368,59 @@ describe('OnboardingLocationStep', () => {
       expect(triggerButton).toBeInTheDocument()
     })
 
-    it('should handle search query changes', () => {
-      renderComponent()
+    it('should handle search query changes', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Search for locations/i)).toBeInTheDocument()
+      })
 
       const searchInput = screen.getByPlaceholderText(/Search for locations/i)
 
       fireEvent.change(searchInput, { target: { value: 'New York' } })
 
-      expect(searchInput).toBeInTheDocument()
+      await waitFor(() => {
+        expect(searchInput).toBeInTheDocument()
+      })
     })
 
-    it('should display search results when available', () => {
-      renderComponent()
+    it('should display search results when available', async () => {
+      await renderComponent()
 
-      const commandList = document.querySelector('[cmdk-list]')
-      expect(commandList).toBeInTheDocument()
+      await waitFor(() => {
+        const commandList = document.querySelector('[cmdk-list]')
+        expect(commandList).toBeInTheDocument()
+      })
     })
 
-    it('should show loading state during search', () => {
-      renderComponent()
+    it('should show loading state during search', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       fireEvent.click(triggerButton!)
 
-      expect(triggerButton).toBeInTheDocument()
+      await waitFor(() => {
+        expect(triggerButton).toBeInTheDocument()
+      })
     })
 
-    it('should show empty state when no results found', () => {
-      renderComponent()
+    it('should show empty state when no results found', async () => {
+      await renderComponent()
+
+      await waitFor(() => {
+        expect(screen.getByText('Select location...')).toBeInTheDocument()
+      })
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       fireEvent.click(triggerButton!)
 
-      expect(triggerButton).toBeInTheDocument()
+      await waitFor(() => {
+        expect(triggerButton).toBeInTheDocument()
+      })
     })
   })
 })

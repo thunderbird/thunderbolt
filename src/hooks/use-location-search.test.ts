@@ -295,8 +295,6 @@ describe('useLocationSearch', () => {
         { timeout: 500 },
       )
 
-      const firstResults = result.current.locations
-
       // Change query
       act(() => {
         result.current.setSearchQuery('New York')

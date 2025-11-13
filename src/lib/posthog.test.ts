@@ -1,8 +1,8 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import type { HandleError } from '@/types/handle-errors'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
-import { initPosthog, sanitizeUrl, trackError } from './posthog'
-import type { HandleError } from '@/types/handle-errors'
+import { initPosthog, resetPosthogClient, sanitizeUrl, trackError } from './posthog'
 
 type PosthogOptions = {
   before_send: (event: PosthogEvent) => PosthogEvent
@@ -35,7 +35,7 @@ mock.module('posthog-js', () => ({
 }))
 
 /**
- * Creates a ky HTTP client with a custom fetch function that returns mock PostHog config
+ * Creates a real ky HTTP client with a custom fetch function that returns mock PostHog config
  */
 const createMockHttpClient = (apiKey = 'test-key'): KyInstance => {
   const mockFetch = async (): Promise<Response> => {
@@ -81,6 +81,7 @@ describe('analytics sanitizeUrl', () => {
 
 describe('analytics before_send sanitization', () => {
   beforeEach(() => {
+    resetPosthogClient()
     mockPosthogInit.mockReset()
     mockCaptureException.mockReset()
   })
@@ -128,6 +129,7 @@ describe('analytics before_send sanitization', () => {
 
 describe('trackError test cases', () => {
   beforeEach(() => {
+    resetPosthogClient()
     mockCaptureException.mockReset()
     mockPosthogInit.mockReset()
   })

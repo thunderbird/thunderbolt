@@ -1,18 +1,7 @@
-import { installFakeTimers } from '@/test-utils/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
+import { getClock } from '@/testing-library'
 
 describe('useThrottledCallback', () => {
-  let clock: InstalledClock
-
-  beforeEach(() => {
-    clock = installFakeTimers()
-  })
-
-  afterEach(() => {
-    clock.uninstall()
-  })
-
   it('should call callback immediately on first invocation', () => {
     const callback = mock((..._args: any[]) => {})
 
@@ -74,7 +63,7 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for throttle to complete
-    await clock.tickAsync(150)
+    await getClock().tickAsync(150)
 
     // Should have been called with the last value
     expect(callback).toHaveBeenCalledTimes(2)
@@ -100,7 +89,7 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for interval to pass
-    await clock.tickAsync(60)
+    await getClock().tickAsync(60)
 
     // Next call should be immediate
     throttledFn('second')

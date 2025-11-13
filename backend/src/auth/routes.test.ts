@@ -6,6 +6,7 @@ import { createMicrosoftAuthRoutes } from './microsoft'
 describe('Authentication Routes', () => {
   let app: Elysia
   let mockFetch: ReturnType<typeof mock>
+  let originalLogLevel: string | undefined
 
   const createMockOAuthResponse = (status = 200, body: any = {}) =>
     new Response(JSON.stringify(body), {
@@ -14,6 +15,10 @@ describe('Authentication Routes', () => {
     })
 
   beforeAll(async () => {
+    // Save and set LOG_LEVEL to valid value
+    originalLogLevel = process.env.LOG_LEVEL
+    process.env.LOG_LEVEL = 'INFO'
+
     // Mock console methods to reduce test noise
     spyOn(console, 'log').mockImplementation(() => {})
     spyOn(console, 'info').mockImplementation(() => {})
@@ -30,7 +35,12 @@ describe('Authentication Routes', () => {
   })
 
   afterAll(async () => {
-    // Cleanup if needed
+    // Restore LOG_LEVEL
+    if (originalLogLevel === undefined) {
+      delete process.env.LOG_LEVEL
+    } else {
+      process.env.LOG_LEVEL = originalLogLevel
+    }
   })
 
   describe('Google OAuth', () => {

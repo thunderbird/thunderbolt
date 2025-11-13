@@ -1,6 +1,8 @@
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { PostHog } from 'posthog-node'
+import FakeTimers from '@sinonjs/fake-timers'
+import type { InstalledClock } from '@sinonjs/fake-timers'
 
 type FetchCall = {
   url: string
@@ -15,8 +17,10 @@ type FetchCall = {
 describe('PostHog Privacy Mode', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: jest.Mock
+  let clock: InstalledClock
 
   beforeEach(() => {
+    clock = FakeTimers.install()
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
       // Capture the fetch call
@@ -35,6 +39,7 @@ describe('PostHog Privacy Mode', () => {
   })
 
   afterEach(() => {
+    clock.uninstall()
     capturedFetches = []
   })
 
@@ -115,7 +120,9 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
+        dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
+        dangerouslyAllowBrowser: true,
       })
 
       // Make a completion with sensitive content
@@ -131,8 +138,8 @@ describe('PostHog Privacy Mode', () => {
       // Flush PostHog to ensure events are sent
       await phClient.flush()
 
-      // Give a bit of time for async operations
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Advance timers for async operations
+      await clock.runAllAsync()
 
       // Find PostHog capture requests (check various URL patterns)
       const posthogRequests = capturedFetches.filter(
@@ -204,7 +211,9 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
+        dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
+        dangerouslyAllowBrowser: true,
       })
 
       // Make streaming completion
@@ -277,7 +286,9 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
+        dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
+        dangerouslyAllowBrowser: true,
       })
 
       // Override with posthogPrivacyMode parameter

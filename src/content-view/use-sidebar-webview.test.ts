@@ -1,8 +1,9 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { type RefObject } from 'react'
+import { getClock } from '@/testing-library'
+import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
-import { previewHeaderHeight, coordinateOffset, borderOffset } from './constants'
 
 beforeEach(() => {
   // Mock ResizeObserver for testing
@@ -94,12 +95,10 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(
-        () => {
-          expect(result.current.isInitialized).toBe(true)
-        },
-        { timeout: 1000 },
-      )
+      // Advance timers to complete requestAnimationFrame
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
       // Test the actual behavior we care about - the hook state
       expect(result.current.isInitialized).toBe(true)
@@ -189,10 +188,12 @@ describe('useSidebarWebview', () => {
 
       const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      // Wait for initialization
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       // Unmount should not throw
       expect(() => unmount()).not.toThrow()
@@ -216,10 +217,12 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      // Wait for initialization
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       // Trigger unload event
       const unloadEvent = new Event('unload')
@@ -247,9 +250,12 @@ describe('useSidebarWebview', () => {
 
       const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       // Clear mock to reset call count
       mockWebview.close.mockClear()
@@ -276,7 +282,6 @@ describe('useSidebarWebview', () => {
     })
 
     it('should call onClose callback when webview is closed', async () => {
-      const { act } = await import('@testing-library/react')
       const onClose = mock(() => {})
       const config: SidebarWebviewConfig = {
         url: 'https://example.com',
@@ -298,9 +303,12 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       await act(async () => {
         await result.current.closeWebview()
@@ -310,7 +318,6 @@ describe('useSidebarWebview', () => {
     })
 
     it('should not attempt double-close when closeWebview is called before cleanup', async () => {
-      const { act } = await import('@testing-library/react')
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
       container.getBoundingClientRect = mock(() => ({
@@ -328,9 +335,12 @@ describe('useSidebarWebview', () => {
 
       const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       // Close webview explicitly
       await act(async () => {
@@ -347,7 +357,6 @@ describe('useSidebarWebview', () => {
     })
 
     it('should cancel pending animation frames when closing', async () => {
-      const { act } = await import('@testing-library/react')
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
       container.getBoundingClientRect = mock(() => ({
@@ -370,9 +379,12 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       cancelSpy.mockClear()
 
@@ -389,7 +401,6 @@ describe('useSidebarWebview', () => {
     })
 
     it('should not throw when position update attempts after webview is closed', async () => {
-      const { act } = await import('@testing-library/react')
       const config: SidebarWebviewConfig = { url: 'https://example.com' }
       const container = document.createElement('div')
       container.getBoundingClientRect = mock(() => ({
@@ -407,9 +418,12 @@ describe('useSidebarWebview', () => {
 
       const { result } = renderHook(() => useSidebarWebview(config, containerRef))
 
-      await waitFor(() => {
-        expect(result.current.isInitialized).toBe(true)
+      // Advance timers for initialization
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      expect(result.current.isInitialized).toBe(true)
 
       // Close the webview
       await act(async () => {
@@ -423,8 +437,10 @@ describe('useSidebarWebview', () => {
       // Trigger a resize event after close (would normally trigger position update)
       window.dispatchEvent(new Event('resize'))
 
-      // Wait a frame for any position updates to attempt
-      await new Promise((resolve) => requestAnimationFrame(resolve))
+      // Advance timers for any animation frames
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
       // Verify position/size were NOT called after webview was closed
       expect(mockWebview.setPosition).not.toHaveBeenCalled()

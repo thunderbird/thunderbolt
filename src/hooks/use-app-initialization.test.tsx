@@ -1,7 +1,8 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
+import { getClock } from '@/testing-library'
 import { useAppInitialization } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -83,11 +84,12 @@ describe('useAppInitialization', () => {
   it('provides correct hook interface', async () => {
     const { result } = renderHook(() => useAppInitialization(mockHttpClient))
 
-    // Wait for initial render effects to settle
-    await waitFor(() => {
-      expect(result.current).toBeDefined()
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
     })
 
+    expect(result.current).toBeDefined()
     expect(result.current).toHaveProperty('initData')
     expect(result.current).toHaveProperty('initError')
     expect(result.current).toHaveProperty('isInitializing')
@@ -102,13 +104,12 @@ describe('useAppInitialization', () => {
 
     expect(result.current.isInitializing).toBe(true)
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })
@@ -124,13 +125,12 @@ describe('useAppInitialization', () => {
 
     const { result } = renderHook(() => useAppInitialization(mockHttpClient))
 
-    await waitFor(
-      () => {
-        expect(result.current.initData).toBeDefined()
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.initData).toBeDefined()
     expect(result.current.initData?.sideviewType).toBe('message')
     expect(result.current.initData?.sideviewId).toBe('123')
   })
@@ -138,13 +138,12 @@ describe('useAppInitialization', () => {
   it('handles initialization gracefully when non-critical steps fail', async () => {
     const { result } = renderHook(() => useAppInitialization(mockHttpClient))
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })
@@ -152,25 +151,20 @@ describe('useAppInitialization', () => {
   it('retry function reinitializes the app', async () => {
     const { result } = renderHook(() => useAppInitialization(mockHttpClient))
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-        expect(result.current.initData).toBeDefined()
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(result.current.isInitializing).toBe(false)
+    expect(result.current.initData).toBeDefined()
 
     await act(async () => {
       await result.current.retry()
+      await getClock().runAllAsync()
     })
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
-
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })

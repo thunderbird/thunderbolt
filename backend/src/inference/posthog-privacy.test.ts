@@ -3,6 +3,8 @@ import { isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { clearInferenceClientCache, getInferenceClient } from './client'
+import FakeTimers from '@sinonjs/fake-timers'
+import type { InstalledClock } from '@sinonjs/fake-timers'
 
 type FetchCall = {
   url: string
@@ -18,8 +20,11 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: jest.Mock
   let originalEnv: Record<string, string | undefined>
+  let clock: InstalledClock
 
   beforeEach(() => {
+    clock = FakeTimers.install()
+
     // Save original env vars
     originalEnv = {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
@@ -27,7 +32,11 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
       THUNDERBOLT_INFERENCE_URL: process.env.THUNDERBOLT_INFERENCE_URL,
       THUNDERBOLT_INFERENCE_API_KEY: process.env.THUNDERBOLT_INFERENCE_API_KEY,
+      LOG_LEVEL: process.env.LOG_LEVEL,
     }
+
+    // Set LOG_LEVEL to valid value
+    process.env.LOG_LEVEL = 'INFO'
 
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
@@ -81,6 +90,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   afterEach(async () => {
+    clock.uninstall()
+
     // Clear inference client cache for test isolation
     clearInferenceClientCache()
 
@@ -188,8 +199,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Verify the completion works
       expect(completion).toBeDefined()
 
-      // Wait for any async PostHog operations
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      // Advance timers for PostHog operations
+      await clock.runAllAsync()
 
       // Find PostHog requests
       const posthogRequests = capturedFetches.filter(
@@ -249,7 +260,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         })
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await clock.runAllAsync()
 
       // Check ALL captured PostHog requests
       const posthogRequests = capturedFetches.filter(

@@ -1,23 +1,12 @@
-import { installFakeTimers } from '@/test-utils/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
+import { getClock } from '@/testing-library'
 import { useLocationSearch } from './use-location-search'
-
-let clock: InstalledClock
 
 beforeAll(() => {
   // Suppress console.error for expected error scenarios in tests
   spyOn(console, 'error').mockImplementation(() => {})
-})
-
-beforeEach(() => {
-  clock = installFakeTimers()
-})
-
-afterEach(() => {
-  clock.uninstall()
 })
 
 /**
@@ -141,7 +130,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       // Should not have any locations for short queries
@@ -158,7 +147,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms) and API call
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       expect(result.current.locations).toEqual([
@@ -191,12 +180,12 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms) and all async operations to complete
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       // Additional act to ensure state updates from the finally block are processed
       await act(async () => {
-        await clock.runAllAsync()
+        await getClock().runAllAsync()
       })
 
       expect(result.current.locations).toEqual([])
@@ -213,7 +202,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms) to trigger search
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       // Check loading state
@@ -221,7 +210,7 @@ describe('useLocationSearch', () => {
 
       // Wait for API response (100ms delay)
       await act(async () => {
-        await clock.tickAsync(100)
+        await getClock().tickAsync(100)
       })
 
       expect(result.current.isSearching).toBe(false)
@@ -237,7 +226,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       expect(result.current.locations.length).toBeGreaterThan(0)
@@ -263,7 +252,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       expect(result.current.isSearching).toBe(false)
@@ -280,7 +269,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       // Should not make API call for whitespace-only queries
@@ -298,7 +287,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       expect(result.current.locations.length).toBeGreaterThan(0)
@@ -310,7 +299,7 @@ describe('useLocationSearch', () => {
 
       // Wait for debounce (300ms)
       await act(async () => {
-        await clock.tickAsync(300)
+        await getClock().tickAsync(300)
       })
 
       // Results should update (may be same in mock, but query changed)

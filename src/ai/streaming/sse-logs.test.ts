@@ -1,10 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-
-// Import the function under test
-import { installFakeTimers } from '@/test-utils/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
+import { getClock } from '../../../testing-library'
 import { normalizeUIMessage, parseEnhancedSseFile, sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
@@ -70,16 +67,6 @@ function discoverTestCases(): Array<{
 // ---------------------------------------------------------------------------
 
 describe('SSE -> UIMessage:', () => {
-  let clock: InstalledClock
-
-  beforeEach(() => {
-    clock = installFakeTimers()
-  })
-
-  afterEach(() => {
-    clock.uninstall()
-  })
-
   const testCases = discoverTestCases()
 
   if (testCases.length === 0) {
@@ -115,7 +102,7 @@ describe('SSE -> UIMessage:', () => {
       })
 
       // Run all timers to process stream delays
-      await clock.runAllAsync()
+      await getClock().runAllAsync()
       const message = await messagePromise
 
       const normalizedMessage = normalizeUIMessage(message)

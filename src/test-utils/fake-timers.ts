@@ -4,6 +4,8 @@ import { type InstalledClock, install } from '@sinonjs/fake-timers'
  * Creates and installs fake timers for testing.
  * Returns a clock object that can be used to control time.
  *
+ * Also sets up Jest-compatible API for @testing-library/react compatibility.
+ *
  * @example
  * const clock = installFakeTimers()
  * // ... test code ...
@@ -11,12 +13,46 @@ import { type InstalledClock, install } from '@sinonjs/fake-timers'
  * clock.uninstall()
  */
 export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: boolean }): InstalledClock => {
-  // Get the real current time before installing fake timers
-  const realNow = config?.now ?? Date.now()
-
-  return install({
-    now: realNow,
+  const clock = install({
+    now: config?.now,
     shouldAdvanceTime: config?.shouldAdvanceTime ?? false,
-    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    toFake: [
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      // Note: Date is intentionally NOT faked to prevent issues with UUID generation
+      // in libraries like PostHog that depend on real timestamps
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+    ],
   })
+
+  // Update the jest timer implementation that was set up in happydom.ts
+  // This allows @testing-library/react (which captured the jest global at load time)
+  // to use the correct timer functions
+  // @ts-ignore
+  const impl = globalThis.__jestTimerImpl
+  if (impl) {
+    impl.advanceTimersByTime = (ms: number) => clock.tick(ms)
+    impl.runAllTimers = () => clock.runAll()
+    impl.runOnlyPendingTimers = () => clock.runToLast()
+    impl.clearAllTimers = () => clock.reset()
+    impl.getTimerCount = () => clock.countTimers()
+  }
+
+  // Wrap uninstall to clear the jest timer implementation
+  const originalUninstall = clock.uninstall.bind(clock)
+  clock.uninstall = () => {
+    if (impl) {
+      impl.advanceTimersByTime = null
+      impl.runAllTimers = null
+      impl.runOnlyPendingTimers = null
+      impl.clearAllTimers = null
+      impl.getTimerCount = null
+    }
+    originalUninstall()
+  }
+
+  return clock
 }

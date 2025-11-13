@@ -3,9 +3,10 @@ import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import '@testing-library/jest-dom'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import type { KyInstance } from 'ky'
+import { getClock } from '@/testing-library'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
 const TestOnboardingLocationStep = ({
@@ -50,15 +51,15 @@ describe('OnboardingLocationStep', () => {
       },
     )
 
-    // Wait for popover to fully initialize (component auto-clicks trigger on mount)
-    // Note: Radix UI Popover components (FocusScope, DismissableLayer, Presence, PopperContent)
-    // update internally after opening. These warnings are expected from the third-party library.
-    await waitFor(
-      () => {
-        expect(screen.getByPlaceholderText(/Search for locations/i)).toBeInTheDocument()
-      },
-      { timeout: 1500 },
-    )
+    // Advance timers for component initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Wait for the search input to appear (don't throw if it doesn't, let individual tests handle that)
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Search for locations/i)).toBeInTheDocument()
+    })
 
     return result
   }
@@ -194,10 +195,12 @@ describe('OnboardingLocationStep', () => {
 
       fireEvent.submit(form!)
 
-      await waitFor(() => {
-        const errorMessage = screen.queryByText('Location is required.')
-        expect(errorMessage).toBeInTheDocument()
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      const errorMessage = screen.queryByText('Location is required.')
+      expect(errorMessage).toBeInTheDocument()
     })
 
     it('should require valid location data for submission', async () => {
@@ -208,10 +211,12 @@ describe('OnboardingLocationStep', () => {
 
       fireEvent.submit(form!)
 
-      await waitFor(() => {
-        const errorMessage = screen.queryByText('Location is required.')
-        expect(errorMessage).toBeInTheDocument()
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+
+      const errorMessage = screen.queryByText('Location is required.')
+      expect(errorMessage).toBeInTheDocument()
     })
   })
 

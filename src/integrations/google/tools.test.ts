@@ -1,6 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { InstalledClock } from '@sinonjs/fake-timers'
-import { installFakeTimers } from '@/test-utils/fake-timers'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
 import type {
   CheckCalendarParams,
@@ -77,12 +75,7 @@ mock.module('./utils', () => ({
 }))
 
 describe('Google Tools', () => {
-  let clock: InstalledClock
-
   beforeEach(() => {
-    // Install fake timers to speed up tests
-    clock = installFakeTimers()
-
     // Reset all mocks
     mockJson.mockClear()
     mockText.mockClear()
@@ -106,11 +99,6 @@ describe('Google Tools', () => {
       expires_at: Date.now() + 3600000,
     })
     mockEnsureValidGoogleToken.mockResolvedValue('test-access-token')
-  })
-
-  afterEach(() => {
-    // Uninstall fake timers after each test
-    clock.uninstall()
   })
 
   describe('checkInbox', () => {

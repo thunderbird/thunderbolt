@@ -27,11 +27,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
       THUNDERBOLT_INFERENCE_URL: process.env.THUNDERBOLT_INFERENCE_URL,
       THUNDERBOLT_INFERENCE_API_KEY: process.env.THUNDERBOLT_INFERENCE_API_KEY,
-      LOG_LEVEL: process.env.LOG_LEVEL,
     }
-
-    // Set LOG_LEVEL to valid value
-    process.env.LOG_LEVEL = 'INFO'
 
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {

@@ -27,29 +27,23 @@ export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: b
     ],
   })
 
-  // Update the jest timer implementation that was set up in happydom.ts
-  // This allows @testing-library/react (which captured the jest global at load time)
-  // to use the correct timer functions
+  // Set up Jest-compatible API for @testing-library/react compatibility
+  // We define the jest global only when fake timers are installed
+  // This prevents @testing-library from trying to use fake timers when they're not available
   // @ts-ignore
-  const impl = globalThis.__jestTimerImpl
-  if (impl) {
-    impl.advanceTimersByTime = (ms: number) => clock.tick(ms)
-    impl.runAllTimers = () => clock.runAll()
-    impl.runOnlyPendingTimers = () => clock.runToLast()
-    impl.clearAllTimers = () => clock.reset()
-    impl.getTimerCount = () => clock.countTimers()
+  globalThis.jest = {
+    advanceTimersByTime: (ms: number) => clock.tick(ms),
+    runAllTimers: () => clock.runAll(),
+    runOnlyPendingTimers: () => clock.runToLast(),
+    clearAllTimers: () => clock.reset(),
+    getTimerCount: () => clock.countTimers(),
   }
 
-  // Wrap uninstall to clear the jest timer implementation
+  // Wrap uninstall to remove the jest global
   const originalUninstall = clock.uninstall.bind(clock)
   clock.uninstall = () => {
-    if (impl) {
-      impl.advanceTimersByTime = null
-      impl.runAllTimers = null
-      impl.runOnlyPendingTimers = null
-      impl.clearAllTimers = null
-      impl.getTimerCount = null
-    }
+    // @ts-ignore
+    delete globalThis.jest
     originalUninstall()
   }
 

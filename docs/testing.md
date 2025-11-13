@@ -17,5 +17,5 @@ Please follow these guidelines for unit tests:
     ```
   - This also speeds up tests that use HTTP libraries with retry logic (like `ky`)
 - **Suppress expected console errors in tests** - use `spyOn(console, 'error').mockImplementation(() => {})` in `beforeAll` for tests that intentionally trigger errors
-- Write unit tests for complex logic, such as branching or algorithms, not for user interactions (e.g., clicking, typing). Testing user interactions via unit tests introduces unnecessary complexity; we plan to use automated QA tools for those scenarios.
+- Always write unit tests for logic, code branching, and algorithms - these should be thoroughly covered. Unit tests for component user interactions (such as clicking or typing) are optional and might be better covered by higher-level tests (e.g., with Cypress).
 - Keep display logic separate from side effects and state in React components by extracting hooks. If a component has many useStates, bundle them into one state hook—this makes logic easy to test and leaves snapshot tests for checking output changes.

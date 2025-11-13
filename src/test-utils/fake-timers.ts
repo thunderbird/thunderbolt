@@ -27,25 +27,18 @@ export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: b
     ],
   })
 
-  // Set up Jest-compatible API for @testing-library/react compatibility
-  // We define the jest global only when fake timers are installed
-  // This prevents @testing-library from trying to use fake timers when they're not available
+  // Update Jest-compatible API implementations for @testing-library/react compatibility
+  // The jest global is already set up in testing-library.ts, we just update the implementations
   // @ts-ignore
-  globalThis.jest = {
-    advanceTimersByTime: (ms: number) => clock.tick(ms),
-    runAllTimers: () => clock.runAll(),
-    runOnlyPendingTimers: () => clock.runToLast(),
-    clearAllTimers: () => clock.reset(),
-    getTimerCount: () => clock.countTimers(),
-  }
-
-  // Wrap uninstall to remove the jest global
-  const originalUninstall = clock.uninstall.bind(clock)
-  clock.uninstall = () => {
-    // @ts-ignore
-    delete globalThis.jest
-    originalUninstall()
-  }
+  globalThis.jest.advanceTimersByTime = (ms: number) => clock.tick(ms)
+  // @ts-ignore
+  globalThis.jest.runAllTimers = () => clock.runAll()
+  // @ts-ignore
+  globalThis.jest.runOnlyPendingTimers = () => clock.runToLast()
+  // @ts-ignore
+  globalThis.jest.clearAllTimers = () => clock.reset()
+  // @ts-ignore
+  globalThis.jest.getTimerCount = () => clock.countTimers()
 
   return clock
 }

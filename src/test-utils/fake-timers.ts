@@ -27,32 +27,32 @@ export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: b
     ],
   })
 
-  // Ensure jest global exists (should be created in happydom.ts, but recreate if missing)
+  // Update Jest-compatible API implementations
+  // CRITICAL: We must UPDATE the existing jest object, not replace it
+  // because @testing-library/react may have already captured a reference
   // @ts-ignore
-  if (!globalThis.jest || typeof globalThis.jest !== 'object') {
-    // @ts-ignore
-    globalThis.jest = {}
-  }
-  // @ts-ignore
-  if (!global.jest || typeof global.jest !== 'object') {
-    // @ts-ignore
-    global.jest = {}
-  }
+  const jestGlobal = globalThis.jest || global.jest
 
-  // Update Jest-compatible API implementations for @testing-library/react compatibility
-  // Update both globalThis.jest and global.jest for maximum compatibility
-  const jestImpl = {
-    advanceTimersByTime: (ms: number) => clock.tick(ms),
-    runAllTimers: () => clock.runAll(),
-    runOnlyPendingTimers: () => clock.runToLast(),
-    clearAllTimers: () => clock.reset(),
-    getTimerCount: () => clock.countTimers(),
+  if (jestGlobal) {
+    jestGlobal.advanceTimersByTime = (ms: number) => clock.tick(ms)
+    jestGlobal.runAllTimers = () => clock.runAll()
+    jestGlobal.runOnlyPendingTimers = () => clock.runToLast()
+    jestGlobal.clearAllTimers = () => clock.reset()
+    jestGlobal.getTimerCount = () => clock.countTimers()
+  } else {
+    // Fallback: create new object if it doesn't exist
+    const jestImpl = {
+      advanceTimersByTime: (ms: number) => clock.tick(ms),
+      runAllTimers: () => clock.runAll(),
+      runOnlyPendingTimers: () => clock.runToLast(),
+      clearAllTimers: () => clock.reset(),
+      getTimerCount: () => clock.countTimers(),
+    }
+    // @ts-ignore
+    globalThis.jest = jestImpl
+    // @ts-ignore
+    global.jest = jestImpl
   }
-
-  // @ts-ignore
-  Object.assign(globalThis.jest, jestImpl)
-  // @ts-ignore
-  Object.assign(global.jest, jestImpl)
 
   return clock
 }

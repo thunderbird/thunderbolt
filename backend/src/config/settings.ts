@@ -16,8 +16,12 @@ const settingsSchema = z.object({
   // OAuth Settings
   googleClientId: z.string().default(''),
   googleClientSecret: z.string().default(''),
+  googleClientIdAndroid: z.string().default(''),
+  googleClientIdIos: z.string().default(''),
   microsoftClientId: z.string().default(''),
   microsoftClientSecret: z.string().default(''),
+  microsoftClientIdAndroid: z.string().default(''),
+  microsoftClientIdIos: z.string().default(''),
 
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
@@ -56,8 +60,12 @@ const parseSettings = (): Settings => {
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    googleClientIdAndroid: process.env.GOOGLE_CLIENT_ID_ANDROID || '',
+    googleClientIdIos: process.env.GOOGLE_CLIENT_ID_IOS || '',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    microsoftClientIdAndroid: process.env.MICROSOFT_CLIENT_ID_ANDROID || '',
+    microsoftClientIdIos: process.env.MICROSOFT_CLIENT_ID_IOS || '',
     logLevel: process.env.LOG_LEVEL || 'INFO',
     port: process.env.PORT || '8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',

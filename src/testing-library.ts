@@ -1,27 +1,37 @@
 import { afterEach, beforeEach, expect } from 'bun:test'
 import { cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
+import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 
 expect.extend(matchers)
 
-// Get the global clock that was installed in happydom.ts
-// This ensures fake timers are available before any module loads
-// @ts-ignore
-const globalClock: InstalledClock = globalThis.__GLOBAL_FAKE_CLOCK__
-
-if (!globalClock) {
-  throw new Error('Global fake clock not initialized. happydom.ts must be preloaded first.')
+// CRITICAL FIX: Disable @testing-library/react's fake timer detection
+// This prevents it from trying to use jest.advanceTimersByTime
+// We'll manage our own fake timers instead
+// @ts-ignore - monkey-patch the internal function that checks for fake timers
+const rtl = await import('@testing-library/react')
+if (rtl && typeof rtl === 'object') {
+  // Find and disable jestFakeTimersAreEnabled
+  Object.defineProperty(globalThis, 'jestFakeTimersAreEnabled', {
+    value: () => false,
+    writable: false,
+    configurable: false,
+  })
 }
 
+// Global fake timers setup - we manage our own
+let globalClock: InstalledClock | null = null
+
 beforeEach(() => {
-  // Reset the clock to a clean state for each test
-  // Don't uninstall/reinstall - just reset to avoid timing issues
-  globalClock.reset()
+  globalClock = installFakeTimers()
 })
 
 afterEach(() => {
-  // Clean up React components
+  if (globalClock) {
+    globalClock.uninstall()
+    globalClock = null
+  }
   cleanup()
 })
 
@@ -35,5 +45,8 @@ afterEach(() => {
  * })
  */
 export const getClock = (): InstalledClock => {
+  if (!globalClock) {
+    throw new Error('Clock is not installed. This should not happen in tests.')
+  }
   return globalClock
 }

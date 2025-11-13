@@ -58,7 +58,7 @@ export const ReasoningItem = ({ part }: ReasoningItemProps) => {
     >
       <div className="flex gap-3 flex-row flex-1 items-center">
         {itemData.isLoading ? (
-          <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
+          <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
         ) : (
           !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
         )}

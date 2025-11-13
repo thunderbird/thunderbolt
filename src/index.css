@@ -199,7 +199,7 @@ body {
 .hide-scrollbar {
   -ms-overflow-style: none; /* For Internet Explorer and Edge */
   scrollbar-width: none; /* For Firefox */
-  overflow-y: scroll; /* or overflow: auto; to only show scrollbar when needed */
+  overflow-y: auto; /* or overflow: auto; to only show scrollbar when needed */
 }
 
 /* For Chrome, Safari, and Opera */

@@ -100,7 +100,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
           }}
         >
           <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
-          <div className="max-h-[200px] overflow-y-auto px-4 hide-scrollbar py-3">
+          <div className="max-h-[200px] px-4 hide-scrollbar py-3">
             {displayText}
             <div ref={scrollTargetRef} />
           </div>

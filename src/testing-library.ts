@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, expect } from 'bun:test'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure as configureReactTesting } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 
 expect.extend(matchers)
+
+// Configure @testing-library to work with our fake timers
+// This prevents it from trying to use Jest's timer APIs
+configureReactTesting({
+  asyncWrapper: async (cb) => {
+    // Just run the callback without trying to call jest.advanceTimersByTime
+    return await cb()
+  },
+})
 
 // Global fake timers setup - installed before each test
 let globalClock: InstalledClock | null = null

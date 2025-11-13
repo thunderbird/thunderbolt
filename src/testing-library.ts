@@ -9,24 +9,8 @@ expect.extend(matchers)
 // Global fake timers setup - installed before each test
 let globalClock: InstalledClock | null = null
 
-// Set up jest global immediately so @testing-library/react can detect fake timers
-// The actual implementations will be replaced in beforeEach
-// @ts-ignore
-globalThis.jest = {
-  advanceTimersByTime: () => {
-    throw new Error('Fake timers not initialized. This should not happen.')
-  },
-  runAllTimers: () => {
-    throw new Error('Fake timers not initialized. This should not happen.')
-  },
-  runOnlyPendingTimers: () => {
-    throw new Error('Fake timers not initialized. This should not happen.')
-  },
-  clearAllTimers: () => {
-    throw new Error('Fake timers not initialized. This should not happen.')
-  },
-  getTimerCount: () => 0,
-}
+// Note: globalThis.jest is set up in happydom.ts (preloaded first)
+// to ensure it exists before @testing-library/react checks for it
 
 beforeEach(() => {
   globalClock = installFakeTimers()

@@ -13,6 +13,10 @@ configureReactTesting({
     // Just run the callback without trying to call jest.advanceTimersByTime
     return await cb()
   },
+  unstable_advanceTimersWrapper: (cb) => {
+    // Don't try to advance Jest timers, just run the callback
+    return cb()
+  },
 })
 
 // Global fake timers setup - installed before each test

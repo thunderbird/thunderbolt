@@ -66,7 +66,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
             className="w-full"
           >
             {tools.length > 0
-              ? `Used ${tools.length} tools in ${formatDuration(totalDuration)}`
+              ? `Completed ${tools.length} steps in ${formatDuration(totalDuration)}`
               : `Thought for ${formatDuration(totalDuration)}`}
           </motion.div>
         )}

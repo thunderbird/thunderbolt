@@ -1,9 +1,9 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { render, waitFor } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { OnboardingDialog } from './onboarding-dialog'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { render, waitFor } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { OnboardingDialog } from './onboarding-dialog'
 
 // Mock React Router
 const mockNavigate = mock()
@@ -16,6 +16,8 @@ mock.module('react-router', () => ({
 
 beforeAll(async () => {
   await setupTestDatabase()
+  // Suppress console.error for expected error scenarios in tests
+  spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterAll(async () => {
@@ -40,7 +42,7 @@ afterEach(async () => {
 })
 
 describe('OnboardingDialog', () => {
-  const mockHttpClient = createMockHttpClient(mockLocationData)
+  const mockHttpClient = () => createMockHttpClient(mockLocationData)
 
   describe('Component rendering', () => {
     it('should render without crashing', () => {
@@ -53,7 +55,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} />, {
+      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -75,7 +77,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} />, {
+      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -97,7 +99,7 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient} />, {
+      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
         wrapper: createQueryTestWrapper(),
       })
     })
@@ -105,7 +107,7 @@ describe('OnboardingDialog', () => {
 
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
-      render(<OnboardingDialog httpClient={mockHttpClient} />, {
+      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
         wrapper: createQueryTestWrapper(),
       })
 

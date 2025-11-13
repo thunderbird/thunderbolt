@@ -1,9 +1,9 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect, mock } from 'bun:test'
-import '@testing-library/jest-dom'
-import { OnboardingAuthStep } from './onboarding-auth-step'
+import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import '@testing-library/jest-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { OnboardingAuthStep } from './onboarding-auth-step'
 
 // Mock props
 const mockOnConnectionChange = mock()
@@ -30,6 +30,11 @@ mock.module('react-router', () => ({
 }))
 
 describe('OnboardingAuthStep', () => {
+  beforeAll(() => {
+    // Suppress console.error for expected error scenarios in tests
+    spyOn(console, 'error').mockImplementation(() => {})
+  })
+
   beforeEach(async () => {
     await setupTestDatabase()
     mockOnConnectionChange.mockClear()

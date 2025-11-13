@@ -1,5 +1,5 @@
 import type { ToolConfig } from '@/types'
-import ky from 'ky'
+import ky, { type KyInstance } from 'ky'
 import { z } from 'zod'
 import {
   buildRawMessage,
@@ -231,7 +231,7 @@ export type DriveFileContent = {
 /**
  * Check inbox for recent email threads (conversations) with lightweight summaries
  */
-export const checkInbox = async (params: CheckInboxParams) => {
+export const checkInbox = async (params: CheckInboxParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
@@ -243,7 +243,7 @@ export const checkInbox = async (params: CheckInboxParams) => {
   }
 
   // Get list of thread IDs instead of individual messages
-  const listResponse = await ky
+  const listResponse = await httpClient
     .get('https://www.googleapis.com/gmail/v1/users/me/threads', {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -261,7 +261,7 @@ export const checkInbox = async (params: CheckInboxParams) => {
   // Get thread details in parallel
   const threadDetails = await Promise.all(
     listResponse.threads.map(async (thread) => {
-      const threadResponse = await ky
+      const threadResponse = await httpClient
         .get(`https://www.googleapis.com/gmail/v1/users/me/threads/${thread.id}`, {
           searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -313,7 +313,7 @@ export const checkInbox = async (params: CheckInboxParams) => {
 /**
  * Search emails using Gmail query syntax
  */
-export const searchEmails = async (params: SearchEmailsParams) => {
+export const searchEmails = async (params: SearchEmailsParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
@@ -322,7 +322,7 @@ export const searchEmails = async (params: SearchEmailsParams) => {
   searchParams.set('q', params.query)
 
   // Get list of message IDs
-  const listResponse = await ky
+  const listResponse = await httpClient
     .get('https://www.googleapis.com/gmail/v1/users/me/messages', {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -340,7 +340,7 @@ export const searchEmails = async (params: SearchEmailsParams) => {
   // Get message details in parallel (metadata only for performance)
   const messageDetails = await Promise.all(
     listResponse.messages.map(async (msg) => {
-      const detailResponse = await ky
+      const detailResponse = await httpClient
         .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
           searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -372,11 +372,11 @@ export const searchEmails = async (params: SearchEmailsParams) => {
 /**
  * Get full details of a specific email
  */
-export const getEmail = async (params: GetEmailParams) => {
+export const getEmail = async (params: GetEmailParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
-  const response = await ky
+  const response = await httpClient
     .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.id}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -450,7 +450,7 @@ export const getEmail = async (params: GetEmailParams) => {
 /**
  * Draft an email (ready to send later)
  */
-export const draftEmail = async (params: DraftEmailParams) => {
+export const draftEmail = async (params: DraftEmailParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
@@ -467,7 +467,7 @@ export const draftEmail = async (params: DraftEmailParams) => {
 
   if (params.reply_to_id) {
     // Get the original message to extract thread ID
-    const originalMessage = await ky
+    const originalMessage = await httpClient
       .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.reply_to_id}`, {
         searchParams: { format: 'metadata', metadataHeaders: 'Message-ID,References' },
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -479,7 +479,7 @@ export const draftEmail = async (params: DraftEmailParams) => {
     }
   }
 
-  const response = await ky
+  const response = await httpClient
     .post(url, {
       json: requestBody,
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -496,7 +496,7 @@ export const draftEmail = async (params: DraftEmailParams) => {
 /**
  * Check calendar events for upcoming days
  */
-export const checkCalendar = async (params: CheckCalendarParams) => {
+export const checkCalendar = async (params: CheckCalendarParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
@@ -513,7 +513,7 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
   searchParams.set('maxResults', '50')
 
   try {
-    const response = await ky
+    const response = await httpClient
       .get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
         searchParams,
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -567,7 +567,7 @@ export const checkCalendar = async (params: CheckCalendarParams) => {
 /**
  * Search Google Drive files using Drive API
  */
-export const searchDrive = async (params: SearchDriveParams) => {
+export const searchDrive = async (params: SearchDriveParams, httpClient: KyInstance = ky) => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
@@ -589,7 +589,7 @@ export const searchDrive = async (params: SearchDriveParams) => {
   }
 
   try {
-    const response = await ky
+    const response = await httpClient
       .get('https://www.googleapis.com/drive/v3/files', {
         searchParams,
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -635,13 +635,16 @@ export const searchDrive = async (params: SearchDriveParams) => {
  * Get text content from a Google Drive file
  * Works with Google Docs, Sheets, Slides, and text files
  */
-export const getDriveFileContent = async (params: GetDriveFileContentParams): Promise<DriveFileContent> => {
+export const getDriveFileContent = async (
+  params: GetDriveFileContentParams,
+  httpClient: KyInstance = ky,
+): Promise<DriveFileContent> => {
   const credentials = await getGoogleCredentials()
   const accessToken = await ensureValidGoogleToken(credentials)
 
   try {
     // Get file metadata to determine type
-    const fileResponse = await ky
+    const fileResponse = await httpClient
       .get(`https://www.googleapis.com/drive/v3/files/${params.file_id}`, {
         searchParams: { fields: 'id,name,mimeType' },
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -656,14 +659,14 @@ export const getDriveFileContent = async (params: GetDriveFileContentParams): Pr
     // Extract content based on file type
     if (mimeType === 'application/vnd.google-apps.document') {
       // Google Docs - export as plain text
-      const response = await ky.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}/export`, {
+      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}/export`, {
         searchParams: { mimeType: 'text/plain' },
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       content = await response.text()
     } else if (mimeType.startsWith('text/')) {
       // Text files - get raw content
-      const response = await ky.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}`, {
+      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${params.file_id}`, {
         searchParams: { alt: 'media' },
         headers: { Authorization: `Bearer ${accessToken}` },
       })

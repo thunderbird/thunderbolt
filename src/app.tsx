@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import ChatDetailPage from '@/chats/detail'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { HttpClientProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -98,22 +99,24 @@ export const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PostHogProvider client={initData.posthogClient}>
-        <ThemeProvider defaultTheme="system" storageKey="ui_theme">
-          <TrayProvider tray={initData.tray} window={initData.window}>
-            <MCPProvider>
-              <SidebarProvider>
-                <ContentViewProvider
-                  initialSideviewType={initData.sideviewType}
-                  initialSideviewId={initData.sideviewId}
-                >
-                  <AppContent initData={initData} />
-                </ContentViewProvider>
-              </SidebarProvider>
-            </MCPProvider>
-          </TrayProvider>
-        </ThemeProvider>
-      </PostHogProvider>
+      <HttpClientProvider>
+        <PostHogProvider client={initData.posthogClient}>
+          <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+            <TrayProvider tray={initData.tray} window={initData.window}>
+              <MCPProvider>
+                <SidebarProvider>
+                  <ContentViewProvider
+                    initialSideviewType={initData.sideviewType}
+                    initialSideviewId={initData.sideviewId}
+                  >
+                    <AppContent initData={initData} />
+                  </ContentViewProvider>
+                </SidebarProvider>
+              </MCPProvider>
+            </TrayProvider>
+          </ThemeProvider>
+        </PostHogProvider>
+      </HttpClientProvider>
     </QueryClientProvider>
   )
 }

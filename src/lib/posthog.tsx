@@ -8,6 +8,13 @@ import type { ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 
+/**
+ * Reset the PostHog client - for testing only
+ */
+export const resetPosthogClient = () => {
+  posthogClient = null
+}
+
 const ROUTE_PATTERNS = ['/chats/:chatThreadId'] as const
 
 /**

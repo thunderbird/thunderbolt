@@ -1,6 +1,6 @@
 import { getSettings } from '@/dal'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/widgets/weather-forecast'
-import ky from 'ky'
+import ky, { type KyInstance } from 'ky'
 import type {
   FetchContentData,
   FetchContentParams,
@@ -14,13 +14,15 @@ import type {
 
 const requestTimeout = 10000
 
+type HttpClient = Pick<KyInstance, 'get' | 'post'>
+
 /**
  * Search the web and return structured results with summaries and highlights
  */
-export const search = async (params: SearchParams): Promise<SearchResultData[]> => {
+export const search = async (params: SearchParams, httpClient: HttpClient = ky): Promise<SearchResultData[]> => {
   try {
     const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-    const response = await ky
+    const response = await httpClient
       .post(`${cloudUrl}/pro/search`, {
         timeout: requestTimeout,
         json: {
@@ -43,10 +45,13 @@ export const search = async (params: SearchParams): Promise<SearchResultData[]> 
 /**
  * Fetch and parse content from a webpage URL
  */
-export const fetchContent = async (params: FetchContentParams): Promise<FetchContentData> => {
+export const fetchContent = async (
+  params: FetchContentParams,
+  httpClient: HttpClient = ky,
+): Promise<FetchContentData> => {
   try {
     const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-    const response = await ky
+    const response = await httpClient
       .post(`${cloudUrl}/pro/fetch-content`, {
         timeout: requestTimeout,
         json: {
@@ -68,10 +73,13 @@ export const fetchContent = async (params: FetchContentParams): Promise<FetchCon
 /**
  * Fetch link preview metadata (title, description, image) from a URL
  */
-export const fetchLinkPreview = async (params: LinkPreviewParams): Promise<LinkPreviewData> => {
+export const fetchLinkPreview = async (
+  params: LinkPreviewParams,
+  httpClient: HttpClient = ky,
+): Promise<LinkPreviewData> => {
   try {
     const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-    const response = await ky
+    const response = await httpClient
       .get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`, {
         timeout: requestTimeout,
       })
@@ -90,7 +98,7 @@ export const fetchLinkPreview = async (params: LinkPreviewParams): Promise<LinkP
 /**
  * Get current weather for specified coordinates
  */
-export const getCurrentWeather = async (params: WeatherParams): Promise<string> => {
+export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpClient = ky): Promise<string> => {
   try {
     const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',
@@ -98,7 +106,7 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
       distance_unit: 'imperial',
     })
 
-    const response = await ky
+    const response = await httpClient
       .post(`${cloudUrl}/pro/weather/current`, {
         timeout: requestTimeout,
         json: {
@@ -125,7 +133,10 @@ export const getCurrentWeather = async (params: WeatherParams): Promise<string> 
 /**
  * Get weather forecast for specified coordinates
  */
-export const getWeatherForecast = async (params: WeatherParams): Promise<WeatherForecastData> => {
+export const getWeatherForecast = async (
+  params: WeatherParams,
+  httpClient: HttpClient = ky,
+): Promise<WeatherForecastData> => {
   try {
     const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',
@@ -133,7 +144,7 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
       distance_unit: 'imperial',
     })
 
-    const response = await ky
+    const response = await httpClient
       .post(`${cloudUrl}/pro/weather/forecast`, {
         timeout: requestTimeout,
         json: {
@@ -162,7 +173,7 @@ export const getWeatherForecast = async (params: WeatherParams): Promise<Weather
 /**
  * Search for locations by name
  */
-export const searchLocations = async (params: SearchLocationParams): Promise<string> => {
+export const searchLocations = async (params: SearchLocationParams, httpClient: HttpClient = ky): Promise<string> => {
   try {
     const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',
@@ -170,7 +181,7 @@ export const searchLocations = async (params: SearchLocationParams): Promise<str
       distance_unit: 'imperial',
     })
 
-    const response = await ky
+    const response = await httpClient
       .post(`${cloudUrl}/pro/locations/search`, {
         timeout: requestTimeout,
         json: {

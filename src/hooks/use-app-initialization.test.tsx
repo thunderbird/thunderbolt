@@ -80,8 +80,13 @@ describe('useAppInitialization', () => {
     }
   })
 
-  it('provides correct hook interface', () => {
+  it('provides correct hook interface', async () => {
     const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+
+    // Wait for initial render effects to settle
+    await waitFor(() => {
+      expect(result.current).toBeDefined()
+    })
 
     expect(result.current).toHaveProperty('initData')
     expect(result.current).toHaveProperty('initError')

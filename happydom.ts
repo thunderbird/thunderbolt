@@ -23,8 +23,8 @@ if (typeof globalThis.Buffer === 'undefined') {
 // Set up jest global IMMEDIATELY so @testing-library/react can detect fake timers
 // This must be set up before any test code runs to avoid race conditions in CI
 // The actual implementations will be set in testing-library.ts
-// @ts-ignore
-globalThis.jest = {
+// Set on both globalThis and global for maximum compatibility
+const jestApi = {
   advanceTimersByTime: (ms: number) => {
     // This will be replaced by the real implementation in installFakeTimers
     console.warn('jest.advanceTimersByTime called before fake timers initialized')
@@ -40,3 +40,8 @@ globalThis.jest = {
   },
   getTimerCount: () => 0,
 }
+
+// @ts-ignore
+globalThis.jest = jestApi
+// @ts-ignore
+global.jest = jestApi

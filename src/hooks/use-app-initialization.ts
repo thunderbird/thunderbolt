@@ -16,7 +16,7 @@ import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import ky from 'ky'
 import type { PostHog } from 'posthog-js'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
@@ -49,7 +49,7 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
   return result.success ? result.data : null
 }
 
-const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => {
+const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
   // Step 1: App directory creation
   let appDirPath: string
   try {
@@ -104,18 +104,22 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
     }
   }
 
-  // Step 5: HTTP client initialization
-  let httpClient: HttpClient
-  try {
-    const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-    httpClient = ky.create({ prefixUrl: cloudUrl })
-  } catch (error) {
-    console.error('Failed to initialize HTTP client:', error)
-    const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
-    trackError(httpClientError, { initialization_step: 'http_client' })
-    return {
-      success: false,
-      error: httpClientError,
+  // Step 5: HTTP client initialization (use provided client or create one)
+  let client: HttpClient
+  if (httpClient) {
+    client = httpClient
+  } else {
+    try {
+      const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+      client = ky.create({ prefixUrl: cloudUrl })
+    } catch (error) {
+      console.error('Failed to initialize HTTP client:', error)
+      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
+      trackError(httpClientError, { initialization_step: 'http_client' })
+      return {
+        success: false,
+        error: httpClientError,
+      }
     }
   }
 
@@ -132,7 +136,7 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
   // Step 7: PostHog initialization (non-critical)
   let posthogClient: PostHog | null = null
   try {
-    posthogClient = await initializePostHog(httpClient)
+    posthogClient = await initializePostHog(client)
   } catch (error) {
     console.warn('Unexpected error during PostHog initialization:', error)
   }
@@ -146,7 +150,7 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
       sideviewType,
       sideviewId,
       posthogClient,
-      httpClient,
+      httpClient: client,
       ...tray,
     },
   }
@@ -154,16 +158,17 @@ const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => 
 
 /**
  * Hook for managing app initialization
+ * @param httpClient - Optional HTTP client (primarily for testing)
  */
-export const useAppInitialization = () => {
+export const useAppInitialization = (httpClient?: HttpClient) => {
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<HandleError>()
   const [isInitializing, setIsInitializing] = useState(true)
 
-  const initialize = async () => {
+  const initialize = useCallback(async () => {
     setIsInitializing(true)
     try {
-      const result = await executeInitializationSteps()
+      const result = await executeInitializationSteps(httpClient)
       if (result.success) {
         setInitData(result.data)
         setInitError(undefined)
@@ -173,13 +178,13 @@ export const useAppInitialization = () => {
     } finally {
       setIsInitializing(false)
     }
-  }
+  }, [httpClient])
 
-  const retry = async () => {
+  const retry = useCallback(async () => {
     await initialize()
-  }
+  }, [initialize])
 
-  const clearDatabase = async () => {
+  const clearDatabase = useCallback(async () => {
     setIsInitializing(true)
     try {
       await resetAppDir()
@@ -187,11 +192,11 @@ export const useAppInitialization = () => {
     } finally {
       setIsInitializing(false)
     }
-  }
+  }, [initialize])
 
   useEffect(() => {
     initialize()
-  }, [])
+  }, [initialize])
 
   return {
     initData,

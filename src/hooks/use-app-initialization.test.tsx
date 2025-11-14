@@ -1,6 +1,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getClock } from '@/testing-library'
+import { createMockHttpClient } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useAppInitialization } from './use-app-initialization'
@@ -65,7 +66,8 @@ describe('useAppInitialization', () => {
   })
 
   it('provides correct hook interface', async () => {
-    const { result } = renderHook(() => useAppInitialization(), {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
 
@@ -85,7 +87,8 @@ describe('useAppInitialization', () => {
   })
 
   it('initializes on mount and completes successfully', async () => {
-    const { result } = renderHook(() => useAppInitialization(), {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
 
@@ -110,7 +113,8 @@ describe('useAppInitialization', () => {
       configurable: true,
     })
 
-    const { result } = renderHook(() => useAppInitialization(), {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
 
@@ -125,7 +129,8 @@ describe('useAppInitialization', () => {
   })
 
   it('handles initialization gracefully when non-critical steps fail', async () => {
-    const { result } = renderHook(() => useAppInitialization(), {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
 
@@ -140,7 +145,8 @@ describe('useAppInitialization', () => {
   })
 
   it('retry function reinitializes the app', async () => {
-    const { result } = renderHook(() => useAppInitialization(), {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
 

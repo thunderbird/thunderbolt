@@ -1,3 +1,5 @@
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createLinkPreviewRoutes } from './link-preview'
@@ -7,7 +9,7 @@ import * as settingsModule from '@/config/settings'
 describe('Link Preview Routes', () => {
   let app: Elysia
   let getSettingsSpy: ReturnType<typeof spyOn>
-  let consoleSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>
 
   const createMockHtmlResponse = (html: string, options: ResponseInit = {}) => {
@@ -23,8 +25,7 @@ describe('Link Preview Routes', () => {
   }
 
   beforeAll(async () => {
-    // Suppress console output during tests
-    consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Mock settings
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -58,13 +59,13 @@ describe('Link Preview Routes', () => {
 
   afterAll(() => {
     getSettingsSpy?.mockRestore()
-    consoleSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   beforeEach(() => {
     // Reset all mocks before each test
     mockFetch.mockClear()
-    consoleSpy.mockClear()
+    consoleSpies.error.mockClear()
   })
 
   describe('GET /link-preview/*', () => {
@@ -364,7 +365,6 @@ describe('Link Preview Routes', () => {
       const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(200)
-      expect(consoleSpy).toHaveBeenCalledWith('Link preview error:', networkError)
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(false)

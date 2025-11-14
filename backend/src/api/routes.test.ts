@@ -1,15 +1,14 @@
 import type { Settings } from '@/config/settings'
 import * as settingsModule from '@/config/settings'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { createApp } from '../index'
 
 describe('Main Routes', () => {
   let app: Awaited<ReturnType<typeof createApp>>
   let getSettingsSpy: ReturnType<typeof spyOn>
-  let consoleLogSpy: ReturnType<typeof spyOn>
-  let consoleInfoSpy: ReturnType<typeof spyOn>
-  let consoleErrorSpy: ReturnType<typeof spyOn>
-  let consoleWarnSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
 
   const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = input instanceof Request ? input.url : input.toString()
@@ -28,11 +27,7 @@ describe('Main Routes', () => {
   }
 
   beforeAll(async () => {
-    // Mock console methods to reduce test noise
-    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {})
-    consoleInfoSpy = spyOn(console, 'info').mockImplementation(() => {})
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Mock settings for analytics route
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -64,10 +59,7 @@ describe('Main Routes', () => {
 
   afterAll(async () => {
     getSettingsSpy?.mockRestore()
-    consoleLogSpy?.mockRestore()
-    consoleInfoSpy?.mockRestore()
-    consoleErrorSpy?.mockRestore()
-    consoleWarnSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   it('should return health status', async () => {

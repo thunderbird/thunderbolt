@@ -1,12 +1,19 @@
-import { act, renderHook } from '@testing-library/react'
-import { beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { getClock } from '@/testing-library'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getClock } from '@/testing-library'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { useLocationSearch } from './use-location-search'
 
+let consoleSpies: ConsoleSpies
+
 beforeAll(() => {
-  // Suppress console.error for expected error scenarios in tests
-  spyOn(console, 'error').mockImplementation(() => {})
+  consoleSpies = setupConsoleSpy()
+})
+
+afterAll(() => {
+  consoleSpies.restore()
 })
 
 const mockLocationResponse = [

@@ -1,13 +1,12 @@
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createProToolsRoutes } from './routes'
 
 describe('Pro Tools Routes', () => {
   let app: ReturnType<typeof createProToolsRoutes>
   let mockFetch: ReturnType<typeof mock>
-  let consoleLogSpy: ReturnType<typeof spyOn>
-  let consoleInfoSpy: ReturnType<typeof spyOn>
-  let consoleErrorSpy: ReturnType<typeof spyOn>
-  let consoleWarnSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
 
   const createMockWeatherResponse = (body: any = {}) =>
     new Response(JSON.stringify(body), {
@@ -16,11 +15,7 @@ describe('Pro Tools Routes', () => {
     })
 
   beforeAll(async () => {
-    // Mock console methods to reduce test noise
-    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {})
-    consoleInfoSpy = spyOn(console, 'info').mockImplementation(() => {})
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Create mock fetch for weather API calls
     mockFetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
@@ -90,10 +85,7 @@ describe('Pro Tools Routes', () => {
   })
 
   afterAll(async () => {
-    consoleLogSpy?.mockRestore()
-    consoleInfoSpy?.mockRestore()
-    consoleErrorSpy?.mockRestore()
-    consoleWarnSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   it('should return error when search API key is not configured', async () => {

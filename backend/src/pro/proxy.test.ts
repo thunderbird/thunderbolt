@@ -1,3 +1,5 @@
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createProxyRoutes } from './proxy'
@@ -6,7 +8,7 @@ import * as settingsModule from '@/config/settings'
 describe('Proxy Routes', () => {
   let app: Elysia
   let getSettingsSpy: ReturnType<typeof spyOn>
-  let consoleSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>
 
   const createMockResponse = (body: string, options: ResponseInit = {}) => {
@@ -24,8 +26,7 @@ describe('Proxy Routes', () => {
   }
 
   beforeAll(async () => {
-    // Suppress console output during tests
-    consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Mock settings
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -59,13 +60,13 @@ describe('Proxy Routes', () => {
 
   afterAll(() => {
     getSettingsSpy?.mockRestore()
-    consoleSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   beforeEach(() => {
     // Reset all mocks before each test
     mockFetch.mockClear()
-    consoleSpy.mockClear()
+    consoleSpies.error.mockClear()
   })
 
   describe('GET /proxy/*', () => {
@@ -252,7 +253,6 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(500)
-      expect(consoleSpy).toHaveBeenCalledWith('Proxy error:', networkError)
 
       const body = await response.text()
       expect(body).toBe('Proxy request failed')

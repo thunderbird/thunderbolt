@@ -4,8 +4,10 @@ import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
 const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
@@ -13,17 +15,16 @@ const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?:
   return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
 }
 
-let consoleErrorSpy: ReturnType<typeof spyOn>
+let consoleSpies: ConsoleSpies
 
 beforeAll(async () => {
   await setupTestDatabase()
-  // Suppress console.error for expected error scenarios in tests
-  consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
-  consoleErrorSpy?.mockRestore()
+  consoleSpies.restore()
 })
 
 describe('OnboardingLocationStep', () => {

@@ -1,9 +1,11 @@
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { getClock } from '@/testing-library'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 
 // Mock props
@@ -21,18 +23,17 @@ mock.module('react-router', () => ({
 }))
 
 describe('OnboardingAuthStep', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
   let mockConnect: ReturnType<typeof mock>
   let mockProcessCallback: ReturnType<typeof mock>
   let mockClearError: ReturnType<typeof mock>
 
   beforeAll(() => {
-    // Suppress console.error for expected error scenarios in tests
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
   })
 
   afterAll(() => {
-    consoleErrorSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   beforeEach(async () => {

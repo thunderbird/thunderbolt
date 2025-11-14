@@ -1,8 +1,10 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { useCountryUnits } from './use-country-units'
 
 const mockCountryUnitsData = {
@@ -13,14 +15,16 @@ const mockCountryUnitsData = {
   currency: { code: 'EUR', symbol: '€', name: 'Euro' },
 }
 
+let consoleSpies: ConsoleSpies
+
 beforeAll(async () => {
   await setupTestDatabase()
-  // Suppress console.error for expected error scenarios in tests
-  spyOn(console, 'error').mockImplementation(() => {})
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
+  consoleSpies.restore()
 })
 
 afterEach(async () => {

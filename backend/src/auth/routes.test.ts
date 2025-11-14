@@ -1,4 +1,6 @@
 import * as settingsModule from '@/config/settings'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
@@ -8,10 +10,7 @@ describe('Authentication Routes', () => {
   let app: Elysia
   let mockFetch: ReturnType<typeof mock>
   let getSettingsSpy: ReturnType<typeof spyOn>
-  let consoleLogSpy: ReturnType<typeof spyOn>
-  let consoleInfoSpy: ReturnType<typeof spyOn>
-  let consoleErrorSpy: ReturnType<typeof spyOn>
-  let consoleWarnSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
 
   const createMockOAuthResponse = (status = 200, body: any = {}) =>
     new Response(JSON.stringify(body), {
@@ -20,11 +19,7 @@ describe('Authentication Routes', () => {
     })
 
   beforeAll(async () => {
-    // Mock console methods to reduce test noise
-    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {})
-    consoleInfoSpy = spyOn(console, 'info').mockImplementation(() => {})
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Mock settings
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -60,10 +55,7 @@ describe('Authentication Routes', () => {
 
   afterAll(async () => {
     getSettingsSpy?.mockRestore()
-    consoleLogSpy?.mockRestore()
-    consoleInfoSpy?.mockRestore()
-    consoleErrorSpy?.mockRestore()
-    consoleWarnSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   describe('Google OAuth', () => {

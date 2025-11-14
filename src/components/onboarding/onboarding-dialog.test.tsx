@@ -2,7 +2,9 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingDialog } from './onboarding-dialog'
 
 // Mock React Router
@@ -14,17 +16,16 @@ mock.module('react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
-let consoleErrorSpy: ReturnType<typeof spyOn>
+let consoleSpies: ConsoleSpies
 
 beforeAll(async () => {
   await setupTestDatabase()
-  // Suppress console.error for expected error scenarios in tests
-  consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
-  consoleErrorSpy?.mockRestore()
+  consoleSpies.restore()
 })
 
 beforeEach(() => {

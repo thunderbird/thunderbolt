@@ -117,7 +117,7 @@ export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath
     return `${appDataDirPath}/thunderbolt.db`
   }
 
-  // For web-based databases (wa-sqlite, sqlocal), check OPFS availability
+  // For wa-sqlite, check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
     return `${appDataDirPath}/thunderbolt.db`

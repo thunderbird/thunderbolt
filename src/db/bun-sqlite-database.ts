@@ -4,7 +4,7 @@ import type { DatabaseInterface } from './database-interface'
 import * as schema from './schema'
 
 /**
- * Converts Bun SQLite row objects to arrays to match sqlocal/libsql format
+ * Converts Bun SQLite row objects to arrays to match Drizzle sqlite-proxy format
  * Example: {id: 1, name: 'foo'} => [1, 'foo']
  */
 const rowToArray = (row: Record<string, any>): any[] => Object.values(row)
@@ -28,9 +28,9 @@ export class BunSQLiteDatabase implements DatabaseInterface {
     // Bun SQLite supports :memory: natively for in-memory databases
     this.sqlite = new Database(path)
 
-    // Use sqlite-proxy to transform results to match sqlocal format
+    // Use sqlite-proxy to transform results to match Drizzle's expected format
     // Bun SQLite returns objects {id: 1, name: 'foo'}
-    // sqlocal/libsql return arrays [1, 'foo']
+    // Drizzle sqlite-proxy expects arrays [1, 'foo']
     this._db = drizzle(
       async (sql: string, params?: any[], method?: 'all' | 'get' | 'values' | 'run'): Promise<{ rows: any }> => {
         if (!this.sqlite) {

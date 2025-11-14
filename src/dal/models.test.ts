@@ -58,9 +58,9 @@ describe('Models DAL', () => {
       expect(model?.name).toBe('Test Model')
     })
 
-    it('should handle sqlocal bug where .get() returns empty object for missing records', async () => {
-      // This test verifies the fix for the sqlocal bug where .get() returns {}
-      // instead of undefined when no record is found
+    it('should handle database drivers that return empty object for missing records', async () => {
+      // This test verifies that .get() correctly returns undefined
+      // instead of {} when no record is found
       const db = DatabaseSingleton.instance.db
 
       // Query a non-existent model directly with Drizzle

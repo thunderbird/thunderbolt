@@ -92,7 +92,6 @@
     "react-resizable-panels": "^3.0.4",
     "react-router": "^7.8.1",
     "remark-gfm": "^4.0.1",
-    "sqlocal": "^0.14.2",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "tauri-plugin-m3": "^0.2.2",

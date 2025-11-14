@@ -102,7 +102,7 @@ export const resetAppDir = async (): Promise<void> => {
 
   if (databaseType === 'libsql-tauri') {
     await resetAppDirTauri()
-  } else if (databaseType === 'sqlocal') {
+  } else if (databaseType === 'wa-sqlite') {
     await resetAppDirOpfs()
   } else {
     throw new Error(`Unsupported database type: ${databaseType}`)

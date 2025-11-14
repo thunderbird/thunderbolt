@@ -68,7 +68,7 @@ export class WaSQLiteDatabase implements DatabaseInterface {
             return { rows: undefined }
           }
 
-          // Apply same fix as SQLocalDatabase for empty objects
+          // Return undefined for empty objects
           if (isEmptyObject(rows)) {
             return { rows: undefined }
           }

@@ -1,6 +1,6 @@
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 
-export type DatabaseType = 'wa-sqlite' | 'sqlocal' | 'libsql-tauri' | 'bun-sqlite'
+export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite'
 
 export class DatabaseSingleton {
   static #instance: DatabaseSingleton | null = null
@@ -23,7 +23,7 @@ export class DatabaseSingleton {
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('wa-sqlite', 'sqlocal', 'libsql-tauri', or 'bun-sqlite')
+   * @param type - The database type to use ('wa-sqlite', 'libsql-tauri', or 'bun-sqlite')
    * @param config - Configuration for the database
    */
   public async initialize({
@@ -45,12 +45,8 @@ export class DatabaseSingleton {
       // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
-    } else if (type === 'sqlocal') {
-      // Lazy load SQLocalDatabase (fallback option)
-      const { SQLocalDatabase } = await import('./sqlocal-database')
-      this.#database = new SQLocalDatabase()
     } else {
-      // Default to WaSQLite for web (best performance)
+      // Default to wa-sqlite for web (best performance with web workers)
       const { WaSQLiteDatabase } = await import('./wa-sqlite-database')
       this.#database = new WaSQLiteDatabase()
     }
@@ -58,14 +54,7 @@ export class DatabaseSingleton {
     await this.#database.initialize(path)
     DatabaseSingleton.#initialized = true
 
-    const dbTypeName =
-      type === 'libsql-tauri'
-        ? 'LibSQL for Tauri'
-        : type === 'bun-sqlite'
-          ? 'Bun SQLite'
-          : type === 'sqlocal'
-            ? 'SQLocal'
-            : 'WA-SQLite'
+    const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'wa-sqlite'
     console.info(`Initialized ${dbTypeName} database at ${path}`)
 
     return this.#database.db

@@ -25,28 +25,35 @@ function splitSqlStatements(sql: string): string[] {
 export async function migrate(db: AnyDrizzleDatabase) {
   const startTime = performance.now()
 
-  await db.run(sql`
+  // Optimization: Try to query the table first (fast DML), only create if it doesn't exist (slow DDL)
+  // This avoids the expensive CREATE TABLE IF NOT EXISTS on OPFS/IndexedDB (465ms!) when table exists
+  let rows: unknown[]
+
+  try {
+    // Try to select from the table - this is fast if the table exists
+    rows = await db.all(sql`SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
+  } catch (_error) {
+    // Table doesn't exist, create it
+    await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             hash text NOT NULL UNIQUE,
 			created_at numeric
 		)
 	`)
+    // Now it's empty
+    rows = []
+  }
 
-  // Get current migrations from database
-  const rows = await db.all(sql`SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
+  // Convert the rows to a Set for O(1) lookups
+  const completedMigrationHashes = new Set<string>(
+    rows.map((row: unknown) => {
+      const [, hash] = row as [unknown, string, unknown]
+      return hash
+    }),
+  )
 
-  // Convert the rows to a more usable format
-  const dbMigrations = rows.map(([id, hash, created_at]: any) => ({
-    id,
-    hash,
-    created_at,
-  }))
-
-  const hasBeenRun = (hash: string) =>
-    dbMigrations.find((dbMigration: any) => {
-      return dbMigration?.hash === hash
-    })
+  const hasBeenRun = (hash: string) => completedMigrationHashes.has(hash)
 
   // Apply migrations that haven't been run yet
   let migrationsRun = 0
@@ -72,7 +79,6 @@ export async function migrate(db: AnyDrizzleDatabase) {
           sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`,
         )
         migrationsRun++
-        console.info(`Applied migration: ${migration.name}`)
       } catch (error) {
         console.error(`Failed to apply migration ${migration.name}:`, error)
         throw error

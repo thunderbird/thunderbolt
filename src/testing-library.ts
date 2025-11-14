@@ -1,9 +1,9 @@
+import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect } from 'bun:test'
-import { clearMemoizeCache } from '@/lib/memoize'
 
 expect.extend(matchers)
 
@@ -75,11 +75,7 @@ beforeEach(() => {
 afterEach(() => {
   if (globalClock) {
     // Clear all pending timers before uninstalling to prevent pollution
-    try {
-      globalClock.reset()
-    } catch (_e) {
-      // Ignore errors during cleanup
-    }
+    globalClock.reset()
     globalClock.uninstall()
     globalClock = null
   }

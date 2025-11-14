@@ -1,7 +1,7 @@
+import { getClock } from '@/testing-library'
 import { describe, expect, it } from 'bun:test'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { getClock } from '@/testing-library'
 import { normalizeUIMessage, parseEnhancedSseFile, sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
@@ -95,15 +95,15 @@ describe('SSE -> UIMessage:', () => {
       // Use the first response for testing (could be extended to test all responses)
       const sseData = responses[0]
 
-      const messagePromise = sseToUIMessage(sseData, {
+      const message = await sseToUIMessage(sseData, {
         startWithReasoning: metadata.start_with_reasoning ?? false,
         initialDelayInMs: metadata.initial_delay_ms,
         chunkDelayInMs: metadata.chunk_delay_ms,
+        advanceTimers: async () => {
+          // Advance timers while the stream is being consumed
+          await getClock().runAllAsync()
+        },
       })
-
-      // Run all timers to process stream delays
-      await getClock().runAllAsync()
-      const message = await messagePromise
 
       const normalizedMessage = normalizeUIMessage(message)
       expect(JSON.stringify(normalizedMessage, null, 2)).toMatchSnapshot()

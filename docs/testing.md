@@ -1,5 +1,25 @@
 # Testing
 
+## Running Tests
+
+```sh
+# Run frontend tests (src/ and scripts/)
+bun test
+
+# Run frontend tests in watch mode
+bun test:watch
+
+# Run backend tests
+bun test:backend
+
+# Run backend tests in watch mode
+bun test:backend:watch
+```
+
+**Note**: Don't use `bun test` without arguments from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
+
+## Testing Guidelines
+
 Please follow these guidelines for unit tests:
 
 - **Prefer dependency injection over mocking to prevent test pollution.** For example, inject a custom httpClient or fetch for network requests instead of mocking them.

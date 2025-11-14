@@ -115,7 +115,6 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
-        dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
       })
 
@@ -202,7 +201,6 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
-        dangerouslyAllowBrowser: true,
         fetch: mockOpenAIFetch as any,
       })
 
@@ -276,8 +274,7 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
-        dangerouslyAllowBrowser: true,
-        fetch: mockOpenAIFetch as any,
+        fetch: mockOpenAIFetch,
       })
 
       // Override with posthogPrivacyMode parameter

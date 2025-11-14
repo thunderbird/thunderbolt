@@ -2,7 +2,7 @@
 
 import { getSettings, updateSetting } from '@/dal'
 import type { ToolConfig } from '@/types'
-import ky from 'ky'
+import ky, { type KyInstance } from 'ky'
 import { z } from 'zod'
 
 /**
@@ -91,7 +91,7 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
 // Public API
 // ---------------------------------------------------------------------------
 
-export const listMessages = async (params: ListMessagesParams) => {
+export const listMessages = async (params: ListMessagesParams, httpClient: KyInstance = ky) => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
 
@@ -100,7 +100,7 @@ export const listMessages = async (params: ListMessagesParams) => {
   if (params.skipToken) searchParams.set('$skiptoken', params.skipToken)
   if (params.filter) searchParams.set('$filter', params.filter)
 
-  const response = await ky
+  const response = await httpClient
     .get('https://graph.microsoft.com/v1.0/me/messages', {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -109,7 +109,7 @@ export const listMessages = async (params: ListMessagesParams) => {
 
   if (params.includeBodyHtml && response.value) {
     const messagesWithBodies = await Promise.all(
-      response.value.map(async (msg) => getMessage({ id: msg.id!, includeBodyHtml: true })),
+      response.value.map(async (msg) => getMessage({ id: msg.id!, includeBodyHtml: true }, httpClient)),
     )
     return { ...response, value: messagesWithBodies }
   }
@@ -117,7 +117,7 @@ export const listMessages = async (params: ListMessagesParams) => {
   return response
 }
 
-export const getMessage = async (params: GetMessageParams) => {
+export const getMessage = async (params: GetMessageParams, httpClient: KyInstance = ky) => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
 
@@ -127,7 +127,7 @@ export const getMessage = async (params: GetMessageParams) => {
   const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${params.id}`)
   if (selectParams) url.searchParams.set('$select', selectParams.replace('$select=', ''))
 
-  const message = await ky
+  const message = await httpClient
     .get(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -140,19 +140,29 @@ export const getMessage = async (params: GetMessageParams) => {
 // Tool configs consumed by the UI / AI layer
 // ---------------------------------------------------------------------------
 
-export const configs: ToolConfig[] = [
+/**
+ * Microsoft Tools Configuration Factory
+ * @param httpClient - HTTP client for making requests (injected for dependency injection)
+ */
+export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
   {
     name: 'microsoft_list_messages',
     description: 'List Microsoft Outlook messages with optional filtering',
     verb: 'Listing Microsoft messages',
     parameters: listMessagesSchema,
-    execute: listMessages,
+    execute: (params: ListMessagesParams) => listMessages(params, httpClient),
   },
   {
     name: 'microsoft_get_message',
     description: 'Get a specific Microsoft Outlook message by ID',
     verb: 'Getting Microsoft message',
     parameters: getMessageSchema,
-    execute: getMessage,
+    execute: (params: GetMessageParams) => getMessage(params, httpClient),
   },
 ]
+
+/**
+ * Default configs using the global ky instance
+ * @deprecated Use createConfigs() with an injected httpClient instead
+ */
+export const configs = createConfigs(ky)

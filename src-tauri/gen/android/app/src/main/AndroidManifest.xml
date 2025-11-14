@@ -22,6 +22,24 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            
+            <!-- Deep link for OAuth callback - using Google's reversed client ID format -->
+            <!-- Set GOOGLE_CLIENT_ID_ANDROID environment variable (e.g., "860884698243-ckjfmfr7nab9ckeh5p3f362nsh6ii5g6") -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.googleusercontent.apps.${googleClientId}" />
+            </intent-filter>
+            
+            <!-- Deep link for Microsoft OAuth callback - using MSAL format -->
+            <!-- Set MICROSOFT_CLIENT_ID_ANDROID environment variable (e.g., "your-microsoft-client-id") -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="msal${microsoftClientId}" android:host="auth" />
+            </intent-filter>
         </activity>
 
         <provider

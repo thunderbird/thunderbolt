@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
@@ -18,6 +19,11 @@ android {
     namespace = "net.thunderbird.thunderbolt"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        
+        // OAuth client IDs from environment variables
+        manifestPlaceholders["googleClientId"] = System.getenv("GOOGLE_CLIENT_ID_ANDROID") ?: "YOUR_GOOGLE_CLIENT_ID_HERE"
+        manifestPlaceholders["microsoftClientId"] = System.getenv("MICROSOFT_CLIENT_ID_ANDROID") ?: "YOUR_MICROSOFT_CLIENT_ID_HERE"
+        
         applicationId = "net.thunderbird.thunderbolt"
         minSdk = 24
         targetSdk = 36

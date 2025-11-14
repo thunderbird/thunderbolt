@@ -145,7 +145,6 @@ export const getMyWidgetKey = (messageId: string, key: 'state' | 'data') =>
 ```
 
 **When to use constants:**
-- ✅ SessionStorage/localStorage keys used in multiple files
 - ✅ Custom event names shared between components
 - ✅ Magic strings or numbers used in multiple places
 - ✅ Configuration values that might change

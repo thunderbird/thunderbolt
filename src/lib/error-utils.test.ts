@@ -21,7 +21,7 @@ describe('createHandleError', () => {
     expect(error.code).toBe('MIGRATION_FAILED')
     expect(error.message).toBe('Migration failed')
     expect(error.originalError).toBe(originalError)
-    expect(error.stackTrace).toBe(originalError.stack)
+    expect(error.stackTrace).toBe(originalError.stack!)
   })
 
   it('adds stack trace when originalError is an Error instance', () => {
@@ -31,7 +31,7 @@ describe('createHandleError', () => {
     expect(error.code).toBe('MIGRATION_FAILED')
     expect(error.message).toBe('Migration step 3 failed')
     expect(error.originalError).toBe(originalError)
-    expect(error.stackTrace).toBe(originalError.stack)
+    expect(error.stackTrace).toBe(originalError.stack!)
   })
 
   it('handles non-Error originalError without stack trace', () => {
@@ -97,7 +97,7 @@ describe('createHandleError', () => {
     expect(error.originalError).toBe(originalError)
     expect((error.originalError as Error).name).toBe('NetworkError')
     expect((error.originalError as Error).cause).toBe('Connection refused')
-    expect(error.stackTrace).toBe(originalError.stack)
+    expect(error.stackTrace).toBe(originalError.stack!)
   })
 
   it('handles Error with custom properties', () => {
@@ -109,7 +109,7 @@ describe('createHandleError', () => {
 
     expect(error.originalError).toBe(originalError)
     expect((error.originalError as Error & { customProperty: string }).customProperty).toBe('test value')
-    expect(error.stackTrace).toBe(originalError.stack)
+    expect(error.stackTrace).toBe(originalError.stack!)
   })
 
   it('handles empty string message', () => {

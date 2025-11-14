@@ -2,12 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { renderHook, act } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOAuthConnect, type OAuthDependencies, type OAuthStorage } from './use-oauth-connect'
-import {
-  mockOAuthCallbackData,
-  mockOAuthErrorCallbackData,
-  setupSessionStorage,
-  cleanupSessionStorage,
-} from '@/test-utils/oauth'
+import { mockOAuthCallbackData, mockOAuthErrorCallbackData, cleanupSessionStorage } from '@/test-utils/oauth'
 
 /**
  * Creates an isolated storage instance for testing

@@ -11,14 +11,8 @@ import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import type { HttpClient } from '@/hooks/use-location-search'
 
-type OnboardingDialogProps = {
-  httpClient?: HttpClient
-  cloudUrl?: string
-}
-
-export const OnboardingDialog = ({ httpClient, cloudUrl }: OnboardingDialogProps = {}) => {
+export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
@@ -128,13 +122,7 @@ export const OnboardingDialog = ({ httpClient, cloudUrl }: OnboardingDialogProps
               <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 4 && (
-              <OnboardingLocationStep
-                state={state}
-                actions={actions}
-                onFormDirtyChange={setIsFormDirty}
-                httpClient={httpClient}
-                cloudUrl={cloudUrl}
-              />
+              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>

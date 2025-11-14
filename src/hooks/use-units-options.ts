@@ -1,5 +1,4 @@
 import { useHttpClient } from '@/contexts/http-client-context'
-import { getSettings } from '@/dal'
 import { unitsOptionsResponseSchema } from '@/schemas/api'
 import type { UnitsOptionsData } from '@/types'
 import { useQuery } from '@tanstack/react-query'
@@ -14,9 +13,7 @@ export const useUnitsOptions = () => {
   return useQuery({
     queryKey: ['units-options'],
     queryFn: async (): Promise<UnitsOptionsData> => {
-      const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-      const response = await httpClient.get(`${cloudUrl}/units-options`).json()
-
+      const response = await httpClient.get('units-options').json()
       const validatedData = unitsOptionsResponseSchema.parse(response)
       return validatedData
     },

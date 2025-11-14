@@ -1,4 +1,4 @@
-import ky, { type KyInstance } from 'ky'
+import { type KyInstance } from 'ky'
 import { createContext, useContext, type ReactNode } from 'react'
 
 export type HttpClient = KyInstance
@@ -9,7 +9,7 @@ interface HttpClientContextType {
 
 const HttpClientContext = createContext<HttpClientContextType | undefined>(undefined)
 
-export const HttpClientProvider = ({ children, httpClient = ky }: { children: ReactNode; httpClient?: HttpClient }) => {
+export const HttpClientProvider = ({ children, httpClient }: { children: ReactNode; httpClient: HttpClient }) => {
   return <HttpClientContext.Provider value={{ httpClient }}>{children}</HttpClientContext.Provider>
 }
 

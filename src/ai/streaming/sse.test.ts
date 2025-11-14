@@ -61,8 +61,11 @@ describe('sse', async () => {
         middleware: [extractReasoningMiddleware({ tagName: 'think', startWithReasoning: false })],
       })
       const result = streamText({ model: wrappedModel, prompt: 'test' })
+
+      // Process stream with timer management
       const consumePromise = result.consumeStream()
-      await getClock().runAllAsync()
+      // Use tickAsync with a reasonable bound instead of runAllAsync to prevent hanging
+      await getClock().tickAsync(1000)
       await consumePromise
       results.push(await result.steps)
     }

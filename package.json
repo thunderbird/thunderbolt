@@ -6,7 +6,8 @@
   "type": "module",
   "license": "MPL-2.0",
   "scripts": {
-    "test": "bun test ./src ./scripts --timeout 150",
+    "test": "bun test ./src ./scripts --timeout 150 --randomize",
+    "test:5x": "bun test ./src ./scripts --timeout 150 --randomize --rerun-each 5",
     "test:watch": "bun test ./src ./scripts --watch",
     "test:backend": "cd backend && bun test --timeout 150",
     "test:backend:watch": "cd backend && bun test --watch",

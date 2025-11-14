@@ -1,3 +1,4 @@
+import * as settingsModule from '@/config/settings'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
@@ -6,6 +7,11 @@ import { createMicrosoftAuthRoutes } from './microsoft'
 describe('Authentication Routes', () => {
   let app: Elysia
   let mockFetch: ReturnType<typeof mock>
+  let getSettingsSpy: ReturnType<typeof spyOn>
+  let consoleLogSpy: ReturnType<typeof spyOn>
+  let consoleInfoSpy: ReturnType<typeof spyOn>
+  let consoleErrorSpy: ReturnType<typeof spyOn>
+  let consoleWarnSpy: ReturnType<typeof spyOn>
 
   const createMockOAuthResponse = (status = 200, body: any = {}) =>
     new Response(JSON.stringify(body), {
@@ -15,10 +21,33 @@ describe('Authentication Routes', () => {
 
   beforeAll(async () => {
     // Mock console methods to reduce test noise
-    spyOn(console, 'log').mockImplementation(() => {})
-    spyOn(console, 'info').mockImplementation(() => {})
-    spyOn(console, 'error').mockImplementation(() => {})
-    spyOn(console, 'warn').mockImplementation(() => {})
+    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {})
+    consoleInfoSpy = spyOn(console, 'info').mockImplementation(() => {})
+    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+
+    // Mock settings
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+      fireworksApiKey: '',
+      exaApiKey: '',
+      thunderboltInferenceUrl: '',
+      thunderboltInferenceApiKey: '',
+      monitoringToken: '',
+      googleClientId: 'test-google-client-id',
+      googleClientSecret: 'test-google-secret',
+      microsoftClientId: 'test-microsoft-client-id',
+      microsoftClientSecret: 'test-microsoft-secret',
+      logLevel: 'INFO',
+      port: 8000,
+      posthogHost: 'https://us.i.posthog.com',
+      posthogApiKey: '',
+      corsOrigins: 'http://localhost:1420',
+      corsOriginRegex: '',
+      corsAllowCredentials: true,
+      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+      corsAllowHeaders: 'Content-Type,Authorization',
+      corsExposeHeaders: '',
+    })
 
     // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockOAuthResponse()))
@@ -30,7 +59,11 @@ describe('Authentication Routes', () => {
   })
 
   afterAll(async () => {
-    // Cleanup if needed
+    getSettingsSpy?.mockRestore()
+    consoleLogSpy?.mockRestore()
+    consoleInfoSpy?.mockRestore()
+    consoleErrorSpy?.mockRestore()
+    consoleWarnSpy?.mockRestore()
   })
 
   describe('Google OAuth', () => {

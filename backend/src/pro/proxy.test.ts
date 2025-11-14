@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createProxyRoutes } from './proxy'
+import * as settingsModule from '@/config/settings'
 
 describe('Proxy Routes', () => {
   let app: Elysia
+  let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpy: ReturnType<typeof spyOn>
   let mockFetch: ReturnType<typeof mock>
 
@@ -25,6 +27,29 @@ describe('Proxy Routes', () => {
     // Suppress console output during tests
     consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
 
+    // Mock settings
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+      fireworksApiKey: '',
+      exaApiKey: '',
+      thunderboltInferenceUrl: '',
+      thunderboltInferenceApiKey: '',
+      monitoringToken: '',
+      googleClientId: '',
+      googleClientSecret: '',
+      microsoftClientId: '',
+      microsoftClientSecret: '',
+      logLevel: 'INFO',
+      port: 8000,
+      posthogHost: 'https://us.i.posthog.com',
+      posthogApiKey: '',
+      corsOrigins: 'http://localhost:1420',
+      corsOriginRegex: '',
+      corsAllowCredentials: true,
+      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+      corsAllowHeaders: 'Content-Type,Authorization',
+      corsExposeHeaders: '',
+    })
+
     // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockResponse('test content')))
 
@@ -33,6 +58,7 @@ describe('Proxy Routes', () => {
   })
 
   afterAll(() => {
+    getSettingsSpy?.mockRestore()
     consoleSpy?.mockRestore()
   })
 

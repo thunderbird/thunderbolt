@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getAllMcpServers, getHttpMcpServers } from './mcp-servers'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -14,7 +14,8 @@ afterAll(async () => {
 })
 
 describe('MCP Servers DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

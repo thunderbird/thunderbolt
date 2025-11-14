@@ -112,7 +112,7 @@ jobs:
 
       - name: Run tests
         run: |
-          bun run test
+          bun run test:5x
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps

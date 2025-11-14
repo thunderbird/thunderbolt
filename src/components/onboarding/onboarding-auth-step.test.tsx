@@ -2,22 +2,12 @@ import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 
 // Mock props
 const mockOnConnectionChange = mock()
-
-// Mock useOAuthConnect hook
-const mockOAuthConnect = {
-  connect: mock(() => Promise.resolve()),
-  processCallback: mock(),
-}
-
-mock.module('@/hooks/use-oauth-connect', () => ({
-  useOAuthConnect: () => mockOAuthConnect,
-}))
 
 // Mock react-router
 const mockNavigate = mock()
@@ -31,35 +21,53 @@ mock.module('react-router', () => ({
 }))
 
 describe('OnboardingAuthStep', () => {
+  let consoleErrorSpy: ReturnType<typeof spyOn>
+  let mockConnect: ReturnType<typeof mock>
+  let mockProcessCallback: ReturnType<typeof mock>
+  let mockClearError: ReturnType<typeof mock>
+
   beforeAll(() => {
     // Suppress console.error for expected error scenarios in tests
-    spyOn(console, 'error').mockImplementation(() => {})
+    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterAll(() => {
+    consoleErrorSpy?.mockRestore()
   })
 
   beforeEach(async () => {
     await setupTestDatabase()
     mockOnConnectionChange.mockClear()
-    mockOAuthConnect.connect.mockClear()
-    mockOAuthConnect.processCallback.mockClear()
     mockNavigate.mockClear()
     mockLocation.state = null
+
+    // Create fresh mock functions for each test to prevent pollution
+    mockConnect = mock(() => Promise.resolve())
+    mockProcessCallback = mock(() => Promise.resolve(true))
+    mockClearError = mock()
   })
 
   afterEach(async () => {
     await resetTestDatabase()
     mockOnConnectionChange.mockClear()
-    mockOAuthConnect.connect.mockClear()
-    mockOAuthConnect.processCallback.mockClear()
     mockNavigate.mockClear()
   })
 
   const renderComponent = (props = {}) => {
+    const mockOAuthConnectHook = () => ({
+      connect: mockConnect,
+      processCallback: mockProcessCallback,
+      error: null,
+      clearError: mockClearError,
+    })
+
     return render(
       <OnboardingAuthStep
         providers={['google']}
         isProcessing={false}
         isConnected={false}
         onConnectionChange={mockOnConnectionChange}
+        useOAuthConnectHook={mockOAuthConnectHook}
         {...props}
       />,
       { wrapper: createQueryTestWrapper() },
@@ -86,7 +94,7 @@ describe('OnboardingAuthStep', () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+      expect(mockConnect).toHaveBeenCalledWith('google')
     })
 
     it('should handle connection error gracefully', async () => {
@@ -123,7 +131,7 @@ describe('OnboardingAuthStep', () => {
       const connectButton = screen.getByRole('button', { name: /Connected!/i })
       fireEvent.click(connectButton)
 
-      expect(mockOAuthConnect.connect).not.toHaveBeenCalled()
+      expect(mockConnect).not.toHaveBeenCalled()
     })
   })
 
@@ -164,7 +172,7 @@ describe('OnboardingAuthStep', () => {
 
   describe('State management', () => {
     it('should update provider connection state on successful OAuth', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -172,12 +180,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth callback processing', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -185,12 +193,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: 'test_code', state: 'test_state' })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: 'test_code', state: 'test_state' })
       })
     })
 
     it('should call onConnectionChange when OAuth callback succeeds', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -198,7 +206,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
 
       // The onConnectionChange is called through the useOAuthConnect hook's onSuccess callback
@@ -206,7 +214,7 @@ describe('OnboardingAuthStep', () => {
     })
 
     it('should handle OAuth callback processing failure', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('OAuth processing failed'))
+      mockProcessCallback.mockRejectedValue(new Error('OAuth processing failed'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -214,7 +222,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
@@ -223,7 +231,7 @@ describe('OnboardingAuthStep', () => {
 
       renderComponent()
 
-      expect(mockOAuthConnect.processCallback).not.toHaveBeenCalled()
+      expect(mockProcessCallback).not.toHaveBeenCalled()
     })
 
     it('should handle OAuth callback with invalid state structure', async () => {
@@ -232,7 +240,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: 'test_code', state: undefined })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: 'test_code', state: undefined })
       })
     })
   })
@@ -267,7 +275,7 @@ describe('OnboardingAuthStep', () => {
     })
 
     it('should handle navigation after OAuth callback', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -289,7 +297,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: '', state: 'test_state' })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: '', state: 'test_state' })
       })
     })
 
@@ -301,7 +309,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: 'test_code', state: '' })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: 'test_code', state: '' })
       })
     })
 
@@ -329,7 +337,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: 123, state: 456 })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: 123, state: 456 })
       })
     })
 
@@ -343,7 +351,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: longCode, state: longState })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: longCode, state: longState })
       })
     })
 
@@ -357,12 +365,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({ code: specialCode, state: specialState })
+        expect(mockProcessCallback).toHaveBeenCalledWith({ code: specialCode, state: specialState })
       })
     })
 
     it('should handle OAuth callback processing timeout', async () => {
-      mockOAuthConnect.processCallback.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 10000)))
+      mockProcessCallback.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 10000)))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -374,7 +382,7 @@ describe('OnboardingAuthStep', () => {
     })
 
     it('should handle OAuth callback with network error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Network error'))
+      mockProcessCallback.mockRejectedValue(new Error('Network error'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -382,7 +390,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
@@ -425,7 +433,7 @@ describe('OnboardingAuthStep', () => {
 
   describe('Business Logic Validation', () => {
     it('should only process OAuth callback once per render', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -433,7 +441,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledTimes(1)
+        expect(mockProcessCallback).toHaveBeenCalledTimes(1)
       })
     })
 
@@ -444,7 +452,7 @@ describe('OnboardingAuthStep', () => {
 
       renderComponent({ isConnected: true })
 
-      expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+      expect(mockProcessCallback).toHaveBeenCalled()
     })
 
     it('should process OAuth callback even when processing is in progress', () => {
@@ -454,7 +462,7 @@ describe('OnboardingAuthStep', () => {
 
       renderComponent({ isProcessing: true })
 
-      expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+      expect(mockProcessCallback).toHaveBeenCalled()
     })
 
     it('should handle OAuth callback processing race condition', async () => {
@@ -468,7 +476,7 @@ describe('OnboardingAuthStep', () => {
         resolveSecond = resolve
       })
 
-      mockOAuthConnect.processCallback.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise)
+      mockProcessCallback.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise)
 
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
@@ -479,7 +487,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledTimes(2)
+        expect(mockProcessCallback).toHaveBeenCalledTimes(2)
       })
 
       resolveFirst!()
@@ -487,7 +495,7 @@ describe('OnboardingAuthStep', () => {
     })
 
     it('should validate OAuth state parameter matches expected format', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -495,7 +503,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalledWith({
+        expect(mockProcessCallback).toHaveBeenCalledWith({
           code: 'test_code',
           state: 'test_state',
         })
@@ -613,7 +621,7 @@ describe('OnboardingAuthStep', () => {
 
   describe('Error Handling and Recovery', () => {
     it('should recover from OAuth processing failure and allow retry', async () => {
-      mockOAuthConnect.processCallback.mockResolvedValue(undefined)
+      mockProcessCallback.mockResolvedValue(undefined)
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -621,23 +629,23 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
 
       // Clear the error state and try again
       mockLocation.state = null
-      mockOAuthConnect.processCallback.mockClear()
+      mockProcessCallback.mockClear()
 
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)
 
       await waitFor(() => {
-        expect(mockOAuthConnect.connect).toHaveBeenCalledWith('google')
+        expect(mockConnect).toHaveBeenCalledWith('google')
       })
     })
 
     it('should handle OAuth processing failure without crashing', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Processing failed'))
+      mockProcessCallback.mockRejectedValue(new Error('Processing failed'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -645,12 +653,12 @@ describe('OnboardingAuthStep', () => {
       expect(() => renderComponent()).not.toThrow()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing timeout gracefully', async () => {
-      mockOAuthConnect.processCallback.mockImplementation(
+      mockProcessCallback.mockImplementation(
         () => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100)),
       )
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
@@ -660,12 +668,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with network interruption', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Network error'))
+      mockProcessCallback.mockRejectedValue(new Error('Network error'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -673,12 +681,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with server error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Server error'))
+      mockProcessCallback.mockRejectedValue(new Error('Server error'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -686,12 +694,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with authentication error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Authentication failed'))
+      mockProcessCallback.mockRejectedValue(new Error('Authentication failed'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -699,12 +707,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with authorization error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Authorization failed'))
+      mockProcessCallback.mockRejectedValue(new Error('Authorization failed'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -712,12 +720,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with rate limiting error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Rate limit exceeded'))
+      mockProcessCallback.mockRejectedValue(new Error('Rate limit exceeded'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -725,12 +733,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with quota exceeded error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Quota exceeded'))
+      mockProcessCallback.mockRejectedValue(new Error('Quota exceeded'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -738,12 +746,12 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
 
     it('should handle OAuth processing with service unavailable error', async () => {
-      mockOAuthConnect.processCallback.mockRejectedValue(new Error('Service unavailable'))
+      mockProcessCallback.mockRejectedValue(new Error('Service unavailable'))
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
@@ -751,7 +759,7 @@ describe('OnboardingAuthStep', () => {
       renderComponent()
 
       await waitFor(() => {
-        expect(mockOAuthConnect.processCallback).toHaveBeenCalled()
+        expect(mockProcessCallback).toHaveBeenCalled()
       })
     })
   })

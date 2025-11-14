@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getIncompleteTasks, getIncompleteTasksCount } from './tasks'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -14,15 +14,13 @@ afterAll(async () => {
 })
 
 describe('Tasks DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 
   describe('getIncompleteTasks', () => {
     it('should return empty array when no tasks exist', async () => {
-      const db = DatabaseSingleton.instance.db
-      await db.delete(tasksTable)
-
       const tasks = await getIncompleteTasks()
       expect(tasks).toEqual([])
     })

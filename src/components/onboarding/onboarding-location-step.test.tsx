@@ -1,10 +1,10 @@
-import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
@@ -13,17 +13,22 @@ const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?:
   return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
 }
 
+let consoleErrorSpy: ReturnType<typeof spyOn>
+
+beforeAll(async () => {
+  await setupTestDatabase()
+  // Suppress console.error for expected error scenarios in tests
+  consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+  consoleErrorSpy?.mockRestore()
+})
+
 describe('OnboardingLocationStep', () => {
-  beforeAll(() => {
-    // Suppress console.error for expected error scenarios in tests
-    spyOn(console, 'error').mockImplementation(() => {})
-  })
-
   beforeEach(async () => {
-    await setupTestDatabase()
-  })
-
-  afterEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

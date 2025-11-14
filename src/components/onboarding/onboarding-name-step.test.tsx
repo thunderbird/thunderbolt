@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect, mock } from 'bun:test'
+import { describe, it, beforeAll, afterAll, beforeEach, expect, mock } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 
 const mockActions = {
@@ -16,19 +16,17 @@ const mockActions = {
   skipStep: mock(),
 }
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('OnboardingNameStep', () => {
   beforeEach(async () => {
-    await setupTestDatabase()
-    mockActions.setNameValue.mockClear()
-    mockActions.setNameValid.mockClear()
-    mockActions.setSubmittingName.mockClear()
-    mockActions.submitName.mockClear()
-    mockActions.nextStep.mockClear()
-    mockActions.prevStep.mockClear()
-    mockActions.skipStep.mockClear()
-  })
-
-  afterEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
     mockActions.setNameValue.mockClear()
     mockActions.setNameValid.mockClear()

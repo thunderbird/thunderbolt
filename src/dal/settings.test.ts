@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { settingsTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { isSettingModified } from '../defaults/utils'
@@ -24,7 +24,8 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-afterEach(async () => {
+beforeEach(async () => {
+  // Reset database before each test to prevent pollution from randomized test order
   await resetTestDatabase()
 })
 

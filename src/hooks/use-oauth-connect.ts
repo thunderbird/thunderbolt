@@ -4,11 +4,30 @@ import { isTauri } from '@/lib/platform'
 import { redirectOAuthFlow, exchangeCodeForTokens, getUserInfo, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 
+/**
+ * Storage interface for OAuth state
+ * This allows injection of isolated storage in tests to prevent pollution
+ */
+type OAuthStorage = {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem: (key: string) => void
+}
+
+type OAuthDependencies = {
+  startOAuthFlowWebview?: typeof startOAuthFlowWebview
+  redirectOAuthFlow?: typeof redirectOAuthFlow
+  exchangeCodeForTokens?: typeof exchangeCodeForTokens
+  getUserInfo?: typeof getUserInfo
+  storage?: OAuthStorage
+}
+
 type UseOAuthConnectOptions = {
   onSuccess?: () => void
   onError?: (error: Error) => void
   setPreferredName?: boolean
   returnContext?: 'onboarding' | 'integrations'
+  dependencies?: OAuthDependencies
 }
 
 type UseOAuthConnectResult = {
@@ -56,17 +75,28 @@ const saveOAuthCredentials = async (
  * Handles OAuth connection flow for any provider.
  * For Tauri: Opens separate webview window and processes result immediately.
  * For web: Redirects to OAuth provider and processes callback on return.
+ *
+ * @param options.dependencies - Injectable dependencies for testing (optional)
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
-  const { onSuccess, onError, setPreferredName = false, returnContext = 'integrations' } = options
+  const { onSuccess, onError, setPreferredName = false, returnContext = 'integrations', dependencies } = options
   const [error, setError] = useState<string | null>(null)
+
+  // Use injected dependencies or fall back to real implementations
+  const {
+    startOAuthFlowWebview: startFlow = startOAuthFlowWebview,
+    redirectOAuthFlow: redirect = redirectOAuthFlow,
+    exchangeCodeForTokens: exchangeTokens = exchangeCodeForTokens,
+    getUserInfo: getUser = getUserInfo,
+    storage = sessionStorage, // Default to sessionStorage, but allow injection for tests
+  } = dependencies || {}
 
   const connect = async (provider: OAuthProvider) => {
     setError(null)
 
     try {
       if (isTauri()) {
-        const result = await startOAuthFlowWebview(provider)
+        const result = await startFlow(provider)
 
         if (!result) return
 
@@ -76,8 +106,8 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
-        sessionStorage.setItem('oauth_return_context', returnContext)
-        await redirectOAuthFlow(provider)
+        storage.setItem('oauth_return_context', returnContext)
+        await redirect(provider)
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Failed to complete authentication'
@@ -106,9 +136,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       return false
     }
 
-    const storedState = sessionStorage.getItem('oauth_state')
-    const provider = sessionStorage.getItem('oauth_provider') as OAuthProvider | null
-    const codeVerifier = sessionStorage.getItem('oauth_verifier')
+    const storedState = storage.getItem('oauth_state')
+    const provider = storage.getItem('oauth_provider') as OAuthProvider | null
+    const codeVerifier = storage.getItem('oauth_verifier')
 
     if (!provider || !codeVerifier || storedState !== returnedState) {
       const message = 'OAuth validation failed'
@@ -118,16 +148,16 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
 
     try {
-      const tokens = await exchangeCodeForTokens(provider, code, codeVerifier)
-      const userInfo = await getUserInfo(provider, tokens.access_token)
+      const tokens = await exchangeTokens(provider, code, codeVerifier)
+      const userInfo = await getUser(provider, tokens.access_token)
 
       await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
 
       // Cleanup session storage
-      sessionStorage.removeItem('oauth_state')
-      sessionStorage.removeItem('oauth_provider')
-      sessionStorage.removeItem('oauth_verifier')
-      sessionStorage.removeItem('oauth_return_context')
+      storage.removeItem('oauth_state')
+      storage.removeItem('oauth_provider')
+      storage.removeItem('oauth_verifier')
+      storage.removeItem('oauth_return_context')
 
       onSuccess?.()
       return true
@@ -143,3 +173,5 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
   return { connect, processCallback, error, clearError }
 }
+
+export type { OAuthCallbackData, OAuthDependencies, OAuthStorage, UseOAuthConnectResult }

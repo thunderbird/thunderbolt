@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
+import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { createTestProvider } from '@/test-utils/test-provider'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 
 const TestOnboardingPrivacyStep = () => {
@@ -24,12 +24,17 @@ const TestOnboardingPrivacyStepWithState = () => {
   )
 }
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 describe('OnboardingPrivacyStep', () => {
   beforeEach(async () => {
-    await setupTestDatabase()
-  })
-
-  afterEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

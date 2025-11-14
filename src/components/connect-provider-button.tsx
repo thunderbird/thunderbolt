@@ -19,6 +19,8 @@ type ConnectProviderButtonProps = {
   connectingLabel?: string
   connectedLabel?: string
   allowDisconnect?: boolean
+  // Optional dependency injection for testing
+  useOAuthConnectHook?: typeof useOAuthConnect
 }
 
 /**
@@ -39,11 +41,14 @@ export const ConnectProviderButton = ({
   connectingLabel = 'Connecting...',
   connectedLabel = 'Connected!',
   allowDisconnect = false,
+  useOAuthConnectHook,
 }: ConnectProviderButtonProps) => {
   const [isConnecting, setIsConnecting] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
-  const { connect } = useOAuthConnect({
+  // Use injected hook for testing, or real implementation in production
+  const oauthHook = useOAuthConnectHook ?? useOAuthConnect
+  const { connect } = oauthHook({
     onSuccess: () => {
       onSuccess?.()
     },

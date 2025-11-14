@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import type { ThunderboltUIMessage } from '@/types'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { getChatMessages, getLastMessage, saveMessagesWithContextUpdate } from './chat-messages'
@@ -16,7 +16,8 @@ afterAll(async () => {
 })
 
 describe('Chat Messages DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

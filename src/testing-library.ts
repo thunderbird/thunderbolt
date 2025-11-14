@@ -15,17 +15,19 @@ configure({
   asyncWrapper: async (cb) => await cb(),
 })
 
-// Suppress console errors/warnings during tests to reduce noise
-// These are typically expected errors from testing error handling paths
+// Suppress console output during tests to reduce noise
+// These are typically expected from testing or normal operations
 const originalConsoleError = console.error
 const originalConsoleWarn = console.warn
+const originalConsoleInfo = console.info
 
-// Suppress console.error and console.warn globally
+// Suppress console methods globally (but not console.log for debugging)
 console.error = () => {}
 console.warn = () => {}
+console.info = () => {}
 
 /**
- * Restore the original console.error and console.warn functions.
+ * Restore the original console functions.
  * Use this in tests where you need to verify console output or debug issues.
  *
  * @example
@@ -39,16 +41,18 @@ console.warn = () => {}
 export const restoreConsole = () => {
   console.error = originalConsoleError
   console.warn = originalConsoleWarn
+  console.info = originalConsoleInfo
 }
 
 /**
- * Suppress console.error and console.warn output.
+ * Suppress console output.
  * This is automatically called in beforeEach, but can be used manually
  * if you restored console during a test and want to suppress it again.
  */
 export const suppressConsole = () => {
   console.error = () => {}
   console.warn = () => {}
+  console.info = () => {}
 }
 
 // Global fake timers setup - we manage our own

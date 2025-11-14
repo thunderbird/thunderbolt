@@ -1,4 +1,3 @@
-import { isTestEnv } from '@/lib/env'
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 import { SQLocalDatabase } from './sqlocal-database'
 
@@ -39,27 +38,23 @@ export class DatabaseSingleton {
       return this.#database.db
     }
 
-    const isTest = isTestEnv()
-
     if (type === 'libsql-tauri') {
-      if (!isTest) console.log('Initializing LibSQL for Tauri Database')
       // Lazy load LibSQLTauriDatabase (only used in Tauri/mobile, not browser)
       const { LibSQLTauriDatabase } = await import('./libsql-tauri-database')
       this.#database = new LibSQLTauriDatabase()
     } else if (type === 'bun-sqlite') {
-      if (!isTest) console.log('Initializing Bun SQLite Database')
       // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
     } else {
-      if (!isTest) console.log('Initializing SQLocal Database')
       this.#database = new SQLocalDatabase()
     }
 
-    if (!isTest) console.log('Initializing database at path:', path)
-
     await this.#database.initialize(path)
     DatabaseSingleton.#initialized = true
+
+    const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'SQLocal'
+    console.info(`Initialized ${dbTypeName} database at ${path}`)
 
     return this.#database.db
   }

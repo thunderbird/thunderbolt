@@ -40,7 +40,7 @@ const createAppDirTauri = async (): Promise<string> => {
  */
 const createAppDirOpfs = async (): Promise<string> => {
   const virtualPath = 'app-data'
-  console.log('Web environment - using virtual app data path:', virtualPath)
+  console.info('Web environment - using virtual app data path:', virtualPath)
   return virtualPath
 }
 

@@ -1,7 +1,7 @@
+import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { type RefObject } from 'react'
-import { getClock } from '@/testing-library'
 import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
 
@@ -215,7 +215,21 @@ describe('useSidebarWebview', () => {
       }))
       const containerRef = { current: container } as RefObject<HTMLDivElement>
 
-      const { result } = renderHook(() => useSidebarWebview(config, containerRef))
+      // Spy on addEventListener to track when unload listener is registered
+      const originalAddEventListener = window.addEventListener
+      let unloadHandler: ((event: Event) => void) | null = null
+      window.addEventListener = ((
+        event: string,
+        handler: EventListenerOrEventListenerObject,
+        options?: boolean | AddEventListenerOptions,
+      ) => {
+        if (event === 'unload' && typeof handler === 'function') {
+          unloadHandler = handler as (event: Event) => void
+        }
+        return originalAddEventListener.call(window, event, handler, options)
+      }) as typeof window.addEventListener
+
+      const { result, unmount } = renderHook(() => useSidebarWebview(config, containerRef))
 
       // Advance timers for initialization
       await act(async () => {
@@ -223,13 +237,31 @@ describe('useSidebarWebview', () => {
       })
 
       expect(result.current.isInitialized).toBe(true)
+      expect(result.current.webview).not.toBeNull()
 
-      // Trigger unload event
-      const unloadEvent = new Event('unload')
-      window.dispatchEvent(unloadEvent)
+      // Wait for the unload handler to be registered
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      // Verify the unload handler was registered
+      expect(unloadHandler).not.toBeNull()
+
+      // TypeScript should know this is not null after the assertion, but use ! to be explicit
+      const handler = unloadHandler!
+
+      // Clear previous close calls from initialization
+      mockWebview.close.mockClear()
+
+      // Call the handler directly to test it
+      handler(new Event('unload'))
 
       // Verify webview.close was called
-      expect(mockWebview.close).toHaveBeenCalled()
+      expect(mockWebview.close).toHaveBeenCalledTimes(1)
+
+      // Restore and clean up
+      window.addEventListener = originalAddEventListener
+      unmount()
     })
 
     it('should remove unload listener on unmount', async () => {

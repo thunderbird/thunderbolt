@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { useChat } from '@ai-sdk/react'
@@ -242,7 +242,13 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
 }
 
 function SimulatorContent() {
-  const [selectedSse, setSelectedSse] = useLocalStorage('simulation-sse', '')
+  const { simulationSse } = useSettings({
+    simulation_sse: '',
+  })
+
+  const selectedSse = simulationSse.value
+  const setSelectedSse = (value: string) => simulationSse.setValue(value)
+
   const [sseContent, setSseContent] = useState(() => {
     const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
     return selectedLog?.content || ''

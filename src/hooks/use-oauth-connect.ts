@@ -1,18 +1,9 @@
-import { useState } from 'react'
 import { updateSetting } from '@/dal'
-import { isTauri } from '@/lib/platform'
-import { redirectOAuthFlow, exchangeCodeForTokens, getUserInfo, type OAuthProvider } from '@/lib/auth'
+import { exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
+import { createSqliteOAuthStorage, type OAuthStorage } from '@/lib/oauth-state'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
-
-/**
- * Storage interface for OAuth state
- * This allows injection of isolated storage in tests to prevent pollution
- */
-type OAuthStorage = {
-  getItem: (key: string) => string | null
-  setItem: (key: string, value: string) => void
-  removeItem: (key: string) => void
-}
+import { isTauri } from '@/lib/platform'
+import { useState } from 'react'
 
 type OAuthDependencies = {
   startOAuthFlowWebview?: typeof startOAuthFlowWebview
@@ -88,7 +79,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     redirectOAuthFlow: redirect = redirectOAuthFlow,
     exchangeCodeForTokens: exchangeTokens = exchangeCodeForTokens,
     getUserInfo: getUser = getUserInfo,
-    storage = sessionStorage, // Default to sessionStorage, but allow injection for tests
+    storage = createSqliteOAuthStorage(), // Default to sqlite storage, but allow injection for tests
   } = dependencies || {}
 
   const connect = async (provider: OAuthProvider) => {
@@ -106,7 +97,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
-        storage.setItem('oauth_return_context', returnContext)
+        await storage.setItem('oauth_return_context', returnContext)
         await redirect(provider)
       }
     } catch (e: unknown) {
@@ -136,9 +127,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       return false
     }
 
-    const storedState = storage.getItem('oauth_state')
-    const provider = storage.getItem('oauth_provider') as OAuthProvider | null
-    const codeVerifier = storage.getItem('oauth_verifier')
+    const storedState = await storage.getItem('oauth_state')
+    const provider = (await storage.getItem('oauth_provider')) as OAuthProvider | null
+    const codeVerifier = await storage.getItem('oauth_verifier')
 
     if (!provider || !codeVerifier || storedState !== returnedState) {
       const message = 'OAuth validation failed'
@@ -153,11 +144,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
       await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
 
-      // Cleanup session storage
-      storage.removeItem('oauth_state')
-      storage.removeItem('oauth_provider')
-      storage.removeItem('oauth_verifier')
-      storage.removeItem('oauth_return_context')
+      // Cleanup storage
+      await storage.removeItem('oauth_state')
+      await storage.removeItem('oauth_provider')
+      await storage.removeItem('oauth_verifier')
+      await storage.removeItem('oauth_return_context')
 
       onSuccess?.()
       return true

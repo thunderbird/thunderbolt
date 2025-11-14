@@ -1,8 +1,8 @@
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
+import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { renderHook, act } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOAuthConnect, type OAuthDependencies, type OAuthStorage } from './use-oauth-connect'
-import { mockOAuthCallbackData, mockOAuthErrorCallbackData, cleanupSessionStorage } from '@/test-utils/oauth'
 
 /**
  * Creates an isolated storage instance for testing
@@ -59,14 +59,14 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-beforeEach(() => {
+beforeEach(async () => {
   // Clean up before each test to prevent pollution
-  cleanupSessionStorage()
+  await cleanupSessionStorage()
 })
 
 afterEach(async () => {
   await resetTestDatabase()
-  cleanupSessionStorage()
+  await cleanupSessionStorage()
 })
 
 describe('useOAuthConnect', () => {
@@ -77,7 +77,7 @@ describe('useOAuthConnect', () => {
   beforeEach(async () => {
     // Reset database and cleanup storage before each test
     await resetTestDatabase()
-    cleanupSessionStorage()
+    await cleanupSessionStorage()
     // Create isolated storage and fresh mock dependencies
     isolatedStorage = createIsolatedStorage()
     mockDeps = createMockDependencies(isolatedStorage)

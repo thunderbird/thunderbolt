@@ -1,6 +1,6 @@
+import type { HandleErrorCode } from '@/types/handle-errors'
 import { describe, expect, it } from 'bun:test'
 import { createHandleError } from './error-utils'
-import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('createHandleError', () => {
   it('creates HandleError with required fields only', () => {

@@ -1,3 +1,4 @@
+import { useHttpClient, type HttpClient } from '@/contexts'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
@@ -12,7 +13,6 @@ import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
-import type { KyInstance } from 'ky'
 import type { PostHog } from 'posthog-js'
 import { useEffect, useState } from 'react'
 
@@ -42,12 +42,12 @@ const initializeTray = async (): Promise<{ tray: TrayIcon | undefined; window: W
   return await TrayManager.initIfSupported()
 }
 
-const initializePostHog = async (httpClient?: KyInstance): Promise<PostHog | null> => {
+const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | null> => {
   const result = await initPosthog(httpClient)
   return result.success ? result.data : null
 }
 
-const executeInitializationSteps = async (httpClient?: KyInstance): Promise<HandleResult<InitData>> => {
+const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
   // Step 1: App directory creation
   let appDirPath: string
   try {
@@ -136,9 +136,9 @@ const executeInitializationSteps = async (httpClient?: KyInstance): Promise<Hand
 
 /**
  * Hook for managing app initialization
- * @param httpClient - Optional HTTP client for dependency injection (defaults to ky)
  */
-export const useAppInitialization = (httpClient?: KyInstance) => {
+export const useAppInitialization = () => {
+  const httpClient = useHttpClient()
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<HandleError>()
   const [isInitializing, setIsInitializing] = useState(true)

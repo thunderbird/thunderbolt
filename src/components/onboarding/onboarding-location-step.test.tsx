@@ -1,35 +1,19 @@
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
-import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { mockLocationData } from '@/test-utils/http-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import type { KyInstance } from 'ky'
 import { getClock } from '@/testing-library'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
-const TestOnboardingLocationStep = ({
-  onFormDirtyChange,
-  httpClient,
-}: {
-  onFormDirtyChange?: (isDirty: boolean) => void
-  httpClient?: KyInstance
-}) => {
-  const { state, actions } = useOnboardingState(httpClient)
-  return (
-    <OnboardingLocationStep
-      state={state}
-      actions={actions}
-      onFormDirtyChange={onFormDirtyChange}
-      httpClient={httpClient}
-    />
-  )
+const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
+  const { state, actions } = useOnboardingState()
+  return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
 }
 
 describe('OnboardingLocationStep', () => {
-  const mockHttpClient = () => createMockHttpClient(mockLocationData)
-
   beforeAll(() => {
     // Suppress console.error for expected error scenarios in tests
     spyOn(console, 'error').mockImplementation(() => {})
@@ -44,12 +28,9 @@ describe('OnboardingLocationStep', () => {
   })
 
   const renderComponent = async (onFormDirtyChange?: (isDirty: boolean) => void) => {
-    const result = render(
-      <TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} httpClient={mockHttpClient()} />,
-      {
-        wrapper: createQueryTestWrapper(),
-      },
-    )
+    const result = render(<TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} />, {
+      wrapper: createTestProvider({ mockResponse: mockLocationData }),
+    })
 
     // Wait for the component to render
     await waitFor(() => {

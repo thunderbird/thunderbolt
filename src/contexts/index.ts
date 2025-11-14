@@ -1,1 +1,1 @@
-export { HttpClientProvider, useHttpClient } from './http-client-context'
+export { HttpClientProvider, useHttpClient, type HttpClient } from './http-client-context'

@@ -1,7 +1,8 @@
+import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { createHandleError } from '@/lib/error-utils'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
-import ky, { type KyInstance } from 'ky'
+import ky from 'ky'
 import posthog, { type PostHog } from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
 import type { ReactNode } from 'react'
@@ -43,7 +44,7 @@ export const sanitizeUrl = (url: string): string => {
  * Initialize Posthog analytics and return the client
  * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a ky instance with cloudUrl from settings as prefixUrl
  */
-export const initPosthog = async (httpClient?: KyInstance): Promise<HandleResult<PostHog | null>> => {
+export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings({
       cloud_url: 'http://localhost:8000/v1',

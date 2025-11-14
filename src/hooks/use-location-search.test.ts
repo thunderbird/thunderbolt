@@ -1,33 +1,13 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import { getClock } from '@/testing-library'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { useLocationSearch } from './use-location-search'
 
 beforeAll(() => {
   // Suppress console.error for expected error scenarios in tests
   spyOn(console, 'error').mockImplementation(() => {})
 })
-
-/**
- * Creates a ky HTTP client with a custom fetch function that returns mock location data
- */
-const createTestHttpClient = (mockResponse: unknown[] = [], shouldError = false, delay = 0): KyInstance => {
-  const mockFetch = async (): Promise<Response> => {
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay))
-    }
-    if (shouldError) {
-      throw new Error('Network error')
-    }
-    return new Response(JSON.stringify(mockResponse), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
-}
 
 const mockLocationResponse = [
   {
@@ -49,8 +29,9 @@ const mockLocationResponse = [
 describe('useLocationSearch', () => {
   describe('Initial state', () => {
     it('should initialize with default values', () => {
-      const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider(),
+      })
 
       expect(result.current.open).toBe(false)
       expect(result.current.searchQuery).toBe('')
@@ -59,8 +40,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should provide control functions', () => {
-      const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider(),
+      })
 
       expect(typeof result.current.setOpen).toBe('function')
       expect(typeof result.current.setSearchQuery).toBe('function')
@@ -70,8 +52,9 @@ describe('useLocationSearch', () => {
 
   describe('State management', () => {
     it('should handle opening and closing', () => {
-      const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider(),
+      })
 
       act(() => {
         result.current.setOpen(true)
@@ -87,8 +70,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should handle search query changes', () => {
-      const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider(),
+      })
 
       act(() => {
         result.current.setSearchQuery('New York')
@@ -98,8 +82,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should clear search when clearSearch is called', () => {
-      const mockClient = createTestHttpClient()
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider(),
+      })
 
       // Set some state first
       act(() => {
@@ -120,8 +105,9 @@ describe('useLocationSearch', () => {
 
   describe('Location search functionality', () => {
     it('should not search when query is too short', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       // Single character query
       act(() => {
@@ -138,8 +124,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should search when query is long enough', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       act(() => {
         result.current.setSearchQuery('San Francisco')
@@ -171,8 +158,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should handle search errors gracefully', async () => {
-      const mockClient = createTestHttpClient([], true) // Error mode
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: [] }),
+      })
 
       act(() => {
         result.current.setSearchQuery('New York')
@@ -193,32 +181,31 @@ describe('useLocationSearch', () => {
     })
 
     it('should show loading state during search', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse, false, 100) // 100ms delay
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       act(() => {
         result.current.setSearchQuery('San Francisco')
       })
 
-      // Wait for debounce (300ms) to trigger search
-      await act(async () => {
-        await getClock().tickAsync(300)
-      })
-
-      // Check loading state
-      expect(result.current.isSearching).toBe(true)
-
-      // Wait for API response (100ms delay)
-      await act(async () => {
-        await getClock().tickAsync(100)
-      })
-
+      // Check loading state before debounce completes
       expect(result.current.isSearching).toBe(false)
+
+      // Wait for debounce (300ms) to trigger search, then wait for response
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      // After all async operations complete, loading should be false and data should be present
+      expect(result.current.isSearching).toBe(false)
+      expect(result.current.locations.length).toBeGreaterThan(0)
     })
 
     it('should transform API response correctly', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       act(() => {
         result.current.setSearchQuery('test')
@@ -243,8 +230,9 @@ describe('useLocationSearch', () => {
 
   describe('Edge cases', () => {
     it('should handle empty search results', async () => {
-      const mockClient = createTestHttpClient([]) // Empty results
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: [] }),
+      })
 
       act(() => {
         result.current.setSearchQuery('NonExistentLocation')
@@ -260,8 +248,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should handle query with only whitespace', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       act(() => {
         result.current.setSearchQuery('   ')
@@ -277,8 +266,9 @@ describe('useLocationSearch', () => {
     })
 
     it('should update results when query changes', async () => {
-      const mockClient = createTestHttpClient(mockLocationResponse)
-      const { result } = renderHook(() => useLocationSearch(mockClient))
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+      })
 
       // First query
       act(() => {

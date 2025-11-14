@@ -6,7 +6,6 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { cn } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
-import type { KyInstance } from 'ky'
 import { ChevronsUpDown, MapPin } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -46,11 +45,10 @@ type OnboardingLocationStepProps = {
     skipStep: () => Promise<void>
   }
   onFormDirtyChange?: (isDirty: boolean) => void
-  httpClient?: KyInstance
 }
 
-export const OnboardingLocationStep = ({ actions, onFormDirtyChange, httpClient }: OnboardingLocationStepProps) => {
-  const locationSearch = useLocationSearch(httpClient)
+export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
+  const locationSearch = useLocationSearch()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)

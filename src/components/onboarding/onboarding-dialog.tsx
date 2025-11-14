@@ -87,7 +87,7 @@ export const OnboardingDialog = () => {
         className={cn(
           'p-0 overflow-hidden',
           isMobile
-            ? 'rounded-none h-full w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none'
+            ? ' border-0 rounded-none h-full w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none'
             : 'rounded-lg max-w-[600px] h-[650px] w-[600px] m-4',
         )}
         style={{

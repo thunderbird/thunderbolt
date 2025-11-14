@@ -3,8 +3,8 @@
  * This worker handles all SQLite operations in a separate thread
  */
 
-import SQLiteESMFactory from '@journeyapps/wa-sqlite/dist/wa-sqlite.mjs'
 import * as SQLite from '@journeyapps/wa-sqlite'
+import SQLiteESMFactory from '@journeyapps/wa-sqlite/dist/wa-sqlite.mjs'
 // @ts-expect-error - OPFSCoopSyncVFS exists but TypeScript definitions are incomplete
 import { OPFSCoopSyncVFS } from '@journeyapps/wa-sqlite/src/examples/OPFSCoopSyncVFS.js'
 
@@ -113,20 +113,14 @@ const execSqlInternal = async (
       // Execute and collect results
       let stepResult
       while ((stepResult = await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
+        // row() makes proper copies of all data
+        // Drizzle's sqlite-proxy expects arrays for all modes, not objects
+        const rowValues = sqlite3.row(stmt)
+        results.push(rowValues)
+
+        // For 'get' mode, only return first row
         if (returnMode === 'get') {
-          // Return as object for 'get' mode - use row() to get proper copies
-          const columnNames = sqlite3.column_names(stmt)
-          const rowValues = sqlite3.row(stmt)
-          const row: any = {}
-          for (let i = 0; i < columnNames.length; i++) {
-            row[columnNames[i]] = rowValues[i]
-          }
-          results.push(row)
-          break // Only get first row
-        } else {
-          // Return as array of values - row() makes proper copies of all data
-          const rowValues = sqlite3.row(stmt)
-          results.push(rowValues)
+          break
         }
       }
 

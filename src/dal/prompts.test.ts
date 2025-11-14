@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
@@ -18,15 +18,13 @@ afterAll(async () => {
 })
 
 describe('Prompts DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 
   describe('getAllPrompts', () => {
     it('should return empty array when no prompts exist', async () => {
-      const db = DatabaseSingleton.instance.db
-      await db.delete(promptsTable)
-
       const prompts = await getAllPrompts()
       expect(prompts).toEqual([])
     })

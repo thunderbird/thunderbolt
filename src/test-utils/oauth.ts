@@ -1,5 +1,6 @@
 import type { OAuthTokens } from '@/lib/auth'
 import type { GoogleUserInfo } from '@/integrations/google/types'
+import { clearOAuthState } from '@/lib/oauth-state'
 
 /**
  * Mock OAuth tokens for testing
@@ -51,40 +52,9 @@ export const mockOAuthErrorCallbackData = () => ({
 })
 
 /**
- * Mock session storage for OAuth flow
+ * Clean up OAuth state from sqlite settings
+ * This replaces the old cleanupSessionStorage function
  */
-export const mockSessionStorage = (provider: 'google' | 'microsoft' = 'google') => {
-  const state = 'mock_state_67890'
-  const verifier = 'mock_verifier_12345'
-
-  return {
-    oauth_state: state,
-    oauth_provider: provider,
-    oauth_verifier: verifier,
-    oauth_return_context: 'onboarding',
-  }
-}
-
-/**
- * Setup session storage with OAuth data
- */
-export const setupSessionStorage = (provider: 'google' | 'microsoft' = 'google') => {
-  const data = mockSessionStorage(provider)
-
-  Object.entries(data).forEach(([key, value]) => {
-    sessionStorage.setItem(key, value)
-  })
-
-  return data
-}
-
-/**
- * Clean up session storage
- */
-export const cleanupSessionStorage = () => {
-  const keys = ['oauth_state', 'oauth_provider', 'oauth_verifier', 'oauth_return_context']
-
-  keys.forEach((key) => {
-    sessionStorage.removeItem(key)
-  })
+export const cleanupSessionStorage = async () => {
+  await clearOAuthState()
 }

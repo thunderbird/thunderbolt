@@ -169,20 +169,19 @@ export const createMockToolSet = (): ToolSet => {
   )
 }
 
-export const sseToUIMessage = async (
+/**
+ * Creates a stream for converting SSE data to UIMessage format.
+ * Returns the result object that can be consumed with proper timer advancement.
+ */
+const createSseToUIMessageStream = (
   sseData: string,
   options: {
     initialDelayInMs?: number
     chunkDelayInMs?: number
     startWithReasoning?: boolean
   } = {},
-): Promise<UIMessage> => {
+) => {
   const chunks = parseSseLog(sseData)
-
-  // ------------------------------------------------------------------
-  // Parse the SSE stream and convert to UIMessage format
-  // Use the streamText result directly to get the message content
-  // ------------------------------------------------------------------
 
   const simulatedFetch = createSimulatedFetch(chunks, {
     initialDelayInMs: options.initialDelayInMs ?? 0,
@@ -216,25 +215,43 @@ export const sseToUIMessage = async (
     },
   })
 
-  // ------------------------------------------------------------------
-  // Convert the stream to a UIMessage using SDK helpers
-  // ------------------------------------------------------------------
   const uiStream = result.toUIMessageStream({
     sendReasoning: true,
     messageMetadata: () => ({ modelId: 'simulator' }),
   })
 
-  const messageIterator = readUIMessageStream({ stream: uiStream })
-  let finalMessage: UIMessage | undefined
-  for await (const msg of messageIterator) {
-    finalMessage = msg
+  return readUIMessageStream({ stream: uiStream })
+}
+
+export const sseToUIMessage = async (
+  sseData: string,
+  options: {
+    initialDelayInMs?: number
+    chunkDelayInMs?: number
+    startWithReasoning?: boolean
+    advanceTimers?: () => Promise<void>
+  } = {},
+): Promise<UIMessage> => {
+  const messageIterator = createSseToUIMessageStream(sseData, options)
+
+  // Start consuming the stream
+  const consumePromise = (async () => {
+    let finalMessage: UIMessage | undefined
+    for await (const msg of messageIterator) {
+      finalMessage = msg
+    }
+    if (!finalMessage) {
+      throw new Error('No UIMessage produced from SSE log')
+    }
+    return finalMessage
+  })()
+
+  // If timer advancement is provided, run it alongside stream consumption
+  if (options.advanceTimers) {
+    await options.advanceTimers()
   }
 
-  if (!finalMessage) {
-    throw new Error('No UIMessage produced from SSE log')
-  }
-
-  return finalMessage
+  return consumePromise
 }
 
 /**

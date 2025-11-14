@@ -4,6 +4,7 @@ import * as google from '@/integrations/google/auth'
 import type { GoogleUserInfo } from '@/integrations/google/types'
 import * as microsoft from '@/integrations/microsoft/auth'
 import { isTauri } from '@/lib/platform'
+import { setOAuthState, getOAuthState, clearOAuthState } from '@/lib/oauth-state'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,9 +92,11 @@ export const startOAuthFlow = async (
   const authUrl = await buildAuthUrl(provider, state, codeChallenge)
 
   // Persist values for callback validation
-  sessionStorage.setItem('oauth_state', state)
-  sessionStorage.setItem('oauth_provider', provider)
-  sessionStorage.setItem('oauth_verifier', codeVerifier)
+  await setOAuthState({
+    state,
+    provider,
+    verifier: codeVerifier,
+  })
 
   let popup: Window | null = null
 
@@ -131,15 +134,13 @@ export const startOAuthFlow = async (
   const { code, state: returnedState } = await callback
   if (returnedState !== state) throw new Error('OAuth state mismatch')
 
-  const storedVerifier = sessionStorage.getItem('oauth_verifier')
-  if (!storedVerifier) throw new Error('OAuth code verifier not found')
+  const oauthState = await getOAuthState()
+  if (!oauthState.verifier) throw new Error('OAuth code verifier not found')
 
-  const tokens = await exchangeCodeForTokens(provider, code, storedVerifier)
+  const tokens = await exchangeCodeForTokens(provider, code, oauthState.verifier)
   const userInfo = await getUserInfo(provider, tokens.access_token)
 
-  sessionStorage.removeItem('oauth_state')
-  sessionStorage.removeItem('oauth_provider')
-  sessionStorage.removeItem('oauth_verifier')
+  await clearOAuthState()
 
   return { tokens, userInfo }
 }
@@ -153,9 +154,11 @@ export const redirectOAuthFlow = async (provider: OAuthProvider): Promise<never>
 
   const authUrl = await buildAuthUrl(provider, state, codeChallenge)
 
-  sessionStorage.setItem('oauth_state', state)
-  sessionStorage.setItem('oauth_provider', provider)
-  sessionStorage.setItem('oauth_verifier', codeVerifier)
+  await setOAuthState({
+    state,
+    provider,
+    verifier: codeVerifier,
+  })
 
   window.location.assign(authUrl)
   throw new Error('Redirecting for OAuth')

@@ -2,7 +2,9 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingDialog } from './onboarding-dialog'
 
 // Mock React Router
@@ -14,20 +16,20 @@ mock.module('react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
+let consoleSpies: ConsoleSpies
+
 beforeAll(async () => {
   await setupTestDatabase()
-  // Suppress console.error for expected error scenarios in tests
-  spyOn(console, 'error').mockImplementation(() => {})
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
+  consoleSpies.restore()
 })
 
-afterEach(async () => {
-  await resetTestDatabase()
-
-  // Reset mocks
+beforeEach(() => {
+  // Reset and set default mock state before each test to prevent pollution
   mockNavigate.mockClear()
   mockLocation.mockClear()
 
@@ -39,6 +41,14 @@ afterEach(async () => {
     state: null,
     key: 'mock-key',
   })
+})
+
+afterEach(async () => {
+  await resetTestDatabase()
+
+  // Reset mocks
+  mockNavigate.mockClear()
+  mockLocation.mockClear()
 })
 
 describe('OnboardingDialog', () => {

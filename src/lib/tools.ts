@@ -3,7 +3,7 @@ import { getSettings } from '@/dal'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
-import { configs as proConfigs } from '@/integrations/thunderbolt-pro/tools'
+import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import type { ToolConfig } from '@/types'
 import { tool, type Tool } from 'ai'
@@ -28,7 +28,7 @@ export const getAvailableTools = async (httpClient: HttpClient): Promise<ToolCon
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 
   if (shouldIncludeProTools) {
-    baseTools.push(...proConfigs)
+    baseTools.push(...createProConfigs(httpClient))
   }
 
   if (integrationsGoogleIsEnabled) {

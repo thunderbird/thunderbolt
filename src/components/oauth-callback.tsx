@@ -1,3 +1,4 @@
+import { getOAuthState } from '@/lib/oauth-state'
 import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -41,10 +42,10 @@ export default function OAuthCallback() {
     } else {
       /**
        * defer OAuth redirect to fix the race condition issue
-       * @todo try to switch to a sessionStorage envelope or a popup + postMessage flow, so this delay can be removed
        */
-      const t = setTimeout(() => {
-        const returnContext = sessionStorage.getItem('oauth_return_context')
+      const t = setTimeout(async () => {
+        const oauthState = await getOAuthState()
+        const returnContext = oauthState.returnContext
 
         if (returnContext?.startsWith('/')) {
           navigate(returnContext, {

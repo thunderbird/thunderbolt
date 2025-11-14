@@ -1,11 +1,13 @@
-import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
 const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
@@ -13,17 +15,21 @@ const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?:
   return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
 }
 
+let consoleSpies: ConsoleSpies
+
+beforeAll(async () => {
+  await setupTestDatabase()
+  consoleSpies = setupConsoleSpy()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+  consoleSpies.restore()
+})
+
 describe('OnboardingLocationStep', () => {
-  beforeAll(() => {
-    // Suppress console.error for expected error scenarios in tests
-    spyOn(console, 'error').mockImplementation(() => {})
-  })
-
   beforeEach(async () => {
-    await setupTestDatabase()
-  })
-
-  afterEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

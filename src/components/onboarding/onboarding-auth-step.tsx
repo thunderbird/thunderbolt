@@ -3,6 +3,7 @@ import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
 import { updateSetting } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
+import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect } from 'react'
@@ -15,6 +16,8 @@ type OnboardingAuthStepProps = {
   isProcessing?: boolean
   isConnected?: boolean
   onConnectionChange: (connected: boolean) => void
+  // Optional dependency injection for testing
+  useOAuthConnectHook?: () => UseOAuthConnectResult
 }
 
 export const OnboardingAuthStep = ({
@@ -22,6 +25,7 @@ export const OnboardingAuthStep = ({
   isProcessing = false,
   isConnected = false,
   onConnectionChange,
+  useOAuthConnectHook,
 }: OnboardingAuthStepProps) => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -29,7 +33,9 @@ export const OnboardingAuthStep = ({
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
 
-  const { processCallback } = useOAuthConnect({
+  // Use injected hook for testing, or real implementation in production
+  const oauthHook = useOAuthConnectHook ?? useOAuthConnect
+  const { processCallback } = oauthHook({
     onSuccess: () => {
       onConnectionChange(true)
     },
@@ -106,6 +112,7 @@ export const OnboardingAuthStep = ({
             returnContext="onboarding"
             allowDisconnect={true}
             className="w-full"
+            useOAuthConnectHook={useOAuthConnectHook}
           />
         </div>
       </div>

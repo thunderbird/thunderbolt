@@ -1,4 +1,6 @@
 import * as posthogClient from '@/posthog/client'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -11,7 +13,7 @@ describe('Inference Routes', () => {
   let getInferenceClientSpy: ReturnType<typeof spyOn>
   let isPostHogConfiguredSpy: ReturnType<typeof spyOn>
   let createSSEStreamSpy: ReturnType<typeof spyOn>
-  let consoleSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
 
   // Mock OpenAI client
   const mockCreateCompletion = mock(() => Promise.resolve({}))
@@ -42,8 +44,7 @@ describe('Inference Routes', () => {
     })
 
   beforeAll(async () => {
-    // Suppress console output during tests
-    consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
 
     // Mock dependencies
     getInferenceClientSpy = spyOn(inferenceClient, 'getInferenceClient').mockReturnValue({
@@ -60,7 +61,7 @@ describe('Inference Routes', () => {
     getInferenceClientSpy?.mockRestore()
     isPostHogConfiguredSpy?.mockRestore()
     createSSEStreamSpy?.mockRestore()
-    consoleSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   describe('POST /chat/completions', () => {
@@ -75,7 +76,6 @@ describe('Inference Routes', () => {
       // Reset all mocks before each test
       mockCreateCompletion.mockClear()
       createSSEStreamSpy.mockClear()
-      consoleSpy.mockClear()
       getInferenceClientSpy.mockClear()
       getInferenceClientSpy.mockReturnValue({
         client: mockOpenAIClient as unknown as OpenAI,

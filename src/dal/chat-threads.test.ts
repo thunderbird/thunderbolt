@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable, modelsTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
@@ -50,7 +50,8 @@ const createTestModel = async () => {
 }
 
 describe('Chat Threads DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

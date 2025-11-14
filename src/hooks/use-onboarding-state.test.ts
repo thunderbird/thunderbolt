@@ -1,4 +1,4 @@
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -25,8 +25,9 @@ afterAll(async () => {
 })
 
 describe('useOnboardingState', () => {
-  beforeEach(() => {
-    // Reset any state if needed
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
+    await resetTestDatabase()
   })
 
   describe('Initial state', () => {

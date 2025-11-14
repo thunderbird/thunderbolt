@@ -48,6 +48,7 @@ export default [
     rules: {
       // TypeScript rules
       // Turn off base rules that conflict with TypeScript equivalents
+      'no-undef': 'off', // TypeScript handles this
       'no-unused-vars': 'off',
       'no-redeclare': 'off', // Turn off base rule for TypeScript overloads
       '@typescript-eslint/no-unused-vars': [

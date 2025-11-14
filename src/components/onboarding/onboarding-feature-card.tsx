@@ -1,6 +1,7 @@
 import { type LucideIcon } from 'lucide-react'
 
 type OnboardingFeatureCardProps = {
+  className?: string
   icon: LucideIcon
   title: string
   description: string
@@ -8,13 +9,14 @@ type OnboardingFeatureCardProps = {
 }
 
 export const OnboardingFeatureCard = ({
+  className,
   icon: Icon,
   title,
   description,
   iconClassName,
 }: OnboardingFeatureCardProps) => {
   return (
-    <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+    <div className={`${className} flex items-center gap-4 p-4 rounded-lg bg-muted/50`}>
       <Icon className={`w-6 h-6 flex-shrink-0 ${iconClassName || ''}`} />
       <div>
         <h3 className="font-medium text-sm">{title}</h3>

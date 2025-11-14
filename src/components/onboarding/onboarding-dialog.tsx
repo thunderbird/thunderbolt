@@ -87,7 +87,7 @@ export const OnboardingDialog = () => {
         className={cn(
           'p-0 overflow-hidden',
           isMobile
-            ? ' border-0 rounded-none h-full w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none'
+            ? ' border-0 rounded-none h-full m-0 !max-w-none !w-full !sm:max-w-none'
             : 'rounded-lg max-w-[600px] h-[650px] w-[600px] m-4',
         )}
         style={{
@@ -101,7 +101,7 @@ export const OnboardingDialog = () => {
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className="flex flex-col items-center"
+          className="flex flex-col items-center h-dvh"
           style={{
             paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
             paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
@@ -110,7 +110,7 @@ export const OnboardingDialog = () => {
           <div className="flex items-center justify-center px-4">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>
-          <div className={`flex flex-1 px-6 pt-6`}>
+          <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep

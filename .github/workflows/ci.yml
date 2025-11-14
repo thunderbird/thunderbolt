@@ -112,7 +112,7 @@ jobs:
 
       - name: Run tests
         run: |
-          bun test ./src ./scripts --timeout 150
+          bun run test
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps

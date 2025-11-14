@@ -107,8 +107,9 @@ export const OnboardingDialog = () => {
             paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
           }}
         >
-          <div className="flex items-center justify-center px-4">
+          <div className="flex items-center justify-center px-4 relative w-full pb-2">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
+            <div className="absolute -bottom-5.5 w-full h-6 bg-gradient-to-b from-background to-transparent" />
           </div>
           <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
@@ -127,7 +128,8 @@ export const OnboardingDialog = () => {
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5">
+          <div className="flex w-full px-5 pt-2 relative">
+            <div className="absolute -top-5.5 w-full h-6 bg-gradient-to-b from-transparent to-background" />
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}

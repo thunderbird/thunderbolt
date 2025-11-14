@@ -1,4 +1,5 @@
 import type { HttpClient } from '@/contexts'
+import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
@@ -13,6 +14,7 @@ import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
+import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import { useEffect, useState } from 'react'
 
@@ -47,7 +49,7 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
   return result.success ? result.data : null
 }
 
-const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+const executeInitializationSteps = async (): Promise<HandleResult<InitData>> => {
   // Step 1: App directory creation
   let appDirPath: string
   try {
@@ -102,7 +104,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 5: Tray initialization (non-critical)
+  // Step 5: HTTP client initialization
+  let httpClient: HttpClient
+  try {
+    const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+    httpClient = ky.create({ prefixUrl: cloudUrl })
+  } catch (error) {
+    console.error('Failed to initialize HTTP client:', error)
+    const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
+    trackError(httpClientError, { initialization_step: 'http_client' })
+    return {
+      success: false,
+      error: httpClientError,
+    }
+  }
+
+  // Step 6: Tray initialization (non-critical)
   let tray: { tray: TrayIcon | undefined; window: Window | undefined } = { tray: undefined, window: undefined }
   try {
     tray = await initializeTray()
@@ -112,7 +129,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(trayError, { initialization_step: 'tray' })
   }
 
-  // Step 6: PostHog initialization (non-critical)
+  // Step 7: PostHog initialization (non-critical)
   let posthogClient: PostHog | null = null
   try {
     posthogClient = await initializePostHog(httpClient)
@@ -129,6 +146,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       sideviewType,
       sideviewId,
       posthogClient,
+      httpClient,
       ...tray,
     },
   }

@@ -1,4 +1,4 @@
-import { useHttpClient, type HttpClient } from '@/contexts'
+import type { HttpClient } from '@/contexts'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
@@ -138,7 +138,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
  * Hook for managing app initialization
  */
 export const useAppInitialization = () => {
-  const httpClient = useHttpClient()
   const [initData, setInitData] = useState<InitData>()
   const [initError, setInitError] = useState<HandleError>()
   const [isInitializing, setIsInitializing] = useState(true)
@@ -146,7 +145,7 @@ export const useAppInitialization = () => {
   const initialize = async () => {
     setIsInitializing(true)
     try {
-      const result = await executeInitializationSteps(httpClient)
+      const result = await executeInitializationSteps()
       if (result.success) {
         setInitData(result.data)
         setInitError(undefined)

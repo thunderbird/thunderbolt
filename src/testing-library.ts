@@ -77,7 +77,7 @@ afterEach(() => {
     // Clear all pending timers before uninstalling to prevent pollution
     try {
       globalClock.reset()
-    } catch (e) {
+    } catch (_e) {
       // Ignore errors during cleanup
     }
     globalClock.uninstall()

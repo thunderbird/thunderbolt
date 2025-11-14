@@ -100,7 +100,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('google')
-        } catch (e) {
+        } catch (_e) {
           // Expected in test environment without proper OAuth setup
         }
       })
@@ -124,7 +124,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('google')
-        } catch (e) {
+        } catch (_e) {
           // Expected
         }
       })
@@ -147,7 +147,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('google')
-        } catch (e) {
+        } catch (_e) {
           // Expected
         }
       })
@@ -173,7 +173,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('google')
-        } catch (e) {
+        } catch (_e) {
           // Expected - OAuth flow can't complete in test
         }
       })
@@ -205,7 +205,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.processCallback(callbackData)
-        } catch (e) {
+        } catch (_e) {
           // Expected in test
         }
       })
@@ -280,7 +280,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('microsoft')
-        } catch (e) {
+        } catch (_e) {
           // Expected
         }
       })
@@ -302,7 +302,7 @@ describe('useOAuthConnect', () => {
       await act(async () => {
         try {
           await result.current.connect('google')
-        } catch (e) {
+        } catch (_e) {
           // Expected
         }
       })

@@ -77,6 +77,7 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'error',
       'no-async-promise-executor': 'off',
+      'no-undef': 'off', // TypeScript handles this
       // Prevent importing React as default
       'no-restricted-imports': [
         'error',

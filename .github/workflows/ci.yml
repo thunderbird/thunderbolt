@@ -224,5 +224,4 @@ jobs:
 
       - name: Test backend
         run: |
-          cd backend
-          bun run test --timeout 150
+          bun run test:backend:5x

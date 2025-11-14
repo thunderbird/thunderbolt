@@ -11,19 +11,14 @@ import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import type { KyInstance } from 'ky'
 
-type OnboardingDialogProps = {
-  httpClient?: KyInstance
-}
-
-export const OnboardingDialog = ({ httpClient }: OnboardingDialogProps = {}) => {
+export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
   const [isOpen, setIsOpen] = useState(false)
-  const { state, actions } = useOnboardingState(httpClient)
+  const { state, actions } = useOnboardingState()
 
   useEffect(() => {
     if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
@@ -127,12 +122,7 @@ export const OnboardingDialog = ({ httpClient }: OnboardingDialogProps = {}) => 
               <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 4 && (
-              <OnboardingLocationStep
-                state={state}
-                actions={actions}
-                onFormDirtyChange={setIsFormDirty}
-                httpClient={httpClient}
-              />
+              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>

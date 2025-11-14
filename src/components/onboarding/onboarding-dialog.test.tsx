@@ -1,6 +1,6 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { createMockHttpClient, mockLocationData } from '@/test-utils/http-client'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { mockLocationData } from '@/test-utils/http-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { OnboardingDialog } from './onboarding-dialog'
@@ -42,8 +42,6 @@ afterEach(async () => {
 })
 
 describe('OnboardingDialog', () => {
-  const mockHttpClient = () => createMockHttpClient(mockLocationData)
-
   describe('Component rendering', () => {
     it('should render without crashing', () => {
       // Ensure location has proper state
@@ -55,8 +53,8 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
-        wrapper: createQueryTestWrapper(),
+      render(<OnboardingDialog />, {
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
 
@@ -77,8 +75,8 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
-        wrapper: createQueryTestWrapper(),
+      render(<OnboardingDialog />, {
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
 
@@ -99,16 +97,16 @@ describe('OnboardingDialog', () => {
         key: 'mock-key',
       })
 
-      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
-        wrapper: createQueryTestWrapper(),
+      render(<OnboardingDialog />, {
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
   })
 
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
-      render(<OnboardingDialog httpClient={mockHttpClient()} />, {
-        wrapper: createQueryTestWrapper(),
+      render(<OnboardingDialog />, {
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
 
       // The component should integrate with the real database

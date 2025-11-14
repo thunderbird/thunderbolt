@@ -1,6 +1,5 @@
-import { getSettings } from '@/dal'
+import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
-import ky, { type KyInstance } from 'ky'
 import { useEffect, useReducer } from 'react'
 
 type LocationData = {
@@ -52,9 +51,9 @@ const locationReducer = (state: LocationState, action: LocationAction): Location
 
 /**
  * Custom hook for location search functionality
- * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a ky instance with cloudUrl from settings as prefixUrl
  */
-export const useLocationSearch = (httpClient?: KyInstance) => {
+export const useLocationSearch = () => {
+  const httpClient = useHttpClient()
   const [locationState, dispatch] = useReducer(locationReducer, initialLocationState)
   const { open, searchQuery, locations, isSearching } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -68,10 +67,7 @@ export const useLocationSearch = (httpClient?: KyInstance) => {
 
       dispatch({ type: 'SET_IS_SEARCHING', payload: true })
       try {
-        const client =
-          httpClient ??
-          ky.create({ prefixUrl: (await getSettings({ cloud_url: 'http://localhost:8000/v1' })).cloudUrl })
-        const data = await client
+        const data = await httpClient
           .get('locations', {
             searchParams: { query: debouncedSearchQuery },
           })

@@ -1,8 +1,8 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import { useAppInitialization } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -14,26 +14,9 @@ mock.module('@tauri-apps/plugin-os', () => ({
   platform: () => 'web',
 }))
 
-/**
- * Creates a ky HTTP client with a custom fetch function that returns mock PostHog config
- */
-const createMockHttpClient = (): KyInstance => {
-  const mockFetch = async (): Promise<Response> => {
-    return new Response(
-      JSON.stringify({
-        posthog_api_key: null, // Disable PostHog in tests
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
-  }
-
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+const mockPostHogConfig = {
+  posthog_api_key: null, // Disable PostHog in tests
 }
-
-const mockHttpClient = createMockHttpClient()
 
 describe('useAppInitialization', () => {
   let originalLocation: Location | undefined
@@ -82,7 +65,9 @@ describe('useAppInitialization', () => {
   })
 
   it('provides correct hook interface', async () => {
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+    const { result } = renderHook(() => useAppInitialization(), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     // Advance timers to complete initialization
     await act(async () => {
@@ -100,7 +85,9 @@ describe('useAppInitialization', () => {
   })
 
   it('initializes on mount and completes successfully', async () => {
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+    const { result } = renderHook(() => useAppInitialization(), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     expect(result.current.isInitializing).toBe(true)
 
@@ -123,7 +110,9 @@ describe('useAppInitialization', () => {
       configurable: true,
     })
 
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+    const { result } = renderHook(() => useAppInitialization(), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     // Advance timers to complete initialization
     await act(async () => {
@@ -136,7 +125,9 @@ describe('useAppInitialization', () => {
   })
 
   it('handles initialization gracefully when non-critical steps fail', async () => {
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+    const { result } = renderHook(() => useAppInitialization(), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     // Advance timers to complete initialization
     await act(async () => {
@@ -149,7 +140,9 @@ describe('useAppInitialization', () => {
   })
 
   it('retry function reinitializes the app', async () => {
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient))
+    const { result } = renderHook(() => useAppInitialization(), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     // Advance timers to complete initialization
     await act(async () => {

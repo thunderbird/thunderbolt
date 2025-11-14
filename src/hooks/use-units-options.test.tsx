@@ -1,13 +1,10 @@
-import { HttpClientProvider } from '@/contexts/http-client-context'
 import { updateSetting } from '@/dal/settings'
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
 import '@testing-library/jest-dom'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
-import type { ReactNode } from 'react'
 import { getClock } from '@/testing-library'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { useUnitsOptions } from './use-units-options'
 
 const mockUnitsOptionsData = {
@@ -41,37 +38,6 @@ const mockUnitsOptionsData = {
   ],
 }
 
-const createMockHttpClient = (response: unknown): KyInstance => {
-  const mockFetch = async (): Promise<Response> => {
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
-}
-
-const createErrorHttpClient = (error: Error): KyInstance => {
-  const mockFetch = async (): Promise<Response> => {
-    throw error
-  }
-
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
-}
-
-const createTestWrapper = (httpClient: KyInstance) => {
-  const QueryWrapper = createQueryTestWrapper()
-  const Wrapper = ({ children }: { children: ReactNode }) => {
-    return (
-      <QueryWrapper>
-        <HttpClientProvider httpClient={httpClient}>{children}</HttpClientProvider>
-      </QueryWrapper>
-    )
-  }
-  return Wrapper
-}
-
 describe('useUnitsOptions', () => {
   beforeEach(async () => {
     await setupTestDatabase()
@@ -85,9 +51,8 @@ describe('useUnitsOptions', () => {
 
   describe('Hook functionality', () => {
     it('should return loading state initially', async () => {
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       expect(result.current.isLoading).toBe(true)
@@ -101,9 +66,8 @@ describe('useUnitsOptions', () => {
     })
 
     it('should fetch and return units options data', async () => {
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       // Wait for query to execute
@@ -117,9 +81,8 @@ describe('useUnitsOptions', () => {
     })
 
     it('should handle API errors after retries', async () => {
-      const httpClient = createErrorHttpClient(new Error('Network error'))
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
       // Wait for retries to complete - react-query retries with exponential backoff
@@ -135,9 +98,8 @@ describe('useUnitsOptions', () => {
     it('should handle database errors when cloud_url is missing', async () => {
       // This test verifies that the hook works with the default cloud_url
       // Since the hook has a default value, it should still work
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       // Wait for the hook to complete successfully
@@ -151,9 +113,8 @@ describe('useUnitsOptions', () => {
 
   describe('Query configuration', () => {
     it('should have correct query key', () => {
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       // The query key is internal to react-query, but we can verify the hook works
@@ -166,9 +127,8 @@ describe('useUnitsOptions', () => {
     it('should have correct stale time and cache time', () => {
       // These are internal to react-query configuration
       // We test the behavior by ensuring the hook works correctly
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       expect(result.current).toHaveProperty('data')
@@ -178,9 +138,8 @@ describe('useUnitsOptions', () => {
 
   describe('Data structure validation', () => {
     it('should return data with correct structure when successful', async () => {
-      const httpClient = createMockHttpClient(mockUnitsOptionsData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       await act(async () => {
@@ -252,9 +211,8 @@ describe('useUnitsOptions', () => {
         currencies: [],
       }
 
-      const httpClient = createMockHttpClient(emptyData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: emptyData }),
       })
 
       await act(async () => {
@@ -273,9 +231,8 @@ describe('useUnitsOptions', () => {
         currencies: 'invalid',
       }
 
-      const httpClient = createMockHttpClient(malformedData)
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createTestWrapper(httpClient),
+        wrapper: createTestProvider({ mockResponse: malformedData }),
       })
 
       // Wait for schema validation to fail

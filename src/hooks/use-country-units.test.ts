@@ -1,27 +1,9 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import { getClock } from '@/testing-library'
 import { useCountryUnits } from './use-country-units'
-
-/**
- * Creates a ky HTTP client with a custom fetch function that returns mock country units data
- */
-const createMockHttpClient = (mockData: unknown, shouldError = false): KyInstance => {
-  const mockFetch = async (): Promise<Response> => {
-    if (shouldError) {
-      throw new Error('Network error')
-    }
-    return new Response(JSON.stringify(mockData), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
-}
 
 const mockCountryUnitsData = {
   unit: 'metric',
@@ -30,8 +12,6 @@ const mockCountryUnitsData = {
   timeFormat: '24h',
   currency: { code: 'EUR', symbol: '€', name: 'Euro' },
 }
-
-const mockHttpClient = createMockHttpClient(mockCountryUnitsData)
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -50,8 +30,8 @@ afterEach(async () => {
 describe('useCountryUnits', () => {
   describe('Initial state', () => {
     it('should initialize with default values', () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       expect(result.current.data).toBeUndefined()
@@ -61,8 +41,8 @@ describe('useCountryUnits', () => {
     })
 
     it('should use provided country parameter', () => {
-      const { result } = renderHook(() => useCountryUnits('CA', mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits('CA'), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       expect(result.current.data).toBeUndefined()
@@ -72,8 +52,8 @@ describe('useCountryUnits', () => {
 
   describe('fetchCountryUnits function', () => {
     it('should fetch country units data successfully', async () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       const promise = result.current.fetchCountryUnits('US')
@@ -85,9 +65,8 @@ describe('useCountryUnits', () => {
     })
 
     it('should handle fetch errors gracefully', async () => {
-      const errorClient = createMockHttpClient({}, true)
-      const { result } = renderHook(() => useCountryUnits(undefined, errorClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
       const promise = result.current.fetchCountryUnits('US')
@@ -99,8 +78,8 @@ describe('useCountryUnits', () => {
     })
 
     it('should cache results for the same country', async () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       const firstPromise = result.current.fetchCountryUnits('US')
@@ -122,8 +101,8 @@ describe('useCountryUnits', () => {
 
   describe('Query configuration', () => {
     it('should be disabled by default', () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       expect(result.current.isLoading).toBe(false)
@@ -131,8 +110,8 @@ describe('useCountryUnits', () => {
     })
 
     it('should handle stale time and cache time', async () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       // Fetch data
@@ -152,9 +131,8 @@ describe('useCountryUnits', () => {
 
   describe('Error handling', () => {
     it('should handle malformed API response', async () => {
-      const malformedClient = createMockHttpClient({ invalid: 'data' })
-      const { result } = renderHook(() => useCountryUnits(undefined, malformedClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: { invalid: 'data' } }),
       })
 
       // Should handle parse errors gracefully
@@ -167,9 +145,8 @@ describe('useCountryUnits', () => {
     })
 
     it('should handle timeout errors', async () => {
-      const errorClient = createMockHttpClient({}, true)
-      const { result } = renderHook(() => useCountryUnits(undefined, errorClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
       const promise = result.current.fetchCountryUnits('US')
@@ -183,8 +160,8 @@ describe('useCountryUnits', () => {
 
   describe('Country extraction from location settings', () => {
     it('should fallback to US when no location is set', () => {
-      const { result } = renderHook(() => useCountryUnits(undefined, mockHttpClient), {
-        wrapper: createQueryTestWrapper(),
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       // Should use 'US' as default

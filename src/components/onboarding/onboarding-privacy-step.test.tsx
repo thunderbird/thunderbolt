@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 
@@ -35,7 +35,7 @@ describe('OnboardingPrivacyStep', () => {
 
   const renderComponent = () => {
     return render(<TestOnboardingPrivacyStep />, {
-      wrapper: createQueryTestWrapper(),
+      wrapper: createTestProvider(),
     })
   }
 
@@ -133,7 +133,7 @@ describe('OnboardingPrivacyStep', () => {
   describe('Business logic validation', () => {
     it('should enable canGoNext when privacyAgreed is true', async () => {
       render(<TestOnboardingPrivacyStepWithState />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider(),
       })
 
       const checkbox = document.getElementById('terms-agreement')!
@@ -152,7 +152,7 @@ describe('OnboardingPrivacyStep', () => {
 
     it('should disable canGoNext when privacyAgreed is false', async () => {
       render(<TestOnboardingPrivacyStepWithState />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider(),
       })
 
       const checkbox = document.getElementById('terms-agreement')!
@@ -176,7 +176,7 @@ describe('OnboardingPrivacyStep', () => {
 
     it('should maintain state synchronization between checkbox and privacyAgreed', async () => {
       render(<TestOnboardingPrivacyStepWithState />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider(),
       })
 
       const checkbox = document.getElementById('terms-agreement')!

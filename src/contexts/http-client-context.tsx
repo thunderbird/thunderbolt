@@ -1,7 +1,7 @@
 import ky, { type KyInstance } from 'ky'
 import { createContext, useContext, type ReactNode } from 'react'
 
-type HttpClient = Pick<KyInstance, 'get' | 'post'>
+export type HttpClient = KyInstance
 
 interface HttpClientContextType {
   httpClient: HttpClient

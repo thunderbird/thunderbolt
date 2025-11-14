@@ -9,6 +9,19 @@
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["thunderbolt", "com.googleusercontent.apps.YOUR_GOOGLE_CLIENT_ID_HERE", "msalYOUR_MICROSOFT_CLIENT_ID_HERE"],
+          "appLink": false
+        }
+      ],
+      "desktop": {
+        "schemes": ["thunderbolt"]
+      }
+    }
+  },
   "app": {
     "windows": [
       {

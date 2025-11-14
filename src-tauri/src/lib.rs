@@ -34,22 +34,23 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
-        .setup(|_app| {
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
             #[cfg(feature = "bridge")]
-            _app.manage(Mutex::new(AppState::default()));
+            app.manage(Mutex::new(AppState::default()));
 
             #[cfg(feature = "libsql")]
-            _app.manage(tokio::sync::Mutex::new(
+            app.manage(tokio::sync::Mutex::new(
                 thunderbolt_libsql::LibsqlState::new(),
             ));
 
             #[cfg(feature = "email")]
-            _app.manage(tokio::sync::Mutex::new(
+            app.manage(tokio::sync::Mutex::new(
                 thunderbolt_email::EmailState::default(),
             ));
 
             #[cfg(feature = "embeddings")]
-            _app.manage(tokio::sync::Mutex::new(
+            app.manage(tokio::sync::Mutex::new(
                 thunderbolt_embeddings::EmbeddingsState::default(),
             ));
 

@@ -1,9 +1,10 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, afterEach, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useIntegrationStatus } from './use-integration-status'
 import { updateSetting } from '@/dal/settings'
+import { getClock } from '@/testing-library'
 
 describe('useIntegrationStatus', () => {
   beforeAll(async () => {
@@ -39,12 +40,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toEqual({
         googleConnected: false,
@@ -65,12 +65,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toEqual({
         googleConnected: false,
@@ -93,12 +92,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toEqual({
         googleConnected: true,
@@ -121,12 +119,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toEqual({
         googleConnected: false,
@@ -149,12 +146,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toEqual({
         googleConnected: true,
@@ -177,12 +173,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data?.googleConnected).toBe(false)
       expect(result.current.data?.microsoftConnected).toBe(false)
@@ -196,13 +191,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result1.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
+      expect(result1.current.isLoading).toBe(false)
       expect(result1.current.data?.googleConnected).toBe(false)
       expect(result1.current.data?.microsoftConnected).toBe(false)
 
@@ -212,13 +205,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result2.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
+      expect(result2.current.isLoading).toBe(false)
       expect(result2.current.data?.googleConnected).toBe(true)
       expect(result2.current.data?.microsoftConnected).toBe(false)
     })
@@ -231,12 +222,11 @@ describe('useIntegrationStatus', () => {
         wrapper: createQueryTestWrapper(),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toBeDefined()
       expect(typeof result.current.data?.googleConnected).toBe('boolean')
@@ -270,12 +260,11 @@ describe('useIntegrationStatus', () => {
         }),
       })
 
-      await waitFor(
-        () => {
-          expect(result.current.isLoading).toBe(false)
-        },
-        { timeout: 3000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isLoading).toBe(false)
 
       expect(result.current.data).toBeDefined()
       expect(result.current.error).toBeNull()

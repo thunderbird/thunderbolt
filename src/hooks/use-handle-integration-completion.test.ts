@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -10,6 +10,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
 import { updateSetting } from '@/dal/settings'
 import type { ThunderboltUIMessage } from '@/types'
+import { getClock } from '@/testing-library'
 
 const mockAddEventListener = mock()
 const mockRemoveEventListener = mock()
@@ -216,7 +217,9 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: '' } })
     eventHandler(event as Event)
 
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
 
     expect(mockSaveMessages).not.toHaveBeenCalled()
   })
@@ -243,7 +246,9 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: 'widget-1' } })
     eventHandler(event as Event)
 
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
 
     expect(mockSaveMessages).not.toHaveBeenCalled()
   })
@@ -301,12 +306,11 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
 
-    await waitFor(
-      () => {
-        expect(mockSaveMessages).toHaveBeenCalled()
-      },
-      { timeout: 3000 },
-    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(mockSaveMessages).toHaveBeenCalled()
 
     const saveCall = (mockSaveMessages.mock.calls[0] as unknown[] | undefined)?.[0] as
       | { messages: ThunderboltUIMessage[] }
@@ -317,28 +321,18 @@ describe('useHandleIntegrationCompletion', () => {
     expect(savedMessage?.metadata?.oauthRetry).toBe(true)
     expect(savedMessage?.parts[0]?.type === 'text' && savedMessage.parts[0].text).toContain('Send me an email')
 
-    await waitFor(
-      async () => {
-        const updatedWidgetMessage = await getMessage(widgetMessageId)
-        expect(updatedWidgetMessage).toBeDefined()
-        expect(updatedWidgetMessage?.cache).toBeDefined()
-        const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
-        expect(cacheEntry).toEqual({ isHidden: true })
-      },
-      { timeout: 3000 },
-    )
+    const updatedWidgetMessage = await getMessage(widgetMessageId)
+    expect(updatedWidgetMessage).toBeDefined()
+    expect(updatedWidgetMessage?.cache).toBeDefined()
+    const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
+    expect(cacheEntry).toEqual({ isHidden: true })
 
-    await waitFor(
-      () => {
-        expect(mockSendMessage).toHaveBeenCalled()
-        const sendCall = (mockSendMessage.mock.calls[0] as unknown[] | undefined)?.[0] as
-          | { metadata?: { oauthRetry?: boolean } }
-          | undefined
-        const sendMessageCall = sendCall || {}
-        expect(sendMessageCall?.metadata?.oauthRetry).toBe(true)
-      },
-      { timeout: 3000 },
-    )
+    expect(mockSendMessage).toHaveBeenCalled()
+    const sendCall = (mockSendMessage.mock.calls[0] as unknown[] | undefined)?.[0] as
+      | { metadata?: { oauthRetry?: boolean } }
+      | undefined
+    const sendMessageCall = sendCall || {}
+    expect(sendMessageCall?.metadata?.oauthRetry).toBe(true)
   })
 
   it('should not process duplicate retries for the same widget', async () => {
@@ -391,18 +385,19 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
 
-    await waitFor(
-      () => {
-        expect(mockSaveMessages).toHaveBeenCalled()
-      },
-      { timeout: 3000 },
-    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(mockSaveMessages).toHaveBeenCalled()
 
     mockSaveMessages.mockClear()
 
     eventHandler(event as Event)
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await act(async () => {
+      await getClock().tickAsync(500)
+    })
 
     expect(mockSaveMessages).not.toHaveBeenCalled()
   })
@@ -458,19 +453,20 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event)
 
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
 
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     // Now add credentials to simulate connection
     await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
 
-    await waitFor(
-      () => {
-        expect(mockSaveMessages).toHaveBeenCalled()
-      },
-      { timeout: 5000 },
-    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(mockSaveMessages).toHaveBeenCalled()
   })
 
   it('should handle missing widget message in chat', async () => {
@@ -512,13 +508,11 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
 
-    await waitFor(
-      () => {
-        expect(consoleWarnSpy).toHaveBeenCalledWith('Widget message not found:', widgetMessageId)
-      },
-      { timeout: 3000 },
-    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(consoleWarnSpy).toHaveBeenCalledWith('Widget message not found:', widgetMessageId)
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     console.warn = originalWarn
@@ -571,13 +565,11 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
 
-    await waitFor(
-      () => {
-        expect(consoleWarnSpy).toHaveBeenCalledWith('Original user text not found for widget message:', widgetMessageId)
-      },
-      { timeout: 3000 },
-    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(consoleWarnSpy).toHaveBeenCalledWith('Original user text not found for widget message:', widgetMessageId)
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     console.warn = originalWarn
@@ -637,22 +629,28 @@ describe('useHandleIntegrationCompletion', () => {
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
 
-    await waitFor(
-      () => {
-        expect(mockSaveMessages).toHaveBeenCalled()
-      },
-      { timeout: 3000 },
-    )
+    // Advance timers step by step to allow the hook to process through its polling stages
+    await act(async () => {
+      // Let the integration status polling complete
+      await getClock().tickAsync(1000)
+    })
 
+    await act(async () => {
+      // Let the message-in-chat polling complete
+      await getClock().tickAsync(1000)
+    })
+
+    expect(mockSaveMessages).toHaveBeenCalled()
     expect(mockSendMessage).not.toHaveBeenCalled()
 
+    // Change status to ready before waitForChatReady times out
     Object.assign(mockChatInstance, { status: 'ready' as const })
 
-    await waitFor(
-      () => {
-        expect(mockSendMessage).toHaveBeenCalled()
-      },
-      { timeout: 3000 },
-    )
+    // Advance timers to allow waitForChatReady to poll and detect the status change
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
+
+    expect(mockSendMessage).toHaveBeenCalled()
   })
 })

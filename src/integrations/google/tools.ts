@@ -725,7 +725,7 @@ export const getDriveFileContent = async (
 // =============================================================================
 
 /**
- * Google Tools Configuration
+ * Google Tools Configuration Factory
  *
  * This file exports 7 high-level, LLM-friendly Google tools that replace
  * the previous 70+ low-level API tools. The new tools provide:
@@ -743,43 +743,45 @@ export const getDriveFileContent = async (
  * - Smaller, more manageable response payloads
  * - Higher-level abstractions that accomplish common tasks in single calls
  * - Read-only operations (except drafting) for safer usage
+ *
+ * @param httpClient - HTTP client for making requests (injected for dependency injection)
  */
-export const configs: ToolConfig[] = [
+export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
   {
     name: 'google_check_inbox',
     description:
       'Check Gmail inbox or other folders for recent email conversations (threads) with lightweight summaries',
     verb: 'Checking Gmail inbox',
     parameters: checkInboxSchema,
-    execute: checkInbox,
+    execute: (params: CheckInboxParams) => checkInbox(params, httpClient),
   },
   {
     name: 'google_search_emails',
     description: 'Search all Gmail messages using Gmail query syntax (e.g. "from:example.com subject:important")',
     verb: 'Searching Gmail messages',
     parameters: searchEmailsSchema,
-    execute: searchEmails,
+    execute: (params: SearchEmailsParams) => searchEmails(params, httpClient),
   },
   {
     name: 'google_get_email',
     description: 'Get full details of a specific Gmail message including body content and attachments',
     verb: 'Getting Gmail message details',
     parameters: getEmailSchema,
-    execute: getEmail,
+    execute: (params: GetEmailParams) => getEmail(params, httpClient),
   },
   {
     name: 'google_draft_email',
     description: 'Create a draft email (can be a new email or reply to existing). Draft will be saved but not sent.',
     verb: 'Creating Gmail draft',
     parameters: draftEmailSchema,
-    execute: draftEmail,
+    execute: (params: DraftEmailParams) => draftEmail(params, httpClient),
   },
   {
     name: 'google_check_calendar',
     description: 'Check Google Calendar for upcoming events in the specified timeframe',
     verb: 'Checking Google Calendar',
     parameters: checkCalendarSchema,
-    execute: checkCalendar,
+    execute: (params: CheckCalendarParams) => checkCalendar(params, httpClient),
   },
   {
     name: 'google_search_drive',
@@ -787,13 +789,19 @@ export const configs: ToolConfig[] = [
       'Search Google Drive files using Drive API query syntax (e.g. "type:pdf name:contract" or "modifiedTime>2024-01-01T00:00:00Z"). Use RFC 3339 format for dates.',
     verb: 'Searching Google Drive',
     parameters: searchDriveSchema,
-    execute: searchDrive,
+    execute: (params: SearchDriveParams) => searchDrive(params, httpClient),
   },
   {
     name: 'google_get_drive_file_content',
     description: 'Get the text content from a Google Drive file (Google Docs and text files)',
     verb: 'Getting Drive file content',
     parameters: getDriveFileContentSchema,
-    execute: getDriveFileContent,
+    execute: (params: GetDriveFileContentParams) => getDriveFileContent(params, httpClient),
   },
 ]
+
+/**
+ * Default configs using the global ky instance
+ * @deprecated Use createConfigs() with an injected httpClient instead
+ */
+export const configs = createConfigs(ky)

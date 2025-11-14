@@ -10,7 +10,7 @@ import {
   getUserInfo,
   refreshAccessToken,
 } from './auth'
-import { isTauri } from './platform'
+import { isTauri, isMobile } from './platform'
 
 /**
  * Generate a code verifier for PKCE
@@ -38,13 +38,13 @@ const generateCodeChallenge = async (verifier: string): Promise<string> => {
 }
 
 /**
- * Start OAuth flow in a Tauri webview window
+ * Start OAuth flow in a Tauri webview window (desktop) or external browser (mobile)
  */
 export const startOAuthFlowWebview = async (
   provider: OAuthProvider,
 ): Promise<{ tokens: OAuthTokens; userInfo: GoogleUserInfo } | null> => {
   if (!isTauri()) {
-    throw new Error('OAuth webview flow is only available in Tauri desktop app')
+    throw new Error('OAuth webview flow is only available in Tauri app')
   }
 
   const state = uuidv4()
@@ -52,6 +52,38 @@ export const startOAuthFlowWebview = async (
   const codeChallenge = await generateCodeChallenge(codeVerifier)
   const authUrl = await buildAuthUrl(provider, state, codeChallenge)
 
+  // Mobile: Open in system browser and wait for deep link callback
+  if (isMobile()) {
+    sessionStorage.setItem('oauth_state', state)
+    sessionStorage.setItem('oauth_provider', provider)
+    sessionStorage.setItem('oauth_verifier', codeVerifier)
+
+    try {
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(authUrl)
+    } catch (error) {
+      throw new Error(`Failed to open browser: ${error}`)
+    }
+
+    const result = await waitForDeepLinkCallback()
+
+    if (!result) {
+      return null
+    }
+
+    const { code, state: returnedState } = result
+
+    if (returnedState !== state) {
+      throw new Error('OAuth state mismatch')
+    }
+
+    const tokens = await exchangeCodeForTokens(provider, code, codeVerifier)
+    const userInfo = await getUserInfo(provider, tokens.access_token)
+
+    return { tokens, userInfo }
+  }
+
+  // Desktop: Use separate webview window
   const oauthWindow = new WebviewWindow(`oauth-${Date.now()}`, {
     url: authUrl,
     title: `Connect ${provider === 'google' ? 'Google' : 'Microsoft'} Account`,
@@ -114,6 +146,71 @@ async function waitForCallback(window: WebviewWindow): Promise<{ code: string; s
       cleanup()
       resolve(null)
     })
+  })
+}
+
+/**
+ * Wait for deep link callback on mobile (e.g., thunderbolt://oauth/callback?code=...&state=...)
+ */
+async function waitForDeepLinkCallback(): Promise<{ code: string; state: string } | null> {
+  return new Promise(async (resolve, reject) => {
+    let unlisten: (() => void) | null = null
+
+    const timeout = setTimeout(
+      () => {
+        if (unlisten) unlisten()
+        reject(new Error('OAuth timeout - please try again'))
+      },
+      10 * 60 * 1000,
+    )
+
+    try {
+      const { onOpenUrl } = await import('@tauri-apps/plugin-deep-link')
+
+      unlisten = await onOpenUrl((urls) => {
+        clearTimeout(timeout)
+        if (unlisten) unlisten()
+
+        try {
+          const urlString = urls[0]
+          if (!urlString) {
+            resolve(null)
+            return
+          }
+
+          const url = new URL(urlString)
+
+          // Check if this is an OAuth callback URL (supports multiple formats)
+          const isThunderboltScheme =
+            url.protocol === 'thunderbolt:' && url.host === 'oauth' && url.pathname === '/callback'
+          const isGoogleScheme = url.protocol.startsWith('com.googleusercontent.apps.')
+          const isMicrosoftScheme = url.protocol.startsWith('msal')
+
+          if (!isThunderboltScheme && !isGoogleScheme && !isMicrosoftScheme) {
+            resolve(null)
+            return
+          }
+
+          const params = url.searchParams
+          const code = params.get('code')
+          const state = params.get('state')
+          const error = params.get('error') || params.get('error_description')
+
+          if (error) {
+            reject(new Error(error))
+          } else if (code && state) {
+            resolve({ code, state })
+          } else {
+            resolve(null)
+          }
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('Failed to parse deep link'))
+        }
+      })
+    } catch (err) {
+      clearTimeout(timeout)
+      reject(err instanceof Error ? err : new Error('Failed to set up deep link listener'))
+    }
   })
 }
 

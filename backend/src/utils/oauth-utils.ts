@@ -3,17 +3,6 @@
  */
 
 /**
- * Detects if request is from mobile platform based on query params
- */
-export const isMobileRequest = (request?: Request): boolean => {
-  if (!request) return false
-
-  const url = new URL(request.url)
-  const platform = url.searchParams.get('platform')
-  return platform === 'mobile' || platform === 'android' || platform === 'ios'
-}
-
-/**
  * Detects if redirect URI indicates a mobile request
  * Mobile OAuth uses custom URI schemes (thunderbolt://, msal*, com.googleusercontent.apps.*)
  */

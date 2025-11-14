@@ -29,6 +29,7 @@ export type CodeRequest = z.infer<typeof codeRequestSchema>
  */
 export const refreshRequestSchema = z.object({
   refresh_token: z.string(),
+  platform: z.enum(['ios', 'android']).optional(),
 })
 
 export type RefreshRequest = z.infer<typeof refreshRequestSchema>

@@ -1,10 +1,5 @@
 import { getSettings } from '@/config/settings'
-import {
-  addClientSecretIfPresent,
-  createTokenRefresher,
-  isMobileRedirectUri,
-  isMobileRequest,
-} from '@/utils/oauth-utils'
+import { addClientSecretIfPresent, createTokenRefresher, isMobileRedirectUri } from '@/utils/oauth-utils'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -18,19 +13,15 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
   return new Elysia({ prefix: '/auth/microsoft' })
     .get('/config', async ({ request }) => {
       const settings = getSettings()
-      const isMobile = isMobileRequest(request)
 
-      // Check platform query param for iOS vs Android
       const url = request ? new URL(request.url) : null
       const platform = url?.searchParams.get('platform')
-      const isIos = platform === 'ios'
-      const isAndroid = platform === 'android' || platform === 'mobile'
+      const isMobile = platform === 'ios' || platform === 'android'
 
-      // Select appropriate client ID based on platform
       const clientId =
-        isIos && settings.microsoftClientIdIos
+        platform === 'ios' && settings.microsoftClientIdIos
           ? settings.microsoftClientIdIos
-          : isAndroid && settings.microsoftClientIdAndroid
+          : platform === 'android' && settings.microsoftClientIdAndroid
             ? settings.microsoftClientIdAndroid
             : settings.microsoftClientId
 
@@ -134,43 +125,35 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
         const settings = getSettings()
         const validatedBody = refreshRequestSchema.parse(body)
 
-        const hasWebCredentials = settings.microsoftClientId && settings.microsoftClientSecret
-        const hasAndroidCredentials = settings.microsoftClientIdAndroid
-        const hasIosCredentials = settings.microsoftClientIdIos
+        const platform = validatedBody.platform
 
-        if (!hasWebCredentials && !hasAndroidCredentials && !hasIosCredentials) {
+        // Select credentials based on platform
+        const clientId =
+          platform === 'ios' && settings.microsoftClientIdIos
+            ? settings.microsoftClientIdIos
+            : platform === 'android' && settings.microsoftClientIdAndroid
+              ? settings.microsoftClientIdAndroid
+              : settings.microsoftClientId
+
+        const clientSecret = platform ? '' : settings.microsoftClientSecret
+
+        if (!clientId) {
           set.status = 503
           return {
-            error: 'Microsoft OAuth not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.',
+            error: `Microsoft OAuth not configured for ${platform || 'web/desktop'}. Set MICROSOFT_CLIENT_ID${platform === 'ios' ? '_IOS' : platform === 'android' ? '_ANDROID' : ''}.`,
+          }
+        }
+
+        if (!platform && !clientSecret) {
+          set.status = 503
+          return {
+            error: 'Microsoft OAuth not configured for web/desktop. Set MICROSOFT_CLIENT_SECRET.',
           }
         }
 
         const tryRefresh = createTokenRefresher(MICROSOFT_TOKEN_URL, fetchFn)
 
-        let response = await tryRefresh(
-          settings.microsoftClientId,
-          settings.microsoftClientSecret,
-          validatedBody.refresh_token,
-          { scope: SCOPES },
-        )
-
-        if (!response && settings.microsoftClientIdAndroid) {
-          response = await tryRefresh(
-            settings.microsoftClientIdAndroid,
-            '', // Android: No client secret (MSAL PKCE flow)
-            validatedBody.refresh_token,
-            { scope: SCOPES },
-          )
-        }
-
-        if (!response && settings.microsoftClientIdIos) {
-          response = await tryRefresh(
-            settings.microsoftClientIdIos,
-            '', // iOS: No client secret (MSAL PKCE flow)
-            validatedBody.refresh_token,
-            { scope: SCOPES },
-          )
-        }
+        const response = await tryRefresh(clientId, clientSecret, validatedBody.refresh_token, { scope: SCOPES })
 
         if (!response) {
           set.status = 400
@@ -179,7 +162,6 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
           }
         }
 
-        // Process the successful response
         const tokenData = await response.json()
         console.info('Successfully refreshed Microsoft OAuth token')
 
@@ -196,6 +178,7 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
       {
         body: t.Object({
           refresh_token: t.String(),
+          platform: t.Optional(t.Union([t.Literal('ios'), t.Literal('android')])),
         }),
       },
     )

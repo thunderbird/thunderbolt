@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { updateSetting } from '@/dal'
-import { isTauri } from '@/lib/platform'
+import { isTauri, isMobile } from '@/lib/platform'
 import { redirectOAuthFlow, exchangeCodeForTokens, getUserInfo, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 
@@ -66,9 +66,17 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     try {
       if (isTauri()) {
+        // Mobile: persist context (app may be backgrounded during OAuth flow)
+        // Desktop: context stays in memory (separate webview window)
+        if (isMobile()) {
+          sessionStorage.setItem('oauth_return_context', returnContext)
+        }
+
         const result = await startOAuthFlowWebview(provider)
 
-        if (!result) return
+        if (!result) {
+          return
+        }
 
         const { tokens, userInfo } = result
 
@@ -76,6 +84,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
+        // Web: persist context (page will reload during OAuth redirect)
         sessionStorage.setItem('oauth_return_context', returnContext)
         await redirectOAuthFlow(provider)
       }

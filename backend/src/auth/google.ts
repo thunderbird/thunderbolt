@@ -1,10 +1,5 @@
 import { getSettings } from '@/config/settings'
-import {
-  addClientSecretIfPresent,
-  createTokenRefresher,
-  isMobileRedirectUri,
-  isMobileRequest,
-} from '@/utils/oauth-utils'
+import { addClientSecretIfPresent, createTokenRefresher, isMobileRedirectUri } from '@/utils/oauth-utils'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -14,19 +9,14 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
   return new Elysia({ prefix: '/auth/google' })
     .get('/config', async ({ request }) => {
       const settings = getSettings()
-      const isMobile = isMobileRequest(request)
 
-      // Check platform query param for iOS vs Android
       const url = request ? new URL(request.url) : null
       const platform = url?.searchParams.get('platform')
-      const isIos = platform === 'ios'
-      const isAndroid = platform === 'android' || platform === 'mobile'
 
-      // Select appropriate client ID based on platform
       const clientId =
-        isIos && settings.googleClientIdIos
+        platform === 'ios' && settings.googleClientIdIos
           ? settings.googleClientIdIos
-          : isAndroid && settings.googleClientIdAndroid
+          : platform === 'android' && settings.googleClientIdAndroid
             ? settings.googleClientIdAndroid
             : settings.googleClientId
 
@@ -128,40 +118,35 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
         const settings = getSettings()
         const validatedBody = refreshRequestSchema.parse(body)
 
-        const hasWebCredentials = settings.googleClientId && settings.googleClientSecret
-        const hasAndroidCredentials = settings.googleClientIdAndroid
-        const hasIosCredentials = settings.googleClientIdIos
+        const platform = validatedBody.platform
 
-        if (!hasWebCredentials && !hasAndroidCredentials && !hasIosCredentials) {
+        // Select credentials based on platform
+        const clientId =
+          platform === 'ios' && settings.googleClientIdIos
+            ? settings.googleClientIdIos
+            : platform === 'android' && settings.googleClientIdAndroid
+              ? settings.googleClientIdAndroid
+              : settings.googleClientId
+
+        const clientSecret = platform ? '' : settings.googleClientSecret
+
+        if (!clientId) {
           set.status = 503
           return {
-            error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+            error: `Google OAuth not configured for ${platform || 'web/desktop'}. Set GOOGLE_CLIENT_ID${platform === 'ios' ? '_IOS' : platform === 'android' ? '_ANDROID' : ''}.`,
+          }
+        }
+
+        if (!platform && !clientSecret) {
+          set.status = 503
+          return {
+            error: 'Google OAuth not configured for web/desktop. Set GOOGLE_CLIENT_SECRET.',
           }
         }
 
         const tryRefresh = createTokenRefresher(GOOGLE_TOKEN_URL, fetchFn)
 
-        let response = await tryRefresh(
-          settings.googleClientId,
-          settings.googleClientSecret,
-          validatedBody.refresh_token,
-        )
-
-        if (!response && settings.googleClientIdAndroid) {
-          response = await tryRefresh(
-            settings.googleClientIdAndroid,
-            '', // Android: No client secret (PKCE flow)
-            validatedBody.refresh_token,
-          )
-        }
-
-        if (!response && settings.googleClientIdIos) {
-          response = await tryRefresh(
-            settings.googleClientIdIos,
-            '', // iOS: No client secret (PKCE flow)
-            validatedBody.refresh_token,
-          )
-        }
+        const response = await tryRefresh(clientId, clientSecret, validatedBody.refresh_token)
 
         if (!response) {
           set.status = 400
@@ -170,7 +155,6 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
           }
         }
 
-        // Process the successful response
         const tokenData = await response.json()
         console.info('Successfully refreshed Google OAuth token')
 
@@ -187,6 +171,7 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
       {
         body: t.Object({
           refresh_token: t.String(),
+          platform: t.Optional(t.Union([t.Literal('ios'), t.Literal('android')])),
         }),
       },
     )

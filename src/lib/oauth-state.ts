@@ -12,16 +12,6 @@ type OAuthState = {
 }
 
 /**
- * Storage interface for OAuth state
- * This allows injection of isolated storage in tests to prevent pollution
- */
-export type OAuthStorage = {
-  getItem: (key: string) => string | null | Promise<string | null>
-  setItem: (key: string, value: string) => void | Promise<void>
-  removeItem: (key: string) => void | Promise<void>
-}
-
-/**
  * Gets all OAuth state from sqlite settings
  */
 export const getOAuthState = async (): Promise<OAuthState> => {
@@ -73,20 +63,3 @@ export const clearOAuthState = async (): Promise<void> => {
     deleteSetting('oauth_return_context'),
   ])
 }
-
-/**
- * Creates an OAuthStorage adapter that uses sqlite settings
- */
-export const createSqliteOAuthStorage = (): OAuthStorage => ({
-  getItem: async (key: string) => {
-    const settings = await getSettings({ [key]: String })
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-    return (settings as any)[camelKey] ?? null
-  },
-  setItem: async (key: string, value: string) => {
-    await updateSetting(key, value)
-  },
-  removeItem: async (key: string) => {
-    await deleteSetting(key)
-  },
-})

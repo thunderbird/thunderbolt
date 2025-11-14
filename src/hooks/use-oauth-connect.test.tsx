@@ -1,41 +1,24 @@
+import { getSettings, updateSetting } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { useOAuthConnect, type OAuthDependencies, type OAuthStorage } from './use-oauth-connect'
-
-/**
- * Creates an isolated storage instance for testing
- * This prevents pollution between tests by giving each test its own storage
- */
-const createIsolatedStorage = (): OAuthStorage => {
-  const store = new Map<string, string>()
-  return {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      store.set(key, value)
-    },
-    removeItem: (key: string) => {
-      store.delete(key)
-    },
-  }
-}
+import { useOAuthConnect, type OAuthDependencies } from './use-oauth-connect'
 
 // Create mock functions for OAuth dependencies
-const createMockDependencies = (storage: OAuthStorage): OAuthDependencies => ({
+const createMockDependencies = (): OAuthDependencies => ({
   startOAuthFlowWebview: async () => {
     // Return null to simulate user cancellation or error
     return null
   },
   redirectOAuthFlow: async (provider: string) => {
     // Simulate what the real redirectOAuthFlow does before redirecting
-    storage.setItem('oauth_state', 'mock_state_12345')
-    storage.setItem('oauth_provider', provider)
-    storage.setItem('oauth_verifier', 'mock_verifier_67890')
+    await updateSetting('oauth_state', 'mock_state_12345')
+    await updateSetting('oauth_provider', provider)
+    await updateSetting('oauth_verifier', 'mock_verifier_67890')
     // Throw to simulate the redirect
     throw new Error('Redirecting for OAuth')
   },
-  storage,
   exchangeCodeForTokens: async () => ({
     access_token: 'mock_token',
     refresh_token: 'mock_refresh',
@@ -70,17 +53,15 @@ afterEach(async () => {
 })
 
 describe('useOAuthConnect', () => {
-  // Create fresh mock dependencies and isolated storage for each test to prevent pollution
+  // Create fresh mock dependencies for each test
   let mockDeps: OAuthDependencies
-  let isolatedStorage: OAuthStorage
 
   beforeEach(async () => {
     // Reset database and cleanup storage before each test
     await resetTestDatabase()
     await cleanupSessionStorage()
-    // Create isolated storage and fresh mock dependencies
-    isolatedStorage = createIsolatedStorage()
-    mockDeps = createMockDependencies(isolatedStorage)
+    // Create fresh mock dependencies
+    mockDeps = createMockDependencies()
   })
 
   describe('Tauri flow', () => {
@@ -178,18 +159,20 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in isolated storage
-      expect(isolatedStorage.getItem('oauth_return_context')).toBe('onboarding')
+      // Verify return context was stored in sqlite
+      const { getSettings } = await import('@/dal')
+      const settings = await getSettings({ oauth_return_context: String })
+      expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
 
   describe('processCallback', () => {
     it('should handle successful OAuth callback', async () => {
       const callbackData = mockOAuthCallbackData()
-      // Setup isolated storage instead of global sessionStorage
-      isolatedStorage.setItem('oauth_state', callbackData.state!)
-      isolatedStorage.setItem('oauth_provider', 'google')
-      isolatedStorage.setItem('oauth_verifier', 'mock_verifier_67890')
+      // Setup sqlite settings
+      await updateSetting('oauth_state', callbackData.state!)
+      await updateSetting('oauth_provider', 'google')
+      await updateSetting('oauth_verifier', 'mock_verifier_67890')
 
       const onSuccess = mock()
       const onError = mock()
@@ -216,10 +199,10 @@ describe('useOAuthConnect', () => {
 
     it('should handle state mismatch', async () => {
       const callbackData = mockOAuthCallbackData()
-      // Setup isolated storage with mismatched state
-      isolatedStorage.setItem('oauth_state', 'different_state')
-      isolatedStorage.setItem('oauth_provider', 'google')
-      isolatedStorage.setItem('oauth_verifier', 'mock_verifier_67890')
+      // Setup sqlite settings with mismatched state
+      await updateSetting('oauth_state', 'different_state')
+      await updateSetting('oauth_provider', 'google')
+      await updateSetting('oauth_verifier', 'mock_verifier_67890')
 
       const onSuccess = mock()
       const onError = mock()
@@ -307,7 +290,9 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      expect(isolatedStorage.getItem('oauth_return_context')).toBe('onboarding')
+      // Verify return context was stored in sqlite
+      const settings = await getSettings({ oauth_return_context: String })
+      expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
 

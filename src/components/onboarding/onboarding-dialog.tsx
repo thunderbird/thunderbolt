@@ -94,6 +94,7 @@ export const OnboardingDialog = () => {
           bottom: 'var(--kb, 0px)',
         }}
         showCloseButton={false}
+        showOverlay={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">

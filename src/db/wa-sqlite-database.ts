@@ -1,10 +1,7 @@
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
-// @ts-expect-error - sqlite3Worker1Promiser exists but TypeScript definitions are incomplete
-import { sqlite3Worker1Promiser } from '@sqlite.org/sqlite-wasm'
 import type { DatabaseInterface } from './database-interface'
 import * as schema from './schema'
-
-type Worker1Promiser = (methodName: string, args: any) => Promise<any>
+import { WaSQLiteWorkerClient } from './wa-sqlite-worker-client'
 
 /**
  * Checks if an object is empty (has no own properties or all properties are undefined)
@@ -17,8 +14,7 @@ const isEmptyObject = (obj: any): boolean => {
 
 export class WaSQLiteDatabase implements DatabaseInterface {
   private _db: ReturnType<typeof drizzle<typeof schema>> | null = null
-  private promiser: Worker1Promiser | null = null
-  private dbId: string | null = null
+  private workerClient: WaSQLiteWorkerClient | null = null
 
   get db() {
     if (!this._db) {
@@ -35,68 +31,58 @@ export class WaSQLiteDatabase implements DatabaseInterface {
     // Extract just the filename from the path
     const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
-    // Initialize the worker-based SQLite (supports OPFS)
-    this.promiser = await new Promise<Worker1Promiser>((resolve) => {
-      const _promiser = sqlite3Worker1Promiser({
-        onready: () => resolve(_promiser),
-      })
+    // Create and initialize the worker
+    const worker = new Worker(new URL('./wa-sqlite-worker.ts', import.meta.url), {
+      type: 'module',
     })
 
-    // Open database with OPFS persistence
-    const dbPath = path === ':memory:' ? ':memory:' : `file:${dbFilename}?vfs=opfs`
+    this.workerClient = new WaSQLiteWorkerClient(worker)
+    await this.workerClient.waitForReady()
 
-    const openResponse = await this.promiser('open', {
-      filename: dbPath,
-    })
-
-    this.dbId = openResponse.dbId
+    // Initialize database in worker
+    await this.workerClient.init(dbFilename)
 
     if (path === ':memory:') {
       console.warn('Using in-memory SQLite database (data will not persist)')
     } else {
-      console.info(`Using WA-SQLite with OPFS persistence: ${dbFilename}`)
+      console.info(`Using wa-sqlite with OPFSCoopSyncVFS persistence: ${dbFilename}`)
     }
 
     // Create Drizzle driver adapter
     const driver = async (sql: string, params: any[], method: 'get' | 'all' | 'values' | 'run') => {
-      if (!this.promiser || !this.dbId) {
+      if (!this.workerClient) {
         throw new Error('Database not initialized')
       }
 
       try {
-        const response = await this.promiser('exec', {
-          dbId: this.dbId,
-          sql,
-          bind: params,
-          returnValue: method === 'run' ? undefined : 'resultRows',
-          // Drizzle expects arrays for 'all' and 'values', objects for 'get'
-          rowMode: method === 'get' ? 'object' : 'array',
-        })
+        const result = await this.workerClient.exec(sql, params, method)
 
         if (method === 'run') {
           return { rows: [] }
         }
 
-        const rows = response.result.resultRows || []
+        const rows = result.rows
 
         if (method === 'get') {
-          if (rows.length === 0) {
+          if (!rows) {
             return { rows: undefined }
           }
-
-          const row = rows[0]
 
           // Apply same fix as SQLocalDatabase for empty objects
-          if (isEmptyObject(row)) {
+          if (isEmptyObject(rows)) {
             return { rows: undefined }
           }
 
-          return { rows: row }
+          return { rows }
         }
 
-        return { rows }
+        return { rows: rows || [] }
       } catch (error) {
-        console.error('WaSQLite query error:', error, '\nSQL:', sql, '\nParams:', params)
+        // Suppress expected "no such table" errors during migrations
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        if (!errorMsg.includes('no such table: __drizzle_migrations')) {
+          console.error('wa-sqlite query error:', error, '\nSQL:', sql, '\nParams:', params)
+        }
         throw error
       }
     }
@@ -105,10 +91,10 @@ export class WaSQLiteDatabase implements DatabaseInterface {
   }
 
   async close(): Promise<void> {
-    if (this.promiser && this.dbId) {
-      await this.promiser('close', { dbId: this.dbId })
-      this.promiser = null
-      this.dbId = null
+    if (this.workerClient) {
+      await this.workerClient.close()
+      this.workerClient.terminate()
+      this.workerClient = null
       this._db = null
     }
   }

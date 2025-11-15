@@ -1,8 +1,7 @@
+import { getClock } from '@/testing-library'
 import { describe, expect, it } from 'bun:test'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-
-// Import the function under test
 import { normalizeUIMessage, parseEnhancedSseFile, sseToUIMessage } from './util'
 
 // ---------------------------------------------------------------------------
@@ -100,6 +99,10 @@ describe('SSE -> UIMessage:', () => {
         startWithReasoning: metadata.start_with_reasoning ?? false,
         initialDelayInMs: metadata.initial_delay_ms,
         chunkDelayInMs: metadata.chunk_delay_ms,
+        advanceTimers: async () => {
+          // Advance timers while the stream is being consumed
+          await getClock().runAllAsync()
+        },
       })
 
       const normalizedMessage = normalizeUIMessage(message)

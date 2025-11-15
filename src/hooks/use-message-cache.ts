@@ -8,6 +8,8 @@ type UseMessageCacheOptions<T> = {
   cacheKey: string[]
   /** Function to fetch the value if not cached */
   fetchFn: () => Promise<T>
+  /** Whether the query should run. Defaults to true */
+  enabled?: boolean
 }
 
 /**
@@ -28,7 +30,7 @@ type UseMessageCacheOptions<T> = {
  * })
  * ```
  */
-export const useMessageCache = <T>({ messageId, cacheKey, fetchFn }: UseMessageCacheOptions<T>) => {
+export const useMessageCache = <T>({ messageId, cacheKey, fetchFn, enabled = true }: UseMessageCacheOptions<T>) => {
   const storageKey = cacheKey.join('/')
 
   return useQuery({
@@ -55,6 +57,7 @@ export const useMessageCache = <T>({ messageId, cacheKey, fetchFn }: UseMessageC
 
       return fetched
     },
+    enabled,
     staleTime: Infinity, // Once fetched, never refetch
     gcTime: Infinity, // Keep in cache forever
     retry: false, // Don't retry on failure

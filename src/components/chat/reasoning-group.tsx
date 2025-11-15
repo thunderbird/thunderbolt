@@ -50,9 +50,9 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTex
         className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
         icon={
           isThinking ? (
-            <Loader2 className={`h-4 w-4 animate-spin text-blue-600 dark:text-blue-400`} />
+            <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
           ) : (
-            <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <CheckIcon className="h-4 w-4 text-muted-foreground" />
           )
         }
         defaultOpen={false}

@@ -25,6 +25,7 @@ export const useSidebarWebview = (
   const resizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const animationFrameRef = useRef<number | undefined>(undefined)
   const windowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
+  const unloadListenerRegisteredRef = useRef<boolean>(false)
 
   useEffect(() => {
     if (!config || !containerRef.current) {
@@ -64,6 +65,16 @@ export const useSidebarWebview = (
       animationFrameRef.current = requestAnimationFrame(() => {
         updateWebviewPosition()
       })
+    }
+
+    // Handle page unload (refresh/navigation) - close webview immediately
+    // Note: Tauri requires 'unload' instead of 'beforeunload' for reliable cleanup
+    const handleUnload = () => {
+      // Use ref to ensure we have the latest webview instance
+      if (webviewRef.current) {
+        // Close synchronously to ensure it happens before page unloads
+        webviewRef.current.close().catch(console.error)
+      }
     }
 
     const initWebview = async () => {
@@ -107,6 +118,10 @@ export const useSidebarWebview = (
 
         webviewRef.current = webview
         setIsInitialized(true)
+
+        // Add unload listener AFTER webview is successfully created
+        window.addEventListener('unload', handleUnload)
+        unloadListenerRegisteredRef.current = true
 
         // Set up ResizeObserver to track container size changes
         resizeObserverRef.current = new ResizeObserver(() => {
@@ -158,20 +173,11 @@ export const useSidebarWebview = (
       setIsInitialized(false)
     }
 
-    // Handle page unload (refresh/navigation) - close webview immediately
-    // Note: Tauri requires 'unload' instead of 'beforeunload' for reliable cleanup
-    const handleUnload = () => {
-      // Use ref to ensure we have the latest webview instance
-      if (webviewRef.current) {
-        // Close synchronously to ensure it happens before page unloads
-        webviewRef.current.close().catch(console.error)
-      }
-    }
-
-    window.addEventListener('unload', handleUnload)
-
     return () => {
-      window.removeEventListener('unload', handleUnload)
+      if (unloadListenerRegisteredRef.current) {
+        window.removeEventListener('unload', handleUnload)
+        unloadListenerRegisteredRef.current = false
+      }
       cleanupWebview()
     }
   }, [config?.url]) // Re-initialize if URL changes

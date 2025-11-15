@@ -1,13 +1,14 @@
+import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import * as tasksTools from '@/extensions/tasks/tools'
-import { configs as googleConfigs } from '@/integrations/google/tools'
-import { configs as microsoftConfigs } from '@/integrations/microsoft/tools'
-import { configs as proConfigs } from '@/integrations/thunderbolt-pro/tools'
+import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
+import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
+import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import type { ToolConfig } from '@/types'
 import { tool, type Tool } from 'ai'
 
-export const getAvailableTools = async (): Promise<ToolConfig[]> => {
+export const getAvailableTools = async (httpClient: HttpClient): Promise<ToolConfig[]> => {
   // Check Thunderbolt Pro access and integration enabled state
   const proEnabled = await hasProAccess()
   const {
@@ -27,15 +28,15 @@ export const getAvailableTools = async (): Promise<ToolConfig[]> => {
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 
   if (shouldIncludeProTools) {
-    baseTools.push(...proConfigs)
+    baseTools.push(...createProConfigs(httpClient))
   }
 
   if (integrationsGoogleIsEnabled) {
-    baseTools.push(...googleConfigs)
+    baseTools.push(...createGoogleConfigs(httpClient))
   }
 
   if (integrationsMicrosoftIsEnabled) {
-    baseTools.push(...microsoftConfigs)
+    baseTools.push(...createMicrosoftConfigs(httpClient))
   }
 
   return baseTools

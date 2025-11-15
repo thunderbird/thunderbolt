@@ -98,8 +98,8 @@ jobs:
         run: |
           COMMIT_COUNT=$(git rev-list --count HEAD)
           # Base offset to ensure we stay above previous manual versionCode (1018)
-          # Using 1000 as base means we start at 1626 (1000 + 626 commits)
-          BASE_OFFSET=1000
+          # Using 1000 as base means we start at 2626 (2000 + 626 commits)
+          BASE_OFFSET=2000
           VERSION_CODE=$((BASE_OFFSET + COMMIT_COUNT))
           echo "versionCode=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "📱 Calculated versionCode: $VERSION_CODE (base $BASE_OFFSET + $COMMIT_COUNT commits)"

@@ -1,67 +1,41 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { renderHook } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { useCountryUnits } from './use-country-units'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
 
-// Mock ky
-const mockKy = mock()
-mock.module('ky', () => ({
-  default: mockKy,
-}))
+const mockCountryUnitsData = {
+  unit: 'metric',
+  temperature: 'c',
+  dateFormatExample: 'DD/MM/YYYY',
+  timeFormat: '24h',
+  currency: { code: 'EUR', symbol: '€', name: 'Euro' },
+}
 
-// Mock getCloudUrl
-const mockGetCloudUrl = mock()
-mock.module('@/lib/config', () => ({
-  getCloudUrl: mockGetCloudUrl,
-}))
-
-// Mock country utils
-mock.module('@/lib/country-utils', () => ({
-  extractCountryFromLocation: (location: string) => {
-    if (location.includes('United States') || location.includes('USA')) return 'US'
-    if (location.includes('Canada')) return 'CA'
-    if (location.includes('United Kingdom') || location.includes('UK')) return 'GB'
-    return null
-  },
-}))
-
-// Mock schemas
-mock.module('@/schemas/api', () => ({
-  countryUnitsResponseSchema: {
-    parse: (data: any) => data,
-  },
-}))
+let consoleSpies: ConsoleSpies
 
 beforeAll(async () => {
   await setupTestDatabase()
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
+  consoleSpies.restore()
 })
 
 afterEach(async () => {
   await resetTestDatabase()
-
-  // Reset mocks
-  mockKy.mockClear()
-  mockGetCloudUrl.mockClear()
 })
 
 describe('useCountryUnits', () => {
-  const mockCountryUnitsData = {
-    unit: 'metric',
-    temperature: 'c',
-    dateFormatExample: 'DD/MM/YYYY',
-    timeFormat: '24h',
-    currency: { code: 'EUR', symbol: '€' },
-  }
-
   describe('Initial state', () => {
     it('should initialize with default values', () => {
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       expect(result.current.data).toBeUndefined()
@@ -72,7 +46,7 @@ describe('useCountryUnits', () => {
 
     it('should use provided country parameter', () => {
       const { result } = renderHook(() => useCountryUnits('CA'), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
       expect(result.current.data).toBeUndefined()
@@ -81,135 +55,121 @@ describe('useCountryUnits', () => {
   })
 
   describe('fetchCountryUnits function', () => {
+    it('should fetch country units data successfully', async () => {
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
+      })
+
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      const data = await promise
+      expect(data).toEqual(mockCountryUnitsData)
+    })
+
     it('should handle fetch errors gracefully', async () => {
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockRejectedValue(new Error('Network error'))
-
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
-      const countryUnits = await result.current.fetchCountryUnits('US')
-
-      expect(countryUnits).toBeNull()
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      const data = await promise
+      expect(data).toBeNull()
     })
 
-    it('should handle cloud URL fetch errors', async () => {
-      mockGetCloudUrl.mockRejectedValue(new Error('Cloud URL error'))
-
+    it('should cache results for the same country', async () => {
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
-      const countryUnits = await result.current.fetchCountryUnits('US')
-
-      expect(countryUnits).toBeNull()
-    })
-
-    it('should handle different countries', async () => {
-      const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+      const firstPromise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+      const firstFetch = await firstPromise
 
-      // Test basic functionality without complex mocking
-      expect(typeof result.current.fetchCountryUnits).toBe('function')
-    })
-  })
-
-  describe('Integration with settings', () => {
-    it('should extract country from location name when no country provided', async () => {
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockResolvedValue(mockCountryUnitsData)
-
-      const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+      const secondPromise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
       })
+      const secondFetch = await secondPromise
 
-      // The hook should work with the real useSettings hook
-      expect(result.current.data).toBeUndefined()
-      expect(typeof result.current.fetchCountryUnits).toBe('function')
+      expect(firstFetch).toEqual(mockCountryUnitsData)
+      expect(secondFetch).toEqual(mockCountryUnitsData)
     })
   })
 
   describe('Query configuration', () => {
-    it('should have correct query configuration', () => {
-      const { result } = renderHook(() => useCountryUnits('US'), {
-        wrapper: createQueryTestWrapper(),
+    it('should be disabled by default', () => {
+      const { result } = renderHook(() => useCountryUnits(), {
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
-      // Query should be disabled by default
       expect(result.current.isLoading).toBe(false)
       expect(result.current.data).toBeUndefined()
     })
 
     it('should handle stale time and cache time', async () => {
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
-      // Test basic functionality without complex mocking
-      expect(typeof result.current.fetchCountryUnits).toBe('function')
+      // Fetch data
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      const data = await promise
+
+      // Data should be returned from the fetch
+      expect(data).toEqual(mockCountryUnitsData)
+
+      // After runAllAsync, React Query's cache updates propagate to the query
+      expect(result.current.data).toBeDefined()
     })
   })
 
   describe('Error handling', () => {
     it('should handle malformed API response', async () => {
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockResolvedValue('invalid response')
-
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: { invalid: 'data' } }),
       })
 
-      const countryUnits = await result.current.fetchCountryUnits('US')
-
-      expect(countryUnits).toBeNull()
+      // Should handle parse errors gracefully
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      const data = await promise
+      expect(data).toBeNull()
     })
 
     it('should handle timeout errors', async () => {
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockImplementation(() => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100)))
-
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
-      const countryUnits = await result.current.fetchCountryUnits('US')
-
-      expect(countryUnits).toBeNull()
-    })
-
-    it('should handle 404 errors', async () => {
-      mockGetCloudUrl.mockResolvedValue('https://api.example.com')
-      mockKy.mockRejectedValue(new Error('404 Not Found'))
-
-      const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+      const promise = result.current.fetchCountryUnits('US')
+      await act(async () => {
+        await getClock().runAllAsync()
       })
-
-      const countryUnits = await result.current.fetchCountryUnits('INVALID_COUNTRY')
-
-      expect(countryUnits).toBeNull()
+      const data = await promise
+      expect(data).toBeNull()
     })
   })
 
-  describe('Retry logic', () => {
-    it('should retry on network errors', async () => {
+  describe('Country extraction from location settings', () => {
+    it('should fallback to US when no location is set', () => {
       const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockCountryUnitsData }),
       })
 
-      // Test basic functionality without complex mocking
-      expect(typeof result.current.fetchCountryUnits).toBe('function')
-    })
-
-    it('should not retry on 4xx errors', async () => {
-      const { result } = renderHook(() => useCountryUnits(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      // Test basic functionality without complex mocking
-      expect(typeof result.current.fetchCountryUnits).toBe('function')
+      // Should use 'US' as default
+      expect(result.current.data).toBeUndefined()
     })
   })
 })

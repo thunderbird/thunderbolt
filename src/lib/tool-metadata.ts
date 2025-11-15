@@ -2,6 +2,7 @@ import type { ToolConfig } from '@/types'
 import { memoize } from './memoize'
 import { getAvailableTools } from './tools'
 import { Calendar, CloudSun, FileText, FolderSearch, Globe, Inbox, Mail, MailSearch, Search } from 'lucide-react'
+import ky from 'ky'
 
 export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communication' | 'weather' | 'unknown'
 
@@ -20,7 +21,7 @@ const metadataCache = new Map<string, ToolMetadata>()
  * Get all available tool configurations with caching
  */
 const getToolConfigs = memoize(async (): Promise<ToolConfig[]> => {
-  return await getAvailableTools()
+  return await getAvailableTools(ky)
 }, 'tool-configs')
 
 /**

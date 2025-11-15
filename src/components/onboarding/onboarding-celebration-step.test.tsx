@@ -1,16 +1,21 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
+import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'bun:test'
 import '@testing-library/jest-dom'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 describe('OnboardingCelebrationStep', () => {
   beforeEach(async () => {
-    await setupTestDatabase()
-  })
-
-  afterEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

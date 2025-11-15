@@ -1,5 +1,6 @@
 import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
+import type { UIMessageMetadata } from '@/types'
 import { sql } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -30,6 +31,7 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
   modelId: text('model_id').references(() => modelsTable.id),
   parentId: text('parent_id').references((): any => chatMessagesTable.id, { onDelete: 'cascade' }),
   cache: text('cache', { mode: 'json' }).$type<Record<string, WidgetCacheData>>(),
+  metadata: text('metadata', { mode: 'json' }).$type<UIMessageMetadata>(),
 })
 
 export const tasksTable = sqliteTable('tasks', {

@@ -10,6 +10,7 @@ import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 
 export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
@@ -83,14 +84,28 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        className={`p-0 overflow-hidden rounded-${isMobile ? 'none' : 'lg'} ${isMobile ? 'h-screen w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none' : 'max-w-[600px] h-[650px] w-[600px] m-4'}`}
+        className={cn(
+          'p-0 overflow-hidden',
+          isMobile
+            ? 'rounded-none h-full w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none'
+            : 'rounded-lg max-w-[600px] h-[650px] w-[600px] m-4',
+        )}
+        style={{
+          bottom: 'var(--kb, 0px)',
+        }}
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
-        <div className="flex flex-col items-center pt-8 pb-6">
+        <div
+          className="flex flex-col items-center"
+          style={{
+            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
+            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
+          }}
+        >
           <div className="flex items-center justify-center px-4">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>

@@ -66,7 +66,7 @@ const parseSettings = (): Settings => {
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     microsoftClientIdAndroid: process.env.MICROSOFT_CLIENT_ID_ANDROID || '',
     microsoftClientIdIos: process.env.MICROSOFT_CLIENT_ID_IOS || '',
-    logLevel: process.env.LOG_LEVEL || 'INFO',
+    logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',

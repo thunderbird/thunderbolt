@@ -138,11 +138,16 @@
 html,
 body {
   overscroll-behavior: none;
+  overflow: hidden;
+}
+#root {
+  overflow: hidden;
+  display: flex;
+  height: 100svh;
 }
 
 @media (max-width: 768px) {
   body {
-    position: fixed;
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -189,4 +194,15 @@ body {
   to {
     transform: translateX(100%); /* Move across to the right */
   }
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none; /* For Internet Explorer and Edge */
+  scrollbar-width: none; /* For Firefox */
+  overflow-y: auto; /* or overflow: auto; to only show scrollbar when needed */
+}
+
+/* For Chrome, Safari, and Opera */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }

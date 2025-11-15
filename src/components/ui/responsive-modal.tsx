@@ -73,12 +73,8 @@ const ResponsiveModalContent = forwardRef<ElementRef<typeof DialogPrimitive.Cont
     const bottomSheetStyle: CSSProperties | undefined =
       side === 'bottom'
         ? {
-            // Lift the sheet above the software keyboard.
-            bottom: 'var(--kb, 0px)',
-            // Keep the sheet inside the visible viewport when raised.
-            maxHeight: 'calc(80dvh - var(--kb, 0px))',
             // Ensure content isn’t hidden behind the iOS home indicator notch.
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            paddingBottom: 'calc(var(--kb, 0px) + env(safe-area-inset-bottom, 0px))',
           }
         : undefined
 

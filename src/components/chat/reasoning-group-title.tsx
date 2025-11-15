@@ -45,7 +45,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
                 }}
                 className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
               >
-                <span className="text-xs text-blue-600 dark:text-blue-400 italic animate-pulse truncate min-w-0">
+                <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
                   {metadata.loadingMessage}
                 </span>
               </motion.div>
@@ -66,7 +66,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
             className="w-full"
           >
             {tools.length > 0
-              ? `Used ${tools.length} tools in ${formatDuration(totalDuration)}`
+              ? `Completed ${tools.length} steps in ${formatDuration(totalDuration)}`
               : `Thought for ${formatDuration(totalDuration)}`}
           </motion.div>
         )}

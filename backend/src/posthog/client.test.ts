@@ -131,9 +131,6 @@ describe('PostHog Privacy Mode', () => {
       // Flush PostHog to ensure events are sent
       await phClient.flush()
 
-      // Give a bit of time for async operations
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
       // Find PostHog capture requests (check various URL patterns)
       const posthogRequests = capturedFetches.filter(
         (call) =>
@@ -277,7 +274,7 @@ describe('PostHog Privacy Mode', () => {
         apiKey: 'fake-openai-key',
         baseURL: 'https://api.openai.com/v1',
         posthog: phClient,
-        fetch: mockOpenAIFetch as any,
+        fetch: mockOpenAIFetch,
       })
 
       // Override with posthogPrivacyMode parameter

@@ -13,18 +13,11 @@ mock.module('@/lib/tool-metadata', () => ({
   })),
 }))
 
-mock.module('@/lib/utils', () => ({
-  splitPartType: mock((type: string) => {
-    const parts = type.split(':')
-    return [parts[0], parts[1] || '']
-  }),
-}))
-
 const createMockTool = (
   state: ToolUIPart['state'],
   output?: unknown,
   toolCallId?: string,
-  type = 'tool:test_tool',
+  type = 'tool-test_tool',
 ): ToolUIPart =>
   ({
     type,
@@ -75,14 +68,14 @@ describe('useToolItemState', () => {
   })
 
   it('generates fallback tooltip key from toolName and index', () => {
-    const tool = createMockTool('output-available', { result: 'success' }, undefined, 'tool:search')
+    const tool = createMockTool('output-available', { result: 'success' }, undefined, 'tool-search')
     const result = useToolItemState({ tool, index: 3 })
 
     expect(result.tooltipKey).toBe('search-3')
   })
 
   it('extracts tool name from type string', () => {
-    const tool = createMockTool('output-available', { result: 'success' }, undefined, 'tool:fetch_content')
+    const tool = createMockTool('output-available', { result: 'success' }, undefined, 'tool-fetch_content')
     const result = useToolItemState({ tool, index: 0 })
 
     expect(result.toolName).toBe('fetch_content')

@@ -106,6 +106,26 @@ bun install
 cd backend && bun install
 ```
 
+## Testing
+
+```sh
+# Run frontend tests (src/ and scripts/)
+bun test
+
+# Run frontend tests in watch mode
+bun test:watch
+
+# Run backend tests
+bun test:backend
+
+# Run backend tests in watch mode
+bun test:backend:watch
+```
+
+**Note**: Don't use `bun test` without the npm script from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
+
+See [docs/testing.md](./docs/testing.md) for detailed testing guidelines.
+
 ## Code Formatting
 
 Thunderbolt uses automated code formatting to maintain consistent code style across the entire project.

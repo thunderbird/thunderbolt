@@ -1,123 +1,82 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
+import { renderHook, act } from '@testing-library/react'
+import { getClock } from '@/testing-library'
+import { useThrottledCallback } from './use-throttle'
 
 describe('useThrottledCallback', () => {
-  beforeEach(() => {
-    // Bun test uses real timers by default
-  })
-
-  afterEach(() => {
-    // Clean up any pending timers
-  })
-
   it('should call callback immediately on first invocation', () => {
     const callback = mock((..._args: any[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 1000))
 
-    // Simulate throttled callback behavior
-    let lastCallTime = 0
-    const throttleMs = 1000
+    act(() => {
+      result.current('test')
+    })
 
-    const throttledFn = (...args: any[]) => {
-      const now = Date.now()
-      if (now - lastCallTime >= throttleMs) {
-        lastCallTime = now
-        callback(...args)
-      }
-    }
-
-    throttledFn('test')
     expect(callback).toHaveBeenCalledTimes(1)
     expect(callback).toHaveBeenCalledWith('test')
   })
 
   it('should throttle rapid calls', async () => {
     const callback = mock((..._args: any[]) => {})
-    const throttleMs = 100
-    let lastCallTime = 0
-    let pendingArgs: any[] | null = null
-    let timeoutId: NodeJS.Timeout | null = null
-
-    const throttledFn = (...args: any[]) => {
-      const now = Date.now()
-      const timeSinceLastCall = now - lastCallTime
-
-      if (timeSinceLastCall >= throttleMs) {
-        lastCallTime = now
-        callback(...args)
-      } else {
-        pendingArgs = args
-        if (timeoutId) clearTimeout(timeoutId)
-        timeoutId = setTimeout(() => {
-          lastCallTime = Date.now()
-          if (pendingArgs) {
-            callback(...pendingArgs)
-            pendingArgs = null
-          }
-        }, throttleMs - timeSinceLastCall)
-      }
-    }
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
 
     // First call - immediate
-    throttledFn('first')
+    act(() => {
+      result.current('first')
+    })
     expect(callback).toHaveBeenCalledTimes(1)
     expect(callback).toHaveBeenCalledWith('first')
 
     // Rapid calls - throttled
-    throttledFn('second')
-    throttledFn('third')
-    throttledFn('fourth')
+    act(() => {
+      result.current('second')
+      result.current('third')
+      result.current('fourth')
+    })
 
-    // Should still only have been called once
+    // Should still only have been called once (first call)
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for throttle to complete
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await act(async () => {
+      await getClock().tickAsync(150)
+    })
 
     // Should have been called with the last value
     expect(callback).toHaveBeenCalledTimes(2)
     expect(callback.mock.calls[1]?.[0]).toBe('fourth')
-
-    if (timeoutId) clearTimeout(timeoutId)
   })
 
   it('should allow calls after interval passes', async () => {
     const callback = mock((..._args: any[]) => {})
-    const throttleMs = 50
-    let lastCallTime = 0
+    const { result } = renderHook(() => useThrottledCallback(callback, 50))
 
-    const throttledFn = (...args: any[]) => {
-      const now = Date.now()
-      if (now - lastCallTime >= throttleMs) {
-        lastCallTime = now
-        callback(...args)
-      }
-    }
-
-    throttledFn('first')
+    act(() => {
+      result.current('first')
+    })
     expect(callback).toHaveBeenCalledTimes(1)
 
     // Wait for interval to pass
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
 
     // Next call should be immediate
-    throttledFn('second')
+    act(() => {
+      result.current('second')
+    })
     expect(callback).toHaveBeenCalledTimes(2)
     expect(callback.mock.calls[1]?.[0]).toBe('second')
   })
 
   it('should handle multiple arguments', () => {
     const callback = mock((..._args: any[]) => {})
-    let lastCallTime = 0
-    const throttleMs = 1000
+    const { result } = renderHook(() => useThrottledCallback(callback, 1000))
 
-    const throttledFn = (...args: any[]) => {
-      const now = Date.now()
-      if (now - lastCallTime >= throttleMs) {
-        lastCallTime = now
-        callback(...args)
-      }
-    }
+    act(() => {
+      result.current('arg1', 'arg2', 'arg3')
+    })
 
-    throttledFn('arg1', 'arg2', 'arg3')
     expect(callback).toHaveBeenCalledWith('arg1', 'arg2', 'arg3')
   })
 })

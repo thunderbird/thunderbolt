@@ -96,8 +96,8 @@ export default function AutomationsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex flex-col overflow-hidden">
+      <div className="flex-1">
         <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between">

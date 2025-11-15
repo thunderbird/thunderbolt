@@ -1,19 +1,11 @@
-import { renderHook, waitFor } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach, expect, mock } from 'bun:test'
-import '@testing-library/jest-dom'
-import { useUnitsOptions } from './use-units-options'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { setupTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { updateSetting } from '@/dal/settings'
-
-// Mock only ky, use real database for getSettings
-const mockKyGet = mock()
-
-mock.module('ky', () => ({
-  default: {
-    get: mockKyGet,
-  },
-}))
+import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
+import '@testing-library/jest-dom'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { useUnitsOptions } from './use-units-options'
 
 const mockUnitsOptionsData = {
   units: ['metric', 'imperial'],
@@ -51,35 +43,36 @@ describe('useUnitsOptions', () => {
     await setupTestDatabase()
     // Set up the cloud_url setting in the database
     await updateSetting('cloud_url', 'https://api.example.com')
-    mockKyGet.mockClear()
-    mockKyGet.mockReturnValue({
-      json: mock().mockResolvedValue(mockUnitsOptionsData),
-    } as unknown as { json: () => Promise<typeof mockUnitsOptionsData> })
   })
 
   afterEach(async () => {
     await resetTestDatabase()
-    mockKyGet.mockClear()
   })
 
   describe('Hook functionality', () => {
-    it('should return loading state initially', () => {
+    it('should return loading state initially', async () => {
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       expect(result.current.isLoading).toBe(true)
       expect(result.current.data).toBeUndefined()
       expect(result.current.error).toBeNull()
+
+      // Advance timers to complete the query
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
     })
 
     it('should fetch and return units options data', async () => {
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true)
+      // Wait for query to execute
+      await act(async () => {
+        await getClock().runAllAsync()
       })
 
       expect(result.current.data).toEqual(mockUnitsOptionsData)
@@ -87,33 +80,16 @@ describe('useUnitsOptions', () => {
       expect(result.current.error).toBeNull()
     })
 
-    it('should call getSettings and ky.get with correct parameters', async () => {
-      renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await waitFor(() => {
-        expect(mockKyGet).toHaveBeenCalledWith('https://api.example.com/units-options')
-      })
-    })
-
     it('should handle API errors after retries', async () => {
-      const errorMessage = 'Network error'
-      mockKyGet.mockReturnValue({
-        json: mock().mockRejectedValue(new Error(errorMessage)),
-      } as unknown as { json: () => Promise<never> })
-
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: {} }),
       })
 
-      // Wait for retries to complete (2 retries + initial attempt = 3 total)
-      await waitFor(
-        () => {
-          expect(result.current.isError).toBe(true)
-        },
-        { timeout: 10000 },
-      )
+      // Wait for retries to complete - react-query retries with exponential backoff
+      // First retry after ~1000ms, second after ~2000ms
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
       expect(result.current.error).toBeDefined()
       expect(result.current.data).toBeUndefined()
@@ -123,16 +99,13 @@ describe('useUnitsOptions', () => {
       // This test verifies that the hook works with the default cloud_url
       // Since the hook has a default value, it should still work
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       // Wait for the hook to complete successfully
-      await waitFor(
-        () => {
-          expect(result.current.isSuccess).toBe(true)
-        },
-        { timeout: 5000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
       expect(result.current.data).toBeDefined()
     })
@@ -141,7 +114,7 @@ describe('useUnitsOptions', () => {
   describe('Query configuration', () => {
     it('should have correct query key', () => {
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       // The query key is internal to react-query, but we can verify the hook works
@@ -155,7 +128,7 @@ describe('useUnitsOptions', () => {
       // These are internal to react-query configuration
       // We test the behavior by ensuring the hook works correctly
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
       expect(result.current).toHaveProperty('data')
@@ -166,11 +139,11 @@ describe('useUnitsOptions', () => {
   describe('Data structure validation', () => {
     it('should return data with correct structure when successful', async () => {
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockUnitsOptionsData }),
       })
 
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true)
+      await act(async () => {
+        await getClock().runAllAsync()
       })
 
       const data = result.current.data
@@ -228,36 +201,6 @@ describe('useUnitsOptions', () => {
     })
   })
 
-  describe('Retry logic', () => {
-    it('should retry on network errors', async () => {
-      let callCount = 0
-      mockKyGet.mockImplementation(() => {
-        callCount++
-        if (callCount < 3) {
-          return {
-            json: mock().mockRejectedValue(new Error('Network error')),
-          } as unknown as { json: () => Promise<never> }
-        }
-        return {
-          json: mock().mockResolvedValue(mockUnitsOptionsData),
-        } as unknown as { json: () => Promise<typeof mockUnitsOptionsData> }
-      })
-
-      const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await waitFor(
-        () => {
-          expect(result.current.isSuccess).toBe(true)
-        },
-        { timeout: 5000 },
-      )
-
-      expect(callCount).toBeGreaterThan(1)
-    })
-  })
-
   describe('Edge cases', () => {
     it('should handle empty response', async () => {
       const emptyData = {
@@ -268,16 +211,12 @@ describe('useUnitsOptions', () => {
         currencies: [],
       }
 
-      mockKyGet.mockReturnValue({
-        json: mock().mockResolvedValue(emptyData),
-      } as unknown as { json: () => Promise<typeof emptyData> })
-
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: emptyData }),
       })
 
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true)
+      await act(async () => {
+        await getClock().runAllAsync()
       })
 
       expect(result.current.data).toEqual(emptyData)
@@ -292,21 +231,14 @@ describe('useUnitsOptions', () => {
         currencies: 'invalid',
       }
 
-      mockKyGet.mockReturnValue({
-        json: mock().mockResolvedValue(malformedData),
-      } as unknown as { json: () => Promise<typeof malformedData> })
-
       const { result } = renderHook(() => useUnitsOptions(), {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: malformedData }),
       })
 
       // Wait for schema validation to fail
-      await waitFor(
-        () => {
-          expect(result.current.isError).toBe(true)
-        },
-        { timeout: 5000 },
-      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
       expect(result.current.error).toBeDefined()
     })

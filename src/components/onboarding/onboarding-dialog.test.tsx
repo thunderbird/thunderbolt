@@ -1,8 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { mockLocationData } from '@/test-utils/http-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingDialog } from './onboarding-dialog'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
 
 // Mock React Router
 const mockNavigate = mock()
@@ -13,18 +16,20 @@ mock.module('react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
+let consoleSpies: ConsoleSpies
+
 beforeAll(async () => {
   await setupTestDatabase()
+  consoleSpies = setupConsoleSpy()
 })
 
 afterAll(async () => {
   await teardownTestDatabase()
+  consoleSpies.restore()
 })
 
-afterEach(async () => {
-  await resetTestDatabase()
-
-  // Reset mocks
+beforeEach(() => {
+  // Reset and set default mock state before each test to prevent pollution
   mockNavigate.mockClear()
   mockLocation.mockClear()
 
@@ -36,6 +41,14 @@ afterEach(async () => {
     state: null,
     key: 'mock-key',
   })
+})
+
+afterEach(async () => {
+  await resetTestDatabase()
+
+  // Reset mocks
+  mockNavigate.mockClear()
+  mockLocation.mockClear()
 })
 
 describe('OnboardingDialog', () => {
@@ -51,7 +64,7 @@ describe('OnboardingDialog', () => {
       })
 
       render(<OnboardingDialog />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
 
@@ -73,7 +86,7 @@ describe('OnboardingDialog', () => {
       })
 
       render(<OnboardingDialog />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
 
@@ -95,7 +108,7 @@ describe('OnboardingDialog', () => {
       })
 
       render(<OnboardingDialog />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
     })
   })
@@ -103,7 +116,7 @@ describe('OnboardingDialog', () => {
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
       render(<OnboardingDialog />, {
-        wrapper: createQueryTestWrapper(),
+        wrapper: createTestProvider({ mockResponse: mockLocationData }),
       })
 
       // The component should integrate with the real database

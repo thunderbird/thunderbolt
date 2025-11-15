@@ -2,6 +2,7 @@ import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
+import { isTestEnv } from '@/lib/env'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -9,6 +10,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2 } from '@ai-sdk/provider'
+import ky, { type KyInstance } from 'ky'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -40,6 +42,7 @@ type AiFetchStreamingResponseOptions = {
   saveMessages: SaveMessagesFunction
   modelId: string
   mcpClients?: MCPClient[]
+  httpClient?: KyInstance
 }
 
 export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
@@ -103,6 +106,7 @@ export const aiFetchStreamingResponse = async ({
   saveMessages,
   modelId,
   mcpClients,
+  httpClient,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -136,7 +140,9 @@ export const aiFetchStreamingResponse = async ({
 
   let toolset: ToolSet = {}
   if (supportsTools) {
-    const availableTools = await getAvailableTools()
+    // Use provided httpClient for tests, otherwise use plain ky for external APIs
+    const toolsHttpClient = httpClient || ky
+    const availableTools = await getAvailableTools(toolsHttpClient)
     toolset = { ...createToolset(availableTools) }
 
     for (const mcpClient of mcpClients || []) {
@@ -213,7 +219,7 @@ export const aiFetchStreamingResponse = async ({
       //   } satisfies OpenAICompatibleProviderOptions,
       // },
       onStepFinish: (step) => {
-        if (process.env.NODE_ENV === 'test') return
+        if (isTestEnv()) return
 
         console.log('step', {
           text: step.text,
@@ -229,7 +235,7 @@ export const aiFetchStreamingResponse = async ({
         })
       },
       onFinish: async (finish) => {
-        if (process.env.NODE_ENV === 'test') return
+        if (isTestEnv()) return
 
         console.log('finish', {
           text: finish.text,

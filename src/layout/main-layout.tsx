@@ -87,12 +87,22 @@ export default function Page() {
   }
 
   return (
-    <SidebarInset className="h-full overflow-hidden flex flex-col">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
+    <SidebarInset className="h-full flex flex-col">
+      <ResizablePanelGroup direction="horizontal">
         <ResizablePanel>
-          <div className="flex flex-col h-full">
+          <div
+            className="flex flex-col h-full"
+            style={{
+              paddingTop: 'var(--safe-area-top-padding)',
+            }}
+          >
             <Header />
-            <div className="flex-1 overflow-hidden">
+            <div
+              className="flex-1 overflow-auto"
+              style={{
+                paddingBottom: 'var(--safe-area-bottom-padding)',
+              }}
+            >
               <Outlet />
             </div>
           </div>

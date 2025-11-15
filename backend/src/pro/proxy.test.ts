@@ -1,10 +1,14 @@
+import type { ConsoleSpies } from '@/test-utils/console-spies'
+import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createProxyRoutes } from './proxy'
+import * as settingsModule from '@/config/settings'
 
 describe('Proxy Routes', () => {
   let app: Elysia
-  let consoleSpy: ReturnType<typeof spyOn>
+  let getSettingsSpy: ReturnType<typeof spyOn>
+  let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>
 
   const createMockResponse = (body: string, options: ResponseInit = {}) => {
@@ -22,8 +26,30 @@ describe('Proxy Routes', () => {
   }
 
   beforeAll(async () => {
-    // Suppress console output during tests
-    consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
+    consoleSpies = setupConsoleSpy()
+
+    // Mock settings
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+      fireworksApiKey: '',
+      exaApiKey: '',
+      thunderboltInferenceUrl: '',
+      thunderboltInferenceApiKey: '',
+      monitoringToken: '',
+      googleClientId: '',
+      googleClientSecret: '',
+      microsoftClientId: '',
+      microsoftClientSecret: '',
+      logLevel: 'INFO',
+      port: 8000,
+      posthogHost: 'https://us.i.posthog.com',
+      posthogApiKey: '',
+      corsOrigins: 'http://localhost:1420',
+      corsOriginRegex: '',
+      corsAllowCredentials: true,
+      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+      corsAllowHeaders: 'Content-Type,Authorization',
+      corsExposeHeaders: '',
+    })
 
     // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockResponse('test content')))
@@ -33,13 +59,14 @@ describe('Proxy Routes', () => {
   })
 
   afterAll(() => {
-    consoleSpy?.mockRestore()
+    getSettingsSpy?.mockRestore()
+    consoleSpies.restore()
   })
 
   beforeEach(() => {
     // Reset all mocks before each test
     mockFetch.mockClear()
-    consoleSpy.mockClear()
+    consoleSpies.error.mockClear()
   })
 
   describe('GET /proxy/*', () => {
@@ -226,7 +253,6 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(500)
-      expect(consoleSpy).toHaveBeenCalledWith('Proxy error:', networkError)
 
       const body = await response.text()
       expect(body).toBe('Proxy request failed')

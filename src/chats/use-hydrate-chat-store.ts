@@ -1,3 +1,4 @@
+import { aiFetchStreamingResponse } from '@/ai/fetch'
 import {
   getAvailableModels,
   getChatMessages,
@@ -7,20 +8,19 @@ import {
   getTriggerPromptForThread,
   saveMessagesWithContextUpdate,
 } from '@/dal'
+import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
+import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
+import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { DefaultChatTransport } from 'ai'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
-import { aiFetchStreamingResponse } from '@/ai/fetch'
-import { useMCP } from '@/lib/mcp-provider'
-import { generateTitle } from '@/lib/title-generator'
-import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
-import { useQueryClient } from '@tanstack/react-query'
 
 type UseHydrateChatStoreParams = {
   id: string
@@ -91,7 +91,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const textContent = firstUserMessage.parts
       ?.filter((part) => part.type === 'text')
-      .map((part) => part.text)
+      .map((part) => (part.type === 'text' ? part.text : ''))
       .join(' ')
 
     if (!textContent) return

@@ -1,6 +1,9 @@
-import { describe, expect, it, mock, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
-import { renderHook, waitFor, act } from '@testing-library/react'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { getClock } from '@/testing-library'
+import { act, renderHook } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useAppInitialization } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -11,6 +14,10 @@ mock.module('@tauri-apps/api/core', () => ({
 mock.module('@tauri-apps/plugin-os', () => ({
   platform: () => 'web',
 }))
+
+const mockPostHogConfig = {
+  posthog_api_key: null, // Disable PostHog in tests
+}
 
 describe('useAppInitialization', () => {
   let originalLocation: Location | undefined
@@ -58,9 +65,18 @@ describe('useAppInitialization', () => {
     }
   })
 
-  it('provides correct hook interface', () => {
-    const { result } = renderHook(() => useAppInitialization())
+  it('provides correct hook interface', async () => {
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(result.current).toBeDefined()
     expect(result.current).toHaveProperty('initData')
     expect(result.current).toHaveProperty('initError')
     expect(result.current).toHaveProperty('isInitializing')
@@ -71,17 +87,19 @@ describe('useAppInitialization', () => {
   })
 
   it('initializes on mount and completes successfully', async () => {
-    const { result } = renderHook(() => useAppInitialization())
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
     expect(result.current.isInitializing).toBe(true)
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })
@@ -95,55 +113,57 @@ describe('useAppInitialization', () => {
       configurable: true,
     })
 
-    const { result } = renderHook(() => useAppInitialization())
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
-    await waitFor(
-      () => {
-        expect(result.current.initData).toBeDefined()
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.initData).toBeDefined()
     expect(result.current.initData?.sideviewType).toBe('message')
     expect(result.current.initData?.sideviewId).toBe('123')
   })
 
   it('handles initialization gracefully when non-critical steps fail', async () => {
-    const { result } = renderHook(() => useAppInitialization())
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
 
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })
 
   it('retry function reinitializes the app', async () => {
-    const { result } = renderHook(() => useAppInitialization())
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-        expect(result.current.initData).toBeDefined()
-      },
-      { timeout: 5000 },
-    )
+    // Advance timers to complete initialization
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(result.current.isInitializing).toBe(false)
+    expect(result.current.initData).toBeDefined()
 
     await act(async () => {
       await result.current.retry()
+      await getClock().runAllAsync()
     })
 
-    await waitFor(
-      () => {
-        expect(result.current.isInitializing).toBe(false)
-      },
-      { timeout: 5000 },
-    )
-
+    expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
   })

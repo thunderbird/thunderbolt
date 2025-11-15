@@ -71,6 +71,13 @@
       "when": 1761060132320,
       "tag": "0009_deep_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1762538170472,
+      "tag": "0010_tricky_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

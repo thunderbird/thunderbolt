@@ -32,6 +32,7 @@ src/widgets/my-widget/
 
 For more complex widgets, you can add:
 
+- `constants.ts` - Shared constants (sessionStorage keys, event names, etc.)
 - `lib.ts` - Utility functions and types
 - `lib.test.ts` - Unit tests for utilities
 - `display.tsx` - Separate presentation component
@@ -131,6 +132,40 @@ export type { CacheData, MyWidget as MyWidgetType } from './schema'
 ```
 
 **Important:** Export your main component as both its specific name AND as `Component` - this allows the registry to auto-wire it!
+
+#### `src/widgets/my-widget/constants.ts` (Optional)
+
+If your widget needs shared constants (e.g., sessionStorage keys, event names, configuration values), create a constants file:
+
+```typescript
+export const myWidgetFlag = 'my_widget_flag'
+export const myWidgetEvent = 'my-widget-event'
+export const getMyWidgetKey = (messageId: string, key: 'state' | 'data') =>
+  `my_widget_${messageId}_${key}`
+```
+
+**When to use constants:**
+- ✅ Custom event names shared between components
+- ✅ Magic strings or numbers used in multiple places
+- ✅ Configuration values that might change
+
+**Best practices:**
+- Use camelCase for constant names (not SCREAMING_SNAKE_CASE)
+- Use descriptive function names for dynamic keys (e.g., `getMyWidgetKey()`)
+- Keep constants widget-specific (co-locate with the widget)
+- Export constants that are used outside the widget directory
+
+**Example:** The `connect-integration` widget uses constants for OAuth retry coordination:
+
+```typescript
+// src/widgets/connect-integration/constants.ts
+export const oauthRetryFlag = 'oauth_trigger_retry'
+export const oauthRetryEvent = 'oauth-retry-trigger'
+export const getOAuthWidgetKey = (messageId: string, key: 'provider' | 'completed') =>
+  `oauth_widget_${messageId}_${key}`
+```
+
+These constants are then imported in both the widget component and the chat state handler.
 
 ### Step 3: Register in Central Registry (ONE FILE!)
 

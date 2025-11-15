@@ -1,3 +1,18 @@
+const FUNC_CACHE = Symbol.for('memoize.func_cache')
+const KEY_CACHE = Symbol.for('memoize.string_cache')
+
+/**
+ * Clears all memoized values from the global cache
+ * This is primarily useful for testing to prevent pollution between tests
+ */
+export const clearMemoizeCache = () => {
+  const keyCache: Record<string, unknown> | undefined = (globalThis as any)[KEY_CACHE]
+  if (keyCache) {
+    Object.keys(keyCache).forEach((key) => delete keyCache[key])
+  }
+  // Note: WeakMap cache cannot be cleared, but that's okay since it's keyed by function reference
+}
+
 /**
  * Generic memoization helper that caches the function result in `globalThis`.
  * Designed to work with both synchronous and asynchronous (Promise-returning)
@@ -19,9 +34,6 @@
 export function memoize<Fn extends (...args: any[]) => any>(fn: Fn, key?: string): Fn {
   // 1. Default: cache per **function reference** (WeakMap)
   // 2. Optional: cache per explicit **string key** when callers need to share a value
-
-  const FUNC_CACHE = Symbol.for('memoize.func_cache')
-  const KEY_CACHE = Symbol.for('memoize.string_cache')
 
   const funcCache: WeakMap<Function, unknown> =
     (globalThis as any)[FUNC_CACHE] ?? ((globalThis as any)[FUNC_CACHE] = new WeakMap())

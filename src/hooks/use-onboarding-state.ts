@@ -1,7 +1,7 @@
-import { useReducer, useEffect } from 'react'
-import { useSettings } from './use-settings'
-import { useCountryUnits } from './use-country-units'
 import { extractCountryFromLocation } from '@/lib/country-utils'
+import { useEffect, useReducer } from 'react'
+import { useCountryUnits } from './use-country-units'
+import { useSettings } from './use-settings'
 
 type OnboardingStep = 1 | 2 | 3 | 4 | 5
 
@@ -186,6 +186,9 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
   }
 }
 
+/**
+ * Hook for managing onboarding state and actions
+ */
 export const useOnboardingState = () => {
   const [state, dispatch] = useReducer(onboardingReducer, initialState)
 
@@ -334,4 +337,4 @@ export const useOnboardingState = () => {
   return { state, actions }
 }
 
-export type { OnboardingState, OnboardingAction }
+export type { OnboardingAction, OnboardingState }

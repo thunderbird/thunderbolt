@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import ChatDetailPage from '@/chats/detail'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { HttpClientProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -19,18 +20,19 @@ import PreferencesSettingsPage from '@/settings/preferences'
 import TasksPage from '@/tasks'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
+import { AppErrorScreen } from './components/app-error-screen'
+import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
+import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
-import { useSettings } from './hooks/use-settings'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { useSafeAreaInset } from './hooks/use-safe-area-inset'
+import { useSettings } from './hooks/use-settings'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
-import { ContentViewProvider } from './content-view/context'
 import SettingsLayout from './settings/layout'
-import { AppErrorScreen } from './components/app-error-screen'
 import type { InitData } from './types'
-import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 
 const queryClient = new QueryClient()
 
@@ -38,6 +40,7 @@ function AppContent({ initData }: { initData: InitData }) {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
+  useSafeAreaInset()
 
   return (
     <BrowserRouter>
@@ -96,22 +99,24 @@ export const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PostHogProvider client={initData.posthogClient}>
-        <ThemeProvider defaultTheme="system" storageKey="ui_theme">
-          <TrayProvider tray={initData.tray} window={initData.window}>
-            <MCPProvider>
-              <SidebarProvider>
-                <ContentViewProvider
-                  initialSideviewType={initData.sideviewType}
-                  initialSideviewId={initData.sideviewId}
-                >
-                  <AppContent initData={initData} />
-                </ContentViewProvider>
-              </SidebarProvider>
-            </MCPProvider>
-          </TrayProvider>
-        </ThemeProvider>
-      </PostHogProvider>
+      <HttpClientProvider httpClient={initData.httpClient}>
+        <PostHogProvider client={initData.posthogClient}>
+          <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+            <TrayProvider tray={initData.tray} window={initData.window}>
+              <MCPProvider>
+                <SidebarProvider>
+                  <ContentViewProvider
+                    initialSideviewType={initData.sideviewType}
+                    initialSideviewId={initData.sideviewId}
+                  >
+                    <AppContent initData={initData} />
+                  </ContentViewProvider>
+                </SidebarProvider>
+              </MCPProvider>
+            </TrayProvider>
+          </ThemeProvider>
+        </PostHogProvider>
+      </HttpClientProvider>
     </QueryClientProvider>
   )
 }

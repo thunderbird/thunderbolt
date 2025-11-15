@@ -188,9 +188,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Verify the completion works
       expect(completion).toBeDefined()
 
-      // Wait for any async PostHog operations
-      await new Promise((resolve) => setTimeout(resolve, 200))
-
       // Find PostHog requests
       const posthogRequests = capturedFetches.filter(
         (call) =>
@@ -248,8 +245,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           posthogDistinctId: 'test-user',
         })
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 200))
 
       // Check ALL captured PostHog requests
       const posthogRequests = capturedFetches.filter(

@@ -1,6 +1,6 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -23,7 +23,8 @@ afterAll(async () => {
 })
 
 describe('Models DAL', () => {
-  afterEach(async () => {
+  beforeEach(async () => {
+    // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
 

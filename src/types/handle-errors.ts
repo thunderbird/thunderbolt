@@ -6,6 +6,7 @@ export type HandleErrorCode =
   | 'POSTHOG_FETCH_FAILED'
   | 'APP_DIR_CREATION_FAILED'
   | 'DATABASE_PATH_FAILED'
+  | 'HTTP_CLIENT_INIT_FAILED'
   | 'UNKNOWN_ERROR'
 
 export type HandleError = {

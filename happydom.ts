@@ -3,7 +3,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 GlobalRegistrator.register()
 
 // Add comprehensive Node.js polyfills for better compatibility
-import { ReadableStream, WritableStream, TransformStream } from 'stream/web'
+import { ReadableStream, TransformStream, WritableStream } from 'stream/web'
 
 // Polyfill Web Streams API
 globalThis.ReadableStream = ReadableStream
@@ -19,3 +19,6 @@ if (typeof globalThis.process === 'undefined') {
 if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer
 }
+
+// Fake timers are now managed in testing-library.ts
+// This file just sets up the DOM environment

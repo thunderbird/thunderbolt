@@ -30,9 +30,9 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
 export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean, messageId: string) => {
   const partElements: ReactNode[] = []
 
-  if (groupedParts.length === 0) {
+  if (groupedParts.length === 0 && isStreaming) {
     // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming={true} />)
+    partElements.push(<SyntheticLoadingPart isStreaming />)
   }
 
   const hasTextPart = groupedParts.some((part) => {

@@ -3,6 +3,13 @@
  * This worker handles all SQLite operations in a separate thread
  */
 
+// Suppress console output in test environments (worker has separate console from main thread)
+if (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') {
+  console.error = () => {}
+  console.warn = () => {}
+  console.info = () => {}
+}
+
 import * as SQLite from '@journeyapps/wa-sqlite'
 import SQLiteESMFactory from '@journeyapps/wa-sqlite/dist/wa-sqlite.mjs'
 // @ts-expect-error - OPFSCoopSyncVFS exists but TypeScript definitions are incomplete
@@ -200,8 +207,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   } catch (error) {
     // Suppress expected "no such table" errors during migrations
     const errorMsg = error instanceof Error ? error.message : String(error)
+    // Only log in non-test environments to reduce test noise
     if (!errorMsg.includes('no such table: __drizzle_migrations')) {
-      console.error('wa-sqlite worker error:', error)
+      if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+        console.error('wa-sqlite worker error:', error)
+      }
     }
     response.error = errorMsg
   }

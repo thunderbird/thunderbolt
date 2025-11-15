@@ -25,35 +25,28 @@ function splitSqlStatements(sql: string): string[] {
 export async function migrate(db: AnyDrizzleDatabase) {
   const startTime = performance.now()
 
-  // Optimization: Try to query the table first (fast DML), only create if it doesn't exist (slow DDL)
-  // This avoids the expensive CREATE TABLE IF NOT EXISTS on OPFS/IndexedDB (465ms!) when table exists
-  let rows: unknown[]
-
-  try {
-    // Try to select from the table - this is fast if the table exists
-    rows = await db.all(sql`SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
-  } catch (_error) {
-    // Table doesn't exist, create it
-    await db.run(sql`
+  await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             hash text NOT NULL UNIQUE,
 			created_at numeric
 		)
 	`)
-    // Now it's empty
-    rows = []
-  }
 
-  // Convert the rows to a Set for O(1) lookups
-  const completedMigrationHashes = new Set<string>(
-    rows.map((row: unknown) => {
-      const [, hash] = row as [unknown, string, unknown]
-      return hash
-    }),
-  )
+  // Get current migrations from database
+  const rows = await db.all(sql`SELECT id, hash, created_at FROM "__drizzle_migrations" ORDER BY created_at DESC`)
 
-  const hasBeenRun = (hash: string) => completedMigrationHashes.has(hash)
+  // Convert the rows to a more usable format
+  const dbMigrations = rows.map(([id, hash, created_at]: any) => ({
+    id,
+    hash,
+    created_at,
+  }))
+
+  const hasBeenRun = (hash: string) =>
+    dbMigrations.find((dbMigration: any) => {
+      return dbMigration?.hash === hash
+    })
 
   // Apply migrations that haven't been run yet
   let migrationsRun = 0

@@ -66,7 +66,7 @@ const processQueue = async (): Promise<void> => {
 }
 
 /**
- * Initialize the SQLite database with IDBBatchAtomicVFS for persistence
+ * Initialize the SQLite database with appropriate VFS based on path
  */
 const initDatabase = async (filename: string): Promise<void> => {
   if (sqlite3 && db !== null) {
@@ -78,14 +78,23 @@ const initDatabase = async (filename: string): Promise<void> => {
   const module = await SQLiteESMFactory()
   sqlite3 = SQLite.Factory(module)
 
-  // Register OPFSCoopSyncVFS for OPFS persistence (synchronous, works with sync build)
-  const vfs = await OPFSCoopSyncVFS.create(filename, module)
-  sqlite3.vfs_register(vfs, true)
+  // For in-memory databases, skip VFS registration (no persistence needed)
+  const isInMemory = filename === ':memory:'
+
+  if (!isInMemory) {
+    // Register OPFSCoopSyncVFS for OPFS persistence (synchronous, works with sync build)
+    const vfs = await OPFSCoopSyncVFS.create(filename, module)
+    sqlite3.vfs_register(vfs, true)
+  }
 
   // Open database
-  db = await sqlite3.open_v2(filename, SQLite.SQLITE_OPEN_READWRITE | SQLite.SQLITE_OPEN_CREATE, filename)
+  db = await sqlite3.open_v2(
+    filename,
+    SQLite.SQLITE_OPEN_READWRITE | SQLite.SQLITE_OPEN_CREATE,
+    isInMemory ? undefined : filename,
+  )
 
-  console.info(`wa-sqlite worker: Opened database ${filename} with OPFSCoopSyncVFS`)
+  console.info(`wa-sqlite worker: Opened database ${filename}${isInMemory ? ' (in-memory)' : ' with OPFSCoopSyncVFS'}`)
 }
 
 /**
@@ -104,7 +113,7 @@ const execSqlInternal = async (
 
   try {
     // Use the statements iterator to prepare and execute
-    for await (const stmt of sqlite3.statements(db, sql)) {
+    statementLoop: for await (const stmt of sqlite3.statements(db, sql)) {
       // Bind parameters if provided
       if (params && params.length > 0) {
         sqlite3.bind_collection(stmt, params)
@@ -118,9 +127,9 @@ const execSqlInternal = async (
         const rowValues = sqlite3.row(stmt)
         results.push(rowValues)
 
-        // For 'get' mode, only return first row
+        // For 'get' mode, only return first row from first statement
         if (returnMode === 'get') {
-          break
+          break statementLoop
         }
       }
 

@@ -71,21 +71,23 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec("INSERT INTO test (id, name) VALUES (2, 'Bob')", [], 'run')
 
       const result = await client!.exec('SELECT * FROM test ORDER BY id', [], 'all')
-      expect(result.rows).toHaveLength(2)
-      expect(result.rows[0]).toEqual([1, 'Alice'])
-      expect(result.rows[1]).toEqual([2, 'Bob'])
+      expect(result?.rows).toBeDefined()
+      const rows = result?.rows as unknown[]
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toEqual([1, 'Alice'])
+      expect(rows[1]).toEqual([2, 'Bob'])
     })
 
     it('should execute SELECT with .get()', async () => {
       await client!.exec("INSERT INTO test (id, name) VALUES (1, 'Alice')", [], 'run')
 
       const result = await client!.exec('SELECT * FROM test WHERE id = 1', [], 'get')
-      expect(result.rows).toEqual([1, 'Alice'])
+      expect(result?.rows).toEqual([1, 'Alice'])
     })
 
     it('should return undefined for .get() with no results', async () => {
       const result = await client!.exec('SELECT * FROM test WHERE id = 999', [], 'get')
-      expect(result.rows).toBeUndefined()
+      expect(result?.rows).toBeUndefined()
     })
 
     it('should execute UPDATE statements', async () => {
@@ -93,7 +95,7 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec("UPDATE test SET name = 'Alicia' WHERE id = 1", [], 'run')
 
       const result = await client!.exec('SELECT * FROM test WHERE id = 1', [], 'get')
-      expect(result.rows).toEqual([1, 'Alicia'])
+      expect(result?.rows).toEqual([1, 'Alicia'])
     })
 
     it('should execute DELETE statements', async () => {
@@ -101,7 +103,8 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec('DELETE FROM test WHERE id = 1', [], 'run')
 
       const result = await client!.exec('SELECT * FROM test', [], 'all')
-      expect(result.rows).toHaveLength(0)
+      const rows = result?.rows as unknown[]
+      expect(rows).toHaveLength(0)
     })
   })
 
@@ -115,7 +118,7 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec('INSERT INTO test (id, name) VALUES (?, ?)', [1, 'Alice'], 'run')
 
       const result = await client!.exec('SELECT * FROM test WHERE id = ?', [1], 'get')
-      expect(result.rows).toEqual([1, 'Alice'])
+      expect(result?.rows).toEqual([1, 'Alice'])
     })
 
     it('should handle parameterized SELECT', async () => {
@@ -123,7 +126,7 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec('INSERT INTO test (id, name) VALUES (?, ?)', [2, 'Bob'], 'run')
 
       const result = await client!.exec('SELECT * FROM test WHERE name = ?', ['Bob'], 'get')
-      expect(result.rows).toEqual([2, 'Bob'])
+      expect(result?.rows).toEqual([2, 'Bob'])
     })
 
     it('should handle multiple parameters', async () => {
@@ -132,7 +135,8 @@ describe('WaSQLiteWorkerClient', () => {
       await client!.exec('INSERT INTO test (id, name) VALUES (?, ?)', [3, 'Charlie'], 'run')
 
       const result = await client!.exec('SELECT * FROM test WHERE id >= ? AND id <= ? ORDER BY id', [1, 2], 'all')
-      expect(result.rows).toHaveLength(2)
+      const rows = result?.rows as unknown[]
+      expect(rows).toHaveLength(2)
     })
   })
 
@@ -154,7 +158,8 @@ describe('WaSQLiteWorkerClient', () => {
       await Promise.all(promises)
 
       const result = await client!.exec('SELECT * FROM test ORDER BY id', [], 'all')
-      expect(result.rows).toHaveLength(4)
+      const rows = result?.rows as unknown[]
+      expect(rows).toHaveLength(4)
     })
 
     it('should maintain request/response order for concurrent requests', async () => {
@@ -167,8 +172,8 @@ describe('WaSQLiteWorkerClient', () => {
         client!.exec('SELECT * FROM test WHERE id = ?', [2], 'get'),
       ])
 
-      expect(result1.rows).toEqual([1, 'Alice'])
-      expect(result2.rows).toEqual([2, 'Bob'])
+      expect(result1?.rows).toEqual([1, 'Alice'])
+      expect(result2?.rows).toEqual([2, 'Bob'])
     })
 
     it('should handle rapid sequential requests', async () => {
@@ -178,7 +183,8 @@ describe('WaSQLiteWorkerClient', () => {
       }
 
       const result = await client!.exec('SELECT COUNT(*) FROM test', [], 'get')
-      expect(result.rows[0]).toBe(20)
+      const rows = result?.rows as unknown[] | undefined
+      expect(rows?.[0]).toBe(20)
     })
   })
 
@@ -219,8 +225,9 @@ describe('WaSQLiteWorkerClient', () => {
       expect(results[2]!.status).toBe('fulfilled')
 
       // Verify successful operations completed
-      const rows = await client!.exec('SELECT * FROM test ORDER BY id', [], 'all')
-      expect(rows.rows).toHaveLength(2)
+      const result = await client!.exec('SELECT * FROM test ORDER BY id', [], 'all')
+      const rows = result?.rows as unknown[]
+      expect(rows).toHaveLength(2)
     })
   })
 

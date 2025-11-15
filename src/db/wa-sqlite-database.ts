@@ -59,22 +59,21 @@ export class WaSQLiteDatabase implements DatabaseInterface {
           return { rows: [] }
         }
 
-        const rows = result.rows
+        const rows = result?.rows
 
         if (method === 'get') {
-          if (!rows) {
-            return { rows: undefined }
+          // For .get(), return the single row or undefined
+          // Worker returns a single row array like [1, 'Alice'] or undefined
+          if (!rows || isEmptyObject(rows)) {
+            return { rows: undefined as unknown as unknown[] }
           }
 
-          // Return undefined for empty objects
-          if (isEmptyObject(rows)) {
-            return { rows: undefined }
-          }
-
-          return { rows }
+          // Return the row directly (already in array format from worker)
+          return { rows: rows as unknown[] }
         }
 
-        return { rows: rows || [] }
+        // For .all(), always return an array
+        return { rows: (Array.isArray(rows) ? rows : []) as unknown[] }
       } catch (error) {
         // Suppress expected "no such table" errors during migrations
         const errorMsg = error instanceof Error ? error.message : String(error)

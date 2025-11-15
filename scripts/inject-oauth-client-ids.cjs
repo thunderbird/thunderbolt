@@ -3,7 +3,11 @@
 /**
  * Injects OAuth client IDs into configuration files for local development and CI/CD.
  * 
- * Reads from environment variables:
+ * Reads from:
+ * 1. Environment variables (priority)
+ * 2. backend/.env file (fallback for local development)
+ * 
+ * Required variables:
  * - GOOGLE_CLIENT_ID_ANDROID (for Android builds)
  * - GOOGLE_CLIENT_ID_IOS (for iOS builds)
  * - MICROSOFT_CLIENT_ID_ANDROID (for Android builds)
@@ -19,6 +23,26 @@
 
 const fs = require('fs')
 const path = require('path')
+
+// Load environment variables from backend/.env if available
+const backendEnvPath = path.join(__dirname, '..', 'backend', '.env')
+if (fs.existsSync(backendEnvPath)) {
+  const envContent = fs.readFileSync(backendEnvPath, 'utf8')
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim()
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=')
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join('=').replace(/^["']|["']$/g, '')
+        // Don't override existing env vars
+        if (!process.env[key]) {
+          process.env[key] = value
+        }
+      }
+    }
+  })
+  console.log(`📂 Loaded environment variables from backend/.env\n`)
+}
 
 const TAURI_CONFIG_PATH = path.join(__dirname, '..', 'src-tauri', 'tauri.conf.json')
 
@@ -50,7 +74,9 @@ try {
     const schemes = ['thunderbolt']
     
     if (googleClientId) {
-      schemes.push(`com.googleusercontent.apps.${googleClientId}`)
+      // Strip .apps.googleusercontent.com suffix if present
+      const cleanGoogleClientId = googleClientId.replace('.apps.googleusercontent.com', '')
+      schemes.push(`com.googleusercontent.apps.${cleanGoogleClientId}`)
     }
     
     if (microsoftClientId) {
@@ -64,7 +90,8 @@ try {
     console.log('✅ Updated tauri.conf.json deep-link schemes:')
     console.log(`   - Base: thunderbolt://`)
     if (googleClientId) {
-      console.log(`   - Google: com.googleusercontent.apps.${googleClientId}:/oauth2redirect`)
+      const cleanGoogleClientId = googleClientId.replace('.apps.googleusercontent.com', '')
+      console.log(`   - Google: com.googleusercontent.apps.${cleanGoogleClientId}:/oauth2redirect`)
     }
     if (microsoftClientId) {
       console.log(`   - Microsoft: msal${microsoftClientId}://auth`)

@@ -252,28 +252,8 @@ jobs:
           GOOGLE_CLIENT_ID_ANDROID: ${{ secrets.GOOGLE_CLIENT_ID_ANDROID }}
           MICROSOFT_CLIENT_ID_ANDROID: ${{ secrets.MICROSOFT_CLIENT_ID_ANDROID }}
         run: |
-          # Update tauri.conf.json with OAuth client IDs for deep linking
-          node -e "
-            const fs = require('fs');
-            const path = 'src-tauri/tauri.conf.json';
-            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-            
-            // Get client IDs from environment
-            const googleClientId = process.env.GOOGLE_CLIENT_ID_ANDROID;
-            const microsoftClientId = process.env.MICROSOFT_CLIENT_ID_ANDROID;
-            
-            // Update deep-link schemes for mobile
-            if (data.plugins && data.plugins['deep-link'] && data.plugins['deep-link'].mobile) {
-              data.plugins['deep-link'].mobile[0].scheme = [
-                'thunderbolt',
-                'com.googleusercontent.apps.' + googleClientId,
-                'msal' + microsoftClientId
-              ];
-              console.log('✅ Updated deep-link schemes for mobile');
-            }
-            
-            fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
-          "
+          # Use our injection script which handles suffix stripping and validation
+          bun run inject-oauth-ids
 
       - name: Build Tauri Android App
         env:

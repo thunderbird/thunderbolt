@@ -220,7 +220,7 @@ describe('wa-sqlite integration', () => {
         ORDER BY name
       `)
 
-      const tableNames = tables.map((t: any) => t[0])
+      const tableNames = tables.map((t) => (t as unknown[])[0] as string)
       expect(tableNames).toContain('models')
       expect(tableNames).toContain('settings')
       expect(tableNames).toContain('chat_threads')

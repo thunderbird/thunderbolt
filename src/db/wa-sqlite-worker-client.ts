@@ -6,17 +6,25 @@
 type WorkerRequest = {
   id: number
   method: 'init' | 'exec' | 'close'
-  params?: any
+  params?: {
+    filename?: string
+    sql?: string
+    params?: unknown[]
+    method?: 'get' | 'all' | 'values' | 'run'
+  }
 }
 
 type WorkerResponse = {
   id: number
-  result?: any
+  result?: {
+    rows?: unknown[] | unknown
+    success?: boolean
+  }
   error?: string
 }
 
 type PendingRequest = {
-  resolve: (value: any) => void
+  resolve: (value: unknown) => void
   reject: (error: Error) => void
 }
 
@@ -31,7 +39,7 @@ export class WaSQLiteWorkerClient {
 
     // Wait for worker to be ready
     this.readyPromise = new Promise((resolve) => {
-      const handleMessage = (event: MessageEvent<WorkerResponse>) => {
+      const handleMessage = (event: MessageEvent<{ id: number; result?: { ready?: boolean } }>) => {
         if (event.data.id === -1 && event.data.result?.ready) {
           this.worker.removeEventListener('message', handleMessage)
           resolve()
@@ -82,7 +90,7 @@ export class WaSQLiteWorkerClient {
   /**
    * Send a request to the worker and wait for response
    */
-  private async sendRequest(method: WorkerRequest['method'], params?: any): Promise<any> {
+  private async sendRequest(method: WorkerRequest['method'], params?: WorkerRequest['params']): Promise<unknown> {
     await this.waitForReady()
 
     const id = ++this.requestId
@@ -124,8 +132,12 @@ export class WaSQLiteWorkerClient {
   /**
    * Execute SQL statement
    */
-  async exec(sql: string, params: any[], method: 'get' | 'all' | 'values' | 'run'): Promise<any> {
-    return await this.sendRequest('exec', { sql, params, method })
+  async exec(
+    sql: string,
+    params: unknown[],
+    method: 'get' | 'all' | 'values' | 'run',
+  ): Promise<WorkerResponse['result']> {
+    return (await this.sendRequest('exec', { sql, params, method })) as WorkerResponse['result']
   }
 
   /**

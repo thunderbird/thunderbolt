@@ -18,23 +18,41 @@ import { OPFSCoopSyncVFS } from '@journeyapps/wa-sqlite/src/examples/OPFSCoopSyn
 type WorkerRequest = {
   id: number
   method: 'init' | 'exec' | 'close'
-  params?: any
+  params?: {
+    filename?: string
+    sql?: string
+    params?: unknown[]
+    method?: 'get' | 'all' | 'values' | 'run'
+  }
 }
 
 type WorkerResponse = {
   id: number
-  result?: any
+  result?: {
+    rows?: unknown[] | unknown
+    success?: boolean
+  }
   error?: string
 }
 
-let sqlite3: any | null = null
+type SQLiteAPI = {
+  open_v2: (filename: string, flags: number, vfsName?: string) => Promise<number>
+  close: (db: number) => Promise<number>
+  statements: (db: number, sql: string) => AsyncIterable<number>
+  bind_collection: (stmt: number, params: unknown[]) => void
+  step: (stmt: number) => Promise<number>
+  row: (stmt: number) => unknown[]
+  vfs_register: (vfs: unknown, makeDefault: boolean) => void
+}
+
+let sqlite3: SQLiteAPI | null = null
 let db: number | null = null
 
 // Queue to serialize all database operations
 type QueuedOperation = {
-  fn: () => Promise<any>
-  resolve: (value: any) => void
-  reject: (error: any) => void
+  fn: () => Promise<unknown>
+  resolve: (value: unknown) => void
+  reject: (error: unknown) => void
 }
 
 const operationQueue: QueuedOperation[] = []
@@ -45,7 +63,11 @@ let processingPromise: Promise<void> | null = null
  */
 const queueOperation = <T>(fn: () => Promise<T>): Promise<T> => {
   return new Promise((resolve, reject) => {
-    operationQueue.push({ fn, resolve, reject })
+    operationQueue.push({
+      fn,
+      resolve: resolve as (value: unknown) => void,
+      reject: reject as (error: unknown) => void,
+    })
 
     // Start processing if not already processing
     if (!processingPromise) {
@@ -83,7 +105,8 @@ const initDatabase = async (filename: string): Promise<void> => {
 
   // Load SQLite WASM module
   const module = await SQLiteESMFactory()
-  sqlite3 = SQLite.Factory(module)
+  const api = SQLite.Factory(module) as SQLiteAPI
+  sqlite3 = api
 
   // For in-memory databases, skip VFS registration (no persistence needed)
   const isInMemory = filename === ':memory:'
@@ -91,7 +114,7 @@ const initDatabase = async (filename: string): Promise<void> => {
   if (!isInMemory) {
     // Register OPFSCoopSyncVFS for OPFS persistence (synchronous, works with sync build)
     const vfs = await OPFSCoopSyncVFS.create(filename, module)
-    sqlite3.vfs_register(vfs, true)
+    api.vfs_register(vfs, true)
   }
 
   // Open database
@@ -107,14 +130,14 @@ const initDatabase = async (filename: string): Promise<void> => {
  */
 const execSqlInternal = async (
   sql: string,
-  params: any[],
+  params: unknown[],
   returnMode: 'get' | 'all' | 'values' | 'run',
-): Promise<any> => {
+): Promise<WorkerResponse['result']> => {
   if (!sqlite3 || db === null) {
     throw new Error('Database not initialized')
   }
 
-  const results: any[] = []
+  const results: unknown[] = []
 
   try {
     // Use the statements iterator to prepare and execute
@@ -162,7 +185,11 @@ const execSqlInternal = async (
 /**
  * Execute SQL statement (queued to prevent concurrent access)
  */
-const execSql = async (sql: string, params: any[], returnMode: 'get' | 'all' | 'values' | 'run'): Promise<any> => {
+const execSql = async (
+  sql: string,
+  params: unknown[],
+  returnMode: 'get' | 'all' | 'values' | 'run',
+): Promise<WorkerResponse['result']> => {
   return queueOperation(() => execSqlInternal(sql, params, returnMode))
 }
 
@@ -188,12 +215,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   try {
     switch (method) {
       case 'init':
-        await initDatabase(params.filename)
+        await initDatabase(params?.filename ?? ':memory:')
         response.result = { success: true }
         break
 
       case 'exec':
-        response.result = await execSql(params.sql, params.params || [], params.method || 'all')
+        response.result = await execSql(params?.sql ?? '', params?.params ?? [], params?.method ?? 'all')
         break
 
       case 'close':

@@ -271,7 +271,8 @@ describe('WaSQLiteDatabase', () => {
       }
 
       const count = await db.db.all(sql`SELECT COUNT(*) as count FROM test`)
-      const countValue = (count[0] as any)?.[0]
+      const firstRow = count[0] as unknown[] | undefined
+      const countValue = firstRow?.[0] as number | undefined
       expect(countValue).toBe(50)
     })
   })

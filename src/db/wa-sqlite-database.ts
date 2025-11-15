@@ -6,10 +6,10 @@ import { WaSQLiteWorkerClient } from './wa-sqlite-worker-client'
 /**
  * Checks if an object is empty (has no own properties or all properties are undefined)
  */
-const isEmptyObject = (obj: any): boolean => {
+const isEmptyObject = (obj: unknown): boolean => {
   if (!obj || typeof obj !== 'object') return false
   const keys = Object.keys(obj)
-  return keys.length === 0 || keys.every((key) => obj[key] === undefined)
+  return keys.length === 0 || keys.every((key) => (obj as Record<string, unknown>)[key] === undefined)
 }
 
 export class WaSQLiteDatabase implements DatabaseInterface {
@@ -47,7 +47,7 @@ export class WaSQLiteDatabase implements DatabaseInterface {
     }
 
     // Create Drizzle driver adapter
-    const driver = async (sql: string, params: any[], method: 'get' | 'all' | 'values' | 'run') => {
+    const driver = async (sql: string, params: unknown[], method: 'get' | 'all' | 'values' | 'run') => {
       if (!this.workerClient) {
         throw new Error('Database not initialized')
       }

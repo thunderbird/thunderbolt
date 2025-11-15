@@ -30,7 +30,7 @@ const createAppDirTauri = async (): Promise<string> => {
   const appDataDirPath = await tauriPath.appDataDir()
 
   await tauriFs.mkdir('data', { recursive: true, baseDir: tauriPath.BaseDirectory.AppData })
-  console.log('App data directory initialized:', appDataDirPath)
+  console.info('App data directory initialized:', appDataDirPath)
 
   return appDataDirPath
 }

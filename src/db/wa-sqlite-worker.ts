@@ -93,8 +93,6 @@ const initDatabase = async (filename: string): Promise<void> => {
     SQLite.SQLITE_OPEN_READWRITE | SQLite.SQLITE_OPEN_CREATE,
     isInMemory ? undefined : filename,
   )
-
-  console.info(`wa-sqlite worker: Opened database ${filename}${isInMemory ? ' (in-memory)' : ' with OPFSCoopSyncVFS'}`)
 }
 
 /**

@@ -44,8 +44,6 @@ export class WaSQLiteDatabase implements DatabaseInterface {
 
     if (path === ':memory:') {
       console.warn('Using in-memory SQLite database (data will not persist)')
-    } else {
-      console.info(`Using wa-sqlite with OPFSCoopSyncVFS persistence: ${dbFilename}`)
     }
 
     // Create Drizzle driver adapter

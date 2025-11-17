@@ -1,5 +1,6 @@
 import { getSettings } from '@/dal'
 import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
+import { getPlatform } from '@/lib/platform'
 import ky from 'ky'
 import { buildOAuthUrl, createBackendConfigFetcher, getRedirectUri } from '../oauth-utils'
 import type { GoogleUserInfo } from './types'
@@ -70,5 +71,12 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
 
 export const refreshAccessToken = async (refreshToken: string): Promise<OAuthTokens> => {
   const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-  return await ky.post(`${cloudUrl}/auth/google/refresh`, { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
+  const platform = getPlatform()
+  const body: { refresh_token: string; platform?: 'ios' | 'android' } = { refresh_token: refreshToken }
+
+  if (platform === 'ios' || platform === 'android') {
+    body.platform = platform
+  }
+
+  return await ky.post(`${cloudUrl}/auth/google/refresh`, { json: body }).json<OAuthTokens>()
 }

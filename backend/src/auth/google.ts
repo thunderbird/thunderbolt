@@ -13,12 +13,12 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
       const url = request ? new URL(request.url) : null
       const platform = url?.searchParams.get('platform')
 
-      const clientId =
-        platform === 'ios' && settings.googleClientIdIos
-          ? settings.googleClientIdIos
-          : platform === 'android' && settings.googleClientIdAndroid
-            ? settings.googleClientIdAndroid
-            : settings.googleClientId
+      let clientId = settings.googleClientId
+      if (platform === 'ios' && settings.googleClientIdIos) {
+        clientId = settings.googleClientIdIos
+      } else if (platform === 'android' && settings.googleClientIdAndroid) {
+        clientId = settings.googleClientIdAndroid
+      }
 
       return {
         client_id: clientId,
@@ -130,12 +130,12 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
         const platform = validatedBody.platform
 
         // Select credentials based on platform
-        const clientId =
-          platform === 'ios' && settings.googleClientIdIos
-            ? settings.googleClientIdIos
-            : platform === 'android' && settings.googleClientIdAndroid
-              ? settings.googleClientIdAndroid
-              : settings.googleClientId
+        let clientId = settings.googleClientId
+        if (platform === 'ios' && settings.googleClientIdIos) {
+          clientId = settings.googleClientIdIos
+        } else if (platform === 'android' && settings.googleClientIdAndroid) {
+          clientId = settings.googleClientIdAndroid
+        }
 
         const clientSecret = platform ? '' : settings.googleClientSecret
 

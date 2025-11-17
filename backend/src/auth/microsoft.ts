@@ -18,12 +18,12 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
       const platform = url?.searchParams.get('platform')
       const isMobile = platform === 'ios' || platform === 'android'
 
-      const clientId =
-        platform === 'ios' && settings.microsoftClientIdIos
-          ? settings.microsoftClientIdIos
-          : platform === 'android' && settings.microsoftClientIdAndroid
-            ? settings.microsoftClientIdAndroid
-            : settings.microsoftClientId
+      let clientId = settings.microsoftClientId
+      if (platform === 'ios' && settings.microsoftClientIdIos) {
+        clientId = settings.microsoftClientIdIos
+      } else if (platform === 'android' && settings.microsoftClientIdAndroid) {
+        clientId = settings.microsoftClientIdAndroid
+      }
 
       return {
         client_id: clientId,
@@ -137,12 +137,12 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
         const platform = validatedBody.platform
 
         // Select credentials based on platform
-        const clientId =
-          platform === 'ios' && settings.microsoftClientIdIos
-            ? settings.microsoftClientIdIos
-            : platform === 'android' && settings.microsoftClientIdAndroid
-              ? settings.microsoftClientIdAndroid
-              : settings.microsoftClientId
+        let clientId = settings.microsoftClientId
+        if (platform === 'ios' && settings.microsoftClientIdIos) {
+          clientId = settings.microsoftClientIdIos
+        } else if (platform === 'android' && settings.microsoftClientIdAndroid) {
+          clientId = settings.microsoftClientIdAndroid
+        }
 
         const clientSecret = platform ? '' : settings.microsoftClientSecret
 

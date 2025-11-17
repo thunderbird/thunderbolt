@@ -21,8 +21,8 @@ android {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         
         // OAuth client IDs from environment variables
-        manifestPlaceholders["googleClientId"] = System.getenv("GOOGLE_CLIENT_ID_ANDROID") ?: "YOUR_GOOGLE_CLIENT_ID_HERE"
-        manifestPlaceholders["microsoftClientId"] = System.getenv("MICROSOFT_CLIENT_ID_ANDROID") ?: "YOUR_MICROSOFT_CLIENT_ID_HERE"
+        manifestPlaceholders["googleClientId"] = System.getenv("GOOGLE_CLIENT_ID_ANDROID")
+        manifestPlaceholders["microsoftClientId"] = System.getenv("MICROSOFT_CLIENT_ID_ANDROID")
         
         applicationId = "net.thunderbird.thunderbolt"
         minSdk = 24

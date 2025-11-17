@@ -10,8 +10,36 @@ export const isMobileRedirectUri = (redirectUri: string): boolean => {
   return (
     redirectUri.startsWith('thunderbolt://') ||
     redirectUri.startsWith('msal') ||
-    redirectUri.startsWith('com.googleusercontent.apps.')
+    redirectUri.startsWith('com.googleusercontent.apps.') ||
+    redirectUri.startsWith('net.thunderbird.thunderbolt:')
   )
+}
+
+/**
+ * Detects the platform from the redirect URI
+ * Returns 'ios', 'android', or null for web/desktop
+ */
+export const detectPlatformFromRedirectUri = (
+  redirectUri: string,
+  iosClientId?: string,
+  androidClientId?: string,
+): 'ios' | 'android' | null => {
+  if (!isMobileRedirectUri(redirectUri)) {
+    return null
+  }
+
+  // Check if redirect URI contains iOS client ID
+  if (iosClientId && redirectUri.includes(iosClientId.replace('.apps.googleusercontent.com', ''))) {
+    return 'ios'
+  }
+
+  // Check if redirect URI contains Android client ID
+  if (androidClientId && redirectUri.includes(androidClientId.replace('.apps.googleusercontent.com', ''))) {
+    return 'android'
+  }
+
+  // Fallback: if it's mobile but we can't determine, default to Android
+  return 'android'
 }
 
 /**

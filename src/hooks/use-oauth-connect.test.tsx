@@ -1,4 +1,4 @@
-import { getSettings, updateSetting } from '@/dal'
+import { updateSetting } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { act, renderHook } from '@testing-library/react'

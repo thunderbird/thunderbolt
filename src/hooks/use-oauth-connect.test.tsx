@@ -1,4 +1,4 @@
-import { updateSetting } from '@/dal'
+import { getSettings, updateSetting } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { act, renderHook } from '@testing-library/react'
@@ -159,8 +159,9 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sessionStorage
-      expect(sessionStorage.getItem('oauth_return_context')).toBe('onboarding')
+      // Verify return context was stored in database
+      const settings = await getSettings({ oauth_return_context: String })
+      expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
 
@@ -288,8 +289,9 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sessionStorage
-      expect(sessionStorage.getItem('oauth_return_context')).toBe('onboarding')
+      // Verify return context was stored in database
+      const settings = await getSettings({ oauth_return_context: String })
+      expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
 

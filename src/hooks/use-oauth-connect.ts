@@ -1,7 +1,7 @@
 import { deleteSetting, getSettings, updateSetting } from '@/dal'
 import { exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
-import { isTauri, isMobile } from '@/lib/platform'
+import { isTauri } from '@/lib/platform'
 import { useState } from 'react'
 
 type OAuthDependencies = {
@@ -15,7 +15,7 @@ type UseOAuthConnectOptions = {
   onSuccess?: () => void
   onError?: (error: Error) => void
   setPreferredName?: boolean
-  returnContext?: 'onboarding' | 'integrations'
+  returnContext?: string
   dependencies?: OAuthDependencies
 }
 
@@ -83,13 +83,10 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     setError(null)
 
     try {
-      if (isTauri()) {
-        // Mobile: persist context (app may be backgrounded during OAuth flow)
-        // Desktop: context stays in memory (separate webview window)
-        if (isMobile()) {
-          sessionStorage.setItem('oauth_return_context', returnContext)
-        }
+      // Store return context in database before OAuth flow
+      await updateSetting('oauth_return_context', returnContext)
 
+      if (isTauri()) {
         const result = await startFlow(provider)
 
         if (!result) {
@@ -102,8 +99,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
         onSuccess?.()
       } else {
-        // Web: persist context (page will reload during OAuth redirect)
-        sessionStorage.setItem('oauth_return_context', returnContext)
         await redirect(provider)
       }
     } catch (e: unknown) {

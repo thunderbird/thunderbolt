@@ -8,7 +8,7 @@ type OAuthState = {
   state: string | null
   provider: OAuthProvider | null
   verifier: string | null
-  returnContext: 'onboarding' | 'integrations' | null
+  returnContext: string | null
 }
 
 /**
@@ -26,7 +26,7 @@ export const getOAuthState = async (): Promise<OAuthState> => {
     state: settings.oauthState,
     provider: settings.oauthProvider as OAuthProvider | null,
     verifier: settings.oauthVerifier,
-    returnContext: settings.oauthReturnContext as 'onboarding' | 'integrations' | null,
+    returnContext: settings.oauthReturnContext,
   }
 }
 

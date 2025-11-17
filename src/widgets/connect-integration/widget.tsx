@@ -108,7 +108,7 @@ export const ConnectIntegrationWidget = memo(
           )
         }, connectedStateDisplayDuration)
       },
-      returnContext: 'integrations',
+      returnContext: location.pathname,
     })
 
     const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {
@@ -163,7 +163,6 @@ export const ConnectIntegrationWidget = memo(
 
       sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
       sessionStorage.setItem(getOAuthWidgetKey(messageId, 'connecting'), 'true')
-      sessionStorage.setItem('oauth_return_context', location.pathname)
 
       try {
         await connect(state.selectedProvider as OAuthProvider)

@@ -1,5 +1,5 @@
 import { getSettings } from '@/config/settings'
-import { addClientSecretIfPresent, createTokenRefresher, isMobileRedirectUri } from '@/utils/oauth-utils'
+import { addClientSecretIfPresent, createTokenRefresher, detectPlatformFromRedirectUri } from '@/utils/oauth-utils'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -31,27 +31,36 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
         const settings = getSettings()
         const validatedBody = codeRequestSchema.parse(body)
 
-        const isMobile = isMobileRedirectUri(validatedBody.redirect_uri)
+        const platform = detectPlatformFromRedirectUri(
+          validatedBody.redirect_uri,
+          settings.googleClientIdIos,
+          settings.googleClientIdAndroid,
+        )
 
-        const clientId =
-          isMobile && settings.googleClientIdAndroid ? settings.googleClientIdAndroid : settings.googleClientId
-        const clientSecret = isMobile ? '' : settings.googleClientSecret
+        let clientId = settings.googleClientId
+        if (platform === 'ios' && settings.googleClientIdIos) {
+          clientId = settings.googleClientIdIos
+        } else if (platform === 'android' && settings.googleClientIdAndroid) {
+          clientId = settings.googleClientIdAndroid
+        }
+
+        const clientSecret = platform ? '' : settings.googleClientSecret
 
         if (!clientId) {
           set.status = 503
           return {
-            error: `Google OAuth not configured for ${isMobile ? 'Android' : 'web/desktop'}. Set GOOGLE_CLIENT_ID${isMobile ? '_ANDROID' : ''}.`,
+            error: `Google OAuth not configured for ${platform || 'web/desktop'}. Set GOOGLE_CLIENT_ID${platform === 'ios' ? '_IOS' : platform === 'android' ? '_ANDROID' : ''}.`,
           }
         }
 
-        if (!isMobile && !clientSecret) {
+        if (!platform && !clientSecret) {
           set.status = 503
           return {
             error: 'Google OAuth not configured for web/desktop. Set GOOGLE_CLIENT_SECRET.',
           }
         }
 
-        console.info(`Google OAuth token exchange for ${isMobile ? 'Android (installed app)' : 'web/desktop'}`)
+        console.info(`Google OAuth token exchange for ${platform ? `${platform} (installed app)` : 'web/desktop'}`)
 
         const data = new URLSearchParams({
           code: validatedBody.code,

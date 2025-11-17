@@ -84,17 +84,13 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        className={cn(
-          'p-0 overflow-hidden',
-          isMobile
-            ? ' border-0 rounded-none h-full m-0 !max-w-none !w-full !sm:max-w-none'
-            : 'rounded-lg max-w-[600px] h-[650px] w-[600px] m-4',
-        )}
+        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
         style={{
           bottom: 'var(--kb, 0px)',
         }}
         showCloseButton={false}
-        useTransparentOverlay={false}
+        useTransparentOverlay={!isMobile}
+        fullScreen={isMobile}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">

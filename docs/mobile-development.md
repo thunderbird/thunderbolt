@@ -2,6 +2,26 @@
 
 This guide covers running Thunderbolt on Android and iOS during local development.
 
+## Prerequisites
+
+**Backend Server Configuration:**
+
+For mobile devices to connect to your local backend, update `backend/src/index.ts`:
+
+```typescript
+// Change this:
+const hostname = process.env.HOST
+  ? process.env.HOST
+  : process.env.NODE_ENV === 'production'
+    ? '0.0.0.0'
+    : 'localhost'
+
+// To this:
+const hostname = '0.0.0.0'
+```
+
+This binds the backend server to all network interfaces, allowing your mobile device to connect via your computer's local IP address.
+
 ## Quick Start
 
 **TL;DR** - Run the app on your device:
@@ -53,6 +73,7 @@ These commands handle everything: OAuth configuration, building, and launching t
 - `GOOGLE_CLIENT_ID_ANDROID` in `backend/.env`
 - `ANDROID_HOME` environment variable set
 - Java JDK 17+ installed
+- **Bun** installed ([bun.sh](https://bun.sh))
 
 **Output:** App running on device with live reload for frontend changes.
 
@@ -93,6 +114,9 @@ These commands handle everything: OAuth configuration, building, and launching t
 - `GOOGLE_CLIENT_ID_IOS` in `backend/.env` (or falls back to Android ID)
 - Xcode Command Line Tools installed
 - CocoaPods installed (`sudo gem install cocoapods`)
+- **Bun** installed ([bun.sh](https://bun.sh))
+  - Xcode build script automatically detects bun from common locations
+  - Works with: system PATH, nvm, Homebrew, or direct install
 
 **Output:** App running on iOS device/simulator with live reload for frontend changes.
 

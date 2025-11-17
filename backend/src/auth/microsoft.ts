@@ -1,5 +1,5 @@
 import { getSettings } from '@/config/settings'
-import { addClientSecretIfPresent, createTokenRefresher, isMobileRedirectUri } from '@/utils/oauth-utils'
+import { addClientSecretIfPresent, createTokenRefresher, detectPlatformFromRedirectUri } from '@/utils/oauth-utils'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -37,27 +37,36 @@ export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fet
         const settings = getSettings()
         const validatedBody = codeRequestSchema.parse(body)
 
-        const isMobile = isMobileRedirectUri(validatedBody.redirect_uri)
+        const platform = detectPlatformFromRedirectUri(
+          validatedBody.redirect_uri,
+          settings.microsoftClientIdIos,
+          settings.microsoftClientIdAndroid,
+        )
 
-        const clientId =
-          isMobile && settings.microsoftClientIdAndroid ? settings.microsoftClientIdAndroid : settings.microsoftClientId
-        const clientSecret = isMobile ? '' : settings.microsoftClientSecret
+        let clientId = settings.microsoftClientId
+        if (platform === 'ios' && settings.microsoftClientIdIos) {
+          clientId = settings.microsoftClientIdIos
+        } else if (platform === 'android' && settings.microsoftClientIdAndroid) {
+          clientId = settings.microsoftClientIdAndroid
+        }
+
+        const clientSecret = platform ? '' : settings.microsoftClientSecret
 
         if (!clientId) {
           set.status = 503
           return {
-            error: `Microsoft OAuth not configured for ${isMobile ? 'Android' : 'web/desktop'}. Set MICROSOFT_CLIENT_ID${isMobile ? '_ANDROID' : ''}.`,
+            error: `Microsoft OAuth not configured for ${platform || 'web/desktop'}. Set MICROSOFT_CLIENT_ID${platform === 'ios' ? '_IOS' : platform === 'android' ? '_ANDROID' : ''}.`,
           }
         }
 
-        if (!isMobile && !clientSecret) {
+        if (!platform && !clientSecret) {
           set.status = 503
           return {
             error: 'Microsoft OAuth not configured for web/desktop. Set MICROSOFT_CLIENT_SECRET.',
           }
         }
 
-        console.info(`Microsoft OAuth token exchange for ${isMobile ? 'Android/iOS (mobile app)' : 'web/desktop'}`)
+        console.info(`Microsoft OAuth token exchange for ${platform ? `${platform} (mobile app)` : 'web/desktop'}`)
 
         const data = new URLSearchParams({
           client_id: clientId,

@@ -99,10 +99,10 @@ export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
  * Note: this is asynchronous because we might need to query the backend once.
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
-  if (!isTauri()) return 'sqlocal'
+  if (!isTauri()) return 'wa-sqlite'
 
   const { libsql } = await getCapabilities()
-  return libsql ? 'libsql-tauri' : 'sqlocal'
+  return libsql ? 'libsql-tauri' : 'wa-sqlite'
 }
 
 /**
@@ -112,10 +112,12 @@ export const getDatabaseType = async (): Promise<DatabaseType> => {
  * @returns The database path to use
  */
 export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
-  if (databaseType !== 'sqlocal') {
+  // For native databases (libsql-tauri, bun-sqlite), use file path directly
+  if (databaseType === 'libsql-tauri' || databaseType === 'bun-sqlite') {
     return `${appDataDirPath}/thunderbolt.db`
   }
 
+  // For wa-sqlite, check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
     return `${appDataDirPath}/thunderbolt.db`

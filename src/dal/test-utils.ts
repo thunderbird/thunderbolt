@@ -14,7 +14,7 @@ import { reconcileDefaults } from '../lib/reconcile-defaults'
  * ```
  */
 export const setupTestDatabase = async () => {
-  // Use in-memory Bun SQLite for testing (much faster than sqlocal)
+  // Use in-memory Bun SQLite for testing (fast and synchronous)
   await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
 
   // Run migrations to create tables

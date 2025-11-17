@@ -2,7 +2,6 @@ import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
-import { isTestEnv } from '@/lib/env'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -196,7 +195,7 @@ export const aiFetchStreamingResponse = async ({
       // Guarantee the last allowed step cannot call tools
       prepareStep: ({ steps, stepNumber, messages }) => {
         if (steps.length >= MAX_STEPS - 1) {
-          console.log(`Final step ${stepNumber} - telling model to wrap it up...`)
+          console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
           return {
             activeTools: [],
             messages: [
@@ -219,9 +218,7 @@ export const aiFetchStreamingResponse = async ({
       //   } satisfies OpenAICompatibleProviderOptions,
       // },
       onStepFinish: (step) => {
-        if (isTestEnv()) return
-
-        console.log('step', {
+        console.info('step', {
           text: step.text,
           finishReason: step.finishReason,
           toolCallCount: step.toolCalls?.length || 0,
@@ -235,9 +232,7 @@ export const aiFetchStreamingResponse = async ({
         })
       },
       onFinish: async (finish) => {
-        if (isTestEnv()) return
-
-        console.log('finish', {
+        console.info('finish', {
           text: finish.text,
           finishReason: finish.finishReason,
           toolCallCount: finish.toolCalls?.length || 0,

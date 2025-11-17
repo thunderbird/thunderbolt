@@ -87,7 +87,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['sqlocal'],
+    exclude: ['@journeyapps/wa-sqlite'],
   },
   worker: {
     format: 'es',

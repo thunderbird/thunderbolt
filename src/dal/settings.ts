@@ -2,9 +2,9 @@ import { eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
-import type { Setting } from '../types'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
+import type { Setting } from '../types'
 
 /**
  * Gets all settings from the database

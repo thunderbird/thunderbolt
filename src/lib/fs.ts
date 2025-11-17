@@ -30,7 +30,7 @@ const createAppDirTauri = async (): Promise<string> => {
   const appDataDirPath = await tauriPath.appDataDir()
 
   await tauriFs.mkdir('data', { recursive: true, baseDir: tauriPath.BaseDirectory.AppData })
-  console.log('App data directory initialized:', appDataDirPath)
+  console.info('App data directory initialized:', appDataDirPath)
 
   return appDataDirPath
 }
@@ -40,7 +40,7 @@ const createAppDirTauri = async (): Promise<string> => {
  */
 const createAppDirOpfs = async (): Promise<string> => {
   const virtualPath = 'app-data'
-  console.log('Web environment - using virtual app data path:', virtualPath)
+  console.info('Web environment - using virtual app data path:', virtualPath)
   return virtualPath
 }
 
@@ -102,7 +102,7 @@ export const resetAppDir = async (): Promise<void> => {
 
   if (databaseType === 'libsql-tauri') {
     await resetAppDirTauri()
-  } else if (databaseType === 'sqlocal') {
+  } else if (databaseType === 'wa-sqlite') {
     await resetAppDirOpfs()
   } else {
     throw new Error(`Unsupported database type: ${databaseType}`)

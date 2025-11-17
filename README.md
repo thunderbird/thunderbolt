@@ -25,9 +25,11 @@ Thunderbolt is a **cross-platform, local-first** app built with [Tauri](https://
 
 All data is stored on-device. Thunderbolt supports two local SQLite storage options:
 
-- **In-browser** (default): Uses [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) via [SQLocal](https://sqlocal.dev/)
+- **In-browser** (default): Uses [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) via [wa-sqlite](https://github.com/powersync-ja/wa-sqlite) with web workers
   - No Rust compilation required
+  - Runs database operations in a separate thread for better performance
   - Works in both browser (`bun dev`) and Tauri builds
+  - PowerSync-ready for future offline-first sync
   - Run with `bun dev` or `bun tauri dev`
 
 - **Native filesystem**: Uses [libsql](https://github.com/tursodatabase/libsql) (Rust)

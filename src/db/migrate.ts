@@ -1,5 +1,4 @@
 import { migrations } from '@/drizzle/_migrations'
-import { isTestEnv } from '@/lib/env'
 import { sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from './database-interface'
 
@@ -24,7 +23,7 @@ function splitSqlStatements(sql: string): string[] {
  * @returns A promise that resolves when the migrations are complete.
  */
 export async function migrate(db: AnyDrizzleDatabase) {
-  const isTest = isTestEnv()
+  const startTime = performance.now()
 
   await db.run(sql`
 		CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
@@ -50,6 +49,8 @@ export async function migrate(db: AnyDrizzleDatabase) {
     })
 
   // Apply migrations that haven't been run yet
+  let migrationsRun = 0
+
   for (const migration of migrations) {
     if (!hasBeenRun(migration.hash)) {
       try {
@@ -70,7 +71,7 @@ export async function migrate(db: AnyDrizzleDatabase) {
         await db.run(
           sql`INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${migration.hash}, ${Date.now()})`,
         )
-        if (!isTest) console.info(`Applied migration: ${migration.name}`)
+        migrationsRun++
       } catch (error) {
         console.error(`Failed to apply migration ${migration.name}:`, error)
         throw error
@@ -78,7 +79,8 @@ export async function migrate(db: AnyDrizzleDatabase) {
     }
   }
 
-  if (!isTest) console.info('Migrations complete')
+  const elapsedMs = Math.round(performance.now() - startTime)
+  console.info(`Ran ${migrationsRun} migration${migrationsRun === 1 ? '' : 's'} in ${elapsedMs} ms`)
 
   return Promise.resolve()
 }

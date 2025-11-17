@@ -159,10 +159,8 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sqlite
-      const { getSettings } = await import('@/dal')
-      const settings = await getSettings({ oauth_return_context: String })
-      expect(settings.oauthReturnContext).toBe('onboarding')
+      // Verify return context was stored in sessionStorage
+      expect(sessionStorage.getItem('oauth_return_context')).toBe('onboarding')
     })
   })
 
@@ -290,9 +288,8 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sqlite
-      const settings = await getSettings({ oauth_return_context: String })
-      expect(settings.oauthReturnContext).toBe('onboarding')
+      // Verify return context was stored in sessionStorage
+      expect(sessionStorage.getItem('oauth_return_context')).toBe('onboarding')
     })
   })
 

@@ -20,7 +20,7 @@
     "tauri:dev": "tauri dev",
     "tauri:libsql": "tauri dev -- --features libsql",
     "tauri:android:dev": "node scripts/inject-oauth-client-ids.cjs && cd src-tauri && cargo tauri android dev",
-    "tauri:ios:dev": "TAURI_PLATFORM=ios node scripts/inject-oauth-client-ids.cjs && cd src-tauri && cargo tauri ios dev",
+    "tauri:ios:dev": "TAURI_PLATFORM=ios node scripts/inject-oauth-client-ids.cjs && cd src-tauri && cargo tauri ios dev -o",
     "inject-oauth-ids": "node scripts/inject-oauth-client-ids.cjs",
     "analyze": "vite analyze",
     "db": "drizzle-kit",

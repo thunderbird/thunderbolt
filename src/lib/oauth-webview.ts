@@ -168,12 +168,11 @@ async function waitForDeepLinkCallback(): Promise<{ code: string; state: string 
       const { onOpenUrl } = await import('@tauri-apps/plugin-deep-link')
 
       unlisten = await onOpenUrl((urls) => {
-        clearTimeout(timeout)
-        if (unlisten) unlisten()
-
         try {
           const urlString = urls[0]
           if (!urlString) {
+            clearTimeout(timeout)
+            if (unlisten) unlisten()
             resolve(null)
             return
           }
@@ -183,13 +182,15 @@ async function waitForDeepLinkCallback(): Promise<{ code: string; state: string 
           // Check if this is an OAuth callback URL (supports multiple formats)
           const isThunderboltScheme =
             url.protocol === 'thunderbolt:' && url.host === 'oauth' && url.pathname === '/callback'
-          const isGoogleScheme = url.protocol.startsWith('com.googleusercontent.apps.')
-          const isMicrosoftScheme = url.protocol.startsWith('msal')
-
-          if (!isThunderboltScheme && !isGoogleScheme && !isMicrosoftScheme) {
-            resolve(null)
+          const isMobileScheme =
+            url.protocol.startsWith('com.googleusercontent.apps.') || url.protocol.startsWith('msal')
+          if (!isThunderboltScheme && !isMobileScheme) {
             return
           }
+
+          // Valid OAuth callback - cleanup and process
+          clearTimeout(timeout)
+          if (unlisten) unlisten()
 
           const params = url.searchParams
           const code = params.get('code')
@@ -204,6 +205,8 @@ async function waitForDeepLinkCallback(): Promise<{ code: string; state: string 
             resolve(null)
           }
         } catch (err) {
+          clearTimeout(timeout)
+          if (unlisten) unlisten()
           reject(err instanceof Error ? err : new Error('Failed to parse deep link'))
         }
       })

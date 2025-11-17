@@ -13,12 +13,17 @@
     "deep-link": {
       "mobile": [
         {
-          "scheme": ["thunderbolt", "com.googleusercontent.apps.YOUR_GOOGLE_CLIENT_ID_HERE", "msalYOUR_MICROSOFT_CLIENT_ID_HERE"],
+          "scheme": [
+            "thunderbolt",
+            "com.googleusercontent.apps.860884698243-mqtkn10jk4q38ph2gkndc51q1fslqe69"
+          ],
           "appLink": false
         }
       ],
       "desktop": {
-        "schemes": ["thunderbolt"]
+        "schemes": [
+          "thunderbolt"
+        ]
       }
     }
   },

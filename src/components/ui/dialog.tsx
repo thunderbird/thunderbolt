@@ -22,12 +22,17 @@ function DialogClose({ ...props }: ComponentProps<typeof DialogPrimitive.Close>)
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-function DialogOverlay({ className, ...props }: ComponentProps<typeof DialogPrimitive.Overlay>) {
+function DialogOverlay({
+  className,
+  useTransparentOverlay = true,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Overlay> & { useTransparentOverlay?: boolean }) {
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50',
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50',
+        useTransparentOverlay ? 'bg-black/50' : 'bg-background',
         className,
       )}
       {...props}
@@ -39,15 +44,15 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
-  showOverlay = true,
+  useTransparentOverlay = true,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
-  showOverlay?: boolean
+  useTransparentOverlay?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      {showOverlay && <DialogOverlay />}
+      <DialogOverlay useTransparentOverlay={useTransparentOverlay} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

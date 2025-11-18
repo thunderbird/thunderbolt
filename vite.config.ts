@@ -51,9 +51,17 @@ export default defineConfig({
     {
       name: 'configure-response-headers',
       configureServer: (server) => {
-        server.middlewares.use((_req, res, next) => {
+        server.middlewares.use((req, res, next) => {
           res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
           res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+
+          // Set correct Content-Type for .well-known files (required for Universal Links / App Links)
+          if (req.url === '/.well-known/apple-app-site-association') {
+            res.setHeader('Content-Type', 'application/json')
+          } else if (req.url === '/.well-known/assetlinks.json') {
+            res.setHeader('Content-Type', 'application/json')
+          }
+
           next()
         })
       },

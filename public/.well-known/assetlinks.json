@@ -1,0 +1,14 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "net.thunderbird.thunderbolt",
+      "sha256_cert_fingerprints": [
+        "D1CC035D74C72F973E7BAE97C4B1D14ACEBA9F3B9F8F071652AD1023651EE236",
+        "D68EC4CD93FAC771490F3DF212CFF7721AF5D2CC81E52AE5C184C8983A1190C7"
+      ]
+    }
+  }
+]
+

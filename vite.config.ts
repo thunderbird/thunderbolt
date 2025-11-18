@@ -54,16 +54,6 @@ export default defineConfig({
         server.middlewares.use((req, res, next) => {
           res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
           res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-
-          // Set correct Content-Type for .well-known files (required for Universal Links / App Links)
-          // Parse pathname to ignore query parameters
-          const pathname = req.url?.split('?')[0]
-          if (pathname === '/.well-known/apple-app-site-association') {
-            res.setHeader('Content-Type', 'application/json')
-          } else if (pathname === '/.well-known/assetlinks.json') {
-            res.setHeader('Content-Type', 'application/json')
-          }
-
           next()
         })
       },

@@ -56,9 +56,11 @@ export default defineConfig({
           res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 
           // Set correct Content-Type for .well-known files (required for Universal Links / App Links)
-          if (req.url === '/.well-known/apple-app-site-association') {
+          // Parse pathname to ignore query parameters
+          const pathname = req.url?.split('?')[0]
+          if (pathname === '/.well-known/apple-app-site-association') {
             res.setHeader('Content-Type', 'application/json')
-          } else if (req.url === '/.well-known/assetlinks.json') {
+          } else if (pathname === '/.well-known/assetlinks.json') {
             res.setHeader('Content-Type', 'application/json')
           }
 

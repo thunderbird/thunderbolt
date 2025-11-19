@@ -6,6 +6,7 @@ import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HttpClientProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
@@ -52,6 +53,7 @@ function AppContent({ initData }: { initData: InitData }) {
 
 function AppRoutes(_: { initData: InitData }) {
   usePageTracking()
+  useDeepLinkListener()
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: Boolean,

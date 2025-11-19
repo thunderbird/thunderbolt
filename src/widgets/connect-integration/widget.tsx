@@ -108,7 +108,7 @@ export const ConnectIntegrationWidget = memo(
           )
         }, connectedStateDisplayDuration)
       },
-      returnContext: 'integrations',
+      returnContext: location.pathname,
     })
 
     const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {

@@ -15,7 +15,7 @@ type UseOAuthConnectOptions = {
   onSuccess?: () => void
   onError?: (error: Error) => void
   setPreferredName?: boolean
-  returnContext?: 'onboarding' | 'integrations'
+  returnContext?: string
   dependencies?: OAuthDependencies
 }
 

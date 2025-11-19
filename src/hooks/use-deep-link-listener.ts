@@ -1,4 +1,5 @@
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
+import { getSettings } from '@/dal'
 import { isTauri } from '@/lib/platform'
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -44,11 +45,20 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler) => {
             const errorDescription = url.searchParams.get('error_description')
 
             // Navigate to the appropriate route with OAuth data in state
-            // Check where we should return to
-            const oauthReturnContext = sessionStorage.getItem('oauth_return_context')
+            // Get the return context from SQLite settings (where mobile flow stores it)
+            const settings = await getSettings({ oauth_return_context: String })
+            const oauthReturnContext = settings.oauthReturnContext
 
             if (oauthReturnContext?.startsWith('/')) {
               navigate(oauthReturnContext, {
+                state: {
+                  oauth: { code, state, error: errorDescription || error },
+                },
+                replace: true,
+              })
+            } else if (oauthReturnContext === 'integrations') {
+              // Explicit integrations context
+              navigate('/settings/integrations', {
                 state: {
                   oauth: { code, state, error: errorDescription || error },
                 },

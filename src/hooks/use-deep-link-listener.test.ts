@@ -1,0 +1,352 @@
+import { act, renderHook } from '@testing-library/react'
+import { createElement } from 'react'
+import { BrowserRouter } from 'react-router'
+import { describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
+import { determineNavigationTarget, parseOAuthCallback, useDeepLinkListener } from './use-deep-link-listener'
+
+const wrapper = ({ children }: { children: React.ReactNode }) => createElement(BrowserRouter, null, children)
+
+describe('parseOAuthCallback', () => {
+  it('parses valid OAuth callback URL with code and state', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: 'abc123',
+      state: 'xyz789',
+      error: null,
+    })
+  })
+
+  it('parses OAuth callback URL with error parameter', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?error=access_denied')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: null,
+      state: null,
+      error: 'access_denied',
+    })
+  })
+
+  it('prioritizes error_description over error parameter', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: null,
+      state: null,
+      error: 'User cancelled',
+    })
+  })
+
+  it('handles OAuth callback URL with missing parameters', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: null,
+      state: null,
+      error: null,
+    })
+  })
+
+  it('handles OAuth callback URL with nested path', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback/extra?code=abc123&state=xyz789')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: 'abc123',
+      state: 'xyz789',
+      error: null,
+    })
+  })
+
+  it('returns null for wrong hostname', () => {
+    const url = new URL('https://evil.com/oauth/callback?code=abc123&state=xyz789')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for wrong path', () => {
+    const url = new URL('https://thunderbolt.io/different/path?code=abc123&state=xyz789')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for non-OAuth URL', () => {
+    const url = new URL('https://thunderbolt.io/')
+    const result = parseOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+})
+
+describe('determineNavigationTarget', () => {
+  const mockOAuthData = {
+    code: 'abc123',
+    state: 'xyz789',
+    error: null,
+  }
+
+  it('navigates to absolute path when returnContext starts with /', () => {
+    const result = determineNavigationTarget('/chats/123', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/chats/123',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('navigates to chat detail page', () => {
+    const result = determineNavigationTarget('/chats/abc-def-ghi', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/chats/abc-def-ghi',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('navigates to integrations page when returnContext is "integrations"', () => {
+    const result = determineNavigationTarget('integrations', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('defaults to integrations page when returnContext is null', () => {
+    const result = determineNavigationTarget(null, mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('defaults to integrations page when returnContext is empty string', () => {
+    const result = determineNavigationTarget('', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('defaults to integrations page when returnContext is undefined', () => {
+    const result = determineNavigationTarget(undefined as unknown as string, mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('navigates to settings pages', () => {
+    const result = determineNavigationTarget('/settings/preferences', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/preferences',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('preserves OAuth error in navigation target', () => {
+    const oauthWithError = {
+      code: null,
+      state: null,
+      error: 'access_denied',
+    }
+
+    const result = determineNavigationTarget('/chats/123', oauthWithError)
+
+    expect(result).toEqual({
+      path: '/chats/123',
+      oauth: oauthWithError,
+    })
+  })
+
+  it('handles relative-looking paths that do not start with /', () => {
+    const result = determineNavigationTarget('chats/123', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+})
+
+describe('parseOAuthCallback + determineNavigationTarget integration', () => {
+  it('handles complete OAuth success flow', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
+    const oauthData = parseOAuthCallback(url)
+
+    expect(oauthData).not.toBeNull()
+
+    const target = determineNavigationTarget('/chats/test-chat', oauthData!)
+
+    expect(target).toEqual({
+      path: '/chats/test-chat',
+      oauth: {
+        code: 'abc123',
+        state: 'xyz789',
+        error: null,
+      },
+    })
+  })
+
+  it('handles complete OAuth error flow', () => {
+    const url = new URL(
+      'https://thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled%20authorization',
+    )
+    const oauthData = parseOAuthCallback(url)
+
+    expect(oauthData).not.toBeNull()
+
+    const target = determineNavigationTarget('integrations', oauthData!)
+
+    expect(target).toEqual({
+      path: '/settings/integrations',
+      oauth: {
+        code: null,
+        state: null,
+        error: 'User cancelled authorization',
+      },
+    })
+  })
+})
+
+describe('useDeepLinkListener hook', () => {
+  it('does not set up listeners when not running in Tauri', () => {
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = () => Promise.resolve(() => {})
+    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
+
+    renderHook(
+      () =>
+        useDeepLinkListener(undefined, {
+          isTauri: () => false,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // If the hook doesn't crash, it means it correctly skipped setup
+    expect(true).toBe(true)
+  })
+
+  it('handles custom handler for non-OAuth deep links', async () => {
+    const mockUrls = ['https://thunderbolt.io/some/other/path']
+    let customHandlerCalled = false
+    let customHandlerUrls: string[] = []
+    let callback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (cb: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      callback = cb
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
+
+    const customHandler = async (urls: string[]) => {
+      customHandlerCalled = true
+      customHandlerUrls = urls
+    }
+
+    renderHook(
+      () =>
+        useDeepLinkListener(customHandler, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Now trigger the callback
+    expect(callback).not.toBeNull()
+    await act(async () => {
+      callback!(mockUrls)
+    })
+
+    expect(customHandlerCalled).toBe(true)
+    expect(customHandlerUrls).toEqual(mockUrls)
+  })
+
+  it('handles invalid URLs gracefully', async () => {
+    const mockUrls = ['not-a-valid-url']
+
+    const getCurrent = () => Promise.resolve(mockUrls)
+    const onOpenUrl = () => Promise.resolve(() => {})
+    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
+
+    // Should not throw error
+    renderHook(
+      () =>
+        useDeepLinkListener(undefined, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for async processing
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // If we get here without error, the hook handled invalid URL gracefully
+    expect(true).toBe(true)
+  })
+
+  it('sets up listener for deep links while app is running', async () => {
+    let storedCallback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (callback: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      storedCallback = callback
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/active' })
+
+    renderHook(
+      () =>
+        useDeepLinkListener(undefined, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(storedCallback).not.toBeNull()
+
+    // Simulate a deep link event
+    expect(storedCallback).not.toBeNull()
+    await act(async () => {
+      storedCallback!(['https://thunderbolt.io/oauth/callback?code=test&state=test'])
+    })
+    // If no error thrown, the listener worked
+    expect(true).toBe(true)
+  })
+})

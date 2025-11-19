@@ -1,6 +1,7 @@
 import { marked } from 'marked'
 import { type CSSProperties, memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 
 function parseMarkdownIntoBlocks(markdown: string): string[] {
@@ -12,7 +13,9 @@ const MemoizedMarkdownBlock = memo(
   ({ content }: { content: string }) => {
     return (
       <div className="overflow-x-scroll">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+          {content}
+        </ReactMarkdown>
       </div>
     )
   },

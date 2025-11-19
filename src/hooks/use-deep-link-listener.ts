@@ -103,6 +103,8 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
     }
 
     const handleDeepLinks = async (urls: string[]) => {
+      const nonOAuthUrls: string[] = []
+
       for (const urlString of urls) {
         try {
           const url = new URL(urlString)
@@ -118,15 +120,18 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
               state: { oauth: target.oauth },
               replace: true,
             })
-          }
-
-          // Call custom handler if provided
-          if (handler) {
-            await handler(urls)
+          } else {
+            // Collect non-OAuth URLs for custom handler
+            nonOAuthUrls.push(urlString)
           }
         } catch (err) {
           console.error('Failed to handle deep link:', urlString, err)
         }
+      }
+
+      // Call custom handler only for non-OAuth URLs, once
+      if (handler && nonOAuthUrls.length > 0) {
+        await handler(nonOAuthUrls)
       }
     }
 

@@ -285,6 +285,139 @@ describe('useDeepLinkListener hook', () => {
     expect(customHandlerUrls).toEqual(mockUrls)
   })
 
+  it('does NOT call custom handler for OAuth callback URLs', async () => {
+    const mockUrls = ['https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789']
+    let customHandlerCalled = false
+    let callback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (cb: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      callback = cb
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/test' })
+
+    const customHandler = async (_urls: string[]) => {
+      customHandlerCalled = true
+    }
+
+    renderHook(
+      () =>
+        useDeepLinkListener(customHandler, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Trigger OAuth callback
+    expect(callback).not.toBeNull()
+    await act(async () => {
+      callback!(mockUrls)
+    })
+
+    // Handler should NOT have been called for OAuth URL
+    expect(customHandlerCalled).toBe(false)
+  })
+
+  it('calls custom handler only once with multiple non-OAuth URLs', async () => {
+    const mockUrls = ['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2', 'https://thunderbolt.io/path3']
+    let customHandlerCallCount = 0
+    let receivedUrls: string[] = []
+    let callback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (cb: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      callback = cb
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
+
+    const customHandler = async (urls: string[]) => {
+      customHandlerCallCount++
+      receivedUrls = urls
+    }
+
+    renderHook(
+      () =>
+        useDeepLinkListener(customHandler, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Trigger with multiple URLs
+    expect(callback).not.toBeNull()
+    await act(async () => {
+      callback!(mockUrls)
+    })
+
+    // Handler should be called exactly once with all URLs
+    expect(customHandlerCallCount).toBe(1)
+    expect(receivedUrls).toEqual(mockUrls)
+  })
+
+  it('filters out OAuth URLs and only passes non-OAuth URLs to handler', async () => {
+    const mockUrls = [
+      'https://thunderbolt.io/path1',
+      'https://thunderbolt.io/oauth/callback?code=abc123&state=xyz',
+      'https://thunderbolt.io/path2',
+    ]
+    let receivedUrls: string[] = []
+    let callback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (cb: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      callback = cb
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/test' })
+
+    const customHandler = async (urls: string[]) => {
+      receivedUrls = urls
+    }
+
+    renderHook(
+      () =>
+        useDeepLinkListener(customHandler, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Trigger with mixed URLs
+    expect(callback).not.toBeNull()
+    await act(async () => {
+      callback!(mockUrls)
+    })
+
+    // Handler should only receive non-OAuth URLs
+    expect(receivedUrls).toEqual(['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2'])
+  })
+
   it('handles invalid URLs gracefully', async () => {
     const mockUrls = ['not-a-valid-url']
 

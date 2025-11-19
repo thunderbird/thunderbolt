@@ -1,43 +1,19 @@
 import { getSettings } from '@/dal'
-import type { GoogleUserInfo } from '@/integrations/google/types'
 import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
 import { memoize } from '@/lib/memoize'
-import { isTauri } from '@/lib/platform'
+import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
 import ky from 'ky'
+import type { MicrosoftUserInfo } from './types'
 
 const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> => {
   const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
   return await ky.get(`${cloudUrl}/auth/microsoft/config`).json<AuthProviderBackendConfig>()
 })
 
-/**
- * Get redirect URI for OAuth flow
- * For mobile (iOS/Android), use App Link / Universal Link
- * For desktop, use local webview callback
- * For web, use the web callback route
- */
-const getRedirectUri = async (): Promise<string> => {
-  if (!isTauri()) {
-    return window.location.origin + '/oauth/callback'
-  }
-
-  // Check if we're on mobile (iOS or Android)
-  const { platform } = await import('@tauri-apps/plugin-os')
-  const currentPlatform = await platform()
-
-  if (currentPlatform === 'ios' || currentPlatform === 'android') {
-    // Use App Link / Universal Link for mobile
-    return 'https://thunderbolt.io/oauth/callback'
-  }
-
-  // Use local webview callback for desktop
-  return window.location.origin + '/oauth-callback.html'
-}
-
 export const getOAuthConfig = async (): Promise<OAuthConfig> => {
   const { client_id } = await fetchBackendConfig()
-  const redirectUri = await getRedirectUri()
+  const redirectUri = await getOAuthRedirectUri()
 
   return {
     clientId: client_id,
@@ -70,7 +46,7 @@ export const exchangeCodeForTokens = async (code: string, codeVerifier: string):
     .json<OAuthTokens>()
 }
 
-export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
+export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInfo> => {
   const response = await fetch('https://graph.microsoft.com/v1.0/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })

@@ -1,6 +1,7 @@
 import { deleteSetting, getSettings, updateSetting } from '@/dal'
 import { exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
+import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import { isTauri } from '@/lib/platform'
 import { useState } from 'react'
 
@@ -134,25 +135,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       setError(message)
       onError?.(e instanceof Error ? e : new Error(message))
     }
-  }
-
-  const generateCodeVerifier = (): string => {
-    const array = new Uint8Array(32)
-    crypto.getRandomValues(array)
-    return btoa(String.fromCharCode(...array))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-  }
-
-  const generateCodeChallenge = async (verifier: string): Promise<string> => {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(verifier)
-    const digest = await crypto.subtle.digest('SHA-256', data)
-    return btoa(String.fromCharCode(...new Uint8Array(digest)))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
   }
 
   /**

@@ -4,16 +4,23 @@ import { getOAuthRedirectUri } from './oauth-redirect'
 describe('getOAuthRedirectUri', () => {
   it('returns web callback for non-Tauri environment', async () => {
     const originalLocation = window.location
-    // @ts-expect-error - mocking window.location
-    delete window.location
-    window.location = { origin: 'https://app.example.com' } as Location
+    const mockLocation = { origin: 'https://app.example.com' } as Location
+    Object.defineProperty(window, 'location', {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
+    })
 
     const uri = await getOAuthRedirectUri()
 
     expect(uri).toBe('https://app.example.com/oauth/callback')
 
     // Restore
-    window.location = originalLocation
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
   })
 
   it('returns App Link for mobile platforms', async () => {
@@ -25,9 +32,12 @@ describe('getOAuthRedirectUri', () => {
 
   it('returns valid URL format', async () => {
     const originalLocation = window.location
-    // @ts-expect-error - mocking window.location
-    delete window.location
-    window.location = { origin: 'https://test.example.com' } as Location
+    const mockLocation = { origin: 'https://test.example.com' } as Location
+    Object.defineProperty(window, 'location', {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
+    })
 
     const uri = await getOAuthRedirectUri()
 
@@ -38,6 +48,10 @@ describe('getOAuthRedirectUri', () => {
     expect(uri).toMatch(/\/oauth\/callback$/)
 
     // Restore
-    window.location = originalLocation
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
   })
 })

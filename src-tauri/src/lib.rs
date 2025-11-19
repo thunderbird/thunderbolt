@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_deep_link::init());
+    let mut builder = tauri::Builder::default();
 
     // Conditionally include the HTTP plugin when the `native_fetch` feature is enabled
     #[cfg(feature = "native_fetch")]

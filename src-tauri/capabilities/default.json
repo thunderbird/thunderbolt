@@ -7,6 +7,8 @@
     "core:default",
     "opener:default",
     "os:default",
+    "deep-link:default",
+    "core:event:default",
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",

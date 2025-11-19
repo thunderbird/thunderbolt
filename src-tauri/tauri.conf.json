@@ -52,5 +52,17 @@
     "android": {
       "versionCode": 1018
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["https"],
+          "host": "thunderbolt.io",
+          "pathPrefix": ["/oauth/callback"],
+          "appLink": true
+        }
+      ]
+    }
   }
 }

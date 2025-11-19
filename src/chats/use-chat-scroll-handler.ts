@@ -59,7 +59,7 @@ export const useChatScrollHandler = () => {
 
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
-        scrollToBottom()
+        scrollToBottom(false)
       })
     })
 

@@ -84,16 +84,48 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     try {
       if (isTauri()) {
-        const result = await startFlow(provider)
+        // Check if we're on mobile (iOS or Android)
+        const { platform } = await import('@tauri-apps/plugin-os')
+        const currentPlatform = await platform()
+        const isMobile = currentPlatform === 'ios' || currentPlatform === 'android'
 
-        if (!result) return
+        if (isMobile) {
+          // For mobile: Open OAuth in system browser with App Link / Universal Link redirect
+          // The deep link listener will handle the callback
+          const { buildAuthUrl } = await import('@/lib/auth')
+          const { v4: uuidv4 } = await import('uuid')
 
-        const { tokens, userInfo } = result
+          const state = uuidv4()
+          const codeVerifier = generateCodeVerifier()
+          const codeChallenge = await generateCodeChallenge(codeVerifier)
 
-        await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
+          // Store OAuth state for callback validation
+          await updateSetting('oauth_state', state)
+          await updateSetting('oauth_provider', provider)
+          await updateSetting('oauth_verifier', codeVerifier)
+          await updateSetting('oauth_return_context', returnContext)
 
-        onSuccess?.()
+          const authUrl = await buildAuthUrl(provider, state, codeChallenge)
+
+          // Open in system browser (not webview)
+          const { openUrl } = await import('@tauri-apps/plugin-opener')
+          await openUrl(authUrl)
+
+          // The callback will be handled by the deep link listener
+        } else {
+          // For desktop: Use webview flow
+          const result = await startFlow(provider)
+
+          if (!result) return
+
+          const { tokens, userInfo } = result
+
+          await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
+
+          onSuccess?.()
+        }
       } else {
+        // For web: Use redirect flow
         await updateSetting('oauth_return_context', returnContext)
         await redirect(provider)
       }
@@ -102,6 +134,25 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       setError(message)
       onError?.(e instanceof Error ? e : new Error(message))
     }
+  }
+
+  const generateCodeVerifier = (): string => {
+    const array = new Uint8Array(32)
+    crypto.getRandomValues(array)
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+
+  const generateCodeChallenge = async (verifier: string): Promise<string> => {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(verifier)
+    const digest = await crypto.subtle.digest('SHA-256', data)
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
   }
 
   /**

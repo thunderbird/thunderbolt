@@ -11,13 +11,37 @@ const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> 
   return await ky.get(`${cloudUrl}/auth/google/config`).json<AuthProviderBackendConfig>()
 })
 
+/**
+ * Get redirect URI for OAuth flow
+ * For mobile (iOS/Android), use App Link / Universal Link
+ * For desktop, use local webview callback
+ * For web, use the web callback route
+ */
+const getRedirectUri = async (): Promise<string> => {
+  if (!isTauri()) {
+    return window.location.origin + '/oauth/callback'
+  }
+
+  // Check if we're on mobile (iOS or Android)
+  const { platform } = await import('@tauri-apps/plugin-os')
+  const currentPlatform = await platform()
+
+  if (currentPlatform === 'ios' || currentPlatform === 'android') {
+    // Use App Link / Universal Link for mobile
+    return 'https://thunderbolt.io/oauth/callback'
+  }
+
+  // Use local webview callback for desktop
+  return window.location.origin + '/oauth-callback.html'
+}
+
 export const getOAuthConfig = async (): Promise<OAuthConfig> => {
   const { client_id } = await fetchBackendConfig()
+  const redirectUri = await getRedirectUri()
+
   return {
     clientId: client_id,
-    redirectUri: isTauri()
-      ? window.location.origin + '/oauth-callback.html'
-      : window.location.origin + '/oauth/callback',
+    redirectUri,
     scope: [
       'email',
       'profile',

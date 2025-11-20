@@ -1,9 +1,11 @@
 import { deleteSetting, getSettings, updateSetting } from '@/dal'
-import { exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
+import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
-import { isTauri } from '@/lib/platform'
+import { isMobile, isTauri } from '@/lib/platform'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 
 type OAuthDependencies = {
   startOAuthFlowWebview?: typeof startOAuthFlowWebview
@@ -86,16 +88,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     try {
       if (isTauri()) {
         // Check if we're on mobile (iOS or Android)
-        const { platform } = await import('@tauri-apps/plugin-os')
-        const currentPlatform = await platform()
-        const isMobile = currentPlatform === 'ios' || currentPlatform === 'android'
-
-        if (isMobile) {
+        if (isMobile()) {
           // For mobile: Open OAuth in system browser with App Link / Universal Link redirect
           // The deep link listener will handle the callback
-          const { buildAuthUrl } = await import('@/lib/auth')
-          const { v4: uuidv4 } = await import('uuid')
-
           const state = uuidv4()
           const codeVerifier = generateCodeVerifier()
           const codeChallenge = await generateCodeChallenge(codeVerifier)
@@ -109,7 +104,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const authUrl = await buildAuthUrl(provider, state, codeChallenge)
 
           // Open in system browser (not webview)
-          const { openUrl } = await import('@tauri-apps/plugin-opener')
           await openUrl(authUrl)
 
           // The callback will be handled by the deep link listener

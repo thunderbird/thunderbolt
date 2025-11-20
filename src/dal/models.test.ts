@@ -11,7 +11,7 @@ import {
   getSelectedModel,
   getSystemModel,
 } from './models'
-import { updateSetting } from './settings'
+import { updateSettings } from './settings'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -118,7 +118,7 @@ describe('Models DAL', () => {
       })
 
       // Set the selected model
-      await updateSetting('selected_model', selectedModelId)
+      await updateSettings({ selected_model: selectedModelId })
 
       const model = await getSelectedModel()
       expect(model.id).toBe(selectedModelId)
@@ -151,7 +151,7 @@ describe('Models DAL', () => {
       })
 
       // Set the disabled model as selected
-      await updateSetting('selected_model', disabledModelId)
+      await updateSettings({ selected_model: disabledModelId })
 
       // Should fall back to system model since selected model is disabled
       const model = await getSelectedModel()

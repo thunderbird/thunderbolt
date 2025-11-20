@@ -1,4 +1,4 @@
-import { updateSetting } from '@/dal/settings'
+import { updateSettings } from '@/dal/settings'
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import '@testing-library/jest-dom'
 import { act, renderHook } from '@testing-library/react'
@@ -42,7 +42,7 @@ describe('useUnitsOptions', () => {
   beforeEach(async () => {
     await setupTestDatabase()
     // Set up the cloud_url setting in the database
-    await updateSetting('cloud_url', 'https://api.example.com')
+    await updateSettings({ cloud_url: 'https://api.example.com' })
   })
 
   afterEach(async () => {

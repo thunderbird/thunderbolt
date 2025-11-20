@@ -10,7 +10,7 @@ import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { type OAuthProvider } from '@/lib/auth'
-import { getSettings, updateSetting } from '@/dal'
+import { getSettings, updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -180,8 +180,10 @@ export default function IntegrationsPage() {
 
   const handleDisconnect = async (integration: Integration) => {
     try {
-      await updateSetting(`integrations_${integration.provider}_credentials`, '')
-      await updateSetting(`integrations_${integration.provider}_is_enabled`, 'false')
+      await updateSettings({
+        [`integrations_${integration.provider}_credentials`]: '',
+        [`integrations_${integration.provider}_is_enabled`]: 'false',
+      })
 
       console.log(`Disconnected from ${integration.name}`)
 
@@ -199,7 +201,7 @@ export default function IntegrationsPage() {
           ? 'integrations_pro_is_enabled'
           : `integrations_${integration.provider}_is_enabled`
 
-      await updateSetting(settingKey, enabled.toString())
+      await updateSettings({ [settingKey]: enabled.toString() })
 
       setIntegrations((prev) => prev.map((i) => (i.id === integration.id ? { ...i, isEnabled: enabled } : i)))
 

@@ -1,4 +1,4 @@
-import { getSettings, updateSetting } from '@/dal'
+import { getSettings, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { act, renderHook } from '@testing-library/react'
@@ -13,9 +13,11 @@ const createMockDependencies = (): OAuthDependencies => ({
   },
   redirectOAuthFlow: async (provider: string) => {
     // Simulate what the real redirectOAuthFlow does before redirecting
-    await updateSetting('oauth_state', 'mock_state_12345')
-    await updateSetting('oauth_provider', provider)
-    await updateSetting('oauth_verifier', 'mock_verifier_67890')
+    await updateSettings({
+      oauth_state: 'mock_state_12345',
+      oauth_provider: provider,
+      oauth_verifier: 'mock_verifier_67890',
+    })
     // Throw to simulate the redirect
     throw new Error('Redirecting for OAuth')
   },
@@ -170,9 +172,11 @@ describe('useOAuthConnect', () => {
     it('should handle successful OAuth callback', async () => {
       const callbackData = mockOAuthCallbackData()
       // Setup sqlite settings
-      await updateSetting('oauth_state', callbackData.state!)
-      await updateSetting('oauth_provider', 'google')
-      await updateSetting('oauth_verifier', 'mock_verifier_67890')
+      await updateSettings({
+        oauth_state: callbackData.state!,
+        oauth_provider: 'google',
+        oauth_verifier: 'mock_verifier_67890',
+      })
 
       const onSuccess = mock()
       const onError = mock()
@@ -200,9 +204,11 @@ describe('useOAuthConnect', () => {
     it('should handle state mismatch', async () => {
       const callbackData = mockOAuthCallbackData()
       // Setup sqlite settings with mismatched state
-      await updateSetting('oauth_state', 'different_state')
-      await updateSetting('oauth_provider', 'google')
-      await updateSetting('oauth_verifier', 'mock_verifier_67890')
+      await updateSettings({
+        oauth_state: 'different_state',
+        oauth_provider: 'google',
+        oauth_verifier: 'mock_verifier_67890',
+      })
 
       const onSuccess = mock()
       const onError = mock()

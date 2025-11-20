@@ -1,6 +1,6 @@
 // New file with Microsoft Graph tools
 
-import { getSettings, updateSetting } from '@/dal'
+import { getSettings, updateSettings } from '@/dal'
 import type { ToolConfig } from '@/types'
 import ky, { type KyInstance } from 'ky'
 import { z } from 'zod'
@@ -79,7 +79,7 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
       expires_at: Date.now() + newTokens.expires_in * 1000,
     }
 
-    await updateSetting('integrations_microsoft_credentials', JSON.stringify(updated))
+    await updateSettings({ integrations_microsoft_credentials: JSON.stringify(updated) })
 
     return newTokens.access_token
   }

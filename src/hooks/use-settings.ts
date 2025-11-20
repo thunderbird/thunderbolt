@@ -1,6 +1,6 @@
 import { defaultSettings } from '@/defaults/settings'
 import { isSettingModified } from '@/defaults/utils'
-import { getSettingsRecords, resetSettingToDefault, updateSetting } from '@/dal'
+import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal'
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
@@ -177,7 +177,7 @@ export function useSettings<T extends SettingSchema>(
       key: string
       value: any
       options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
-    }) => updateSetting(key, value, options),
+    }) => updateSettings({ [key]: value }, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
     },

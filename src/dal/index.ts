@@ -20,7 +20,7 @@ export {
   getThemeSetting,
   hasSetting,
   resetSettingToDefault,
-  updateSetting,
+  updateSettings,
 } from './settings'
 
 // Chat Threads

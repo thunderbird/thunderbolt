@@ -1,7 +1,7 @@
 import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
-import { updateSetting } from '@/dal'
+import { updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
@@ -69,8 +69,10 @@ export const OnboardingAuthStep = ({
 
   const handleDisconnect = async () => {
     try {
-      await updateSetting(`integrations_${provider}_credentials`, '')
-      await updateSetting(`integrations_${provider}_is_enabled`, 'false')
+      await updateSettings({
+        [`integrations_${provider}_credentials`]: '',
+        [`integrations_${provider}_is_enabled`]: 'false',
+      })
       onConnectionChange(false)
     } catch (error) {
       console.error('Failed to disconnect:', error)

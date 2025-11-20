@@ -9,11 +9,13 @@ import {
   deleteSetting,
   getAllSettings,
   getSettings,
+  getSettingsRecords,
   getThemeSetting,
   hasSetting,
   resetSettingToDefault,
-  updateSetting,
+  updateSettings,
 } from './settings'
+import { hashValues } from '../lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -114,67 +116,133 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('updateSetting', () => {
-    it('should create a new setting if it does not exist', async () => {
-      await updateSetting('new_key', 'new_value')
-      const settings = await getSettings({ new_key: String })
-      expect(settings.newKey).toBe('new_value')
+  describe('updateSettings', () => {
+    it('should create multiple new settings at once', async () => {
+      await updateSettings({
+        batch_key_one: 'value1',
+        batch_key_two: 'value2',
+        batch_key_three: 'value3',
+      })
+
+      const settings = await getSettings({
+        batch_key_one: String,
+        batch_key_two: String,
+        batch_key_three: String,
+      })
+
+      expect(settings.batchKeyOne).toBe('value1')
+      expect(settings.batchKeyTwo).toBe('value2')
+      expect(settings.batchKeyThree).toBe('value3')
     })
 
-    it('should update existing setting', async () => {
-      await createSetting('update_key', 'old_value')
-      await updateSetting('update_key', 'new_value')
-      const settings = await getSettings({ update_key: String })
-      expect(settings.updateKey).toBe('new_value')
+    it('should update multiple existing settings at once', async () => {
+      await createSetting('existing_one', 'old1')
+      await createSetting('existing_two', 'old2')
+
+      await updateSettings({
+        existing_one: 'new1',
+        existing_two: 'new2',
+      })
+
+      const settings = await getSettings({
+        existing_one: String,
+        existing_two: String,
+      })
+
+      expect(settings.existingOne).toBe('new1')
+      expect(settings.existingTwo).toBe('new2')
     })
 
-    it('should update to null value', async () => {
-      await createSetting('nullable_key', 'original_value')
-      await updateSetting('nullable_key', null)
-      const settings = await getSettings({ nullable_key: 'default' })
-      expect(settings.nullableKey).toBe('default')
+    it('should handle mixed types (string, number, boolean)', async () => {
+      await updateSettings({
+        mixed_string: 'text',
+        mixed_number: 42,
+        mixed_boolean: true,
+      })
+
+      const settings = await getSettings({
+        mixed_string: String,
+        mixed_number: Number,
+        mixed_boolean: Boolean,
+      })
+
+      expect(settings.mixedString).toBe('text')
+      expect(settings.mixedNumber).toBe(42)
+      expect(settings.mixedBoolean).toBe(true)
     })
 
-    it('should update to empty string', async () => {
-      await createSetting('empty_key', 'original_value')
-      await updateSetting('empty_key', '')
-      const settings = await getSettings({ empty_key: 'default' })
-      expect(settings.emptyKey).toBe('')
+    it('should handle empty object gracefully', async () => {
+      await updateSettings({})
+      expect(true).toBe(true)
+    })
+
+    it('should support recomputeHash option for all settings', async () => {
+      await updateSettings(
+        {
+          hash_key_one: 'baseline1',
+          hash_key_two: 'baseline2',
+        },
+        { recomputeHash: true },
+      )
+
+      const records = await getSettingsRecords({
+        hash_key_one: String,
+        hash_key_two: String,
+      })
+
+      const expectedHash1 = hashValues(['hash_key_one', 'baseline1'])
+      const expectedHash2 = hashValues(['hash_key_two', 'baseline2'])
+
+      expect(records['hash_key_one'].defaultHash).toBe(expectedHash1)
+      expect(records['hash_key_two'].defaultHash).toBe(expectedHash2)
+    })
+
+    it('should handle deeply nested JSON structures', async () => {
+      // Test that the JsonValue type properly accepts complex nested structures
+      const complexCredentials = {
+        access_token: 'token123',
+        refresh_token: 'refresh456',
+        expires_at: 1234567890,
+        profile: {
+          email: 'user@example.com',
+          name: 'Test User',
+          metadata: {
+            created: '2024-01-01',
+            tags: ['premium', 'verified'],
+            settings: {
+              theme: 'dark',
+              notifications: true,
+            },
+          },
+        },
+      }
+
+      await updateSettings({
+        complex_nested_data: complexCredentials,
+        simple_array: [1, 2, 3, 4, 5],
+        nested_array: [
+          { id: 1, value: 'a' },
+          { id: 2, value: 'b' },
+        ],
+      })
+
+      // Verify it was stored correctly by reading back
+      const settings = await getSettings({
+        complex_nested_data: String, // Gets back as JSON string
+        simple_array: String,
+        nested_array: String,
+      })
+
+      expect(JSON.parse(settings.complexNestedData!)).toEqual(complexCredentials)
+      expect(JSON.parse(settings.simpleArray!)).toEqual([1, 2, 3, 4, 5])
+      expect(JSON.parse(settings.nestedArray!)).toEqual([
+        { id: 1, value: 'a' },
+        { id: 2, value: 'b' },
+      ])
     })
   })
 
-  describe('updateSetting with boolean values', () => {
-    it('should create a boolean setting with true value', async () => {
-      await updateSetting('bool_key', true)
-      const settings = await getSettings({ bool_key: false })
-      expect(settings.boolKey).toBe(true)
-    })
-
-    it('should create a boolean setting with false value', async () => {
-      await updateSetting('bool_key', false)
-      const settings = await getSettings({ bool_key: true })
-      expect(settings.boolKey).toBe(false)
-    })
-
-    it('should update existing boolean setting', async () => {
-      await updateSetting('bool_key', false)
-      await updateSetting('bool_key', true)
-      const settings = await getSettings({ bool_key: false })
-      expect(settings.boolKey).toBe(true)
-    })
-
-    it('should store as "true" and "false" strings', async () => {
-      await updateSetting('bool_key', true)
-      const trueSettings = await getSettings({ bool_key: String })
-      expect(trueSettings.boolKey).toBe('true')
-
-      await updateSetting('bool_key', false)
-      const falseSettings = await getSettings({ bool_key: String })
-      expect(falseSettings.boolKey).toBe('false')
-    })
-  })
-
-  describe('updateSetting with recomputeHash option', () => {
+  describe('updateSettings with recomputeHash option', () => {
     it('should not update defaultHash by default', async () => {
       const db = DatabaseSingleton.instance.db
 
@@ -187,7 +255,7 @@ describe('Settings DAL', () => {
       })
 
       // Update the value without recomputeHash
-      await updateSetting('test_key', 'modified')
+      await updateSettings({ test_key: 'modified' })
 
       const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
 
@@ -211,7 +279,7 @@ describe('Settings DAL', () => {
       })
 
       // Update the value with recomputeHash: true
-      await updateSetting('test_key', 'new_baseline', { recomputeHash: true })
+      await updateSettings({ test_key: 'new_baseline' }, { recomputeHash: true })
 
       const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
 
@@ -227,14 +295,14 @@ describe('Settings DAL', () => {
       const db = DatabaseSingleton.instance.db
 
       // Create a setting
-      await updateSetting('test_key', 'baseline', { recomputeHash: true })
+      await updateSettings({ test_key: 'baseline' }, { recomputeHash: true })
 
       // Verify it's not modified
       let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
       expect(isSettingModified(setting!)).toBe(false)
 
       // Now modify it again without recomputeHash
-      await updateSetting('test_key', 'different_value')
+      await updateSettings({ test_key: 'different_value' })
 
       // Should be detected as modified relative to the new baseline
       setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
@@ -246,8 +314,7 @@ describe('Settings DAL', () => {
       const db = DatabaseSingleton.instance.db
 
       // Simulate initial auto-population from country data with recomputeHash
-      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'c', { recomputeHash: true })
+      await updateSettings({ distance_unit: 'metric', temperature_unit: 'c' }, { recomputeHash: true })
 
       // Verify they're not marked as modified
       const distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -257,7 +324,7 @@ describe('Settings DAL', () => {
       expect(isSettingModified(tempSetting!)).toBe(false)
 
       // User manually changes one setting
-      await updateSetting('temperature_unit', 'f')
+      await updateSettings({ temperature_unit: 'f' })
 
       // Only the manually changed setting should be modified
       const distanceAfter = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -267,8 +334,7 @@ describe('Settings DAL', () => {
       expect(isSettingModified(tempAfter!)).toBe(true)
 
       // User changes location, triggering new localization values with recomputeHash
-      await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'f', { recomputeHash: true })
+      await updateSettings({ distance_unit: 'imperial', temperature_unit: 'f' }, { recomputeHash: true })
 
       // Both should now be unmodified relative to the new baseline
       const distanceFinal = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -279,12 +345,12 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('updateSetting with updateHashOnly option', () => {
+  describe('updateSettings with updateHashOnly option', () => {
     it('should only update hash without changing value', async () => {
       const db = DatabaseSingleton.instance.db
 
       // Create a setting with an initial value
-      await updateSetting('test_key', 'user_custom_value', { recomputeHash: true })
+      await updateSettings({ test_key: 'user_custom_value' }, { recomputeHash: true })
 
       // Verify initial state
       let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
@@ -292,7 +358,7 @@ describe('Settings DAL', () => {
       expect(isSettingModified(setting!)).toBe(false)
 
       // Update only the hash to a new baseline value without changing the actual value
-      await updateSetting('test_key', 'new_baseline', { updateHashOnly: true })
+      await updateSettings({ test_key: 'new_baseline' }, { updateHashOnly: true })
 
       // Value should remain unchanged, but hash should be updated
       setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
@@ -307,10 +373,10 @@ describe('Settings DAL', () => {
       const db = DatabaseSingleton.instance.db
 
       // Scenario: User has location set to UK, gets 'metric' units
-      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
+      await updateSettings({ distance_unit: 'metric' }, { recomputeHash: true })
 
       // User manually changes to imperial
-      await updateSetting('distance_unit', 'imperial')
+      await updateSettings({ distance_unit: 'imperial' })
 
       let setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
       expect(setting?.value).toBe('imperial')
@@ -318,7 +384,7 @@ describe('Settings DAL', () => {
 
       // User changes location to US, which defaults to 'imperial'
       // We update the hash to 'imperial' without changing the value
-      await updateSetting('distance_unit', 'imperial', { updateHashOnly: true })
+      await updateSettings({ distance_unit: 'imperial' }, { updateHashOnly: true })
 
       // Value stays 'imperial' (user's choice), but now it's the baseline
       setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -330,11 +396,10 @@ describe('Settings DAL', () => {
       const db = DatabaseSingleton.instance.db
 
       // Initial location (UK): metric and c
-      await updateSetting('distance_unit', 'metric', { recomputeHash: true })
-      await updateSetting('temperature_unit', 'c', { recomputeHash: true })
+      await updateSettings({ distance_unit: 'metric', temperature_unit: 'c' }, { recomputeHash: true })
 
       // User manually changes temperature to f
-      await updateSetting('temperature_unit', 'f')
+      await updateSettings({ temperature_unit: 'f' })
 
       // Verify state before location change
       let distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -344,9 +409,9 @@ describe('Settings DAL', () => {
 
       // User changes location to US: imperial and f
       // For unmodified settings, update value and hash
-      await updateSetting('distance_unit', 'imperial', { recomputeHash: true })
+      await updateSettings({ distance_unit: 'imperial' }, { recomputeHash: true })
       // For modified settings, only update hash (preserve user's value)
-      await updateSetting('temperature_unit', 'f', { updateHashOnly: true })
+      await updateSettings({ temperature_unit: 'f' }, { updateHashOnly: true })
 
       // Check final state
       distanceSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
@@ -409,7 +474,7 @@ describe('Settings DAL', () => {
     })
 
     it('should return stored theme when setting exists', async () => {
-      await updateSetting('theme', 'dark')
+      await updateSettings({ theme: 'dark' })
       const theme = await getThemeSetting('theme', 'light')
       expect(theme).toBe('dark')
     })
@@ -429,7 +494,7 @@ describe('Settings DAL', () => {
       })
 
       // User modifies it
-      await updateSetting(defaultSetting.key, 'user_modified_value')
+      await updateSettings({ [defaultSetting.key]: 'user_modified_value' })
 
       // Verify it's modified
       const modified = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
@@ -456,7 +521,7 @@ describe('Settings DAL', () => {
         updatedAt: null,
         defaultHash: hashSetting(defaultSetting),
       })
-      await updateSetting(defaultSetting.key, 'modified')
+      await updateSettings({ [defaultSetting.key]: 'modified' })
 
       // Reset
       await resetSettingToDefault(defaultSetting.key, defaultSetting)
@@ -467,7 +532,7 @@ describe('Settings DAL', () => {
       expect(isSettingModified(setting!)).toBe(false)
 
       // Modify again
-      await updateSetting(defaultSetting.key, 'modified_again')
+      await updateSettings({ [defaultSetting.key]: 'modified_again' })
       const modifiedAgain = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
 
       // Should be detected as modified

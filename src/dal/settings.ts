@@ -231,41 +231,71 @@ export const createSetting = async (key: string, value: string | null): Promise<
 }
 
 /**
- * Update or create a setting in the settings table
- * @param key - The setting key
- * @param value - The value (can be string, null, boolean, number, or JSON-serializable object)
- * @param options - Optional configuration
- * @param options.recomputeHash - If true, updates the defaultHash to match the new value (makes it the new baseline for modification tracking)
- * @param options.updateHashOnly - If true, only updates the defaultHash using the provided value without changing the actual stored value (useful for updating the baseline without overwriting user customizations)
+ * Prepare a setting row for batch insert/update
  */
-export const updateSetting = async (
-  key: string,
-  value: any,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const prepareSettingRow = (key: string, value: any, recomputeHash: boolean) => {
+  const stringValue = serializeValue(value)
+  return {
+    key,
+    value: stringValue,
+    ...(recomputeHash && { defaultHash: hashValues([key, stringValue]) }),
+  }
+}
+
+/**
+ * Update or create multiple settings at once in a single database operation
+ *
+ * @param settings - Object mapping setting keys to values
+ * @param options - Optional configuration (applies to all settings)
+ * @param options.recomputeHash - If true, updates the defaultHash to match the new value for all settings
+ * @param options.updateHashOnly - If true, only updates the defaultHash without changing actual values
+ *
+ * @example
+ * ```ts
+ * await updateSettings({
+ *   oauth_state: 'abc123',
+ *   oauth_provider: 'google',
+ *   oauth_verifier: 'xyz789',
+ * })
+ * ```
+ */
+export const updateSettings = async (
+  settings: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   options: { recomputeHash?: boolean; updateHashOnly?: boolean } = {},
 ): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  const stringValue = serializeValue(value)
+  const entries = Object.entries(settings)
+  if (entries.length === 0) return
 
+  const db = DatabaseSingleton.instance.db
+
+  // Handle updateHashOnly separately as it requires UPDATE statements
+  // Note: SQLite doesn't support batch UPDATE with different values per row,
+  // so we use parallel updates within a transaction for atomicity
   if (options.updateHashOnly) {
-    // Only update the hash, don't change the actual value
-    const newHash = hashValues([key, stringValue])
-    await db.update(settingsTable).set({ defaultHash: newHash }).where(eq(settingsTable.key, key))
+    await db.transaction(async (tx) => {
+      await Promise.all(
+        entries.map(([key, value]) => {
+          const stringValue = serializeValue(value)
+          const newHash = hashValues([key, stringValue])
+          return tx.update(settingsTable).set({ defaultHash: newHash }).where(eq(settingsTable.key, key))
+        }),
+      )
+    })
     return
   }
 
-  const updateFields: { value: string | null; defaultHash?: string | null } = { value: stringValue }
-
-  // If recomputeHash is true, update the defaultHash to match the new value
-  if (options.recomputeHash) {
-    updateFields.defaultHash = hashValues([key, stringValue])
-  }
+  // Single batch upsert for value updates
+  const values = entries.map(([key, value]) => prepareSettingRow(key, value, options.recomputeHash ?? false))
 
   await db
     .insert(settingsTable)
-    .values({ key, ...updateFields })
+    .values(values)
     .onConflictDoUpdate({
       target: settingsTable.key,
-      set: updateFields,
+      set: options.recomputeHash
+        ? { value: sql`excluded.value`, defaultHash: sql`excluded.default_hash` }
+        : { value: sql`excluded.value` },
     })
 }
 

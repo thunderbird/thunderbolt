@@ -1,5 +1,5 @@
 import { refreshAccessToken } from '@/lib/auth'
-import { getSettings, updateSetting } from '@/dal'
+import { getSettings, updateSettings } from '@/dal'
 import type { DraftEmailParams } from './tools'
 
 // =============================================================================
@@ -163,7 +163,7 @@ export const ensureValidGoogleToken = async (credentials: {
     expires_at: Date.now() + newTokens.expires_in * 1000,
   }
 
-  await updateSetting('integrations_google_credentials', JSON.stringify(updated))
+  await updateSettings({ integrations_google_credentials: JSON.stringify(updated) })
 
   return updated.access_token
 }

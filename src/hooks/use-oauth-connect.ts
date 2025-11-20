@@ -1,4 +1,4 @@
-import { deleteSetting, getSettings, updateSetting } from '@/dal'
+import { deleteSetting, getSettings, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowWebview } from '@/lib/oauth-webview'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
@@ -55,11 +55,13 @@ const saveOAuthCredentials = async (
     },
   }
 
-  await updateSetting(`integrations_${provider}_credentials`, JSON.stringify(credentials))
-  await updateSetting(`integrations_${provider}_is_enabled`, 'true')
+  await updateSettings({
+    [`integrations_${provider}_credentials`]: JSON.stringify(credentials),
+    [`integrations_${provider}_is_enabled`]: 'true',
+  })
 
   if (options.setPreferredName && userInfo.name) {
-    await updateSetting('preferred_name', userInfo.name)
+    await updateSettings({ preferred_name: userInfo.name })
   }
 }
 
@@ -96,10 +98,12 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const codeChallenge = await generateCodeChallenge(codeVerifier)
 
           // Store OAuth state for callback validation
-          await updateSetting('oauth_state', state)
-          await updateSetting('oauth_provider', provider)
-          await updateSetting('oauth_verifier', codeVerifier)
-          await updateSetting('oauth_return_context', returnContext)
+          await updateSettings({
+            oauth_state: state,
+            oauth_provider: provider,
+            oauth_verifier: codeVerifier,
+            oauth_return_context: returnContext,
+          })
 
           const authUrl = await buildAuthUrl(provider, state, codeChallenge)
 
@@ -121,7 +125,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         }
       } else {
         // For web: Use redirect flow
-        await updateSetting('oauth_return_context', returnContext)
+        await updateSettings({ oauth_return_context: returnContext })
         await redirect(provider)
       }
     } catch (e: unknown) {

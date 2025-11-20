@@ -1,4 +1,4 @@
-import { getSettings, updateSetting, deleteSetting } from '@/dal'
+import { getSettings, updateSettings, deleteSetting } from '@/dal'
 import type { OAuthProvider } from './auth'
 
 /**
@@ -34,22 +34,24 @@ export const getOAuthState = async (): Promise<OAuthState> => {
  * Sets OAuth state in sqlite settings
  */
 export const setOAuthState = async (state: Partial<OAuthState>): Promise<void> => {
-  const promises: Promise<void>[] = []
+  const settings: Record<string, string | null> = {}
 
   if (state.state !== undefined) {
-    promises.push(updateSetting('oauth_state', state.state))
+    settings.oauth_state = state.state
   }
   if (state.provider !== undefined) {
-    promises.push(updateSetting('oauth_provider', state.provider))
+    settings.oauth_provider = state.provider
   }
   if (state.verifier !== undefined) {
-    promises.push(updateSetting('oauth_verifier', state.verifier))
+    settings.oauth_verifier = state.verifier
   }
   if (state.returnContext !== undefined) {
-    promises.push(updateSetting('oauth_return_context', state.returnContext))
+    settings.oauth_return_context = state.returnContext
   }
 
-  await Promise.all(promises)
+  if (Object.keys(settings).length > 0) {
+    await updateSettings(settings)
+  }
 }
 
 /**

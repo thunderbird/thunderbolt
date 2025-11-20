@@ -1,4 +1,4 @@
-import { updateSetting } from '@/dal'
+import { updateSettings } from '@/dal'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
@@ -83,7 +83,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ selectedModel: model })
 
-    updateSetting('selected_model', model.id)
+    updateSettings({ selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
   },

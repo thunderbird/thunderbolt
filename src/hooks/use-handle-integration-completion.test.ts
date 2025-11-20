@@ -8,7 +8,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { chatThreadsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
-import { updateSetting } from '@/dal/settings'
+import { updateSettings } from '@/dal/settings'
 import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
 
@@ -164,8 +164,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: 'thread-1',
     })
 
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: '',
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -183,8 +185,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: 'thread-1',
     })
 
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: '',
+      integrations_microsoft_credentials: '',
+    })
 
     const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -204,8 +208,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: 'thread-1',
     })
 
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: '',
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -233,8 +239,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: null,
     })
 
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: '',
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -285,8 +293,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
     })
 
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -364,8 +374,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
     })
 
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -432,8 +444,10 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     // Start with no credentials
-    await updateSetting('integrations_google_credentials', '')
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: '',
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -460,7 +474,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     // Now add credentials to simulate connection
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
+    await updateSettings({ integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }) })
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -483,8 +497,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
     })
 
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+      integrations_microsoft_credentials: '',
+    })
 
     const originalWarn = console.warn
     const consoleWarnSpy = mock(() => {})
@@ -540,8 +556,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
     })
 
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+      integrations_microsoft_credentials: '',
+    })
 
     const originalWarn = console.warn
     const consoleWarnSpy = mock(() => {})
@@ -608,8 +626,10 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
     })
 
-    await updateSetting('integrations_google_credentials', JSON.stringify({ access_token: 'test_token' }))
-    await updateSetting('integrations_microsoft_credentials', '')
+    await updateSettings({
+      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+      integrations_microsoft_credentials: '',
+    })
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({

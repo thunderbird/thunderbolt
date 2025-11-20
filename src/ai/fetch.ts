@@ -185,7 +185,7 @@ export const aiFetchStreamingResponse = async ({
     const MAX_STEPS = 20
 
     const result = streamText({
-      temperature: 0.25,
+      temperature: 0.2,
       model: wrappedModel,
       system: systemPrompt,
       messages: convertToModelMessages(messages),

@@ -1,23 +1,20 @@
-import { isTauri } from '@/lib/platform'
+import { isMobile, isTauri } from '@/lib/platform'
 
 /**
  * Determines the correct OAuth redirect URI based on the platform
  *
  * - Web: Uses the web callback route at the current origin
  * - Mobile (iOS/Android): Uses App Link / Universal Link (https://thunderbolt.io/oauth/callback)
- * - Desktop (Tauri): Uses localhost URL that Google accepts and Tauri intercepts
+ * - Desktop (Tauri): Uses local webview callback
  *
  * @returns The appropriate redirect URI for the current platform
  */
-export const getOAuthRedirectUri = async (): Promise<string> => {
+export const getOAuthRedirectUri = (): string => {
   if (!isTauri()) {
     return window.location.origin + '/oauth/callback'
   }
 
-  const { platform } = await import('@tauri-apps/plugin-os')
-  const currentPlatform = await platform()
-
-  if (currentPlatform === 'ios' || currentPlatform === 'android') {
+  if (isMobile()) {
     // Mobile: Use App Link / Universal Link (verified HTTPS domain)
     return 'https://thunderbolt.io/oauth/callback'
   }

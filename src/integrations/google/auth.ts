@@ -13,7 +13,7 @@ const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> 
 
 export const getOAuthConfig = async (): Promise<OAuthConfig> => {
   const { client_id } = await fetchBackendConfig()
-  const redirectUri = await getOAuthRedirectUri()
+  const redirectUri = getOAuthRedirectUri()
 
   return {
     clientId: client_id,

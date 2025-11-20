@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { getOAuthRedirectUri } from './oauth-redirect'
 
 describe('getOAuthRedirectUri', () => {
-  it('returns web callback for non-Tauri environment', async () => {
+  it('returns web callback for non-Tauri environment', () => {
     const originalLocation = window.location
     const mockLocation = { origin: 'https://app.example.com' } as Location
     Object.defineProperty(window, 'location', {
@@ -11,7 +11,7 @@ describe('getOAuthRedirectUri', () => {
       configurable: true,
     })
 
-    const uri = await getOAuthRedirectUri()
+    const uri = getOAuthRedirectUri()
 
     expect(uri).toBe('https://app.example.com/oauth/callback')
 
@@ -23,14 +23,14 @@ describe('getOAuthRedirectUri', () => {
     })
   })
 
-  it('returns App Link for mobile platforms', async () => {
-    const uri = await getOAuthRedirectUri()
+  it('returns App Link for mobile platforms', () => {
+    const uri = getOAuthRedirectUri()
 
     // In test environment (not Tauri), should return web callback
     expect(uri).toContain('/oauth/callback')
   })
 
-  it('returns valid URL format', async () => {
+  it('returns valid URL format', () => {
     const originalLocation = window.location
     const mockLocation = { origin: 'https://test.example.com' } as Location
     Object.defineProperty(window, 'location', {
@@ -39,7 +39,7 @@ describe('getOAuthRedirectUri', () => {
       configurable: true,
     })
 
-    const uri = await getOAuthRedirectUri()
+    const uri = getOAuthRedirectUri()
 
     // Should be a valid URL
     expect(() => new URL(uri)).not.toThrow()

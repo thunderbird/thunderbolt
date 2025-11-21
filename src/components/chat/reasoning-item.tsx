@@ -3,10 +3,10 @@ import { Brain, DotIcon, Loader2 } from 'lucide-react'
 import { formatDuration, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { useObjectView } from '@/content-view/context'
 
 type ReasoningItemProps = {
   part: ReasoningGroupItem
+  onClick: () => void
 }
 
 const getItemData = (part: ReasoningGroupItem) => {
@@ -40,10 +40,8 @@ const getItemData = (part: ReasoningGroupItem) => {
   }
 }
 
-export const ReasoningItem = ({ part }: ReasoningItemProps) => {
+export const ReasoningItem = ({ part, onClick }: ReasoningItemProps) => {
   const itemData = getItemData(part)
-
-  const { openObjectSidebar } = useObjectView()
 
   if (!itemData) {
     return null
@@ -53,7 +51,7 @@ export const ReasoningItem = ({ part }: ReasoningItemProps) => {
 
   return (
     <button
-      onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
+      onClick={onClick}
       className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
     >
       <div className="flex gap-3 flex-row flex-1 items-center">

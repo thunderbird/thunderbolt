@@ -24,7 +24,8 @@ let thunderboltClient: OpenAI | PostHogOpenAI | null = null
  * Get the Fireworks AI client
  */
 const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
-  if (fireworksClient) {
+  // Don't use cache when fetchFn is provided (primarily for testing)
+  if (fireworksClient && !fetchFn) {
     return fireworksClient
   }
 
@@ -40,21 +41,27 @@ const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
     ...(fetchFn && { fetch: fetchFn }),
   }
 
-  fireworksClient = isPostHogConfigured()
+  const client = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
         posthog: getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
-  return fireworksClient
+  // Only cache if no custom fetchFn was provided
+  if (!fetchFn) {
+    fireworksClient = client
+  }
+
+  return client
 }
 
 /**
  * Get the Thunderbolt inference client for gpt-oss
  */
 const getThunderboltClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
-  if (thunderboltClient) {
+  // Don't use cache when fetchFn is provided (primarily for testing)
+  if (thunderboltClient && !fetchFn) {
     return thunderboltClient
   }
 
@@ -70,14 +77,19 @@ const getThunderboltClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI =>
     ...(fetchFn && { fetch: fetchFn }),
   }
 
-  thunderboltClient = isPostHogConfigured()
+  const client = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
         posthog: getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
-  return thunderboltClient
+  // Only cache if no custom fetchFn was provided
+  if (!fetchFn) {
+    thunderboltClient = client
+  }
+
+  return client
 }
 
 /**

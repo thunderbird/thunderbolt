@@ -10,58 +10,12 @@ import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
 import { updateSettings } from '@/dal/settings'
 import type { ThunderboltUIMessage } from '@/types'
+import { type Chat } from '@ai-sdk/react'
 import { getClock } from '@/testing-library'
+import { useChatStore } from '@/chats/chat-store'
 
 const mockAddEventListener = mock()
 const mockRemoveEventListener = mock()
-
-// Mock modules before imports
-type MockChatStoreState = {
-  chatInstance: { messages: ThunderboltUIMessage[]; status: string; sendMessage: () => Promise<void> } | null
-  id: string | null
-}
-
-type MockChatStoreSelectorResult = {
-  chatInstance: { messages: ThunderboltUIMessage[]; status: string; sendMessage: () => Promise<void> } | null
-  chatThreadId: string | null
-}
-
-const createMockChatStoreState = (): MockChatStoreState => ({
-  chatInstance: null,
-  id: null,
-})
-
-const createMockChatStore = () => {
-  let state: MockChatStoreState = createMockChatStoreState()
-
-  const setState = (newState: MockChatStoreState) => {
-    state = newState
-  }
-
-  const reset = () => {
-    state = createMockChatStoreState()
-  }
-
-  const useStore = (selector: (state: MockChatStoreState) => MockChatStoreSelectorResult) => {
-    return selector({
-      chatInstance: state.chatInstance,
-      id: state.id,
-    })
-  }
-
-  return { setState, reset, useStore }
-}
-
-const mockChatStore = createMockChatStore()
-const mockUseChatStore = mock(mockChatStore.useStore)
-
-mock.module('@/chats/chat-store', () => ({
-  useChatStore: mockUseChatStore,
-}))
-
-mock.module('zustand/react/shallow', () => ({
-  useShallow: <T>(selector: (state: T) => T) => selector,
-}))
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -101,16 +55,20 @@ afterAll(async () => {
 
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
+    // Reset the real store state before each test
+    useChatStore.getState().reset()
+
     if (global.sessionStorage) {
       global.sessionStorage.clear()
     }
     mockAddEventListener.mockClear()
     mockRemoveEventListener.mockClear()
-    mockUseChatStore.mockClear()
-    mockChatStore.reset()
   })
 
   afterEach(async () => {
+    // Reset the real store state after each test
+    useChatStore.getState().reset()
+
     await resetTestDatabase()
     if (global.sessionStorage) {
       global.sessionStorage.clear()
@@ -118,13 +76,27 @@ describe('useHandleIntegrationCompletion', () => {
   })
 
   /**
-   * Creates a mock chat instance for testing
+   * Creates a mock chat instance for testing that matches the Chat interface
    */
-  const createMockChatInstance = (messages: ThunderboltUIMessage[] = []) => ({
-    messages,
-    status: 'ready' as const,
-    sendMessage: mock(() => Promise.resolve()),
-  })
+  const createMockChatInstance = (messages: ThunderboltUIMessage[] = []): Chat<ThunderboltUIMessage> => {
+    const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
+      // Mock implementation
+    })
+
+    return {
+      id: 'test-chat-id',
+      messages,
+      sendMessage,
+      status: 'ready',
+      regenerate: mock(),
+      stop: mock(),
+      append: mock(),
+      reload: mock(),
+      setMessages: mock(),
+      setData: mock(),
+      setStatus: mock(),
+    } as unknown as Chat<ThunderboltUIMessage>
+  }
 
   /**
    * Creates a mock saveMessages function for testing
@@ -159,9 +131,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -180,9 +158,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -203,9 +187,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -234,9 +224,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data (id is null)
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: null,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -288,9 +284,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -369,9 +371,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -438,9 +446,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     // Start with no credentials
@@ -492,9 +506,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -551,9 +571,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -621,9 +647,15 @@ describe('useHandleIntegrationCompletion', () => {
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    mockChatStore.setState({
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
       chatInstance: mockChatInstance,
+      chatThread: null,
       id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({

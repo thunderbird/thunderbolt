@@ -216,6 +216,37 @@ platform :ios do
     sigh(force: true)
   end
   
+  desc "Verify provisioning profile has required capabilities"
+  lane :verify_profile do
+    profile_path = Dir.glob(File.expand_path("~/Library/MobileDevice/Provisioning Profiles/*.mobileprovision")).first
+    
+    if profile_path.nil?
+      UI.error("❌ No provisioning profile found")
+      exit(1)
+    end
+    
+    # Read the profile
+    profile_content = `security cms -D -i "#{profile_path}"`
+    
+    # Check for Associated Domains
+    if profile_content.include?("com.apple.developer.associated-domains")
+      UI.success("✅ Provisioning profile includes Associated Domains capability")
+    else
+      UI.error("❌ Provisioning profile does NOT include Associated Domains capability")
+      UI.error("   Please create a new profile with this capability enabled")
+      exit(1)
+    end
+    
+    # Show profile details
+    profile_name = `security cms -D -i "#{profile_path}" | plutil -extract Name raw -`.strip
+    profile_uuid = `security cms -D -i "#{profile_path}" | plutil -extract UUID raw -`.strip
+    team_id = `security cms -D -i "#{profile_path}" | plutil -extract TeamIdentifier.0 raw -`.strip
+    
+    UI.success("Profile Name: #{profile_name}")
+    UI.success("Profile UUID: #{profile_uuid}")
+    UI.success("Team ID: #{team_id}")
+  end
+  
   desc "Run tests"
   lane :test do
     run_tests(

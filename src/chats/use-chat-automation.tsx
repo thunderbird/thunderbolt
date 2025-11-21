@@ -1,9 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore } from './chat-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useChat } from '@ai-sdk/react'
+import { useChat as useChat_default } from '@ai-sdk/react'
 
-export const useChatAutomation = () => {
+type UseChatAutomationProps = {
+  useChat?: typeof useChat_default
+}
+
+export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
   const { chatInstance } = useChatStore(
     useShallow((state) => ({
       chatInstance: state.chatInstance!,

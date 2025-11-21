@@ -7,7 +7,7 @@ let phClient: PostHog | null = null
  * Initialize and get the PostHog analytics client
  * Uses lazy initialization with settings from environment
  */
-export const getPostHogClient = (): PostHog => {
+export const getPostHogClient = (fetchFn?: typeof fetch): PostHog => {
   if (!phClient) {
     const settings = getSettings()
 
@@ -18,11 +18,13 @@ export const getPostHogClient = (): PostHog => {
     phClient = new PostHog(settings.posthogApiKey, {
       host: settings.posthogHost,
       privacyMode: true,
+      ...(fetchFn && { fetch: fetchFn }),
     })
 
     // Workaround: PostHog AI library checks for `privacy_mode` property (snake_case)
     // but PostHog Node client only stores it in `options.privacyMode`
     // Manually set it so the AI library can detect it
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(phClient as any).privacy_mode = true
   }
 
@@ -32,9 +34,9 @@ export const getPostHogClient = (): PostHog => {
 /**
  * Shutdown the PostHog client (call on app termination)
  */
-export const shutdownPostHog = async (): Promise<void> => {
+export const shutdownPostHog = async (timeoutMs = 3000): Promise<void> => {
   if (phClient) {
-    await phClient.shutdown()
+    await phClient.shutdown(timeoutMs)
     phClient = null
   }
 }
@@ -45,4 +47,11 @@ export const shutdownPostHog = async (): Promise<void> => {
 export const isPostHogConfigured = (): boolean => {
   const settings = getSettings()
   return !!settings.posthogApiKey
+}
+
+/**
+ * Clear the PostHog client cache (for testing)
+ */
+export const clearPostHogClient = (): void => {
+  phClient = null
 }

@@ -23,7 +23,7 @@ let thunderboltClient: OpenAI | PostHogOpenAI | null = null
 /**
  * Get the Fireworks AI client
  */
-const getFireworksClient = (): OpenAI | PostHogOpenAI => {
+const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   if (fireworksClient) {
     return fireworksClient
   }
@@ -37,12 +37,13 @@ const getFireworksClient = (): OpenAI | PostHogOpenAI => {
   const params = {
     apiKey: settings.fireworksApiKey,
     baseURL: 'https://api.fireworks.ai/inference/v1',
+    ...(fetchFn && { fetch: fetchFn }),
   }
 
   fireworksClient = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
-        posthog: getPostHogClient(),
+        posthog: getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
@@ -52,7 +53,7 @@ const getFireworksClient = (): OpenAI | PostHogOpenAI => {
 /**
  * Get the Thunderbolt inference client for gpt-oss
  */
-const getThunderboltClient = (): OpenAI | PostHogOpenAI => {
+const getThunderboltClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   if (thunderboltClient) {
     return thunderboltClient
   }
@@ -66,12 +67,13 @@ const getThunderboltClient = (): OpenAI | PostHogOpenAI => {
   const params = {
     apiKey: settings.thunderboltInferenceApiKey,
     baseURL: settings.thunderboltInferenceUrl,
+    ...(fetchFn && { fetch: fetchFn }),
   }
 
   thunderboltClient = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
-        posthog: getPostHogClient(),
+        posthog: getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
@@ -82,8 +84,8 @@ const getThunderboltClient = (): OpenAI | PostHogOpenAI => {
  * Get the appropriate inference client based on provider
  * Clients are lazily initialized and reused across requests
  */
-export const getInferenceClient = (provider: InferenceProvider): InferenceClient => {
-  const client = provider === 'thunderbolt' ? getThunderboltClient() : getFireworksClient()
+export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof fetch): InferenceClient => {
+  const client = provider === 'thunderbolt' ? getThunderboltClient(fetchFn) : getFireworksClient(fetchFn)
 
   return {
     client,

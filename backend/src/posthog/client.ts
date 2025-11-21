@@ -8,27 +8,35 @@ let phClient: PostHog | null = null
  * Uses lazy initialization with settings from environment
  */
 export const getPostHogClient = (fetchFn?: typeof fetch): PostHog => {
-  if (!phClient) {
-    const settings = getSettings()
-
-    if (!settings.posthogApiKey) {
-      throw new Error('PostHog API key not configured - set POSTHOG_API_KEY environment variable')
-    }
-
-    phClient = new PostHog(settings.posthogApiKey, {
-      host: settings.posthogHost,
-      privacyMode: true,
-      ...(fetchFn && { fetch: fetchFn }),
-    })
-
-    // Workaround: PostHog AI library checks for `privacy_mode` property (snake_case)
-    // but PostHog Node client only stores it in `options.privacyMode`
-    // Manually set it so the AI library can detect it
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(phClient as any).privacy_mode = true
+  // Don't use cache when fetchFn is provided (primarily for testing)
+  if (phClient && !fetchFn) {
+    return phClient
   }
 
-  return phClient
+  const settings = getSettings()
+
+  if (!settings.posthogApiKey) {
+    throw new Error('PostHog API key not configured - set POSTHOG_API_KEY environment variable')
+  }
+
+  const client = new PostHog(settings.posthogApiKey, {
+    host: settings.posthogHost,
+    privacyMode: true,
+    ...(fetchFn && { fetch: fetchFn }),
+  })
+
+  // Workaround: PostHog AI library checks for `privacy_mode` property (snake_case)
+  // but PostHog Node client only stores it in `options.privacyMode`
+  // Manually set it so the AI library can detect it
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(client as any).privacy_mode = true
+
+  // Only cache if no custom fetchFn was provided
+  if (!fetchFn) {
+    phClient = client
+  }
+
+  return client
 }
 
 /**

@@ -131,6 +131,17 @@ describe('markdownComponents', () => {
       expect(container.textContent).toContain('Text with')
       expect(container.querySelectorAll('br')).toHaveLength(0)
     })
+
+    test('handles array children with multiple <br> tags without creating nested arrays', () => {
+      // This test verifies flatMap correctly flattens results when processing array children
+      const markdown = 'Text with <br> breaks'
+      const { container } = render(<ReactMarkdown components={markdownComponents}>{markdown}</ReactMarkdown>)
+
+      // Should render flat structure, not nested arrays
+      const paragraph = container.querySelector('p')
+      expect(paragraph?.childNodes.length).toBeGreaterThan(1)
+      expect(container.querySelectorAll('br')).toHaveLength(1)
+    })
   })
 
   describe('real-world scenario from bug report', () => {

@@ -25,7 +25,7 @@ const processTextContent = (children: ReactNode): ReactNode => {
 
   if (Array.isArray(children)) {
     let hasChanges = false
-    const processed = children.map((child, i) => {
+    const processed = children.flatMap((child, i) => {
       if (typeof child === 'string') {
         const parts = child.split(BR_SPLIT_REGEX)
         if (parts.length > 1) {

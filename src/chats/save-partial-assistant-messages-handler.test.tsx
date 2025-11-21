@@ -4,8 +4,9 @@ import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { act, render } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
+import { useChatStore } from './chat-store'
 
 // Mock Chat instance - minimal implementation for testing
 const createMockChatInstance = (
@@ -31,42 +32,6 @@ const createMockChatInstance = (
   } as unknown as Chat<ThunderboltUIMessage>
 }
 
-// Mock useChatStore hook - returns chatInstance and chatThreadId
-// The selector receives the full store state, so we provide all required fields
-const createMockUseChatStore = (chatInstance: Chat<ThunderboltUIMessage> | null, chatThreadId: string | null) => {
-  return ((
-    selector: (state: {
-      chatInstance: Chat<ThunderboltUIMessage> | null
-      chatThread: unknown
-      id: string | null
-      mcpClients: unknown[]
-      models: unknown[]
-      selectedModel: unknown
-      triggerData: unknown
-      hydrate: unknown
-      reset: unknown
-      sendMessage: unknown
-      setSelectedModel: unknown
-    }) => unknown,
-  ) => {
-    // Create a mock state object that matches the store structure
-    const mockState = {
-      chatInstance,
-      chatThread: null,
-      id: chatThreadId,
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-      hydrate: mock(),
-      reset: mock(),
-      sendMessage: mock(),
-      setSelectedModel: mock(),
-    }
-    return selector(mockState)
-  }) as unknown as typeof import('./chat-store').useChatStore
-}
-
 // Mock useChat hook that reads from chat instance
 const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
   return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
@@ -88,15 +53,6 @@ const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
   })) as unknown as typeof import('@ai-sdk/react').useChat
 }
 
-// Mock useThrottledCallback hook
-const createMockUseThrottledCallback = () => {
-  return ((callback: (...args: unknown[]) => void, _interval: number) => {
-    // Return the callback directly (no throttling for simpler testing)
-    // Tests can override this to test throttling behavior
-    return callback
-  }) as unknown as typeof import('@/hooks/use-throttle').useThrottledCallback
-}
-
 describe('SavePartialAssistantMessagesHandler', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -106,24 +62,35 @@ describe('SavePartialAssistantMessagesHandler', () => {
     await teardownTestDatabase()
   })
 
+  beforeEach(() => {
+    // Reset store state before each test
+    useChatStore.getState().reset()
+  })
+
   afterEach(async () => {
+    // Reset store state after each test
+    useChatStore.getState().reset()
     await resetTestDatabase()
   })
 
   it('should render children without modification', () => {
     const mockSaveMessages = mock(() => Promise.resolve())
     const mockChatInstance = createMockChatInstance()
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     const { container } = render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         <div data-testid="child">Test Child</div>
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
@@ -143,17 +110,21 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'ready')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
@@ -177,17 +148,21 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
@@ -211,25 +186,29 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // With mock throttled callback (no throttling), should be called immediately
+    // Wait for throttle delay (200ms) plus a bit more
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().tickAsync(250)
     })
 
     expect(mockSaveMessages).toHaveBeenCalled()
@@ -249,25 +228,29 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // With mock throttled callback (no throttling), should be called immediately
+    // Wait for throttle delay (200ms) plus a bit more
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().tickAsync(250)
     })
 
     // Should have been called (throttling is handled by useThrottledCallback, tested separately)
@@ -289,24 +272,29 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, threadId)
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
+    // Wait for throttle delay (200ms) plus a bit more
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().tickAsync(250)
     })
 
     expect(mockSaveMessages).toHaveBeenCalledWith({
@@ -335,24 +323,29 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
+    // Wait for throttle delay (200ms) plus a bit more
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().tickAsync(250)
     })
 
     expect(mockSaveMessages).toHaveBeenCalledWith({
@@ -364,17 +357,21 @@ describe('SavePartialAssistantMessagesHandler', () => {
   it('should not save when messages array is empty', async () => {
     const mockSaveMessages = mock(() => Promise.resolve())
     const mockChatInstance = createMockChatInstance([], 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const mockUseThrottledCallback = createMockUseThrottledCallback()
+
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-        useThrottledCallback={mockUseThrottledCallback}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
@@ -387,14 +384,8 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveMessages).not.toHaveBeenCalled()
   })
 
-  it('should work with dependency injection for all dependencies', async () => {
+  it('should work with dependency injection for useChat', async () => {
     const mockSaveMessages = mock(() => Promise.resolve())
-    const mockThrottledCallback = mock((callback: (message: ThunderboltUIMessage) => void) => {
-      // Return a function that calls the callback immediately (no throttling for this test)
-      return (message: ThunderboltUIMessage) => {
-        callback(message)
-      }
-    })
     const messages: ThunderboltUIMessage[] = [
       {
         id: 'msg-1',
@@ -403,29 +394,32 @@ describe('SavePartialAssistantMessagesHandler', () => {
       },
     ]
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChatStore = createMockUseChatStore(mockChatInstance, 'thread-1')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
     render(
-      <SavePartialAssistantMessagesHandler
-        saveMessages={mockSaveMessages}
-        useThrottledCallback={
-          mockThrottledCallback as unknown as typeof import('@/hooks/use-throttle').useThrottledCallback
-        }
-        useChatStore={mockUseChatStore}
-        useChat={mockUseChat}
-      >
+      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
+    // Wait for throttle delay (200ms) plus a bit more
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().tickAsync(250)
     })
 
-    // Should have been called with the injected throttled callback
-    expect(mockThrottledCallback).toHaveBeenCalled()
+    // Should have been called (useChatStore and useThrottledCallback use real hooks)
     expect(mockSaveMessages).toHaveBeenCalled()
   })
 })

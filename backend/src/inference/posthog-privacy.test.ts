@@ -1,13 +1,25 @@
 import { clearSettingsCache } from '@/config/settings'
-import { isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { clearInferenceClientCache, getInferenceClient } from './client'
 
+type PostHogEvent = {
+  event?: string
+  properties?: Record<string, unknown>
+}
+
+type PostHogBatchRequest = {
+  batch: PostHogEvent[]
+}
+
+type PostHogRequestBody = PostHogEvent | PostHogBatchRequest
+
 type FetchCall = {
   url: string
   options: RequestInit
-  body: any
+  body: PostHogRequestBody | null
 }
 
 /**
@@ -16,7 +28,7 @@ type FetchCall = {
  */
 describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
-  let mockFetch: jest.Mock
+  let mockFetch: typeof fetch
   let originalEnv: Record<string, string | undefined>
 
   beforeEach(() => {
@@ -32,10 +44,19 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
       // Capture all fetch calls
+      let parsedBody: PostHogRequestBody | null = null
+      if (options.body) {
+        try {
+          parsedBody = JSON.parse(options.body as string) as PostHogRequestBody
+        } catch {
+          // Not JSON, skip parsing
+        }
+      }
+
       capturedFetches.push({
         url,
         options,
-        body: options.body ? JSON.parse(options.body as string) : null,
+        body: parsedBody,
       })
 
       // Return appropriate mock responses based on URL
@@ -74,10 +95,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           headers: { 'Content-Type': 'application/json' },
         },
       )
-    })
-
-    // Mock global fetch
-    global.fetch = mockFetch as any
+    }) as unknown as typeof fetch
   })
 
   afterEach(async () => {
@@ -86,7 +104,12 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
     // Clear settings and PostHog caches
     clearSettingsCache()
-    await shutdownPostHog()
+
+    // Shutdown PostHog with a short timeout (100ms) since we're using mocked fetch
+    await shutdownPostHog(100)
+
+    // Clear the PostHog client cache
+    clearPostHogClient()
 
     // Restore original env vars
     for (const [key, value] of Object.entries(originalEnv)) {
@@ -114,9 +137,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
       // Import and check the client
       const { getPostHogClient } = require('@/posthog/client')
-      const client = getPostHogClient()
+      const client = getPostHogClient(mockFetch)
 
       // Verify our workaround is in place
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((client as any).privacy_mode).toBe(true)
       expect(client.options.privacyMode).toBe(true)
     })
@@ -130,8 +154,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
+      clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks')
+      const { client } = getInferenceClient('fireworks', mockFetch)
 
       // Verify it's a PostHog-wrapped client
       expect(client.constructor.name).toBe('PostHogOpenAI')
@@ -146,8 +171,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
+      clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks')
+      const { client } = getInferenceClient('fireworks', mockFetch)
 
       // Verify client exists and is functional
       expect(client).toBeDefined()
@@ -165,9 +191,10 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
+      clearPostHogClient()
 
-      // Get the wrapped client
-      const { client } = getInferenceClient('fireworks')
+      // Get the wrapped client with injected mock fetch
+      const { client } = getInferenceClient('fireworks', mockFetch)
 
       // Make a completion with sensitive data
       const completion = await (client as PostHogOpenAI).chat.completions.create({
@@ -199,7 +226,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
       // If PostHog sent events, verify they don't contain conversation content
       for (const request of posthogRequests) {
-        const batch = request.body?.batch || [request.body]
+        if (!request.body) continue
+
+        const batch = 'batch' in request.body ? request.body.batch : [request.body]
 
         for (const event of batch) {
           const properties = event.properties || {}
@@ -228,8 +257,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
+      clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks')
+      const { client } = getInferenceClient('fireworks', mockFetch)
 
       // Make multiple completions
       const conversations = [
@@ -265,11 +295,13 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         expect(requestStr.includes('Private API keys')).toBe(false)
 
         // Also check the structured data
-        const batch = request.body?.batch || [request.body]
-        for (const event of batch) {
-          const properties = event.properties || {}
-          expect(properties.$ai_input).toBeNullOrUndefined()
-          expect(properties.$ai_output_choices).toBeNullOrUndefined()
+        if (request.body) {
+          const batch = 'batch' in request.body ? request.body.batch : [request.body]
+          for (const event of batch) {
+            const properties = event.properties || {}
+            expect(properties.$ai_input).toBeNullOrUndefined()
+            expect(properties.$ai_output_choices).toBeNullOrUndefined()
+          }
         }
       }
     })
@@ -277,6 +309,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 })
 
 expect.extend({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toBeNullOrUndefined(received: any) {
     const pass = received === null || received === undefined
     return {

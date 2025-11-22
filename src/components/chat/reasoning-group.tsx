@@ -18,11 +18,11 @@ type ReasoningGroupProps = {
 export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTextPart }: ReasoningGroupProps) => {
   const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
 
-  const isThinking = isLastPartInMessage && isStreaming
-
   const currentReasoningPart = parts
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
+
+  const isThinking = (isLastPartInMessage && isStreaming) || currentReasoningPart?.content.state === 'streaming'
 
   // Create unique instance key for reasoning display
   const reasoningInstanceKey = currentReasoningPart

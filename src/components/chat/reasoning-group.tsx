@@ -70,10 +70,10 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTex
           <div ref={scrollTargetRef} />
         </div>
       </Expandable>
-      {!hasTextPart && currentReasoningPart && (
+      {!hasTextPart && (
         <ReasoningDisplay
-          text={currentReasoningPart.content.text}
-          isStreaming={currentReasoningPart.content.state === 'streaming'}
+          text={currentReasoningPart?.content.text}
+          isStreaming={currentReasoningPart?.content.state === 'streaming'}
           instanceKey={reasoningInstanceKey}
         />
       )}

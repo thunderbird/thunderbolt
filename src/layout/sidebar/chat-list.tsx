@@ -82,7 +82,7 @@ export const ChatList = ({
               </SidebarMenuItem>
             </>
           )}
-          {[...chatThreads, ...chatThreads, ...chatThreads].map((thread) => (
+          {chatThreads.map((thread) => (
             <ChatListItem
               key={thread.id}
               thread={thread}

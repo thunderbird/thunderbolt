@@ -1,5 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { isTauri } from '@/lib/platform'
+import { isDesktop as isTauriDesktop } from '@/lib/platform'
 import { usePreview } from '@/content-view/context'
 import { ImageIcon } from 'lucide-react'
 import { useState } from 'react'
@@ -16,7 +16,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   const [isImageLoading, setIsImageLoading] = useState(!!image)
   const showPlaceholder = !image || imageError
   const { showPreview } = usePreview()
-  const isDesktop = isTauri()
+  const isDesktop = isTauriDesktop()
 
   const placeholder = (
     <div className="h-full w-full bg-secondary/60 dark:bg-secondary/40 flex items-center justify-center">

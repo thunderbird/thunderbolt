@@ -5,7 +5,6 @@ import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
-import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 
 const TestOnboardingPrivacyStep = () => {
   const { state, actions } = useOnboardingState()
@@ -77,7 +76,7 @@ describe('OnboardingPrivacyStep', () => {
 
       const link = screen.getByRole('link', { name: 'Privacy Policy' })
       expect(link).toBeInTheDocument()
-      expect(link).toHaveAttribute('href', privacyPolicyUrl)
+      expect(link).toHaveAttribute('href', 'https://www.thunderbird.net/en-US/privacy/')
       expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     })
@@ -87,7 +86,7 @@ describe('OnboardingPrivacyStep', () => {
 
       const link = screen.getByRole('link', { name: 'Terms of Service' })
       expect(link).toBeInTheDocument()
-      expect(link).toHaveAttribute('href', termsOfServiceUrl)
+      expect(link).toHaveAttribute('href', 'https://www.mozilla.org/en-US/about/legal/terms/mozilla/')
       expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     })

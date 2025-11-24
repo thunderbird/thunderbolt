@@ -1,7 +1,6 @@
 import { AppLogo } from '@/components/app-logo'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
-import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { Database, EyeOff, ServerOff } from 'lucide-react'
 import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
@@ -60,7 +59,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
           <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed cursor-pointer">
             I agree to the{' '}
             <a
-              href={privacyPolicyUrl}
+              href="https://www.thunderbird.net/en-US/privacy/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline hover:no-underline font-medium"
@@ -69,7 +68,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
             </a>{' '}
             and{' '}
             <a
-              href={termsOfServiceUrl}
+              href="https://www.mozilla.org/en-US/about/legal/terms/mozilla/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline hover:no-underline font-medium"

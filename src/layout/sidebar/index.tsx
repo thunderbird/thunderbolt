@@ -70,12 +70,15 @@ export default function Sidebar() {
       await deleteChatThread(id)
     },
     onSuccess: async () => {
-      trackEvent('chat_delete', { chat_id: threadIdRef.current })
+      const deletedChatId = threadIdRef.current
+      trackEvent('chat_delete', { chat_id: deletedChatId })
       deleteChatDialogRef.current?.close()
       await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       threadIdRef.current = null
 
-      navigate('/chats/new')
+      if (deletedChatId === currentChatThreadId) {
+        navigate('/chats/new')
+      }
     },
   })
 

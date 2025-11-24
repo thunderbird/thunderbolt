@@ -1,7 +1,7 @@
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
+import { type Chat, type useChat } from '@ai-sdk/react'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatAutomation } from './use-chat-automation'
@@ -50,7 +50,7 @@ const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
     resumeStream: mock(),
     addToolResult: mock(),
     clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
+  })) as unknown as typeof useChat
 }
 
 describe('useChatAutomation', () => {

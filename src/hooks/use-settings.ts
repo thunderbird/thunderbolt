@@ -130,11 +130,11 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
  * This helper checks:
  *   1. Whether the query belongs to the settings subsystem
  *      (queryKey[0] === 'settings')
- *   2. Whether the updated key exists in that query’s subset
+ *   2. Whether the updated key exists in that query's subset
  *
  * If both conditions match, the query should be invalidated.
  */
-function shouldInvalidateSettingsSubset(query: { queryKey: readonly unknown[] }, key: string) {
+export function shouldInvalidateSettingsSubset(query: { queryKey: readonly unknown[] }, key: string) {
   const keys = query.queryKey
 
   // must be a settings query

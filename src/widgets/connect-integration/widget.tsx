@@ -83,7 +83,11 @@ export const ConnectIntegrationWidget = memo(
     const queryClient = useQueryClient()
     const displayReason = reason === '' ? getDefaultReason(service) : reason
 
-    const { connect, processCallback, error } = useOAuthConnect({
+    // Use widget-specific connecting key (messageId is unique per widget instance)
+    const connectingKey = `widget_${messageId}`
+
+    const { connect, processCallback, isConnecting, error } = useOAuthConnect({
+      connectingKey,
       onSuccess: async () => {
         const connectedProvider = sessionStorage.getItem(
           getOAuthWidgetKey(messageId, 'provider'),
@@ -91,11 +95,9 @@ export const ConnectIntegrationWidget = memo(
 
         if (!connectedProvider) {
           console.warn('No provider found in sessionStorage for OAuth completion')
-          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
           return
         }
 
-        sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
         dispatch({ type: 'CONNECT_SUCCESS', payload: connectedProvider })
         await queryClient.refetchQueries({ queryKey: ['integrationStatus'] })
 
@@ -115,37 +117,31 @@ export const ConnectIntegrationWidget = memo(
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
 
       if (!storedProvider) {
-        sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
         return
       }
 
       dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
-      dispatch({ type: 'SET_CONNECTING', payload: true })
 
       try {
         const success = await processCallback(oauth)
         if (!success) {
           dispatch({ type: 'CONNECT_FAILED', payload: null })
-          sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
         }
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
         dispatch({ type: 'CONNECT_FAILED', payload: null })
-        sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
       } finally {
         navigate(location.pathname, { replace: true, state: null })
       }
     }
 
+    // Restore selected provider from sessionStorage on mount
     useEffect(() => {
-      const isConnecting = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'connecting')) === 'true'
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(messageId, 'provider')) as OAuthProvider | null
-
-      if (isConnecting && storedProvider) {
-        dispatch({ type: 'SET_CONNECTING', payload: true })
+      if (storedProvider && isConnecting) {
         dispatch({ type: 'SET_SELECTED_PROVIDER', payload: storedProvider })
       }
-    }, [messageId, dispatch])
+    }, [messageId, dispatch, isConnecting])
 
     useEffect(() => {
       const locationState = location.state as { oauth?: { code?: string; state?: string; error?: string } } | null
@@ -159,17 +155,13 @@ export const ConnectIntegrationWidget = memo(
 
     const handleConnect = async () => {
       if (!state.selectedProvider) return
-      dispatch({ type: 'SET_CONNECTING', payload: true })
 
       sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
-      sessionStorage.setItem(getOAuthWidgetKey(messageId, 'connecting'), 'true')
-      sessionStorage.setItem('oauth_return_context', location.pathname)
 
       try {
         await connect(state.selectedProvider as OAuthProvider)
       } catch (err) {
         console.error('Failed to connect integration:', err)
-        sessionStorage.removeItem(getOAuthWidgetKey(messageId, 'connecting'))
       }
     }
 
@@ -241,7 +233,7 @@ export const ConnectIntegrationWidget = memo(
               <div className="w-full grid grid-cols-2 gap-3">
                 <button
                   onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'google' })}
-                  disabled={state.isConnecting}
+                  disabled={isConnecting}
                   className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
@@ -257,7 +249,7 @@ export const ConnectIntegrationWidget = memo(
 
                 <button
                   onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'microsoft' })}
-                  disabled={state.isConnecting}
+                  disabled={isConnecting}
                   className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
@@ -275,10 +267,10 @@ export const ConnectIntegrationWidget = memo(
 
             <div className="mt-auto w-full">
               <div className="w-full flex gap-2">
-                <Button onClick={handleNotNow} disabled={state.isConnecting} variant="ghost" className="flex-1">
+                <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="flex-1">
                   Not now
                 </Button>
-                <Button onClick={handleDoNotAskAgain} disabled={state.isConnecting} variant="ghost" className="flex-1">
+                <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="flex-1">
                   Do not ask again
                 </Button>
               </div>
@@ -340,7 +332,7 @@ export const ConnectIntegrationWidget = memo(
           {provider === '' && (
             <Button
               onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: null })}
-              disabled={state.isConnecting}
+              disabled={isConnecting}
               variant="ghost"
               size="icon"
               className="absolute top-2 left-2"
@@ -361,7 +353,7 @@ export const ConnectIntegrationWidget = memo(
               </h3>
             </div>
 
-            {error && error !== 'Redirecting for OAuth' && (
+            {error && (
               <div className="w-full p-3 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
                 <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
               </div>
@@ -370,21 +362,21 @@ export const ConnectIntegrationWidget = memo(
             <div className="w-full space-y-2">
               <Button
                 onClick={handleConnect}
-                disabled={state.isConnecting || !state.selectedProvider}
+                disabled={isConnecting || !state.selectedProvider}
                 className="w-full"
                 size="lg"
               >
-                {state.isConnecting ? 'Connecting...' : `Connect ${providerName}`}
+                {isConnecting ? 'Connecting...' : `Connect ${providerName}`}
               </Button>
             </div>
           </div>
 
           <div className="self-end w-full">
             <div className="w-full flex gap-2">
-              <Button onClick={handleNotNow} disabled={state.isConnecting} variant="ghost" className="flex-1">
+              <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="flex-1">
                 Not now
               </Button>
-              <Button onClick={handleDoNotAskAgain} disabled={state.isConnecting} variant="ghost" className="flex-1">
+              <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="flex-1">
                 Do not ask again
               </Button>
             </div>

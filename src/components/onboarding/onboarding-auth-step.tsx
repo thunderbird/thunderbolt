@@ -6,7 +6,7 @@ import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
 import { Calendar, File, Mail } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
@@ -33,6 +33,11 @@ export const OnboardingAuthStep = ({
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
 
+  const [isProcessingCallback, setIsProcessingCallback] = useState(() => {
+    const locationState = location.state as { oauth?: { code?: string; state?: string; error?: string } } | null
+    return !!locationState?.oauth
+  })
+
   // Use injected hook for testing, or real implementation in production
   const oauthHook = useOAuthConnectHook ?? useOAuthConnect
   const { processCallback } = oauthHook({
@@ -49,11 +54,13 @@ export const OnboardingAuthStep = ({
     if (!oauth) return
 
     const handleCallback = async () => {
+      setIsProcessingCallback(true)
       try {
         await processCallback(oauth)
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
       } finally {
+        setIsProcessingCallback(false)
         navigate('.', { replace: true, state: null })
       }
     }
@@ -105,7 +112,8 @@ export const OnboardingAuthStep = ({
         <div className="flex items-start rounded-lg pt-5">
           <ConnectProviderButton
             provider={provider}
-            isConnected={isConnected || isProcessing}
+            isConnected={isConnected}
+            isProcessing={isProcessing || isProcessingCallback}
             onSuccess={() => {
               onConnectionChange(true)
             }}

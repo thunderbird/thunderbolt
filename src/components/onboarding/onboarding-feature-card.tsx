@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import { type LucideIcon } from 'lucide-react'
 
 type OnboardingFeatureCardProps = {
@@ -16,7 +17,7 @@ export const OnboardingFeatureCard = ({
   iconClassName,
 }: OnboardingFeatureCardProps) => {
   return (
-    <div className={`${className} flex items-center gap-4 p-4 rounded-lg bg-muted/50`}>
+    <div className={cn(className, 'flex items-center gap-4 p-4 rounded-lg bg-muted/50')}>
       <Icon className={`w-6 h-6 flex-shrink-0 ${iconClassName || ''}`} />
       <div>
         <h3 className="font-medium text-sm">{title}</h3>

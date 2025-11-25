@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 /** OAuth connecting state expires after 15 seconds */
-const CONNECTING_TIMEOUT_MS = 15 * 1000
+const connectingTimeoutMs = 15 * 1000
 
 const getConnectingKey = (key: string) => `oauth_connecting_${key}`
 const getTimestampKey = (key: string) => `oauth_connecting_${key}_timestamp`
@@ -95,7 +95,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
   const startTime = timestamp ? parseInt(timestamp, 10) : 0
   const elapsed = Date.now() - startTime
 
-  return elapsed <= CONNECTING_TIMEOUT_MS
+  return elapsed <= connectingTimeoutMs
 }
 
 /**
@@ -148,7 +148,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     const startTime = timestamp ? parseInt(timestamp, 10) : 0
     const elapsed = Date.now() - startTime
 
-    if (elapsed > CONNECTING_TIMEOUT_MS) {
+    if (elapsed > connectingTimeoutMs) {
       clearConnecting(activeKey)
     }
   }, [activeKey])
@@ -160,7 +160,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     const timestamp = sessionStorage.getItem(getTimestampKey(activeKey))
     const startTime = timestamp ? parseInt(timestamp, 10) : Date.now()
     const elapsed = Date.now() - startTime
-    const remaining = CONNECTING_TIMEOUT_MS - elapsed
+    const remaining = connectingTimeoutMs - elapsed
 
     if (remaining <= 0) {
       clearConnecting(activeKey)

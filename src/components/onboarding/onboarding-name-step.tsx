@@ -102,7 +102,7 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <Input placeholder="Enter your name" {...field} ref={inputRef} />
+                  <Input placeholder="Enter your name" {...field} ref={inputRef} autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>

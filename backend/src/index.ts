@@ -1,5 +1,6 @@
 import { createMainRoutes } from '@/api/routes'
 import { createUsersRoutes } from '@/api/users'
+import { betterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
@@ -64,6 +65,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware())
       .use(createErrorHandlingMiddleware())
+      // Better Auth handler (mounted at /api/auth/*)
+      .use(betterAuthPlugin)
       // Mount route groups
       .use(createMainRoutes(fetchFn))
       .use(createUsersRoutes(fetchFn, database))

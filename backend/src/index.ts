@@ -5,7 +5,7 @@ import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
-import { db } from '@/db/client'
+import type { db } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -20,8 +20,15 @@ import { Elysia } from 'elysia'
  */
 export async function createApp(deps?: AppDeps) {
   const fetchFn = deps?.fetchFn ?? globalThis.fetch
-  const database = deps?.database ?? db
   const settings = getSettings()
+
+  // Lazily import database to avoid initialization issues in tests/CI
+  // where DATABASE_URL might not be set or circular dependencies might occur
+  let database = deps?.database
+  if (!database) {
+    const { db } = await import('@/db/client')
+    database = db
+  }
 
   const app = new Elysia({
     prefix: '/v1',

@@ -97,7 +97,7 @@ export const OnboardingDialog = () => {
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className="flex flex-col items-center h-dvh"
+          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
           style={{
             paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
             paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',

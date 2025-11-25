@@ -16,7 +16,7 @@ import { Elysia } from 'elysia'
 /**
  * Create the main Elysia application
  */
-export async function createApp(deps?: AppDeps) {
+export const createApp = async (deps?: AppDeps) => {
   const fetchFn = deps?.fetchFn ?? globalThis.fetch
   const settings = getSettings()
 

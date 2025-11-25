@@ -46,7 +46,7 @@ export const createErrorHandlingMiddleware = () => {
 /**
  * Handle generic errors with appropriate status codes and logging
  */
-function handleGenericError(error: unknown, set: Context['set'], log?: any): ErrorResponse {
+const handleGenericError = (error: unknown, set: Context['set'], log?: any): ErrorResponse => {
   if (error instanceof Error) {
     const status = (error as any).status || set.status || 500
     set.status = status
@@ -79,7 +79,7 @@ function handleGenericError(error: unknown, set: Context['set'], log?: any): Err
 /**
  * Create a standardized error response object
  */
-function createErrorResponse(error: string): ErrorResponse {
+const createErrorResponse = (error: string): ErrorResponse => {
   return {
     success: false,
     data: null,

@@ -2,10 +2,8 @@ import { createMainRoutes } from '@/api/routes'
 import { createUsersRoutes } from '@/api/users'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
-import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
-import type { db } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -49,6 +47,7 @@ export async function createApp(deps?: AppDeps) {
     )
   }
 
+  const { instrumentation } = await import('@/config/instrumentation')
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
   return (

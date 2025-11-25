@@ -1,5 +1,6 @@
 import type { Settings } from '@/config/settings'
 import * as settingsModule from '@/config/settings'
+import { createTestDb } from '@/test-utils/db'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
@@ -9,6 +10,7 @@ describe('Main Routes', () => {
   let app: Awaited<ReturnType<typeof createApp>>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
+  let cleanup: () => Promise<void>
 
   const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = input instanceof Request ? input.url : input.toString()
@@ -54,10 +56,13 @@ describe('Main Routes', () => {
     } satisfies Settings)
 
     // Inject mock fetch into app
-    app = await createApp(mockFetch as typeof fetch)
+    const testEnv = await createTestDb()
+    cleanup = testEnv.cleanup
+    app = await createApp({ fetchFn: mockFetch as typeof fetch, database: testEnv.db })
   })
 
   afterAll(async () => {
+    await cleanup()
     getSettingsSpy?.mockRestore()
     consoleSpies.restore()
   })

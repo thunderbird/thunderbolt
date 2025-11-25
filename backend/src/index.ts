@@ -1,21 +1,26 @@
 import { createMainRoutes } from '@/api/routes'
+import { createUsersRoutes } from '@/api/users'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
+import { db } from '@/db/client'
+import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createInferenceRoutes } from '@/inference/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
  * Create the main Elysia application
  */
-const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
+export async function createApp(deps?: AppDeps) {
+  const fetchFn = deps?.fetchFn ?? globalThis.fetch
+  const database = deps?.database ?? db
   const settings = getSettings()
 
   const app = new Elysia({
@@ -55,6 +60,7 @@ const createApp = async (fetchFn: typeof fetch = globalThis.fetch) => {
       .use(createErrorHandlingMiddleware())
       // Mount route groups
       .use(createMainRoutes(fetchFn))
+      .use(createUsersRoutes(fetchFn, database))
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
       .use(createProToolsRoutes(fetchFn))
@@ -139,4 +145,4 @@ if (import.meta.main) {
   startServer()
 }
 
-export { createApp, startServer }
+export { startServer }

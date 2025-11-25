@@ -32,6 +32,9 @@ cp .env.example .env
 # Start development server with hot reload
 bun run dev
 
+# Run migrations
+bun run db migrate
+
 # Run tests
 bun test
 
@@ -40,6 +43,27 @@ bun run test:watch
 
 # Type checking
 bun run type-check
+
+# Run Postgres (serves data from .pglite/data)
+bun run db:dev
+```
+
+### Database
+
+The project uses Drizzle with PGLite for development and tests (files in .pglite/data) and Postgres in production.
+
+```bash
+# Run Postgres via PGLite (serves data from .pglite/data)
+bun run db:dev
+
+# Run any drizzle-kit command
+bun db <drizzle-kit command>
+
+# Generate a new migration after changing schema.ts
+bun db generate
+
+# run migrations
+bun db migrate
 ```
 
 ### Production

@@ -1,6 +1,6 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { createProToolsRoutes } from './routes'
 
 describe('Pro Tools Routes', () => {

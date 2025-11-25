@@ -54,7 +54,7 @@ describe('Main Routes', () => {
     } satisfies Settings)
 
     // Inject mock fetch into app
-    app = await createApp(mockFetch as typeof fetch)
+    app = await createApp({ fetchFn: mockFetch as typeof fetch })
   })
 
   afterAll(async () => {

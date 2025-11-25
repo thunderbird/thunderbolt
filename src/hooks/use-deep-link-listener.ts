@@ -2,7 +2,7 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { getSettings } from '@/dal'
 import { isTauri } from '@/lib/platform'
 import { useEffect } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 
 type DeepLinkHandler = (urls: string[]) => void | Promise<void>
 
@@ -74,7 +74,6 @@ type DeepLinkDependencies = {
  */
 export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: DeepLinkDependencies) => {
   const navigate = useNavigate()
-  const location = useLocation()
 
   // Use injected dependencies or fall back to real implementations
   const {
@@ -142,5 +141,6 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
         unlisten()
       }
     }
-  }, [handler, navigate, location.pathname, checkIsTauri, getCurrentUrls, listenToOpenUrl, getSettingsData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 }

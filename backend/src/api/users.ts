@@ -1,8 +1,8 @@
-import { db } from '@/db/client'
+import type { db } from '@/db/client'
 import { usersTable } from '@/db/schema'
 import { Elysia, t } from 'elysia'
 
-export const createUsersRoutes = (fetchFn: typeof fetch = globalThis.fetch, database: typeof db = db) => {
+export const createUsersRoutes = (fetchFn: typeof fetch, database: typeof db) => {
   return new Elysia({ prefix: '/users' })
     .get('/', async () => {
       return await database.select().from(usersTable)

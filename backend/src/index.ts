@@ -2,10 +2,8 @@ import { createMainRoutes } from '@/api/routes'
 import { createUsersRoutes } from '@/api/users'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
-import { instrumentation } from '@/config/instrumentation'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
-import { db } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -18,8 +16,17 @@ import { Elysia } from 'elysia'
 /**
  * Create the main Elysia application
  */
-const createApp = async ({ fetchFn = globalThis.fetch, database = db }: AppDeps = {}) => {
+export async function createApp(deps?: AppDeps) {
+  const fetchFn = deps?.fetchFn ?? globalThis.fetch
   const settings = getSettings()
+
+  // Lazily import database to avoid initialization issues in tests/CI
+  // where DATABASE_URL might not be set or circular dependencies might occur
+  let database = deps?.database
+  if (!database) {
+    const { db } = await import('@/db/client')
+    database = db
+  }
 
   const app = new Elysia({
     prefix: '/v1',
@@ -40,6 +47,7 @@ const createApp = async ({ fetchFn = globalThis.fetch, database = db }: AppDeps 
     )
   }
 
+  const { instrumentation } = await import('@/config/instrumentation')
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
   return (
@@ -143,4 +151,4 @@ if (import.meta.main) {
   startServer()
 }
 
-export { createApp, startServer }
+export { startServer }

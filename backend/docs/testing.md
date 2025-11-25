@@ -8,22 +8,28 @@ We use an integration testing pattern where each test runs against a PGlite in-m
 
 For performance and isolation:
 - We reuse a single PGlite instance across all tests (keeps WASM loaded)
-- We run migrations once when the module loads
+- We run migrations once during test preload (before any tests run)
 - Each test runs inside a transaction that gets rolled back in `afterEach`
+- Global `fetch` is mocked to prevent accidental network calls
 
-**Performance Note:** The first test that imports `createTestDb()` will be slower (~700-900ms) due to PGlite's WASM initialization and migration execution. All subsequent tests are very fast (~12-20ms). This is expected and optimal behavior.
+**Performance:** All tests are fast (~10-30ms) because PGlite initialization happens during the preload phase, completely outside of test execution.
 
 ## Key Components
 
-### 1. Test Utilities (`src/test-utils/db.ts`)
+### 1. Test Setup (`src/test-utils/test-setup.ts`)
 
-We have a helper function `createTestDb()` that:
-- Creates/reuses an in-memory `PGlite` instance (lazy initialization on first call).
-- Runs migrations once when the module loads.
-- Starts a transaction for test isolation.
-- Returns the `client`, `db`, and a `cleanup()` function to rollback.
+This file is preloaded via `bunfig.toml` before any tests run. It:
+- Initializes PGlite and runs migrations (the slow part)
+- Mocks `globalThis.fetch` to throw an error if tests accidentally call it without DI
 
-### 2. Dependency Injection
+### 2. Test Utilities (`src/test-utils/db.ts`)
+
+The `createTestDb()` helper function:
+- Returns the already-initialized PGlite instance
+- Starts a transaction for test isolation
+- Returns `client`, `db`, and a `cleanup()` function to rollback
+
+### 3. Dependency Injection
 
 The main application factory `createApp` accepts dependencies as arguments using the `AppDeps` type:
 
@@ -37,15 +43,18 @@ export type AppDeps = {
 // src/index.ts
 const createApp = async ({ fetchFn = globalThis.fetch, database = db }: AppDeps = {}) => {
   // ...
-  // Pass database to routes that need it
-  .use(createUsersRoutes({ database }))
+  // Pass dependencies to routes that need them
+  .use(createUsersRoutes(fetchFn, database))
 }
 ```
 
-Route creators should also accept the database instance:
+Route creators accept `fetchFn` as first argument and `database` as optional second argument:
 
 ```typescript
-export const createUsersRoutes = ({ database }: { database: typeof db }) => {
+export const createUsersRoutes = (
+  fetchFn: typeof fetch = globalThis.fetch,
+  database: typeof db = db
+) => {
   return new Elysia({ prefix: '/users' })
     .get('/', async () => {
       return await database.select().from(usersTable)
@@ -53,23 +62,24 @@ export const createUsersRoutes = ({ database }: { database: typeof db }) => {
 }
 ```
 
-### 3. Writing a Test (`src/api/users.test.ts` example)
+### 4. Writing a Test (`src/api/users.test.ts` example)
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { createTestDb } from '@/test-utils/db'
 import { createApp } from '@/index'
-import type { db as DbType } from '@/db/client'
 
 describe('My API', () => {
   let app: Awaited<ReturnType<typeof createApp>>
-  let db: typeof DbType
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
   beforeEach(async () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
+    
+    // Inject test database
     app = await createApp({ database: db })
   })
 
@@ -87,6 +97,23 @@ describe('My API', () => {
 
 **Important:** Always call `cleanup()` in `afterEach` to rollback the transaction and maintain test isolation.
 
+## Mocking External Services
+
+For routes that make external API calls, inject a mock `fetchFn`:
+
+```typescript
+const mockFetch = async (input: RequestInfo | URL) => {
+  return new Response(JSON.stringify({ data: 'mocked' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+app = await createApp({ fetchFn: mockFetch, database: db })
+```
+
+If a test accidentally calls `fetch` without dependency injection, it will throw a clear error message.
+
 ## Running Tests
 
 Run backend tests with:
@@ -96,4 +123,4 @@ cd backend
 bun test
 ```
 
-The first database test will take ~700-900ms (PGlite initialization), then all subsequent tests are fast (~12-20ms each).
+All tests are fast (~10-30ms) because initialization happens during preload. You can set strict timeouts to catch slow tests.

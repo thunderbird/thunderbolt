@@ -7,7 +7,6 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useSettings } from '@/hooks/use-settings'
-import { type User } from '@/lib/auth-client'
 
 type VerifyState = 'verifying' | 'success' | 'error'
 
@@ -28,8 +27,6 @@ export const MagicLinkVerify = () => {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [state, setState] = useState<VerifyState>('verifying')
-  const [errorMessage, setErrorMessage] = useState('')
-  const [user, setUser] = useState<User | null>(null)
 
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = preferredName.value as string
@@ -40,7 +37,6 @@ export const MagicLinkVerify = () => {
     const verifyToken = async () => {
       if (!token) {
         setState('error')
-        setErrorMessage('No verification token found')
         return
       }
 
@@ -55,21 +51,13 @@ export const MagicLinkVerify = () => {
         })
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
           setState('error')
-          setErrorMessage(errorData.message || 'Verification failed. The link may have expired.')
           return
         }
 
-        const data = await response.json()
-
-        if (data?.user) {
-          setUser(data.user)
-        }
         setState('success')
       } catch {
         setState('error')
-        setErrorMessage('Unable to connect to the server. Please check your connection and try again.')
       }
     }
 

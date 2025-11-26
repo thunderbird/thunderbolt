@@ -3,6 +3,7 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins'
 import { Resend } from 'resend'
+import { buildMagicLinkUrl, getValidatedOrigin, parseTrustedOrigins } from './utils'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -14,19 +15,7 @@ if (!process.env.RESEND_API_KEY) {
  * Trusted origins for CORS and magic link validation
  * First origin is the default fallback for magic links
  */
-const TRUSTED_ORIGINS = process.env.TRUSTED_ORIGINS?.split(',').filter(Boolean) ?? ['http://localhost:1420']
-
-/**
- * Validate and extract origin from request
- * Returns the origin if trusted, otherwise falls back to first trusted origin
- */
-const getValidatedOrigin = (request?: Request): string => {
-  const origin = request?.headers.get('origin')
-  if (origin && TRUSTED_ORIGINS.includes(origin)) {
-    return origin
-  }
-  return TRUSTED_ORIGINS[0]
-}
+const TRUSTED_ORIGINS = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -37,8 +26,8 @@ export const auth = betterAuth({
     magicLink({
       sendMagicLink: async ({ email, token }, ctx) => {
         // Use the origin from the request if trusted, otherwise fallback to default
-        const origin = getValidatedOrigin(ctx?.request)
-        const magicLinkUrl = `${origin}/auth/verify?token=${encodeURIComponent(token)}`
+        const origin = getValidatedOrigin(TRUSTED_ORIGINS, ctx?.request)
+        const magicLinkUrl = buildMagicLinkUrl(origin, token)
 
         console.info(`📧 Sending magic link to ${email}`)
         console.info(`🔗 Magic link URL: ${magicLinkUrl}`)

@@ -10,6 +10,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useSidebar as useSidebar_default } from '../ui/sidebar'
+import { useSettings } from '@/hooks/use-settings'
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -106,6 +107,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile, openMobile } = useSidebar()
 
+    const { userHasCompletedOnboarding } = useSettings({
+      user_has_completed_onboarding: false,
+    })
+
     /**
      * This ensures that the textarea is focused when the mobile sidebar is closed.
      * Before the textarea was focused when the mobile sidebar was open.
@@ -113,7 +118,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     useEffect(() => {
       let timeout: any = null
 
-      if (isMobile && !openMobile) {
+      if (isMobile && !openMobile && userHasCompletedOnboarding.value) {
         const textareaElement = formRef.current?.querySelector('textarea')
         // wait sidebar to be closed, so layout is stable
         timeout = setTimeout(() => {
@@ -126,7 +131,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           clearTimeout(timeout)
         }
       }
-    }, [isMobile, openMobile])
+    }, [isMobile, openMobile, userHasCompletedOnboarding.value])
 
     useImperativeHandle(ref, () => ({
       focus: () => {

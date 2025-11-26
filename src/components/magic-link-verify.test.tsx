@@ -4,7 +4,7 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 // Mock React Router
@@ -58,7 +58,7 @@ describe('MagicLinkVerify', () => {
           headers: { 'Content-Type': 'application/json' },
         }),
       ),
-    ) as typeof fetch
+    ) as unknown as typeof fetch
   })
 
   afterEach(async () => {
@@ -102,7 +102,7 @@ describe('MagicLinkVerify', () => {
   describe('verification loading state', () => {
     it('shows loading state initially', () => {
       // Set up a fetch that never resolves to keep loading state
-      globalThis.fetch = mock(() => new Promise(() => {})) as typeof fetch
+      globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
 
       renderComponent('valid-token')
 
@@ -171,7 +171,7 @@ describe('MagicLinkVerify', () => {
             headers: { 'Content-Type': 'application/json' },
           }),
         ),
-      ) as typeof fetch
+      ) as unknown as typeof fetch
 
       renderComponent('invalid-token')
       await waitForStateChange()
@@ -180,7 +180,7 @@ describe('MagicLinkVerify', () => {
     })
 
     it('shows error when fetch fails', async () => {
-      globalThis.fetch = mock(() => Promise.reject(new Error('Network error'))) as typeof fetch
+      globalThis.fetch = mock(() => Promise.reject(new Error('Network error'))) as unknown as typeof fetch
 
       renderComponent('any-token')
       await waitForStateChange()
@@ -195,7 +195,7 @@ describe('MagicLinkVerify', () => {
             status: 400,
           }),
         ),
-      ) as typeof fetch
+      ) as unknown as typeof fetch
 
       renderComponent('invalid-token')
       await waitForStateChange()
@@ -215,7 +215,7 @@ describe('MagicLinkVerify', () => {
             status: 400,
           }),
         ),
-      ) as typeof fetch
+      ) as unknown as typeof fetch
 
       renderComponent('invalid-token')
       await waitForStateChange()
@@ -227,7 +227,7 @@ describe('MagicLinkVerify', () => {
 
   describe('modal behavior', () => {
     it('shows verifying text during verification', () => {
-      globalThis.fetch = mock(() => new Promise(() => {})) as typeof fetch
+      globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
 
       renderComponent('token')
 
@@ -241,7 +241,7 @@ describe('MagicLinkVerify', () => {
             status: 400,
           }),
         ),
-      ) as typeof fetch
+      ) as unknown as typeof fetch
 
       renderComponent('invalid-token')
       await waitForStateChange()

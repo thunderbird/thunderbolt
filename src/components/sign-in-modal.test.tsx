@@ -1,3 +1,4 @@
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -6,7 +7,7 @@ import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-// Mock the auth client
+// Only mock what we actually need to control - the auth API
 const mockSignInMagicLink = mock()
 
 mock.module('@/lib/auth-client', () => ({
@@ -14,62 +15,7 @@ mock.module('@/lib/auth-client', () => ({
     signIn: {
       magicLink: mockSignInMagicLink,
     },
-    // Add useSession to prevent breakage if this mock leaks into MagicLinkVerify tests
-    useSession: () => ({
-      data: null,
-      isPending: false,
-      error: null,
-      refetch: mock(() => Promise.resolve()),
-    }),
   },
-}))
-
-// Mock useSettings with a Proxy to handle any setting key safely
-// This prevents breaking other tests (like useCountryUnits) that rely on other settings
-const createSettingMock = (value: string | null = null) => ({
-  value,
-  setValue: () => Promise.resolve(),
-  isModified: false,
-  isLoading: false,
-  isSaving: false,
-  reset: () => Promise.resolve(),
-  data: null,
-  rawSetting: null,
-  query: { data: [], isLoading: false },
-})
-
-mock.module('@/hooks/use-settings', () => ({
-  useSettings: () => {
-    return new Proxy(
-      {},
-      {
-        get: (_target, prop) => {
-          // Ignore symbols and internal properties
-          if (typeof prop === 'symbol') return undefined
-          if (prop === 'cloudUrl') {
-            return createSettingMock('http://localhost:8000/v1')
-          }
-          // Return safe default for any other accessed property
-          return createSettingMock()
-        },
-      },
-    )
-  },
-}))
-
-// Mock Dialog components to avoid Radix UI issues in test environment
-// Must include ALL exports to prevent breaking other tests that import different dialog components
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ children, open }: { children: React.ReactNode; open: boolean }) => (open ? <div>{children}</div> : null),
-  DialogClose: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
-  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogOverlay: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogPortal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-  DialogTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
 }))
 
 // Import after mocking
@@ -79,11 +25,13 @@ describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    await setupTestDatabase()
     consoleSpies = setupConsoleSpy()
   })
 
-  afterAll(() => {
+  afterAll(async () => {
+    await teardownTestDatabase()
     consoleSpies.restore()
   })
 
@@ -93,7 +41,8 @@ describe('SignInModal', () => {
     mockSignInMagicLink.mockResolvedValue({ error: null })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await resetTestDatabase()
     mockOnOpenChange.mockClear()
   })
 

@@ -30,11 +30,14 @@ mock.module('@/hooks/use-settings', () => ({
           // Return safe default for any other accessed property
           return {
             value: null,
-            setValue: mock(),
+            setValue: () => Promise.resolve(),
             isModified: false,
             isLoading: false,
             isSaving: false,
-            reset: mock(),
+            reset: () => Promise.resolve(),
+            data: null,
+            rawSetting: null,
+            query: { data: [], isLoading: false },
           }
         },
       },

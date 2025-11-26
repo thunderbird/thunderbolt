@@ -1,11 +1,12 @@
 'use client'
 
-import { AlertCircle, CheckCircle2, Loader2, Sparkles } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useSettings } from '@/hooks/use-settings'
 import { type User } from '@/lib/auth-client'
 
 type VerifyState = 'verifying' | 'success' | 'error'
@@ -29,6 +30,9 @@ export const MagicLinkVerify = () => {
   const [state, setState] = useState<VerifyState>('verifying')
   const [errorMessage, setErrorMessage] = useState('')
   const [user, setUser] = useState<User | null>(null)
+
+  const { preferredName } = useSettings({ preferred_name: '' })
+  const displayName = preferredName.value as string
 
   const token = searchParams.get('token')
 
@@ -94,6 +98,7 @@ export const MagicLinkVerify = () => {
     >
       <DialogContent
         className="sm:max-w-md"
+        showCloseButton={false}
         onPointerDownOutside={(e) => {
           if (!canClose) e.preventDefault()
         }}
@@ -127,15 +132,12 @@ export const MagicLinkVerify = () => {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
                 <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
-              <DialogTitle className="text-center text-xl">You're now signed in</DialogTitle>
-              <DialogDescription className="text-center">
-                Welcome{user?.name ? `, ${user.name}` : ''}! You now have access to all features.
-              </DialogDescription>
+              <DialogTitle className="text-center text-xl">
+                {displayName ? `Welcome, ${displayName}` : 'Welcome!'}
+              </DialogTitle>
+              <DialogDescription className="text-center">You're now signed in.</DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-                <Sparkles className="h-8 w-8 text-white" />
-              </div>
+            <div className="flex flex-col items-center py-4">
               <Button onClick={handleContinue} className="w-full">
                 Continue
               </Button>
@@ -151,13 +153,10 @@ export const MagicLinkVerify = () => {
               </div>
               <DialogTitle className="text-center text-xl">Verification Failed</DialogTitle>
               <DialogDescription className="text-center">
-                {errorMessage || 'Something went wrong. Please try again.'}
+                The link may have expired. Please request a new one.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col items-center gap-4 py-4">
-              <p className="text-center text-sm text-muted-foreground">
-                Magic links expire after 5 minutes. You may need to request a new one.
-              </p>
+            <div className="flex flex-col items-center py-4">
               <Button variant="outline" onClick={handleClose} className="w-full">
                 Close
               </Button>

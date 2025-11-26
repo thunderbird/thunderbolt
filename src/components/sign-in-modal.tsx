@@ -1,12 +1,11 @@
 'use client'
 
-import { CheckCircle2, Loader2, Mail, Sparkles } from 'lucide-react'
+import { Brain, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { authClient } from '@/lib/auth-client'
 
 type SignInModalProps = {
@@ -56,71 +55,92 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-            <Sparkles className="h-6 w-6 text-white" />
-          </div>
-          <DialogTitle className="text-center text-xl">Unlock More Features</DialogTitle>
-          <DialogDescription className="text-center">
-            Sign in with your email to access premium features, sync across devices, and more.
-          </DialogDescription>
-        </DialogHeader>
-
         {state === 'sent' ? (
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+          <>
+            <DialogHeader className="sr-only">
+              <DialogTitle>Check your email</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-6">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-semibold">Check your email</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  We sent a magic link to <span className="font-medium text-foreground">{email}</span>
+                </p>
+              </div>
+              <Button variant="outline" className="mt-2" onClick={() => handleOpenChange(false)}>
+                Close
+              </Button>
             </div>
-            <div className="text-center">
-              <p className="font-medium">Check your email</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                We sent a magic link to <span className="font-medium">{email}</span>
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">The link expires in 5 minutes</p>
-            </div>
-            <Button variant="outline" className="mt-2" onClick={() => handleOpenChange(false)}>
-              Close
-            </Button>
-          </div>
+          </>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
+          <>
+            <DialogHeader className="space-y-4">
+              <div className="text-center">
+                <DialogTitle className="text-2xl font-semibold">Unlock more features</DialogTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Sign in to get more out of Thunderbolt</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/15">
+                    <Brain className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Premium AI</p>
+                    <p className="text-xs text-muted-foreground">Get more power with Anthropic Claude models</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15">
+                    <RefreshCw className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Access your chats everywhere</p>
+                    <p className="text-xs text-muted-foreground">Encrypted sync between all devices</p>
+                  </div>
+                </div>
+              </div>
+              <DialogDescription className="sr-only">Sign up or sign in to access premium features</DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="Email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
+                  className="h-12 pl-12 text-base"
                   disabled={state === 'sending'}
                   autoComplete="email"
                   autoFocus
                 />
               </div>
-            </div>
 
-            {state === 'error' && (
-              <p className="text-sm text-destructive">{errorMessage || 'Something went wrong. Please try again.'}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={state === 'sending' || !email.trim()}>
-              {state === 'sending' ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                'Send Magic Link'
+              {state === 'error' && (
+                <p className="text-sm text-destructive">{errorMessage || 'Something went wrong. Please try again.'}</p>
               )}
-            </Button>
 
-            <p className="text-center text-xs text-muted-foreground">
-              No password needed. We&apos;ll send you a secure link to sign in.
-            </p>
-          </form>
+              <Button type="submit" className="w-full" disabled={state === 'sending' || !email.trim()}>
+                {state === 'sending' ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Magic Link'
+                )}
+              </Button>
+
+              <p className="text-center text-xs text-muted-foreground">
+                No password needed. We&apos;ll send you a secure link to sign in.
+              </p>
+            </form>
+          </>
         )}
       </DialogContent>
     </Dialog>

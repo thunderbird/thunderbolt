@@ -40,41 +40,49 @@ const SelectableCard = ({ selected, onSelect, icon, title, description, variant 
       type="button"
       onClick={onSelect}
       className={cn(
-        'flex w-full items-start gap-4 rounded-lg border-2 p-4 text-left transition-all',
-        'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected && !isDestructive && 'border-primary bg-primary/5',
-        selected && isDestructive && 'border-destructive bg-destructive/5',
-        !selected && 'border-border',
+        'group relative flex w-full items-center gap-4 rounded-xl border bg-card p-4 text-left transition-all',
+        'hover:border-muted-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected && !isDestructive && 'border-primary/50 bg-primary/5 shadow-sm shadow-primary/10',
+        selected && isDestructive && 'border-destructive/50 bg-destructive/5 shadow-sm shadow-destructive/10',
+        !selected && 'border-border hover:bg-accent/30',
       )}
     >
-      {/* Radio circle indicator */}
+      {/* Radio indicator */}
       <div
         className={cn(
-          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-          selected && !isDestructive && 'border-primary',
-          selected && isDestructive && 'border-destructive',
-          !selected && 'border-muted-foreground/50',
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all',
+          selected && !isDestructive && 'border-primary bg-primary',
+          selected && isDestructive && 'border-destructive bg-destructive',
+          !selected && 'border-muted-foreground/40 group-hover:border-muted-foreground/60',
         )}
       >
-        {selected && (
-          <div className={cn('h-2.5 w-2.5 rounded-full', isDestructive ? 'bg-destructive' : 'bg-primary')} />
-        )}
+        {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
       </div>
 
       {/* Icon */}
       <div
         className={cn(
-          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-          isDestructive ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground',
+          'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors',
+          selected && isDestructive && 'bg-destructive/15 text-destructive',
+          selected && !isDestructive && 'bg-primary/15 text-primary',
+          !selected && 'bg-muted text-muted-foreground',
         )}
       >
         {icon}
       </div>
 
       {/* Content */}
-      <div className="flex-1">
-        <p className={cn('font-medium', isDestructive && selected && 'text-destructive')}>{title}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <div className="flex-1 min-w-0">
+        <p
+          className={cn(
+            'font-medium transition-colors',
+            selected && isDestructive && 'text-destructive',
+            selected && !isDestructive && 'text-primary',
+          )}
+        >
+          {title}
+        </p>
+        <p className="mt-0.5 text-sm text-muted-foreground line-clamp-2">{description}</p>
       </div>
     </button>
   )
@@ -138,7 +146,7 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
             selected={selectedOption === 'delete'}
             onSelect={() => setSelectedOption('delete')}
             icon={<Trash2 className="h-5 w-5" />}
-            title="Delete local data"
+            title="Delete data from device"
             description="Remove all chats, settings, and cached data from this device."
             variant="destructive"
           />

@@ -1,6 +1,6 @@
 import { createMainRoutes } from '@/api/routes'
 import { createUsersRoutes } from '@/api/users'
-import { betterAuthPlugin } from '@/auth/elysia-plugin'
+import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
@@ -50,6 +50,9 @@ export const createApp = async (deps?: AppDeps) => {
 
   const { instrumentation } = await import('@/config/instrumentation')
   const configuredApp = instrumentation ? app.use(instrumentation) : app
+
+  // Create auth plugin with the database instance
+  const { plugin: betterAuthPlugin } = createBetterAuthPlugin(database)
 
   return (
     configuredApp

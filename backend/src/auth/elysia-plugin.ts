@@ -1,25 +1,33 @@
+import type { db as DbType } from '@/db/client'
 import { Elysia } from 'elysia'
-import { auth } from './auth'
+import { type Auth, createAuth } from './auth'
 
 /**
- * Better Auth plugin for Elysia
- * Mounts the auth handler and provides a macro for protected routes
+ * Create a Better Auth plugin for Elysia with the provided database
+ * This allows tests to inject their own database instance
  */
-export const betterAuthPlugin = new Elysia({ name: 'better-auth' }).mount(auth.handler).macro({
-  auth: {
-    async resolve({ status, request: { headers } }) {
-      const session = await auth.api.getSession({ headers })
+export const createBetterAuthPlugin = (database: typeof DbType) => {
+  const auth = createAuth(database)
 
-      if (!session) {
-        return status(401)
-      }
+  return {
+    plugin: new Elysia({ name: 'better-auth' }).mount(auth.handler).macro({
+      auth: {
+        async resolve({ status, request: { headers } }) {
+          const session = await auth.api.getSession({ headers })
 
-      return {
-        user: session.user,
-        session: session.session,
-      }
-    },
-  },
-})
+          if (!session) {
+            return status(401)
+          }
 
-export { auth }
+          return {
+            user: session.user,
+            session: session.session,
+          }
+        },
+      },
+    }),
+    auth,
+  }
+}
+
+export type { Auth }

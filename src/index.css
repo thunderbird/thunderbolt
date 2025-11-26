@@ -135,6 +135,16 @@
   }
 }
 
+/* Global scrollbar hiding for consistent cross-platform appearance */
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
 html,
 body {
   overscroll-behavior: none;

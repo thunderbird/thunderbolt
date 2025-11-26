@@ -81,13 +81,13 @@ function AppRoutes(_: { initData: InitData }) {
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="dev-settings" element={<DevSettingsPage />} />
         </Route>
+
+        {/* Magic link verification - shows modal over app */}
+        <Route path="auth/verify" element={<MagicLinkVerify />} />
       </Route>
 
       {/* OAuth callback route */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
-
-      {/* Magic link verification route */}
-      <Route path="/auth/verify" element={<MagicLinkVerify />} />
     </Routes>
   )
 }

@@ -24,13 +24,30 @@ mock.module('@/lib/auth-client', () => ({
   },
 }))
 
-// Mock useSettings to avoid mocking @/dal which breaks other tests
+// Mock useSettings with a Proxy to handle any setting key safely
+// This prevents breaking other tests (like useCountryUnits) that rely on other settings
 mock.module('@/hooks/use-settings', () => ({
-  useSettings: () => ({
-    cloudUrl: { value: 'http://localhost:8000/v1' },
-    // Include other potential settings to avoid breaking other tests if mocks leak
-    preferredName: { value: '' },
-  }),
+  useSettings: () => {
+    return new Proxy(
+      {},
+      {
+        get: (target, prop) => {
+          if (prop === 'cloudUrl') {
+            return { value: 'http://localhost:8000/v1' }
+          }
+          // Return safe default for any other accessed property
+          return {
+            value: null,
+            setValue: mock(),
+            isModified: false,
+            isLoading: false,
+            isSaving: false,
+            reset: mock(),
+          }
+        },
+      },
+    )
+  },
 }))
 
 // Mock Dialog components to avoid Radix UI issues in test environment

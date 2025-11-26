@@ -14,12 +14,32 @@ mock.module('react-router', () => ({
   useSearchParams: () => [mockSearchParams],
 }))
 
-// Mock useSettings with all needed fields to prevent breakage if mocks leak
+// Mock useSettings with a Proxy to handle any setting key safely
 mock.module('@/hooks/use-settings', () => ({
-  useSettings: () => ({
-    preferredName: { value: '' },
-    cloudUrl: { value: 'http://localhost:8000/v1' },
-  }),
+  useSettings: () => {
+    return new Proxy(
+      {},
+      {
+        get: (target, prop) => {
+          if (prop === 'cloudUrl') {
+            return { value: 'http://localhost:8000/v1' }
+          }
+          if (prop === 'preferredName') {
+            return { value: '' }
+          }
+          // Return safe default for any other accessed property
+          return {
+            value: null,
+            setValue: mock(),
+            isModified: false,
+            isLoading: false,
+            isSaving: false,
+            reset: mock(),
+          }
+        },
+      },
+    )
+  },
 }))
 
 // Mock auth client - refetch should resolve immediately

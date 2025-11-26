@@ -31,7 +31,7 @@ mock.module('@/hooks/use-settings', () => ({
     return new Proxy(
       {},
       {
-        get: (target, prop) => {
+        get: (_target, prop) => {
           if (prop === 'cloudUrl') {
             return { value: 'http://localhost:8000/v1' }
           }

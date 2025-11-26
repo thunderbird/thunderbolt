@@ -67,12 +67,18 @@ mock.module('@/lib/auth-client', () => ({
 }))
 
 // Mock Dialog components to avoid Radix UI issues in test environment
+// Must include ALL exports to prevent breaking other tests that import different dialog components
 mock.module('@/components/ui/dialog', () => ({
   Dialog: ({ children, open }: { children: React.ReactNode; open: boolean }) => (open ? <div>{children}</div> : null),
+  DialogClose: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
   DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogOverlay: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogPortal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DialogTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
 }))
 
 // Mock global fetch

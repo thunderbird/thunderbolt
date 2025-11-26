@@ -5,20 +5,30 @@ import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-// Mock the auth client
+// Mock the auth client - include useSession and signIn to prevent mock leakage
 const mockSignOut = mock()
 
 mock.module('@/lib/auth-client', () => ({
   authClient: {
     signOut: mockSignOut,
+    useSession: () => ({
+      data: null,
+      isPending: false,
+      error: null,
+      refetch: () => Promise.resolve(),
+    }),
+    signIn: {
+      magicLink: () => Promise.resolve({ error: null }),
+    },
   },
 }))
 
-// Mock resetAppDir
+// Mock resetAppDir - include createAppDir to prevent mock leakage breaking other tests
 const mockResetAppDir = mock()
 
 mock.module('@/lib/fs', () => ({
   resetAppDir: mockResetAppDir,
+  createAppDir: () => Promise.resolve('/mock/app/dir'),
 }))
 
 // Mock window.location.reload

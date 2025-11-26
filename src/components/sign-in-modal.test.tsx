@@ -14,6 +14,13 @@ mock.module('@/lib/auth-client', () => ({
     signIn: {
       magicLink: mockSignInMagicLink,
     },
+    // Add useSession to prevent breakage if this mock leaks into MagicLinkVerify tests
+    useSession: () => ({
+      data: null,
+      isPending: false,
+      error: null,
+      refetch: mock(() => Promise.resolve()),
+    }),
   },
 }))
 

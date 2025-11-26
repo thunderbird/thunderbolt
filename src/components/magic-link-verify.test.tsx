@@ -32,6 +32,10 @@ mock.module('@/lib/auth-client', () => ({
       error: null,
       refetch: mockRefetchSession,
     }),
+    // Add signIn to prevent breakage if this mock leaks into SignInModal tests
+    signIn: {
+      magicLink: mock(() => Promise.resolve({ error: null })),
+    },
   },
 }))
 

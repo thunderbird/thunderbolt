@@ -23,10 +23,10 @@
       "csp": {
         "default-src": "'self' tauri: asset:",
         "connect-src": "*",
-        "img-src": "'self' asset: data: https://thunderbolt-cloud.onrender.com",
+        "img-src": "'self' asset: data: https://thunderbolt.io",
         "font-src": "'self' data:",
         "style-src": "'self' 'unsafe-inline'",
-        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8000 https://thunderbolt-cloud.onrender.com"
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8000 https://thunderbolt.io"
       }
     },
     "withGlobalTauri": true

@@ -6,18 +6,10 @@ import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useAuth } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
-import { authClient } from '@/lib/auth-client'
 
 type VerifyState = 'verifying' | 'success' | 'error'
-
-/**
- * Get the auth API base URL
- */
-const getAuthApiURL = () => {
-  const cloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1'
-  return cloudUrl.replace(/\/v1$/, '') + '/v1/api/auth'
-}
 
 /**
  * Magic link verification page
@@ -25,11 +17,12 @@ const getAuthApiURL = () => {
  * Shows a modal with verification progress and result
  */
 export const MagicLinkVerify = () => {
+  const authClient = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [state, setState] = useState<VerifyState>('verifying')
 
-  const { preferredName } = useSettings({ preferred_name: '' })
+  const { preferredName, cloudUrl } = useSettings({ preferred_name: '', cloud_url: 'http://localhost:8000/v1' })
   const displayName = preferredName.value as string
 
   // Get refetch function to update session cache after verification
@@ -47,7 +40,7 @@ export const MagicLinkVerify = () => {
       try {
         // Call the backend verify endpoint directly
         // This sets the session cookie and returns user data
-        const verifyUrl = `${getAuthApiURL()}/magic-link/verify?token=${encodeURIComponent(token)}`
+        const verifyUrl = `${cloudUrl.value}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`
 
         const response = await fetch(verifyUrl, {
           method: 'GET',
@@ -70,7 +63,7 @@ export const MagicLinkVerify = () => {
     }
 
     verifyToken()
-  }, [token, refetchSession])
+  }, [token, refetchSession, cloudUrl.value])
 
   const handleContinue = () => {
     navigate('/', { replace: true })

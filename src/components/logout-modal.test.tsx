@@ -1,27 +1,12 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-
-// Mock the auth client - include useSession and signIn to prevent mock leakage
-const mockSignOut = mock()
-
-mock.module('@/lib/auth-client', () => ({
-  authClient: {
-    signOut: mockSignOut,
-    useSession: () => ({
-      data: null,
-      isPending: false,
-      error: null,
-      refetch: () => Promise.resolve(),
-    }),
-    signIn: {
-      magicLink: () => Promise.resolve({ error: null }),
-    },
-  },
-}))
+import { LogoutModal } from './logout-modal'
 
 // Mock resetAppDir - include createAppDir to prevent mock leakage breaking other tests
 const mockResetAppDir = mock()
@@ -38,12 +23,10 @@ Object.defineProperty(window, 'location', {
   writable: true,
 })
 
-// Import after mocking
-const { LogoutModal } = await import('./logout-modal')
-
 describe('LogoutModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
+  let mockSignOut: ReturnType<typeof mock>
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
@@ -55,11 +38,9 @@ describe('LogoutModal', () => {
 
   beforeEach(() => {
     mockOnOpenChange = mock()
-    mockSignOut.mockClear()
+    mockSignOut = mock(() => Promise.resolve())
     mockResetAppDir.mockClear()
     mockReload.mockClear()
-    mockSignOut.mockResolvedValue(undefined)
-    mockResetAppDir.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -67,7 +48,12 @@ describe('LogoutModal', () => {
   })
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
-    return render(<LogoutModal open={true} onOpenChange={mockOnOpenChange} {...props} />)
+    const authClient = createMockAuthClient({
+      signOut: mockSignOut,
+    })
+    return render(<LogoutModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
+      wrapper: createTestProvider({ authClient }),
+    })
   }
 
   describe('rendering', () => {

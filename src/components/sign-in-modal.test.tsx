@@ -2,28 +2,17 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { createMockAuthClient } from '@/test-utils/auth-client'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-
-// Only mock what we actually need to control - the auth API
-const mockSignInMagicLink = mock()
-
-mock.module('@/lib/auth-client', () => ({
-  authClient: {
-    signIn: {
-      magicLink: mockSignInMagicLink,
-    },
-  },
-}))
-
-// Import after mocking
-const { SignInModal } = await import('./sign-in-modal')
+import { SignInModal } from './sign-in-modal'
 
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
+  let mockSignInMagicLink: ReturnType<typeof mock>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -37,8 +26,7 @@ describe('SignInModal', () => {
 
   beforeEach(() => {
     mockOnOpenChange = mock()
-    mockSignInMagicLink.mockClear()
-    mockSignInMagicLink.mockResolvedValue({ error: null })
+    mockSignInMagicLink = mock(() => Promise.resolve({ error: null }))
   })
 
   afterEach(async () => {
@@ -47,8 +35,11 @@ describe('SignInModal', () => {
   })
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
+    const authClient = createMockAuthClient({
+      signInMagicLink: mockSignInMagicLink,
+    })
     return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
-      wrapper: createTestProvider(),
+      wrapper: createTestProvider({ authClient }),
     })
   }
 
@@ -120,7 +111,6 @@ describe('SignInModal', () => {
 
   describe('form submission', () => {
     it('calls signIn.magicLink with trimmed email', async () => {
-      mockSignInMagicLink.mockResolvedValue({ error: null })
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -169,7 +159,6 @@ describe('SignInModal', () => {
     })
 
     it('shows success state after successful submission', async () => {
-      mockSignInMagicLink.mockResolvedValue({ error: null })
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -248,7 +237,6 @@ describe('SignInModal', () => {
     })
 
     it('calls onOpenChange when close button is clicked in success state', async () => {
-      mockSignInMagicLink.mockResolvedValue({ error: null })
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')

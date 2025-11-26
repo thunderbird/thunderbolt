@@ -6,8 +6,8 @@ import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useAuth } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
-import { authClient } from '@/lib/auth-client'
 import { isLocalhostUrl } from '@/lib/utils'
 
 type SignInModalProps = {
@@ -18,6 +18,7 @@ type SignInModalProps = {
 type ModalState = 'idle' | 'sending' | 'sent' | 'error'
 
 export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
+  const authClient = useAuth()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const [email, setEmail] = useState('')

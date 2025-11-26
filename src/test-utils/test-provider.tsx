@@ -1,10 +1,12 @@
-import { HttpClientProvider } from '@/contexts'
+import { AuthProvider, HttpClientProvider, type AuthClient } from '@/contexts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
+import { createMockAuthClient } from './auth-client'
 import { createMockHttpClient } from './http-client'
 
 type TestProviderOptions = {
   mockResponse?: unknown
+  authClient?: AuthClient
   queryOptions?: {
     defaultOptions?: {
       queries?: {
@@ -52,10 +54,14 @@ export const createTestProvider = (options?: TestProviderOptions) => {
 
   const mockHttpClient = createMockHttpClient(options?.mockResponse ?? [])
 
+  const mockAuthClient = options?.authClient ?? createMockAuthClient()
+
   return ({ children }: { children: ReactNode }) => {
     return (
       <QueryClientProvider client={queryClient}>
-        <HttpClientProvider httpClient={mockHttpClient}>{children}</HttpClientProvider>
+        <HttpClientProvider httpClient={mockHttpClient}>
+          <AuthProvider authClient={mockAuthClient}>{children}</AuthProvider>
+        </HttpClientProvider>
       </QueryClientProvider>
     )
   }

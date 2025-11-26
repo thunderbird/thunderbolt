@@ -22,14 +22,15 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useAuth } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
-import { authClient } from '@/lib/auth-client'
 
 type SidebarFooterProps = {
   className?: string
 }
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
+  const authClient = useAuth()
   const { isMobile } = useSidebar()
   const [signInModalOpen, setSignInModalOpen] = useState(false)
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)

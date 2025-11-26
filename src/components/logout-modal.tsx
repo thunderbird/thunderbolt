@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { authClient } from '@/lib/auth-client'
+import { useAuth } from '@/contexts'
 import { resetAppDir } from '@/lib/fs'
 import { cn } from '@/lib/utils'
 
@@ -89,6 +89,7 @@ const SelectableCard = ({ selected, onSelect, icon, title, description, variant 
 }
 
 export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
+  const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 

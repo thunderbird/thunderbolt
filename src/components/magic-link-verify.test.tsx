@@ -1,11 +1,13 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { MagicLinkVerify } from './magic-link-verify'
 
 // Mock React Router
 const mockSearchParams = new URLSearchParams()
@@ -16,24 +18,9 @@ mock.module('react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
-// Mock auth client
-const mockRefetchSession = mock(() => Promise.resolve())
-mock.module('@/lib/auth-client', () => ({
-  authClient: {
-    useSession: () => ({
-      data: null,
-      isPending: false,
-      error: null,
-      refetch: mockRefetchSession,
-    }),
-  },
-}))
-
-// Import after mocking
-const { MagicLinkVerify } = await import('./magic-link-verify')
-
 describe('MagicLinkVerify', () => {
   let consoleSpies: ConsoleSpies
+  let mockRefetchSession: ReturnType<typeof mock>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -47,7 +34,7 @@ describe('MagicLinkVerify', () => {
 
   beforeEach(() => {
     mockNavigate.mockClear()
-    mockRefetchSession.mockClear()
+    mockRefetchSession = mock(() => Promise.resolve({ data: null, error: null }))
     mockSearchParams.delete('token')
 
     // Mock fetch for verification - default to success
@@ -69,8 +56,21 @@ describe('MagicLinkVerify', () => {
     if (token) {
       mockSearchParams.set('token', token)
     }
+    const authClient = createMockAuthClient({
+      session: null,
+      isPending: false,
+    })
+    // Override useSession to use our mock refetch
+    authClient.useSession = () =>
+      ({
+        data: null,
+        isPending: false,
+        isRefetching: false,
+        error: null,
+        refetch: mockRefetchSession,
+      }) as ReturnType<typeof authClient.useSession>
     return render(<MagicLinkVerify />, {
-      wrapper: createTestProvider(),
+      wrapper: createTestProvider({ authClient }),
     })
   }
 

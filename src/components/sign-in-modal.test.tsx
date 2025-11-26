@@ -26,27 +26,31 @@ mock.module('@/lib/auth-client', () => ({
 
 // Mock useSettings with a Proxy to handle any setting key safely
 // This prevents breaking other tests (like useCountryUnits) that rely on other settings
+const createSettingMock = (value: string | null = null) => ({
+  value,
+  setValue: () => Promise.resolve(),
+  isModified: false,
+  isLoading: false,
+  isSaving: false,
+  reset: () => Promise.resolve(),
+  data: null,
+  rawSetting: null,
+  query: { data: [], isLoading: false },
+})
+
 mock.module('@/hooks/use-settings', () => ({
   useSettings: () => {
     return new Proxy(
       {},
       {
         get: (_target, prop) => {
+          // Ignore symbols and internal properties
+          if (typeof prop === 'symbol') return undefined
           if (prop === 'cloudUrl') {
-            return { value: 'http://localhost:8000/v1' }
+            return createSettingMock('http://localhost:8000/v1')
           }
           // Return safe default for any other accessed property
-          return {
-            value: null,
-            setValue: () => Promise.resolve(),
-            isModified: false,
-            isLoading: false,
-            isSaving: false,
-            reset: () => Promise.resolve(),
-            data: null,
-            rawSetting: null,
-            query: { data: [], isLoading: false },
-          }
+          return createSettingMock()
         },
       },
     )

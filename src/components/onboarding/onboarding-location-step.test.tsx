@@ -18,6 +18,20 @@ mock.module('@/components/ui/popover', () => ({
   PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
+// Mock Command components to bypass cmk/Radix issues in CI
+mock.module('@/components/ui/command', () => ({
+  Command: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandInput: (props: any) => <input {...props} />,
+  CommandList: ({ children }: { children: React.ReactNode }) => <div cmdk-list="">{children}</div>,
+  CommandEmpty: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandItem: ({ children, onSelect, ...props }: any) => (
+    <div onClick={() => onSelect?.(children)} role="option" data-value={children} {...props}>
+      {children}
+    </div>
+  ),
+}))
+
 const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
   const { state, actions } = useOnboardingState()
   return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />

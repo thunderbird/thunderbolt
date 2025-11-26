@@ -64,7 +64,7 @@ export const createHttpLoggingMiddleware = () => {
  * Extract client IP address from request headers
  * Checks standard proxy headers in order of preference
  */
-function extractClientAddress(headers: Headers): string | undefined {
+const extractClientAddress = (headers: Headers): string | undefined => {
   // Check RFC 7239 Forwarded header first
   const forwarded = headers.get('forwarded')
   if (forwarded) {

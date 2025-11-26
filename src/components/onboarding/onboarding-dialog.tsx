@@ -84,32 +84,30 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        className={cn(
-          'p-0 overflow-hidden',
-          isMobile
-            ? 'rounded-none h-full w-screen max-w-none m-0 !max-w-none !w-full !sm:max-w-none'
-            : 'rounded-lg max-w-[600px] h-[650px] w-[600px] m-4',
-        )}
+        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
         style={{
           bottom: 'var(--kb, 0px)',
         }}
         showCloseButton={false}
+        useTransparentOverlay={!isMobile}
+        fullScreen={isMobile}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className="flex flex-col items-center"
+          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
           style={{
             paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
             paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
           }}
         >
-          <div className="flex items-center justify-center px-4">
+          <div className="flex items-center justify-center px-4 relative w-full pb-2">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
+            <div className="absolute -bottom-5.5 w-full h-6 bg-gradient-to-b from-background to-transparent" />
           </div>
-          <div className={`flex flex-1 px-6 pt-6`}>
+          <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
@@ -126,7 +124,8 @@ export const OnboardingDialog = () => {
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5">
+          <div className="flex w-full px-5 pt-2 relative">
+            <div className="absolute -top-5.5 w-full h-6 bg-gradient-to-b from-transparent to-background" />
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}

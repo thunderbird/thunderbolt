@@ -96,13 +96,19 @@ export const OnboardingAuthStep = ({
         <p className="text-muted-foreground">Your assistant can help you manage your email, calendar, and documents.</p>
       </div>
 
-      <div className="space-y-4 sm:space-y-3 pt-5">
+      <div className="pt-5">
         <OnboardingFeatureCard
+          className="mb-4"
           icon={Calendar}
           title="Calendar"
           description="View and manage your schedule; create + reschedule events."
         />
-        <OnboardingFeatureCard icon={Mail} title="Email" description="Read, compose, and organize your emails." />
+        <OnboardingFeatureCard
+          className="mb-4"
+          icon={Mail}
+          title="Email"
+          description="Read, compose, and organize your emails."
+        />
         <OnboardingFeatureCard
           icon={File}
           title={storageFeatureTitle}

@@ -6,9 +6,13 @@ import { ErrorMessage } from './error-message'
 import { useMemo } from 'react'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useChat } from '@ai-sdk/react'
+import { useChat as useChat_default } from '@ai-sdk/react'
 
-export const ChatMessages = () => {
+type ChatMessagesProps = {
+  useChat?: typeof useChat_default
+}
+
+export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
   const { chatInstance, chatThread, chatThreadId, triggerData } = useChatStore(
     useShallow((state) => ({
       chatInstance: state.chatInstance!,

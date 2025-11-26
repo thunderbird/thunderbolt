@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 
 type ReasoningDisplayProps = {
-  text: string
+  text?: string
   isStreaming: boolean
   instanceKey: string // Unique key to identify different reasoning instances
 }
@@ -16,17 +16,19 @@ type ReasoningDisplayProps = {
  * - Cleans up timers properly
  */
 export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
-  const [displayText, setDisplayText] = useState(text)
+  const [displayText, setDisplayText] = useState(text ?? '')
   const [shouldShow, setShouldShow] = useState(isStreaming)
   const [currentKey, setCurrentKey] = useState(instanceKey)
   const displayStartTimeRef = useRef(Date.now())
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  const hasText = Boolean(text && text.trim())
+
   // Update display text and reset timers when text or key changes
   useEffect(() => {
     // New reasoning instance or text changed
     if (text !== displayText || instanceKey !== currentKey) {
-      setDisplayText(text)
+      setDisplayText(text ?? '')
       setCurrentKey(instanceKey)
       setShouldShow(true)
       displayStartTimeRef.current = Date.now()
@@ -39,9 +41,9 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
     }
   }, [text, displayText, instanceKey, currentKey])
 
-  // Handle fade-out logic when streaming stops
+  // Handle fade-out logic when streaming stops (only if there's text)
   useEffect(() => {
-    if (!isStreaming && shouldShow) {
+    if (!isStreaming && shouldShow && hasText) {
       // Clear any existing timeout
       if (fadeTimeoutRef.current) {
         clearTimeout(fadeTimeoutRef.current)
@@ -68,7 +70,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
         fadeTimeoutRef.current = null
       }
     }
-  }, [isStreaming, shouldShow])
+  }, [isStreaming, shouldShow, hasText])
 
   // Reset shouldShow when streaming starts again
   useEffect(() => {
@@ -85,28 +87,31 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
     rootMargin: '0px',
   })
 
+  // Always render the container with min-height, but only show content when there's text
   return (
-    <AnimatePresence mode="wait">
-      {shouldShow && displayText && (
-        <motion.div
-          key={instanceKey}
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.3 }}
-          className="relative text-muted-foreground leading-relaxed text-sm mt-1"
-          ref={(el) => {
-            scrollContainerRef.current = el
-          }}
-        >
-          <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
-          <div className="max-h-[200px] px-4 hide-scrollbar py-3">
-            {displayText}
-            <div ref={scrollTargetRef} />
-          </div>
-          <div className="absolute bottom-0 w-full h-6 bg-gradient-to-b from-transparent to-background" />
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div className="relative mt-1 min-h-[200px]">
+      <AnimatePresence mode="wait">
+        {shouldShow && hasText && (
+          <motion.div
+            key={instanceKey}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="relative text-muted-foreground leading-relaxed text-sm"
+            ref={(el) => {
+              scrollContainerRef.current = el
+            }}
+          >
+            <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
+            <div className="max-h-[200px] px-4 hide-scrollbar py-3">
+              {displayText}
+              <div ref={scrollTargetRef} />
+            </div>
+            <div className="absolute bottom-0 w-full h-6 bg-gradient-to-b from-transparent to-background" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }

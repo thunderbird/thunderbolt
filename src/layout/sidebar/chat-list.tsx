@@ -58,7 +58,7 @@ export const ChatList = ({
             onChange={(e) => onSearchQueryChange(e.target.value)}
           />
         </div>
-        <SidebarMenu className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide">
+        <SidebarMenu className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y">
           {isCollapsed && (
             <>
               <SidebarMenuItem>

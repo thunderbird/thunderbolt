@@ -1,14 +1,16 @@
 import type { Settings } from '@/config/settings'
 import * as settingsModule from '@/config/settings'
+import { createTestDb } from '@/test-utils/db'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { createApp } from '../index'
 
 describe('Main Routes', () => {
   let app: Awaited<ReturnType<typeof createApp>>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
+  let cleanup: () => Promise<void>
 
   const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = input instanceof Request ? input.url : input.toString()
@@ -26,7 +28,7 @@ describe('Main Routes', () => {
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
-  beforeAll(async () => {
+  beforeAll(() => {
     consoleSpies = setupConsoleSpy()
 
     // Mock settings for analytics route
@@ -52,12 +54,19 @@ describe('Main Routes', () => {
         'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
       corsExposeHeaders: 'mcp-session-id',
     } satisfies Settings)
-
-    // Inject mock fetch into app
-    app = await createApp(mockFetch as typeof fetch)
   })
 
-  afterAll(async () => {
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    cleanup = testEnv.cleanup
+    app = await createApp({ fetchFn: mockFetch as typeof fetch, database: testEnv.db })
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  afterAll(() => {
     getSettingsSpy?.mockRestore()
     consoleSpies.restore()
   })

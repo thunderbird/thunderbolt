@@ -1,10 +1,18 @@
-import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
 import { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore } from './chat-store'
-import { useChat } from '@ai-sdk/react'
+import { useChat as useChat_default } from '@ai-sdk/react'
 
-export const useChatScrollHandler = () => {
+type UseChatScrollHandlerProps = {
+  useAutoScroll?: typeof useAutoScroll_default
+  useChat?: typeof useChat_default
+}
+
+export const useChatScrollHandler = ({
+  useAutoScroll = useAutoScroll_default,
+  useChat = useChat_default,
+}: UseChatScrollHandlerProps = {}) => {
   const { chatInstance } = useChatStore(
     useShallow((state) => ({
       chatInstance: state.chatInstance!,

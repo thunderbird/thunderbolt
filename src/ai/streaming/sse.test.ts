@@ -64,8 +64,7 @@ describe('sse', async () => {
 
       // Process stream with timer management
       const consumePromise = result.consumeStream()
-      // Use tickAsync with a reasonable bound instead of runAllAsync to prevent hanging
-      await getClock().tickAsync(1000)
+      await getClock().runAllAsync()
       await consumePromise
       results.push(await result.steps)
     }

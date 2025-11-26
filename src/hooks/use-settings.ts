@@ -104,6 +104,50 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
     }
 
 /**
+ * Determines whether a given query should be invalidated after updating
+ * a specific setting key.
+ *
+ * Why this is needed:
+ * -------------------
+ * The `useSettings` hook creates react-query entries whose query keys look like:
+ *
+ *    ['settings', 'a', 'b', 'c']
+ *
+ * where `'a'`, `'b'`, `'c'` represent the specific setting keys requested
+ * by that hook instance (its "schema subset").
+ *
+ * Different components may request different subsets of settings:
+ *
+ *    useSettings({ a: true, b: true }) → ['settings', 'a', 'b']
+ *    useSettings({ b: true })          → ['settings', 'b']
+ *
+ * When one setting is updated (e.g., 'b'), we must invalidate **all** queries
+ * whose subset includes that key — not just the one that performed the update.
+ *
+ * React Query cannot know this relationship automatically, so we use a custom
+ * predicate function during `invalidateQueries` to detect all affected subsets.
+ *
+ * This helper checks:
+ *   1. Whether the query belongs to the settings subsystem
+ *      (queryKey[0] === 'settings')
+ *   2. Whether the updated key exists in that query's subset
+ *
+ * If both conditions match, the query should be invalidated.
+ */
+export function shouldInvalidateSettingsSubset(query: { queryKey: readonly unknown[] }, key: string) {
+  const keys = query.queryKey
+
+  // must be a settings query
+  if (!Array.isArray(keys) || keys[0] !== 'settings') return false
+
+  // 'subset' = all keys after the prefix
+  const subset = keys.slice(1) as string[]
+
+  // invalidate if this subset contains the updated key
+  return subset.includes(key)
+}
+
+/**
  * Hook for managing multiple settings with modification tracking and reset capability
  *
  * Returns an object where each key is a setting, allowing clean destructuring.
@@ -178,8 +222,10 @@ export function useSettings<T extends SettingSchema>(
       value: any
       options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
     }) => updateSettings({ [key]: value }, options),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
+    onSuccess: (_, { key }) => {
+      queryClient.invalidateQueries({
+        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
+      })
     },
   })
 
@@ -191,8 +237,10 @@ export function useSettings<T extends SettingSchema>(
       }
       await resetSettingToDefault(key, defaultSetting)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', ...keys] })
+    onSuccess: (_, key) => {
+      queryClient.invalidateQueries({
+        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
+      })
     },
   })
 

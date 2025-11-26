@@ -43,7 +43,6 @@ export default function Sidebar() {
     experimental_feature_tasks: false,
   })
 
-  // Focus the search input when it becomes visible (only handles the case when opening while expanded)
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
       requestAnimationFrame(() => {
@@ -70,11 +69,16 @@ export default function Sidebar() {
     mutationFn: async ({ id }: { id: string }) => {
       await deleteChatThread(id)
     },
-    onSuccess: () => {
-      trackEvent('chat_delete', { chat_id: threadIdRef.current })
+    onSuccess: async () => {
+      const deletedChatId = threadIdRef.current
+      trackEvent('chat_delete', { chat_id: deletedChatId })
       deleteChatDialogRef.current?.close()
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+      await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       threadIdRef.current = null
+
+      if (deletedChatId === currentChatThreadId) {
+        navigate('/chats/new')
+      }
     },
   })
 
@@ -85,31 +89,22 @@ export default function Sidebar() {
     onSuccess: async () => {
       trackEvent('chat_clear_all')
       deleteAllChatsDialogRef.current?.close()
-      // Invalidate queries after the new thread is created
       await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate('/chats/new')
     },
   })
 
   const createNewChat = async (closeAfter: boolean = true) => {
-    try {
-      trackEvent('chat_new_clicked')
-      navigate(`/chats/new`)
-      // Close mobile sidebar after navigation
-      if (closeAfter && isMobile) {
-        setOpenMobile(false)
-      }
-    } catch (error) {
-      console.error('Error creating new chat:', error)
+    trackEvent('chat_new_clicked')
+    navigate(`/chats/new`)
+    if (closeAfter && isMobile) {
+      setOpenMobile(false)
     }
   }
 
   const handleChatClick = (threadId: string) => {
     navigate(`/chats/${threadId}`)
-
-    // Track select chat event
     trackEvent('chat_select', { chat_id: threadId })
-
     if (isMobile) {
       setOpenMobile(false)
     }
@@ -118,7 +113,6 @@ export default function Sidebar() {
   const handleSettingsNavigation = (path: string) => {
     navigate(path)
     if (isMobile) {
-      // Close the sidebar after selecting a settings link
       setOpenMobile(false)
     }
   }
@@ -130,12 +124,10 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
-    // Navigate to the main chat page
     const chatThreadId = currentChatThreadId || (chatThreads.length > 0 ? chatThreads[0].id : null)
     if (chatThreadId) {
       navigate(`/chats/${chatThreadId}`)
     } else {
-      // If no chats, create a new one
       await createNewChat(false)
     }
   }
@@ -145,23 +137,18 @@ export default function Sidebar() {
     e?.stopPropagation()
 
     if (isCollapsed) {
-      // If collapsed, expand the sidebar and show search
       toggleSidebar()
       setShowSearch(true)
-      // Focus directly after DOM updates (useEffect won't run if showSearch was already true)
       requestAnimationFrame(() => {
         searchInputRef.current?.focus()
       })
     } else if (!showSearch) {
-      // If already expanded and search is closed, open it (useEffect handles focus)
       setShowSearch(true)
     } else {
-      // If already expanded and search is open, close it
       setShowSearch(false)
     }
   }
 
-  // Render single sidebar with conditional content
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>

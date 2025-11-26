@@ -7,6 +7,7 @@ import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { ReasoningItem } from './reasoning-item'
 import { ReasoningGroupTitle } from './reasoning-group-title'
 import { useMemo } from 'react'
+import { useObjectView } from '@/content-view/context'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
@@ -16,6 +17,8 @@ type ReasoningGroupProps = {
 }
 
 export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTextPart }: ReasoningGroupProps) => {
+  const { openObjectSidebar } = useObjectView()
+
   const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
 
   const currentReasoningPart = parts
@@ -65,15 +68,19 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTex
           }}
         >
           {parts.map((part, index) => (
-            <ReasoningItem key={index} part={part} />
+            <ReasoningItem
+              key={index}
+              part={part}
+              onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
+            />
           ))}
           <div ref={scrollTargetRef} />
         </div>
       </Expandable>
-      {!hasTextPart && currentReasoningPart && (
+      {!hasTextPart && (
         <ReasoningDisplay
-          text={currentReasoningPart.content.text}
-          isStreaming={currentReasoningPart.content.state === 'streaming'}
+          text={currentReasoningPart?.content.text}
+          isStreaming={currentReasoningPart?.content.state === 'streaming'}
           instanceKey={reasoningInstanceKey}
         />
       )}

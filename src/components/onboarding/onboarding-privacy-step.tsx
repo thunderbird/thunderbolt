@@ -32,14 +32,20 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
         <p className="text-sm text-muted-foreground">Your privacy-first AI assistant</p>
       </div>
 
-      <div className="space-y-4 sm:space-y-3 pt-5">
+      <div className="pt-5">
         <OnboardingFeatureCard
+          className="mb-4"
           icon={ServerOff}
           title="Zero Logs"
           description="We don't keep logs of your conversations."
         />
 
-        <OnboardingFeatureCard icon={EyeOff} title="Zero Training" description="We don't train models on your data." />
+        <OnboardingFeatureCard
+          className="mb-4"
+          icon={EyeOff}
+          title="Zero Training"
+          description="We don't train models on your data."
+        />
 
         <OnboardingFeatureCard
           icon={Database}

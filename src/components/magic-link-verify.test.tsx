@@ -14,10 +14,11 @@ mock.module('react-router', () => ({
   useSearchParams: () => [mockSearchParams],
 }))
 
-// Mock useSettings
+// Mock useSettings with all needed fields to prevent breakage if mocks leak
 mock.module('@/hooks/use-settings', () => ({
   useSettings: () => ({
     preferredName: { value: '' },
+    cloudUrl: { value: 'http://localhost:8000/v1' },
   }),
 }))
 
@@ -32,6 +33,15 @@ mock.module('@/lib/auth-client', () => ({
       refetch: mockRefetchSession,
     }),
   },
+}))
+
+// Mock Dialog components to avoid Radix UI issues in test environment
+mock.module('@/components/ui/dialog', () => ({
+  Dialog: ({ children, open }: { children: React.ReactNode; open: boolean }) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 // Mock global fetch

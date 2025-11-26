@@ -17,13 +17,22 @@ mock.module('@/lib/auth-client', () => ({
   },
 }))
 
-// Mock the DAL to return localhost cloud_url for tests
-mock.module('@/dal', () => ({
-  getSettingsRecords: async () => ({
-    cloud_url: { key: 'cloud_url', value: 'http://localhost:8000/v1', updatedAt: null, defaultHash: null },
+// Mock useSettings to avoid mocking @/dal which breaks other tests
+mock.module('@/hooks/use-settings', () => ({
+  useSettings: () => ({
+    cloudUrl: { value: 'http://localhost:8000/v1' },
+    // Include other potential settings to avoid breaking other tests if mocks leak
+    preferredName: { value: '' },
   }),
-  updateSettings: async () => {},
-  resetSettingToDefault: async () => {},
+}))
+
+// Mock Dialog components to avoid Radix UI issues in test environment
+mock.module('@/components/ui/dialog', () => ({
+  Dialog: ({ children, open }: { children: React.ReactNode; open: boolean }) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 // Import after mocking

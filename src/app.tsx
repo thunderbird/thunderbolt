@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 
 import ChatDetailPage from '@/chats/detail'
+import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HttpClientProvider } from '@/contexts'
@@ -84,6 +85,9 @@ function AppRoutes(_: { initData: InitData }) {
 
       {/* OAuth callback route */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
+
+      {/* Magic link verification route */}
+      <Route path="/auth/verify" element={<MagicLinkVerify />} />
     </Routes>
   )
 }

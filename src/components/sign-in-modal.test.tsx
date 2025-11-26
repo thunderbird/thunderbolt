@@ -1,5 +1,6 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
@@ -14,6 +15,15 @@ mock.module('@/lib/auth-client', () => ({
       magicLink: mockSignInMagicLink,
     },
   },
+}))
+
+// Mock the DAL to return localhost cloud_url for tests
+mock.module('@/dal', () => ({
+  getSettingsRecords: async () => ({
+    cloud_url: { key: 'cloud_url', value: 'http://localhost:8000/v1', updatedAt: null, defaultHash: null },
+  }),
+  updateSettings: async () => {},
+  resetSettingToDefault: async () => {},
 }))
 
 // Import after mocking
@@ -42,7 +52,9 @@ describe('SignInModal', () => {
   })
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
-    return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />)
+    return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
+      wrapper: createTestProvider(),
+    })
   }
 
   describe('rendering', () => {
@@ -173,9 +185,9 @@ describe('SignInModal', () => {
         await getClock().runAllAsync()
       })
 
-      // Check for success state by looking for the visible heading text
-      expect(screen.getByText('We sent a magic link to')).toBeInTheDocument()
-      expect(screen.getByText('test@example.com')).toBeInTheDocument()
+      // In test environment (localhost), shows localhost message
+      expect(screen.getAllByText('Check the backend logs').length).toBeGreaterThan(0)
+      expect(screen.getByText(/localhost/)).toBeInTheDocument()
     })
 
     it('does not submit when email is empty', async () => {

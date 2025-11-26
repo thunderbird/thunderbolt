@@ -21,6 +21,19 @@ mock.module('@/hooks/use-settings', () => ({
   }),
 }))
 
+// Mock auth client - refetch should resolve immediately
+const mockRefetchSession = mock(() => Promise.resolve())
+mock.module('@/lib/auth-client', () => ({
+  authClient: {
+    useSession: () => ({
+      data: null,
+      isPending: false,
+      error: null,
+      refetch: mockRefetchSession,
+    }),
+  },
+}))
+
 // Mock global fetch
 const originalFetch = globalThis.fetch
 const mockFetch = mock() as ReturnType<typeof mock> & { preconnect: () => void }
@@ -45,6 +58,7 @@ describe('MagicLinkVerify', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
     mockFetch.mockClear()
+    mockRefetchSession.mockClear()
     mockSearchParams = new URLSearchParams()
   })
 
@@ -171,6 +185,22 @@ describe('MagicLinkVerify', () => {
 
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
     })
+
+    it('refetches session after successful verification', async () => {
+      mockSearchParams = new URLSearchParams('token=valid-token')
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: '1' } }),
+      })
+
+      render(<MagicLinkVerify />)
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockRefetchSession).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('verification error', () => {
@@ -253,6 +283,22 @@ describe('MagicLinkVerify', () => {
       fireEvent.click(closeButton)
 
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
+    })
+
+    it('does not refetch session when verification fails', async () => {
+      mockSearchParams = new URLSearchParams('token=invalid-token')
+      mockFetch.mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({}),
+      })
+
+      render(<MagicLinkVerify />)
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockRefetchSession).not.toHaveBeenCalled()
     })
   })
 

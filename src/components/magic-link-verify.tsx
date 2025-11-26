@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useSettings } from '@/hooks/use-settings'
+import { authClient } from '@/lib/auth-client'
 
 type VerifyState = 'verifying' | 'success' | 'error'
 
@@ -30,6 +31,9 @@ export const MagicLinkVerify = () => {
 
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = preferredName.value as string
+
+  // Get refetch function to update session cache after verification
+  const { refetch: refetchSession } = authClient.useSession()
 
   const token = searchParams.get('token')
 
@@ -55,6 +59,10 @@ export const MagicLinkVerify = () => {
           return
         }
 
+        // Refetch session to update the auth client cache
+        // This ensures the sidebar and other components see the new session immediately
+        await refetchSession()
+
         setState('success')
       } catch {
         setState('error')
@@ -62,7 +70,7 @@ export const MagicLinkVerify = () => {
     }
 
     verifyToken()
-  }, [token])
+  }, [token, refetchSession])
 
   const handleContinue = () => {
     navigate('/', { replace: true })

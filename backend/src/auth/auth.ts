@@ -5,9 +5,9 @@ import { magicLink } from 'better-auth/plugins'
 import { Resend } from 'resend'
 import { buildMagicLinkUrl, getValidatedOrigin, parseTrustedOrigins } from './utils'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
-if (!process.env.RESEND_API_KEY) {
+if (!resend) {
   console.warn('⚠️ RESEND_API_KEY is not set - magic link emails will not be sent')
 }
 
@@ -30,11 +30,14 @@ export const auth = betterAuth({
         const magicLinkUrl = buildMagicLinkUrl(origin, token)
 
         console.info(`📧 Sending magic link to ${email}`)
-        console.info(`🔗 Magic link URL: ${magicLinkUrl}`)
 
-        if (!process.env.RESEND_API_KEY) {
-          console.error('❌ Cannot send email: RESEND_API_KEY is not configured')
-          throw new Error('Email service not configured')
+        if (!resend) {
+          if (process.env.NODE_ENV === 'production') {
+            console.error('❌ Cannot send email: RESEND_API_KEY is not configured')
+            throw new Error('Email service not configured')
+          }
+          console.info(`🔗 [DEV] Magic link URL (no email sent): ${magicLinkUrl}`)
+          return
         }
 
         const { data, error } = await resend.emails.send({

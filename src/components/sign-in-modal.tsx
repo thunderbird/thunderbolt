@@ -1,12 +1,14 @@
 'use client'
 
-import { Brain, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Brain, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useSettings } from '@/hooks/use-settings'
 import { authClient } from '@/lib/auth-client'
+import { isLocalhostUrl } from '@/lib/utils'
 
 type SignInModalProps = {
   open: boolean
@@ -16,6 +18,8 @@ type SignInModalProps = {
 type ModalState = 'idle' | 'sending' | 'sent' | 'error'
 
 export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const [email, setEmail] = useState('')
   const [state, setState] = useState<ModalState>('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -58,16 +62,32 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
         {state === 'sent' ? (
           <>
             <DialogHeader className="sr-only">
-              <DialogTitle>Check your email</DialogTitle>
+              <DialogTitle>{isLocalhost ? 'Check the backend logs' : 'Check your email'}</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col items-center gap-4 py-6">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
-              </div>
+              {isLocalhost ? (
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                  <AlertTriangle className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
+                </div>
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                  <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+              )}
               <div className="text-center">
-                <p className="text-xl font-semibold">Check your email</p>
+                <p className="text-xl font-semibold">{isLocalhost ? 'Check the backend logs' : 'Check your email'}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  We sent a magic link to <span className="font-medium text-foreground">{email}</span>
+                  {isLocalhost ? (
+                    <>
+                      You appear to be using a{' '}
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check
+                      your backend server logs for the magic link.
+                    </>
+                  ) : (
+                    <>
+                      We sent a magic link to <span className="font-medium text-foreground">{email}</span>
+                    </>
+                  )}
                 </p>
               </div>
               <Button variant="outline" className="mt-2" onClick={() => handleOpenChange(false)}>

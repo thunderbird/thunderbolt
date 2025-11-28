@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
-
-import ChatDetailPage from '@/chats/detail'
+import { lazy } from 'react'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HttpClientProvider } from '@/contexts'
@@ -12,19 +11,10 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
-import DevSettingsPage from '@/settings/dev-settings'
-import { default as Settings } from '@/settings/index'
-import IntegrationsPage from '@/settings/integrations'
-import McpServersPage from '@/settings/mcp-servers'
-import ModelsPage from '@/settings/models'
-import PreferencesSettingsPage from '@/settings/preferences'
-import TasksPage from '@/tasks'
-import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { ContentViewProvider } from './content-view/context'
-import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import { useSettings } from './hooks/use-settings'
@@ -34,6 +24,17 @@ import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
+
+const ChatDetailPage = lazy(() => import('@/chats/detail'))
+const TasksPage = lazy(() => import('@/tasks'))
+const AutomationsPage = lazy(() => import('@/automations'))
+const MessageSimulatorPage = lazy(() => import('@/devtools/message-simulator'))
+const Settings = lazy(() => import('@/settings'))
+const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
+const ModelsPage = lazy(() => import('@/settings/models'))
+const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
+const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+const DevSettingsPage = lazy(() => import('@/settings/dev-settings'))
 
 const queryClient = new QueryClient()
 

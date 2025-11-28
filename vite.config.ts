@@ -25,6 +25,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       external: ['bun:sqlite'],
+      treeshake: 'smallest',
     },
   },
   plugins: [

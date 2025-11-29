@@ -187,7 +187,12 @@ export const aiFetchStreamingResponse = async ({
     const MAX_STEPS = 20
     const MAX_ATTEMPTS = 2
 
-    const messageMetadata = () => ({ modelId })
+    const messageMetadata = ({ part }: { part: { type: string; usage?: unknown } }) => {
+      if (part.type === 'finish-step') {
+        return { modelId, usage: part.usage }
+      }
+      return { modelId }
+    }
 
     /**
      * Run a single streamText attempt and return the result along with metadata

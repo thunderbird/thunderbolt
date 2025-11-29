@@ -184,8 +184,8 @@ export const aiFetchStreamingResponse = async ({
       ],
     })
 
-    const MAX_STEPS = 20
-    const MAX_ATTEMPTS = 2
+    const maxSteps = 20
+    const maxAttempts = 2
 
     const messageMetadata = ({ part }: { part: { type: string; usage?: LanguageModelV2Usage } }) => {
       if (part.type === 'finish-step') {
@@ -204,11 +204,11 @@ export const aiFetchStreamingResponse = async ({
         system: systemPrompt,
         messages: inputMessages,
         tools: supportsTools ? toolset : undefined,
-        stopWhen: stepCountIs(MAX_STEPS),
+        stopWhen: stepCountIs(maxSteps),
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           // Final step: disable tools to force a response
-          if (steps.length >= MAX_STEPS - 1) {
+          if (steps.length >= maxSteps - 1) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
               activeTools: [],
@@ -278,11 +278,11 @@ export const aiFetchStreamingResponse = async ({
         let attemptNumber = 1
         let isRetry = false
 
-        while (attemptNumber <= MAX_ATTEMPTS) {
+        while (attemptNumber <= maxAttempts) {
           const result = runStreamText(currentMessages)
 
           // If this is not the last possible attempt, we need to check for empty response
-          if (attemptNumber < MAX_ATTEMPTS) {
+          if (attemptNumber < maxAttempts) {
             // Merge the stream without finish event (in case we need to retry)
             writer.merge(
               result.toUIMessageStream<ThunderboltUIMessage>({

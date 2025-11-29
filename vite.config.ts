@@ -7,6 +7,8 @@ import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import { bundleMigrations } from './src/db/bundle-migrations'
+import viteCompression from 'vite-plugin-compression'
+
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -28,6 +30,12 @@ export default defineConfig({
     },
   },
   plugins: [
+    react(),
+    tailwindcss(),
+    viteCompression({
+      algorithm: 'brotliCompress',
+      ext: '.br',
+    }),
     {
       name: 'bundle-migrations',
       async buildStart() {
@@ -37,8 +45,6 @@ export default defineConfig({
         })
       },
     },
-    tailwindcss(),
-    react(),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

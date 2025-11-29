@@ -185,7 +185,7 @@ export const aiFetchStreamingResponse = async ({
     })
 
     const MAX_STEPS = 20
-    const MAX_RETRIES = 2
+    const MAX_ATTEMPTS = 2
 
     const messageMetadata = () => ({ modelId })
 
@@ -266,16 +266,15 @@ export const aiFetchStreamingResponse = async ({
         let currentMessages = convertToModelMessages(messages)
         let attemptNumber = 1
 
-        while (attemptNumber <= MAX_RETRIES) {
+        while (attemptNumber <= MAX_ATTEMPTS) {
           const result = runStreamText(currentMessages)
 
           // If this is not the last possible attempt, we need to check for empty response
-          if (attemptNumber < MAX_RETRIES) {
-            // Merge the stream but don't send finish event yet (we might retry)
+          if (attemptNumber < MAX_ATTEMPTS) {
+            // Merge the stream and wait for completion to check if retry needed
             writer.merge(
               result.toUIMessageStream<ThunderboltUIMessage>({
                 sendReasoning: true,
-                sendFinish: false,
                 messageMetadata,
               }),
             )

@@ -202,21 +202,7 @@ export const aiFetchStreamingResponse = async ({
         stopWhen: stepCountIs(MAX_STEPS),
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
-          // Check if we've had many tool-call steps - this pattern often precedes the "empty response" bug
-          const totalToolCallSteps = steps.filter((s) => s.finishReason === 'tool-calls').length
-          if (totalToolCallSteps >= 6 && steps.length >= 7) {
-            return {
-              messages: [
-                ...stepMessages,
-                {
-                  role: 'user' as const,
-                  content:
-                    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now.',
-                },
-              ],
-            }
-          }
-
+          // Final step: disable tools to force a response
           if (steps.length >= MAX_STEPS - 1) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
@@ -227,6 +213,21 @@ export const aiFetchStreamingResponse = async ({
                   role: 'user' as const,
                   content:
                     'RESPOND NOW. Provide your answer using the information you have gathered. Do not ask questions—give your best response immediately.',
+                },
+              ],
+            }
+          }
+
+          // Nudge after many tool calls (but not on final step)
+          const totalToolCallSteps = steps.filter((s) => s.finishReason === 'tool-calls').length
+          if (totalToolCallSteps >= 6) {
+            return {
+              messages: [
+                ...stepMessages,
+                {
+                  role: 'user' as const,
+                  content:
+                    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now.',
                 },
               ],
             }

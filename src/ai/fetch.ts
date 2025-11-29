@@ -334,6 +334,16 @@ export const aiFetchStreamingResponse = async ({
               attemptNumber++
               continue
             }
+
+            // Empty response with no tool calls - nothing to retry, send finish and exit
+            writer.merge(
+              result.toUIMessageStream<ThunderboltUIMessage>({
+                sendReasoning: false,
+                sendStart: false,
+                messageMetadata,
+              }),
+            )
+            return
           }
 
           // Last attempt or no tool calls - just stream normally

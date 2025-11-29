@@ -202,10 +202,9 @@ export const aiFetchStreamingResponse = async ({
         stopWhen: stepCountIs(MAX_STEPS),
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
-          // Check if we've had multiple tool-call steps without any text response
-          // This pattern often precedes the "empty response" bug
-          const toolCallStepsInARow = steps.filter((s) => s.finishReason === 'tool-calls').length
-          if (toolCallStepsInARow >= 6 && steps.length >= 7) {
+          // Check if we've had many tool-call steps - this pattern often precedes the "empty response" bug
+          const totalToolCallSteps = steps.filter((s) => s.finishReason === 'tool-calls').length
+          if (totalToolCallSteps >= 6 && steps.length >= 7) {
             return {
               messages: [
                 ...stepMessages,

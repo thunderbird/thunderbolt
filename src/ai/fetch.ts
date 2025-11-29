@@ -266,21 +266,26 @@ export const aiFetchStreamingResponse = async ({
     }
 
     // Use createUIMessageStream to handle retries
+    // Following the official SDK pattern for multi-step streams:
+    // - First stream: sendFinish: false (in case we need to continue)
+    // - Continuation stream: sendStart: false (continues same message)
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
         let currentMessages = convertToModelMessages(messages)
         let attemptNumber = 1
+        let isRetry = false
 
         while (attemptNumber <= MAX_ATTEMPTS) {
           const result = runStreamText(currentMessages)
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < MAX_ATTEMPTS) {
-            // Merge the stream and wait for completion to check if retry needed
+            // Merge the stream without finish event (in case we need to retry)
             writer.merge(
               result.toUIMessageStream<ThunderboltUIMessage>({
                 sendReasoning: true,
                 messageMetadata,
+                sendFinish: false,
               }),
             )
 
@@ -327,6 +332,7 @@ export const aiFetchStreamingResponse = async ({
                 },
               ]
 
+              isRetry = true
               attemptNumber++
               continue
             }
@@ -335,11 +341,12 @@ export const aiFetchStreamingResponse = async ({
             return
           }
 
-          // Last attempt or no tool calls - just stream normally
+          // Last attempt - continue same message if retry, otherwise normal
           writer.merge(
             result.toUIMessageStream<ThunderboltUIMessage>({
               sendReasoning: true,
               messageMetadata,
+              sendStart: isRetry ? false : undefined,
             }),
           )
           return

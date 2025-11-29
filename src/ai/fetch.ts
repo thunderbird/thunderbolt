@@ -18,6 +18,8 @@ import ky, { type KyInstance } from 'ky'
 
 import {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   extractReasoningMiddleware,
   stepCountIs,
   streamText,
@@ -183,92 +185,170 @@ export const aiFetchStreamingResponse = async ({
     })
 
     const MAX_STEPS = 20
+    const MAX_RETRIES = 2
 
-    const result = streamText({
-      temperature: 0.2,
-      model: wrappedModel,
-      system: systemPrompt,
-      messages: convertToModelMessages(messages),
-      tools: supportsTools ? toolset : undefined,
-      stopWhen: stepCountIs(MAX_STEPS),
+    const messageMetadata = () => ({ modelId })
 
-      // Guarantee the last allowed step cannot call tools
-      prepareStep: ({ steps, stepNumber, messages }) => {
-        if (steps.length >= MAX_STEPS - 1) {
-          console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
-          return {
-            activeTools: [],
-            messages: [
-              ...messages,
-              {
-                // You might think that "system" would make more sense, but it many providers ignore system messages in the middle of the conversation.
-                role: 'user',
-                content:
-                  'This is the LAST STEP. You MUST reply with a final message NOW. If you have enough information to provide me with a high quality response using prior tool results, respond with your final answer. If you do not have enough information, ask if I would like you to continue.',
-              },
-            ],
+    /**
+     * Run a single streamText attempt and return the result along with metadata
+     */
+    const runStreamText = (inputMessages: ReturnType<typeof convertToModelMessages>) => {
+      return streamText({
+        temperature: 0.2,
+        model: wrappedModel,
+        system: systemPrompt,
+        messages: inputMessages,
+        tools: supportsTools ? toolset : undefined,
+        stopWhen: stepCountIs(MAX_STEPS),
+
+        prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
+          // Check if we've had multiple tool-call steps without any text response
+          // This pattern often precedes the "empty response" bug
+          const toolCallStepsInARow = steps.filter((s) => s.finishReason === 'tool-calls').length
+          if (toolCallStepsInARow >= 6 && steps.length >= 7) {
+            return {
+              messages: [
+                ...stepMessages,
+                {
+                  role: 'user' as const,
+                  content:
+                    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now.',
+                },
+              ],
+            }
           }
+
+          if (steps.length >= MAX_STEPS - 1) {
+            console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
+            return {
+              activeTools: [],
+              messages: [
+                ...stepMessages,
+                {
+                  role: 'user' as const,
+                  content:
+                    'RESPOND NOW. Provide your answer using the information you have gathered. Do not ask questions—give your best response immediately.',
+                },
+              ],
+            }
+          }
+        },
+
+        abortSignal,
+        onStepFinish: (step) => {
+          console.info('step', {
+            text: step.text,
+            finishReason: step.finishReason,
+            toolCallCount: step.toolCalls?.length || 0,
+          })
+
+          // When a step includes tool calls, log their names and arguments for easier debugging
+          step.toolCalls?.forEach((call, idx) => {
+            console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
+            console.log('Arguments:', call)
+            console.groupEnd()
+          })
+        },
+        onFinish: (finish) => {
+          console.info('finish', {
+            text: finish.text,
+            finishReason: finish.finishReason,
+            toolCallCount: finish.toolCalls?.length || 0,
+            usage: finish.totalUsage,
+          })
+        },
+      })
+    }
+
+    // Use createUIMessageStream to handle retries
+    const stream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        let currentMessages = convertToModelMessages(messages)
+        let attemptNumber = 1
+
+        while (attemptNumber <= MAX_RETRIES) {
+          const result = runStreamText(currentMessages)
+
+          // If this is not the last possible attempt, we need to check for empty response
+          if (attemptNumber < MAX_RETRIES) {
+            // Merge the stream but don't send finish event yet (we might retry)
+            writer.merge(
+              result.toUIMessageStream<ThunderboltUIMessage>({
+                sendReasoning: true,
+                sendFinish: false,
+                messageMetadata,
+              }),
+            )
+
+            // Wait for the stream to complete to check the result
+            const response = await result.response
+            const totalText = response.messages.reduce((acc, msg) => {
+              if (msg.role === 'assistant' && 'content' in msg) {
+                const textContent = Array.isArray(msg.content)
+                  ? msg.content
+                      .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+                      .map((c) => c.text)
+                      .join('')
+                  : typeof msg.content === 'string'
+                    ? msg.content
+                    : ''
+                return acc + textContent
+              }
+              return acc
+            }, '')
+
+            const hadToolCalls = response.messages.some(
+              (msg) =>
+                msg.role === 'assistant' &&
+                'content' in msg &&
+                Array.isArray(msg.content) &&
+                msg.content.some((c) => c.type === 'tool-call'),
+            )
+
+            // If we got a non-empty response, we're done
+            if (totalText.length > 0) {
+              // Send the finish event now
+              writer.merge(
+                result.toUIMessageStream<ThunderboltUIMessage>({
+                  sendReasoning: false,
+                  sendStart: false,
+                  messageMetadata,
+                }),
+              )
+              return
+            }
+
+            // Empty response detected - prepare for retry
+            if (hadToolCalls) {
+              console.info('Empty response detected, retrying with nudge...')
+              currentMessages = [
+                ...currentMessages,
+                ...response.messages,
+                {
+                  role: 'user' as const,
+                  content:
+                    'You called tools but did not provide a response. Please synthesize all the information you gathered and respond to me now. Do not call any more tools.',
+                },
+              ]
+
+              attemptNumber++
+              continue
+            }
+          }
+
+          // Last attempt or no tool calls - just stream normally
+          writer.merge(
+            result.toUIMessageStream<ThunderboltUIMessage>({
+              sendReasoning: true,
+              messageMetadata,
+            }),
+          )
+          return
         }
-      },
-
-      abortSignal,
-      // providerOptions: {
-      //   custom: {
-      //     // reasoningEffort: 'low',
-      //   } satisfies OpenAICompatibleProviderOptions,
-      // },
-      onStepFinish: (step) => {
-        console.info('step', {
-          text: step.text,
-          finishReason: step.finishReason,
-          toolCallCount: step.toolCalls?.length || 0,
-        })
-
-        // When a step includes tool calls, log their names and arguments for easier debugging
-        step.toolCalls?.forEach((call, idx) => {
-          console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
-          console.log('Arguments:', call.input)
-          console.groupEnd()
-        })
-      },
-      onFinish: async (finish) => {
-        console.info('finish', {
-          text: finish.text,
-          finishReason: finish.finishReason,
-          toolCallCount: finish.toolCalls?.length || 0,
-          usage: finish.totalUsage,
-        })
-      },
-      onError: (error) => {
-        console.error('error', error)
-      },
-      onChunk: () => {
-        // console.log('chunk')
       },
     })
 
-    return result.toUIMessageStreamResponse<ThunderboltUIMessage>({
-      sendReasoning: true,
-      messageMetadata: ({ part }) => {
-        switch (part.type) {
-          case 'finish-step':
-            return {
-              modelId,
-              usage: part.usage,
-            }
-          case 'finish':
-            return {
-              modelId,
-              // If you wanted to get the total usage for the entire conversation, you could do this:
-              // usage: part.totalUsage,
-            }
-          default:
-            return {
-              modelId,
-            }
-        }
-      },
-    })
+    return createUIMessageStreamResponse({ stream })
   } catch (error) {
     console.error('aiFetchStreamingResponse error', error)
     return new Response(JSON.stringify({ error: (error as Error).message }), {

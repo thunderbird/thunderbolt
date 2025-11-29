@@ -91,7 +91,6 @@
     "tailwindcss-animate": "^1.0.7",
     "tauri-plugin-m3": "^0.2.2",
     "uuid": "^11.1.0",
-    "vite-plugin-compression": "^0.5.1",
     "zod": "^4.0.17",
     "zustand": "^5.0.8"
   },

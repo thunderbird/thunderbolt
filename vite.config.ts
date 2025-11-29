@@ -7,7 +7,6 @@ import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import { bundleMigrations } from './src/db/bundle-migrations'
-import viteCompression from 'vite-plugin-compression'
 
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
@@ -25,19 +24,12 @@ const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.a
 export default defineConfig({
   build: {
     sourcemap: true,
-    assetsInlineLimit: 0,
     rollupOptions: {
       external: ['bun:sqlite'],
       treeshake: 'smallest',
     },
   },
   plugins: [
-    react(),
-    tailwindcss(),
-    viteCompression({
-      algorithm: 'brotliCompress',
-      ext: '.br',
-    }),
     {
       name: 'bundle-migrations',
       async buildStart() {
@@ -47,6 +39,8 @@ export default defineConfig({
         })
       },
     },
+    tailwindcss(),
+    react(),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

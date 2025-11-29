@@ -8,7 +8,7 @@ import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { LanguageModelV2 } from '@ai-sdk/provider'
+import type { LanguageModelV2, LanguageModelV2Usage } from '@ai-sdk/provider'
 import ky, { type KyInstance } from 'ky'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -187,7 +187,7 @@ export const aiFetchStreamingResponse = async ({
     const MAX_STEPS = 20
     const MAX_ATTEMPTS = 2
 
-    const messageMetadata = ({ part }: { part: { type: string; usage?: unknown } }) => {
+    const messageMetadata = ({ part }: { part: { type: string; usage?: LanguageModelV2Usage } }) => {
       if (part.type === 'finish-step') {
         return { modelId, usage: part.usage }
       }

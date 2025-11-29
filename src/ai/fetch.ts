@@ -307,14 +307,6 @@ export const aiFetchStreamingResponse = async ({
 
             // If we got a non-empty response, we're done
             if (totalText.length > 0) {
-              // Send the finish event now
-              writer.merge(
-                result.toUIMessageStream<ThunderboltUIMessage>({
-                  sendReasoning: false,
-                  sendStart: false,
-                  messageMetadata,
-                }),
-              )
               return
             }
 
@@ -335,14 +327,7 @@ export const aiFetchStreamingResponse = async ({
               continue
             }
 
-            // Empty response with no tool calls - nothing to retry, send finish and exit
-            writer.merge(
-              result.toUIMessageStream<ThunderboltUIMessage>({
-                sendReasoning: false,
-                sendStart: false,
-                messageMetadata,
-              }),
-            )
+            // Empty response with no tool calls - nothing to retry
             return
           }
 

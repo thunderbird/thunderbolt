@@ -317,8 +317,9 @@ export const aiFetchStreamingResponse = async ({
                 msg.content.some((c) => c.type === 'tool-call'),
             )
 
-            // If we got a non-empty response, we're done
+            // If we got a non-empty response, we're done - send finish event
             if (totalText.trim().length > 0) {
+              writer.write({ type: 'finish' })
               return
             }
 
@@ -340,7 +341,8 @@ export const aiFetchStreamingResponse = async ({
               continue
             }
 
-            // Empty response with no tool calls - nothing to retry
+            // Empty response with no tool calls - send finish event and return
+            writer.write({ type: 'finish' })
             return
           }
 

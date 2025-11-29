@@ -262,6 +262,9 @@ export const aiFetchStreamingResponse = async ({
             usage: finish.totalUsage,
           })
         },
+        onError: (error) => {
+          console.error('streamText error', error)
+        },
       })
     }
 
@@ -315,7 +318,7 @@ export const aiFetchStreamingResponse = async ({
             )
 
             // If we got a non-empty response, we're done
-            if (totalText.length > 0) {
+            if (totalText.trim().length > 0) {
               return
             }
 
@@ -346,7 +349,7 @@ export const aiFetchStreamingResponse = async ({
             result.toUIMessageStream<ThunderboltUIMessage>({
               sendReasoning: true,
               messageMetadata,
-              sendStart: isRetry ? false : undefined,
+              ...(isRetry && { sendStart: false }),
             }),
           )
           return

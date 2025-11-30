@@ -30,12 +30,12 @@ export default defineConfig({
       external: ['bun:sqlite'],
       treeshake: 'smallest',
       output: {
-        manualChunks: {
-          'ai-sdk': ['ai', '@ai-sdk/react', '@ai-sdk/openai'],
-          markdown: ['marked', 'mdast-util-from-markdown', 'micromark'],
-          analytics: ['posthog-js'],
-          motion: ['framer-motion'],
-        },
+        // manualChunks: {
+        //   'ai-sdk': ['ai', '@ai-sdk/react', '@ai-sdk/openai'],
+        //   markdown: ['marked', 'mdast-util-from-markdown', 'micromark'],
+        //   analytics: ['posthog-js'],
+        //   motion: ['framer-motion'],
+        // },
       },
     },
   },

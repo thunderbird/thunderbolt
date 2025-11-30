@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { AppErrorScreen } from './components/app-error-screen'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import Loading from './loading'
@@ -18,7 +18,11 @@ export const App = () => {
       return <Loading />
     }
 
-    return <AppContent initData={initData} />
+    return (
+      <Suspense>
+        <AppContent initData={initData} />
+      </Suspense>
+    )
   }
 
   return (

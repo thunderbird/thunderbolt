@@ -19,7 +19,7 @@ export const App = () => {
     }
 
     return (
-      <Suspense>
+      <Suspense fallback={<Loading />}>
         <AppContent initData={initData} />
       </Suspense>
     )

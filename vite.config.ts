@@ -70,6 +70,30 @@ export default defineConfig({
         })
       },
     },
+    {
+      name: 'preload-css',
+      apply: 'build',
+      transformIndexHtml(html, { bundle }) {
+        if (!bundle) return html
+
+        // find the main CSS file emitted by Vite
+        const cssFile = Object.keys(bundle).find((file) => file.endsWith('.css'))
+        if (!cssFile) return html
+
+        const preloadTag = `<link rel="preload" as="style" href="/${cssFile}">`
+
+        // replace the default blocking <link rel="stylesheet" ...>
+        const asyncCssTag = `<link rel="stylesheet" href="/${cssFile}" media="print" onload="this.media='all'">`
+
+        // Remove the original stylesheet and replace with async version
+        html = html.replace(new RegExp(`<link[^>]+${cssFile}[^>]*>`), asyncCssTag)
+
+        // Inject preload before closing </head>
+        html = html.replace('</head>', `  ${preloadTag}\n</head>`)
+
+        return html
+      },
+    },
   ],
   resolve: {
     alias: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildMagicLinkUrl, getValidatedOrigin, parseTrustedOrigins } from './utils'
+import { buildMagicLinkUrl, getValidatedOrigin, isDeepLinkPlatform, parseTrustedOrigins } from './utils'
 
 describe('parseTrustedOrigins', () => {
   it('parses comma-separated origins', () => {
@@ -72,9 +72,80 @@ describe('getValidatedOrigin', () => {
   })
 })
 
+describe('isDeepLinkPlatform', () => {
+  it('returns true for iOS platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'ios' },
+    })
+    expect(isDeepLinkPlatform(request)).toBe(true)
+  })
+
+  it('returns true for Android platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'android' },
+    })
+    expect(isDeepLinkPlatform(request)).toBe(true)
+  })
+
+  it('returns false for web platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'web' },
+    })
+    expect(isDeepLinkPlatform(request)).toBe(false)
+  })
+
+  it('returns false for desktop platforms', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'macos' },
+    })
+    expect(isDeepLinkPlatform(request)).toBe(false)
+  })
+
+  it('returns false when request is undefined', () => {
+    expect(isDeepLinkPlatform(undefined)).toBe(false)
+  })
+
+  it('returns false when platform header is missing', () => {
+    const request = new Request('https://api.example.com')
+    expect(isDeepLinkPlatform(request)).toBe(false)
+  })
+})
+
 describe('buildMagicLinkUrl', () => {
-  it('builds URL with origin and token', () => {
+  it('builds URL with origin and token for non-mobile platforms', () => {
     const result = buildMagicLinkUrl('https://app.example.com', 'abc123')
+    expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
+  })
+
+  it('uses deep link URL for iOS platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'ios' },
+    })
+    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
+    expect(result).toBe('https://thunderbolt.io/auth/verify?token=abc123')
+  })
+
+  it('uses deep link URL for Android platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'android' },
+    })
+    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
+    expect(result).toBe('https://thunderbolt.io/auth/verify?token=abc123')
+  })
+
+  it('uses origin URL for web platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'web' },
+    })
+    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
+    expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
+  })
+
+  it('uses origin URL for desktop platform', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { 'x-client-platform': 'macos' },
+    })
+    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
     expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
   })
 

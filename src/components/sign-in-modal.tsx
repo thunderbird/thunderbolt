@@ -103,14 +103,14 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
                 <DialogTitle className="text-2xl font-semibold">Unlock more features</DialogTitle>
                 <p className="mt-1 text-sm text-muted-foreground">Sign in to get more out of Thunderbolt</p>
               </div>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 text-left">
                 <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/15">
                     <Brain className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">Premium AI</p>
-                    <p className="text-xs text-muted-foreground">Get more power with Anthropic Claude models</p>
+                    <p className="text-xs text-muted-foreground">More powerful models from Anthropic</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">

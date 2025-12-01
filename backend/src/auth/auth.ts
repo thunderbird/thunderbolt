@@ -32,7 +32,8 @@ export const createAuth = (database: typeof DbType) =>
         sendMagicLink: async ({ email, token }, ctx) => {
           // Use the origin from the request if trusted, otherwise fallback to default
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          const magicLinkUrl = buildMagicLinkUrl(origin, token)
+          // Use deep link URL for mobile platforms so the email opens the app
+          const magicLinkUrl = buildMagicLinkUrl(origin, token, ctx?.request)
 
           console.info(`📧 Sending magic link to ${email}`)
 

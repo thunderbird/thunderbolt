@@ -3,7 +3,12 @@ import { createElement } from 'react'
 import { BrowserRouter } from 'react-router'
 import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { determineNavigationTarget, parseOAuthCallback, useDeepLinkListener } from './use-deep-link-listener'
+import {
+  determineNavigationTarget,
+  parseMagicLinkCallback,
+  parseOAuthCallback,
+  useDeepLinkListener,
+} from './use-deep-link-listener'
 
 const wrapper = ({ children }: { children: React.ReactNode }) => createElement(BrowserRouter, null, children)
 
@@ -80,6 +85,54 @@ describe('parseOAuthCallback', () => {
   it('returns null for non-OAuth URL', () => {
     const url = new URL('https://thunderbolt.io/')
     const result = parseOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+})
+
+describe('parseMagicLinkCallback', () => {
+  it('parses valid magic link callback URL with token', () => {
+    const url = new URL('https://thunderbolt.io/auth/verify?token=abc123')
+    const result = parseMagicLinkCallback(url)
+
+    expect(result).toEqual({
+      token: 'abc123',
+    })
+  })
+
+  it('handles magic link URL with nested path', () => {
+    const url = new URL('https://thunderbolt.io/auth/verify/extra?token=abc123')
+    const result = parseMagicLinkCallback(url)
+
+    expect(result).toEqual({
+      token: 'abc123',
+    })
+  })
+
+  it('returns null when token is missing', () => {
+    const url = new URL('https://thunderbolt.io/auth/verify')
+    const result = parseMagicLinkCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for wrong hostname', () => {
+    const url = new URL('https://evil.com/auth/verify?token=abc123')
+    const result = parseMagicLinkCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for wrong path', () => {
+    const url = new URL('https://thunderbolt.io/different/path?token=abc123')
+    const result = parseMagicLinkCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for OAuth callback URL', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc&state=xyz')
+    const result = parseMagicLinkCallback(url)
 
     expect(result).toBeNull()
   })
@@ -327,6 +380,48 @@ describe('useDeepLinkListener hook', () => {
     expect(customHandlerCalled).toBe(false)
   })
 
+  it('does NOT call custom handler for magic link callback URLs', async () => {
+    const mockUrls = ['https://thunderbolt.io/auth/verify?token=abc123']
+    let customHandlerCalled = false
+    let callback: ((urls: string[]) => void) | null = null
+
+    const getCurrent = () => Promise.resolve(null)
+    const onOpenUrl = (cb: (urls: string[]) => void): Promise<() => Promise<void>> => {
+      callback = cb
+      return Promise.resolve(async () => {})
+    }
+    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
+
+    const customHandler = async (_urls: string[]) => {
+      customHandlerCalled = true
+    }
+
+    renderHook(
+      () =>
+        useDeepLinkListener(customHandler, {
+          isTauri: () => true,
+          getCurrent,
+          onOpenUrl,
+          getSettings,
+        }),
+      { wrapper },
+    )
+
+    // Wait for setup
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Trigger magic link callback
+    expect(callback).not.toBeNull()
+    await act(async () => {
+      callback!(mockUrls)
+    })
+
+    // Handler should NOT have been called for magic link URL
+    expect(customHandlerCalled).toBe(false)
+  })
+
   it('calls custom handler only once with multiple non-OAuth URLs', async () => {
     const mockUrls = ['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2', 'https://thunderbolt.io/path3']
     let customHandlerCallCount = 0
@@ -372,10 +467,11 @@ describe('useDeepLinkListener hook', () => {
     expect(receivedUrls).toEqual(mockUrls)
   })
 
-  it('filters out OAuth URLs and only passes non-OAuth URLs to handler', async () => {
+  it('filters out OAuth and magic link URLs and only passes unhandled URLs to handler', async () => {
     const mockUrls = [
       'https://thunderbolt.io/path1',
       'https://thunderbolt.io/oauth/callback?code=abc123&state=xyz',
+      'https://thunderbolt.io/auth/verify?token=token123',
       'https://thunderbolt.io/path2',
     ]
     let receivedUrls: string[] = []
@@ -414,7 +510,7 @@ describe('useDeepLinkListener hook', () => {
       callback!(mockUrls)
     })
 
-    // Handler should only receive non-OAuth URLs
+    // Handler should only receive unhandled URLs (not OAuth or magic link)
     expect(receivedUrls).toEqual(['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2'])
   })
 

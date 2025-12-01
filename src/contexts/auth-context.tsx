@@ -1,21 +1,29 @@
 'use client'
 
 import { useSettings } from '@/hooks/use-settings'
+import { getPlatform } from '@/lib/platform'
 import { magicLinkClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
+ * Includes platform header so backend can use deep links for mobile
  */
 const createAuthClientInstance = (cloudUrl: string) => {
   // Remove trailing /v1 if present since Better Auth adds /api/auth
   const baseURL = cloudUrl.replace(/\/v1$/, '')
+  const platform = getPlatform()
 
   return createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [magicLinkClient()],
+    fetchOptions: {
+      headers: {
+        'X-Client-Platform': platform,
+      },
+    },
   })
 }
 

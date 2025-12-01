@@ -1,6 +1,6 @@
-import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { getSettings } from '@/dal'
 import { isTauri } from '@/lib/platform'
+import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -12,9 +12,14 @@ type OAuthCallbackData = {
   error: string | null
 }
 
+type MagicLinkData = {
+  token: string
+}
+
 type NavigateTarget = {
   path: string
-  oauth: OAuthCallbackData
+  oauth?: OAuthCallbackData
+  magicLink?: MagicLinkData
 }
 
 /**
@@ -56,6 +61,23 @@ export const parseOAuthCallback = (url: URL): OAuthCallbackData | null => {
     state,
     error: errorDescription || error,
   }
+}
+
+/**
+ * Parses magic link callback parameters from a deep link URL
+ * Exported for testing
+ */
+export const parseMagicLinkCallback = (url: URL): MagicLinkData | null => {
+  if (url.hostname !== 'thunderbolt.io' || !url.pathname.startsWith('/auth/verify')) {
+    return null
+  }
+
+  const token = url.searchParams.get('token')
+  if (!token) {
+    return null
+  }
+
+  return { token }
 }
 
 type DeepLinkDependencies = {
@@ -103,7 +125,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
     }
 
     const handleDeepLinks = async (urls: string[]) => {
-      const nonOAuthUrls: string[] = []
+      const unhandledUrls: string[] = []
 
       for (const urlString of urls) {
         try {
@@ -120,18 +142,30 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
               state: { oauth: target.oauth },
               replace: true,
             })
-          } else {
-            // Collect non-OAuth URLs for custom handler
-            nonOAuthUrls.push(urlString)
+            continue
           }
+
+          // Handle magic link callback deep links
+          const magicLinkData = parseMagicLinkCallback(url)
+          if (magicLinkData) {
+            // Navigate to the magic link verify page with the token as a query param
+            // The MagicLinkVerify component will handle the verification
+            navigate(`/auth/verify?token=${encodeURIComponent(magicLinkData.token)}`, {
+              replace: true,
+            })
+            continue
+          }
+
+          // Collect unhandled URLs for custom handler
+          unhandledUrls.push(urlString)
         } catch (err) {
           console.error('Failed to handle deep link:', urlString, err)
         }
       }
 
-      // Call custom handler only for non-OAuth URLs, once
-      if (handler && nonOAuthUrls.length > 0) {
-        await handler(nonOAuthUrls)
+      // Call custom handler only for unhandled URLs, once
+      if (handler && unhandledUrls.length > 0) {
+        await handler(unhandledUrls)
       }
     }
 

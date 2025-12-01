@@ -10,7 +10,6 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
-import { ThemeProvider } from '@/lib/theme-provider'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { ContentViewProvider } from './content-view/context'
@@ -40,22 +39,20 @@ export default function AppContent({ initData }: { initData: InitData }) {
     <QueryClientProvider client={queryClient}>
       <HttpClientProvider httpClient={initData.httpClient}>
         <PostHogProvider client={initData.posthogClient}>
-          <ThemeProvider defaultTheme="system" storageKey="ui_theme">
-            <TrayProvider tray={initData.tray} window={initData.window}>
-              <MCPProvider>
-                <SidebarProvider>
-                  <ContentViewProvider
-                    initialSideviewType={initData.sideviewType}
-                    initialSideviewId={initData.sideviewId}
-                  >
-                    <BrowserRouter>
-                      <AppRoutes />
-                    </BrowserRouter>
-                  </ContentViewProvider>
-                </SidebarProvider>
-              </MCPProvider>
-            </TrayProvider>
-          </ThemeProvider>
+          <TrayProvider tray={initData.tray} window={initData.window}>
+            <MCPProvider>
+              <SidebarProvider>
+                <ContentViewProvider
+                  initialSideviewType={initData.sideviewType}
+                  initialSideviewId={initData.sideviewId}
+                >
+                  <BrowserRouter>
+                    <AppRoutes />
+                  </BrowserRouter>
+                </ContentViewProvider>
+              </SidebarProvider>
+            </MCPProvider>
+          </TrayProvider>
         </PostHogProvider>
       </HttpClientProvider>
     </QueryClientProvider>

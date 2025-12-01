@@ -1,4 +1,12 @@
 import { createPrompt } from '@/ai/prompt'
+import {
+  extractTextFromMessages,
+  hasToolCalls,
+  isFinalStep,
+  NUDGE_MESSAGES,
+  shouldRetry,
+  shouldShowPreventiveNudge,
+} from '@/ai/step-logic'
 import { getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
@@ -208,33 +216,18 @@ export const aiFetchStreamingResponse = async ({
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           // Final step: disable tools to force a response
-          if (steps.length >= maxSteps - 1) {
+          if (isFinalStep(steps.length, maxSteps)) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
               activeTools: [],
-              messages: [
-                ...stepMessages,
-                {
-                  role: 'user' as const,
-                  content:
-                    'RESPOND NOW. Provide your answer using the information you have gathered. Do not ask questions—give your best response immediately.',
-                },
-              ],
+              messages: [...stepMessages, { role: 'user' as const, content: NUDGE_MESSAGES.finalStep }],
             }
           }
 
           // Nudge after many tool calls (but not on final step)
-          const totalToolCallSteps = steps.filter((s) => s.finishReason === 'tool-calls').length
-          if (totalToolCallSteps >= 6) {
+          if (shouldShowPreventiveNudge(steps)) {
             return {
-              messages: [
-                ...stepMessages,
-                {
-                  role: 'user' as const,
-                  content:
-                    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now.',
-                },
-              ],
+              messages: [...stepMessages, { role: 'user' as const, content: NUDGE_MESSAGES.preventive }],
             }
           }
         },
@@ -294,28 +287,8 @@ export const aiFetchStreamingResponse = async ({
 
             // Wait for the stream to complete to check the result
             const response = await result.response
-            const totalText = response.messages.reduce((acc, msg) => {
-              if (msg.role === 'assistant' && 'content' in msg) {
-                const textContent = Array.isArray(msg.content)
-                  ? msg.content
-                      .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-                      .map((c) => c.text)
-                      .join('')
-                  : typeof msg.content === 'string'
-                    ? msg.content
-                    : ''
-                return acc + textContent
-              }
-              return acc
-            }, '')
-
-            const hadToolCalls = response.messages.some(
-              (msg) =>
-                msg.role === 'assistant' &&
-                'content' in msg &&
-                Array.isArray(msg.content) &&
-                msg.content.some((c) => c.type === 'tool-call'),
-            )
+            const totalText = extractTextFromMessages(response.messages)
+            const hadToolCalls = hasToolCalls(response.messages)
 
             // If we got a non-empty response, we're done - send finish event
             if (totalText.trim().length > 0) {
@@ -323,17 +296,13 @@ export const aiFetchStreamingResponse = async ({
               return
             }
 
-            // Empty response detected - prepare for retry
-            if (hadToolCalls) {
+            // Empty response detected - prepare for retry if conditions are met
+            if (shouldRetry(totalText, hadToolCalls, attemptNumber, maxAttempts)) {
               console.info('Empty response detected, retrying with nudge...')
               currentMessages = [
                 ...currentMessages,
                 ...response.messages,
-                {
-                  role: 'user' as const,
-                  content:
-                    'You called tools but did not provide a response. Please synthesize all the information you gathered and respond to me now. Do not call any more tools.',
-                },
+                { role: 'user' as const, content: NUDGE_MESSAGES.retry },
               ]
 
               isRetry = true

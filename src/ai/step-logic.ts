@@ -13,7 +13,7 @@ export const isFinalStep = (currentStepCount: number, maxSteps: number): boolean
 
 /**
  * Check if we should show a preventive nudge to encourage the model to respond.
- * This triggers after the model has made many consecutive tool calls without responding.
+ * This triggers after the model has made many tool calls (6+ total) without responding.
  */
 export const shouldShowPreventiveNudge = (steps: Step[], threshold = 6): boolean =>
   steps.filter((s) => s.finishReason === 'tool-calls').length >= threshold

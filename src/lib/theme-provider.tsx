@@ -1,7 +1,3 @@
-import { DatabaseSingleton } from '@/db/singleton'
-import { settingsTable } from '@/db/tables'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getThemeSetting } from '@/dal'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { M3 } from 'tauri-plugin-m3'
 import { isTauri } from './platform'
@@ -32,35 +28,13 @@ export function ThemeProvider({
   storageKey = 'ui-theme',
   ...props
 }: ThemeProviderProps) {
-  const db = DatabaseSingleton.instance.db
-  const queryClient = useQueryClient()
-  const [theme, setTheme] = useState<Theme>(defaultTheme)
+  const savedTheme = window.localStorage.getItem(storageKey) as Theme | null
 
-  const { data: savedTheme } = useQuery({
-    queryKey: ['settings', storageKey],
-    queryFn: () => getThemeSetting(storageKey, defaultTheme),
-  })
+  const [theme, setTheme] = useState<Theme>(savedTheme ?? defaultTheme)
 
   useEffect(() => {
-    if (savedTheme) {
-      setTheme(savedTheme as Theme)
-    }
-  }, [savedTheme])
-
-  const saveThemeMutation = useMutation({
-    mutationFn: async (newTheme: Theme) => {
-      await db
-        .insert(settingsTable)
-        .values({ key: storageKey, value: newTheme })
-        .onConflictDoUpdate({
-          target: settingsTable.key,
-          set: { value: newTheme },
-        })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', storageKey] })
-    },
-  })
+    window.localStorage.setItem(storageKey, theme)
+  }, [storageKey, theme])
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -110,10 +84,7 @@ export function ThemeProvider({
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      setTheme(theme)
-      saveThemeMutation.mutate(theme)
-    },
+    setTheme,
   }
 
   return (

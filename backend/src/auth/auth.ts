@@ -15,7 +15,7 @@ if (!resend) {
  * Trusted origins for CORS and magic link validation
  * First origin is the default fallback for magic links
  */
-const TRUSTED_ORIGINS = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
 /**
  * Create a Better Auth instance with the provided database
@@ -26,12 +26,12 @@ export const createAuth = (database: typeof DbType) =>
     database: drizzleAdapter(database, {
       provider: 'pg',
     }),
-    trustedOrigins: TRUSTED_ORIGINS,
+    trustedOrigins: trustedOrigins,
     plugins: [
       magicLink({
         sendMagicLink: async ({ email, token }, ctx) => {
           // Use the origin from the request if trusted, otherwise fallback to default
-          const origin = getValidatedOrigin(TRUSTED_ORIGINS, ctx?.request)
+          const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
           const magicLinkUrl = buildMagicLinkUrl(origin, token)
 
           console.info(`📧 Sending magic link to ${email}`)

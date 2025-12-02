@@ -88,10 +88,16 @@ export default defineConfig({
         const asyncCssTag = `<link rel="stylesheet" href="/${cssFile}" media="print" onload="this.media='all'">`
 
         // Remove the original stylesheet and replace with async version
-        html = html.replace(new RegExp(`<link[^>]+${cssFile}[^>]*>`), asyncCssTag)
+        const stylesheetRegex = new RegExp(`<link[^>]+${cssFile}[^>]*>`)
+        const originalHtml = html
+        html = html.replace(stylesheetRegex, asyncCssTag)
 
-        // Inject preload before closing </head>
-        html = html.replace('</head>', `  ${preloadTag}\n</head>`)
+        // Only add preload tag if the replacement was successful
+        // (i.e., the HTML actually changed)
+        if (html !== originalHtml) {
+          // Inject preload before closing </head>
+          html = html.replace('</head>', `  ${preloadTag}\n</head>`)
+        }
 
         return html
       },

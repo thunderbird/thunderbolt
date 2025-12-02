@@ -12,7 +12,15 @@ import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 
 export default function ChatUI() {
-  const { chatInstance } = useChatStore(useShallow((state) => ({ chatInstance: state.chatInstance! })))
+  const { chatInstance } = useChatStore(
+    useShallow((state) => {
+      const chatItem = state.chats.get(state.selectedChatId!)
+
+      return {
+        chatInstance: chatItem!.chatInstance!,
+      }
+    }),
+  )
 
   const { messages } = useChat({ chat: chatInstance })
 

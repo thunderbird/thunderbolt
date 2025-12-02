@@ -9,9 +9,13 @@ type UseChatAutomationProps = {
 
 export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
   const { chatInstance } = useChatStore(
-    useShallow((state) => ({
-      chatInstance: state.chatInstance!,
-    })),
+    useShallow((state) => {
+      const chatItem = state.chats.get(state.selectedChatId!)
+
+      return {
+        chatInstance: chatItem!.chatInstance!,
+      }
+    }),
   )
 
   const { messages } = useChat({ chat: chatInstance })

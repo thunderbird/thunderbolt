@@ -33,7 +33,15 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
       if (!init) throw new Error('Missing init')
 
-      const { mcpClients, selectedModel } = useChatStore.getState()
+      const { mcpClients, chats, selectedChatId } = useChatStore.getState()
+
+      if (!selectedChatId) throw new Error('No selected chat')
+
+      const chatItem = chats.get(selectedChatId)
+
+      if (!chatItem) throw new Error('No chat found')
+
+      const { selectedModel } = chatItem
 
       if (!selectedModel) throw new Error('No model selected')
 
@@ -57,7 +65,15 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message }) => {
-      const { selectedModel } = useChatStore.getState()
+      const { chats, selectedChatId } = useChatStore.getState()
+
+      if (!selectedChatId) throw new Error('No selected chat')
+
+      const chatItem = chats.get(selectedChatId)
+
+      if (!chatItem) throw new Error('No chat found')
+
+      const { selectedModel } = chatItem
 
       await saveMessages({ id, messages: [message] })
 
@@ -103,8 +119,14 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
-  const saveMessages: SaveMessagesFunction = async ({ messages }) => {
-    const selectedModel = useChatStore.getState().selectedModel
+  const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
+    const { chats } = useChatStore.getState()
+
+    const chatItem = chats.get(id)
+
+    if (!chatItem) throw new Error('No chat found')
+
+    const { selectedModel } = chatItem
 
     if (!selectedModel) {
       throw new Error('No selected model')
@@ -147,18 +169,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       saveMessages,
     )
 
-    const { hydrate, reset } = useChatStore.getState()
-
-    reset()
-
-    hydrate({
-      chatInstance,
-      chatThread,
-      id,
+    useChatStore.getState().setSelectedChat({
+      chat: {
+        chatInstance,
+        chatThread,
+        id,
+        selectedModel: defaultModel,
+        triggerData,
+      },
       mcpClients,
       models,
-      selectedModel: defaultModel,
-      triggerData,
     })
 
     setIsReady(true)

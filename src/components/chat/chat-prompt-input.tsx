@@ -44,15 +44,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { chatInstance, chatThread, chatThreadId, models, sendMessage, selectedModel, setSelectedModel } =
       useChatStore(
-        useShallow((state) => ({
-          chatInstance: state.chatInstance!,
-          chatThread: state.chatThread,
-          chatThreadId: state.id!,
-          models: state.models,
-          sendMessage: state.sendMessage,
-          selectedModel: state.selectedModel!,
-          setSelectedModel: state.setSelectedModel,
-        })),
+        useShallow((state) => {
+          const chatItem = state.chats.get(state.selectedChatId!)
+
+          return {
+            chatInstance: chatItem!.chatInstance!,
+            chatThread: chatItem!.chatThread!,
+            chatThreadId: chatItem!.id!,
+            models: state.models,
+            sendMessage: state.sendMessage,
+            selectedModel: chatItem!.selectedModel!,
+            setSelectedModel: state.setSelectedModel,
+          }
+        }),
       )
 
     const { messages, status, stop } = useChat({ chat: chatInstance })

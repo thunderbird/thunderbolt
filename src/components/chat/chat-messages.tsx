@@ -14,12 +14,16 @@ type ChatMessagesProps = {
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
   const { chatInstance, chatThread, chatThreadId, triggerData } = useChatStore(
-    useShallow((state) => ({
-      chatInstance: state.chatInstance!,
-      chatThread: state.chatThread,
-      chatThreadId: state.id!,
-      triggerData: state.triggerData,
-    })),
+    useShallow((state) => {
+      const chatItem = state.chats.get(state.selectedChatId!)
+
+      return {
+        chatInstance: chatItem!.chatInstance!,
+        chatThread: chatItem!.chatThread!,
+        chatThreadId: chatItem!.id!,
+        triggerData: chatItem!.triggerData!,
+      }
+    }),
   )
 
   const { error: chatError, status, messages } = useChat({ chat: chatInstance })

@@ -14,9 +14,13 @@ export const useChatScrollHandler = ({
   useChat = useChat_default,
 }: UseChatScrollHandlerProps = {}) => {
   const { chatInstance } = useChatStore(
-    useShallow((state) => ({
-      chatInstance: state.chatInstance!,
-    })),
+    useShallow((state) => {
+      const chatItem = state.chats.get(state.selectedChatId!)
+
+      return {
+        chatInstance: chatItem!.chatInstance!,
+      }
+    }),
   )
 
   const { status, messages } = useChat({ chat: chatInstance })

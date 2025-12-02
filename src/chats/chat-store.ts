@@ -5,44 +5,70 @@ import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/t
 import { type Chat } from '@ai-sdk/react'
 import { create } from 'zustand'
 
-type ChatStoreState = {
+type ChatItem = {
   chatInstance: Chat<ThunderboltUIMessage> | null
   chatThread: ChatThread | null
-  id: string | null
-  mcpClients: MCPClient[]
-  models: Model[]
+  id: string
   selectedModel: Model | null
   triggerData: AutomationRun | null
 }
 
+type ChatStoreState = {
+  chats: Map<string, ChatItem>
+  selectedChatId: string | null
+  mcpClients: MCPClient[]
+  models: Model[]
+}
+
 type ChatStoreActions = {
-  hydrate(data: ChatStoreState): void
-  reset(): void
+  setSelectedChat(data: { chat: ChatItem; mcpClients: MCPClient[]; models: Model[] }): void
   sendMessage(text: string): Promise<void>
   setSelectedModel(modelId: string | null): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
 
-const initialState = {
-  chatInstance: null,
-  chatThread: null,
-  id: null,
+const initialState: ChatStoreState = {
+  chats: new Map(),
+  selectedChatId: null,
   mcpClients: [],
   models: [],
-  selectedModel: null,
-  triggerData: null,
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
   ...initialState,
 
-  hydrate: (data) => {
-    set(data)
+  setSelectedChat: ({ chat, mcpClients, models }) => {
+    const { chats } = get()
+
+    const updatedChats = new Map(chats)
+
+    if (!updatedChats.has(chat.id)) {
+      updatedChats.set(chat.id, chat)
+    }
+
+    set({
+      chats: updatedChats,
+      selectedChatId: chat.id,
+      mcpClients,
+      models,
+    })
   },
 
   sendMessage: async (text) => {
-    const { chatInstance, chatThread, selectedModel } = get()
+    const { chats, selectedChatId } = get()
+
+    if (!selectedChatId) {
+      throw new Error('No selected chat')
+    }
+
+    const chat = chats.get(selectedChatId)
+
+    if (!chat) {
+      throw new Error('No chat found')
+    }
+
+    const { chatInstance, chatThread, selectedModel } = chat
 
     if (!chatInstance) {
       throw new Error('No chat instance')
@@ -73,7 +99,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setSelectedModel: async (modelId) => {
-    const models = get().models
+    const { models, chats, selectedChatId } = get()
 
     const model = models.find((m) => m.id === modelId)
 
@@ -81,14 +107,23 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('Model not found')
     }
 
-    set({ selectedModel: model })
+    if (!selectedChatId) {
+      throw new Error('No selected chat')
+    }
+
+    const chat = chats.get(selectedChatId)
+
+    if (!chat) {
+      throw new Error('No chat found')
+    }
+
+    const updatedChats = new Map(chats)
+    updatedChats.set(selectedChatId, { ...chat, selectedModel: model })
+
+    set({ chats: updatedChats })
 
     updateSettings({ selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
-  },
-
-  reset: () => {
-    set(initialState)
   },
 }))

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HttpClientProvider } from '@/contexts'
@@ -78,20 +78,92 @@ function AppRoutes() {
           {/* Home routes with HomeLayout */}
           <Route element={<ChatLayout />}>
             <Route index element={<Navigate to="/chats/new" replace />} />
-            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-            {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-            <Route path="automations" element={<AutomationsPage />} />
-            <Route path="message-simulator" element={<MessageSimulatorPage />} />
+            <Route
+              path="chats/:chatThreadId"
+              element={
+                <Suspense>
+                  <ChatDetailPage />
+                </Suspense>
+              }
+            />
+            {experimentalFeatureTasks.value && (
+              <Route
+                path="tasks"
+                element={
+                  <Suspense>
+                    <TasksPage />
+                  </Suspense>
+                }
+              />
+            )}
+            <Route
+              path="automations"
+              element={
+                <Suspense>
+                  <AutomationsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="message-simulator"
+              element={
+                <Suspense>
+                  <MessageSimulatorPage />
+                </Suspense>
+              }
+            />
           </Route>
 
           {/* Settings routes with SettingsLayout */}
           <Route path="settings" element={<SettingsLayout />}>
-            <Route index element={<Settings />} />
-            <Route path="preferences" element={<PreferencesSettingsPage />} />
-            <Route path="models" element={<ModelsPage />} />
-            <Route path="mcp-servers" element={<McpServersPage />} />
-            <Route path="integrations" element={<IntegrationsPage />} />
-            <Route path="dev-settings" element={<DevSettingsPage />} />
+            <Route
+              index
+              element={
+                <Suspense>
+                  <Settings />
+                </Suspense>
+              }
+            />
+            <Route
+              path="preferences"
+              element={
+                <Suspense>
+                  <PreferencesSettingsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="models"
+              element={
+                <Suspense>
+                  <ModelsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="mcp-servers"
+              element={
+                <Suspense>
+                  <McpServersPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="integrations"
+              element={
+                <Suspense>
+                  <IntegrationsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="dev-settings"
+              element={
+                <Suspense>
+                  <DevSettingsPage />
+                </Suspense>
+              }
+            />
           </Route>
         </Route>
 

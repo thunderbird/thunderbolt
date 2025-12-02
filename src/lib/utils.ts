@@ -1,4 +1,5 @@
 import type { ChatMessage, UIMessageMetadata } from '@/types'
+import type { HandleError } from '@/types/handle-errors'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
@@ -232,4 +233,25 @@ export const formatDuration = (ms: number): string => {
     return `${Math.round(ms)}ms`
   }
   return `${seconds.toFixed(1)}s`
+}
+
+/**
+ * Generates a support email with error details and stack traces
+ */
+export const generateSupportEmail = (error: HandleError) => {
+  const subject = 'App Initialization Error'
+  let body = `Error Code: ${error.code}\nError Message: ${error.message}`
+
+  if (error.stackTrace) {
+    body += `\n\nStack Trace:\n${error.stackTrace}`
+  }
+
+  if (error.originalError && error.originalError instanceof Error && error.originalError.stack) {
+    body += `\n\nOriginal Error Stack:\n${error.originalError.stack}`
+  }
+
+  return {
+    subject: encodeURIComponent(subject),
+    body: encodeURIComponent(body),
+  }
 }

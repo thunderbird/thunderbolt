@@ -10,28 +10,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { generateSupportEmail } from '@/lib/utils'
 import type { HandleError } from '@/types/handle-errors'
-
-/**
- * Generates a support email with error details and stack traces
- */
-const generateSupportEmail = (error: HandleError) => {
-  const subject = 'App Initialization Error'
-  let body = `Error Code: ${error.code}\nError Message: ${error.message}`
-
-  if (error.stackTrace) {
-    body += `\n\nStack Trace:\n${error.stackTrace}`
-  }
-
-  if (error.originalError && error.originalError instanceof Error && error.originalError.stack) {
-    body += `\n\nOriginal Error Stack:\n${error.originalError.stack}`
-  }
-
-  return {
-    subject: encodeURIComponent(subject),
-    body: encodeURIComponent(body),
-  }
-}
 
 type AppErrorScreenProps = {
   error: HandleError

@@ -10,6 +10,8 @@ type MockAuthClientOptions = {
   } | null
   isPending?: boolean
   signInMagicLink?: (options: { email: string; callbackURL: string }) => Promise<{ error: { message: string } | null }>
+  signInEmailOtp?: (options: { email: string; otp: string }) => Promise<{ error: { message: string } | null }>
+  sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
   signOut?: () => Promise<void>
 }
 
@@ -22,6 +24,8 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     session = null,
     isPending = false,
     signInMagicLink = async () => ({ error: null }),
+    signInEmailOtp = async () => ({ error: null }),
+    sendVerificationOtp = async () => ({ error: null }),
     signOut = async () => {},
   } = options
 
@@ -36,6 +40,10 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     }),
     signIn: {
       magicLink: signInMagicLink,
+      emailOtp: signInEmailOtp,
+    },
+    emailOtp: {
+      sendVerificationOtp,
     },
     signOut,
     $Infer: {} as AuthClient['$Infer'],

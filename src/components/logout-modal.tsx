@@ -5,13 +5,13 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from '@/components/ui/responsive-modal'
 import { useAuth } from '@/contexts'
 import { resetAppDir } from '@/lib/fs'
 import { cn } from '@/lib/utils'
@@ -97,29 +97,24 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
     setIsLoggingOut(true)
 
     try {
-      // Sign out first (clears backend session)
       await authClient.signOut()
     } catch (error) {
       console.error('Failed to sign out:', error)
-      // Continue anyway - we still want to delete data and reload if requested
     }
 
     try {
-      // Delete local data if requested
       if (selectedOption === 'delete') {
         await resetAppDir()
       }
     } catch (error) {
       console.error('Failed to delete local data:', error)
-      // Continue anyway - still reload to get a clean state
     }
 
-    // Always reload to ensure clean app state
     window.location.reload()
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (isLoggingOut) return // Prevent closing while logging out
+    if (isLoggingOut) return
     if (!newOpen) {
       setSelectedOption('keep')
     }
@@ -127,52 +122,49 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Log out</DialogTitle>
-          <DialogDescription>What would you like to do with your local data?</DialogDescription>
-        </DialogHeader>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
+      <ResponsiveModalHeader>
+        <ResponsiveModalTitle>Log out</ResponsiveModalTitle>
+        <ResponsiveModalDescription>What would you like to do with your local data?</ResponsiveModalDescription>
+      </ResponsiveModalHeader>
 
-        <div className="flex flex-col gap-3 py-4">
-          <SelectableCard
-            selected={selectedOption === 'keep'}
-            onSelect={() => setSelectedOption('keep')}
-            icon={<HardDrive className="h-5 w-5" />}
-            title="Leave data on device"
-            description="Your chats and settings will remain on this device for next time."
-          />
+      <ResponsiveModalContent centered className="gap-3">
+        <SelectableCard
+          selected={selectedOption === 'keep'}
+          onSelect={() => setSelectedOption('keep')}
+          icon={<HardDrive className="h-5 w-5" />}
+          title="Leave data on device"
+          description="Your chats and settings will remain on this device for next time."
+        />
+        <SelectableCard
+          selected={selectedOption === 'delete'}
+          onSelect={() => setSelectedOption('delete')}
+          icon={<Trash2 className="h-5 w-5" />}
+          title="Delete data from device"
+          description="Remove all chats, settings, and cached data from this device."
+          variant="destructive"
+        />
+      </ResponsiveModalContent>
 
-          <SelectableCard
-            selected={selectedOption === 'delete'}
-            onSelect={() => setSelectedOption('delete')}
-            icon={<Trash2 className="h-5 w-5" />}
-            title="Delete data from device"
-            description="Remove all chats, settings, and cached data from this device."
-            variant="destructive"
-          />
-        </div>
-
-        <DialogFooter className="flex-row gap-2 sm:justify-end">
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoggingOut}>
-            Cancel
-          </Button>
-          <Button
-            variant={selectedOption === 'delete' ? 'destructive' : 'default'}
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-          >
-            {isLoggingOut ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {selectedOption === 'delete' ? 'Deleting...' : 'Logging out...'}
-              </>
-            ) : (
-              'Log out'
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <ResponsiveModalFooter className="justify-end">
+        <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoggingOut}>
+          Cancel
+        </Button>
+        <Button
+          variant={selectedOption === 'delete' ? 'destructive' : 'default'}
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+        >
+          {isLoggingOut ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {selectedOption === 'delete' ? 'Deleting...' : 'Logging out...'}
+            </>
+          ) : (
+            'Log out'
+          )}
+        </Button>
+      </ResponsiveModalFooter>
+    </ResponsiveModal>
   )
 }

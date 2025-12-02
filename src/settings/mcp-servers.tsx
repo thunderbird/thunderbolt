@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   ResponsiveModal,
-  ResponsiveModalContent,
+  ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
@@ -309,7 +309,7 @@ export default function McpServersPage() {
               <Plus />
             </Button>
           </ResponsiveModalTrigger>
-          <ResponsiveModalContent className="sm:max-w-[500px]">
+          <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
               <ResponsiveModalDescription>
@@ -376,7 +376,7 @@ export default function McpServersPage() {
                 Add Server
               </Button>
             </div>
-          </ResponsiveModalContent>
+          </ResponsiveModalContentComposable>
         </ResponsiveModal>
       </div>
 

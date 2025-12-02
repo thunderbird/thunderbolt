@@ -5,7 +5,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { AuthProvider, HttpClientProvider } from '@/contexts'
+import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
@@ -107,22 +107,24 @@ export const App = () => {
     <QueryClientProvider client={queryClient}>
       <HttpClientProvider httpClient={initData.httpClient}>
         <AuthProvider>
-          <PostHogProvider client={initData.posthogClient}>
-            <ThemeProvider defaultTheme="system" storageKey="ui_theme">
-              <TrayProvider tray={initData.tray} window={initData.window}>
-                <MCPProvider>
-                  <SidebarProvider>
-                    <ContentViewProvider
-                      initialSideviewType={initData.sideviewType}
-                      initialSideviewId={initData.sideviewId}
-                    >
-                      <AppContent initData={initData} />
-                    </ContentViewProvider>
-                  </SidebarProvider>
-                </MCPProvider>
-              </TrayProvider>
-            </ThemeProvider>
-          </PostHogProvider>
+          <SignInModalProvider>
+            <PostHogProvider client={initData.posthogClient}>
+              <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+                <TrayProvider tray={initData.tray} window={initData.window}>
+                  <MCPProvider>
+                    <SidebarProvider>
+                      <ContentViewProvider
+                        initialSideviewType={initData.sideviewType}
+                        initialSideviewId={initData.sideviewId}
+                      >
+                        <AppContent initData={initData} />
+                      </ContentViewProvider>
+                    </SidebarProvider>
+                  </MCPProvider>
+                </TrayProvider>
+              </ThemeProvider>
+            </PostHogProvider>
+          </SignInModalProvider>
         </AuthProvider>
       </HttpClientProvider>
     </QueryClientProvider>

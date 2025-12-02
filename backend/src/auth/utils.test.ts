@@ -1,35 +1,66 @@
 import { describe, expect, it } from 'bun:test'
-import { buildMagicLinkUrl, getValidatedOrigin, isDeepLinkPlatform, parseTrustedOrigins } from './utils'
+import { buildMagicLinkUrl, generateOTP, getValidatedOrigin, isDeepLinkPlatform, parseTrustedOrigins } from './utils'
+
+describe('generateOTP', () => {
+  it('generates a 6-digit code by default', () => {
+    const otp = generateOTP()
+    expect(otp).toHaveLength(6)
+    expect(/^\d{6}$/.test(otp)).toBe(true)
+  })
+
+  it('generates a code of specified length', () => {
+    const otp = generateOTP(8)
+    expect(otp).toHaveLength(8)
+    expect(/^\d{8}$/.test(otp)).toBe(true)
+  })
+
+  it('generates only numeric characters', () => {
+    // Generate multiple OTPs to increase confidence
+    for (let i = 0; i < 100; i++) {
+      const otp = generateOTP()
+      expect(/^\d+$/.test(otp)).toBe(true)
+    }
+  })
+
+  it('generates different codes on subsequent calls', () => {
+    const codes = new Set<string>()
+    for (let i = 0; i < 100; i++) {
+      codes.add(generateOTP())
+    }
+    // With cryptographic randomness, we expect most codes to be unique
+    expect(codes.size).toBeGreaterThan(90)
+  })
+})
 
 describe('parseTrustedOrigins', () => {
-  it('parses comma-separated origins', () => {
+  it('parses comma-separated origins and adds tauri origin', () => {
     const result = parseTrustedOrigins('http://localhost:1420,https://app.example.com')
-    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com'])
+    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com', 'tauri://localhost'])
   })
 
   it('filters empty values from comma-separated string', () => {
     const result = parseTrustedOrigins('http://localhost:1420,,https://app.example.com,')
-    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com'])
+    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com', 'tauri://localhost'])
   })
 
-  it('returns default origin when env is undefined', () => {
+  it('returns default origins when env is undefined', () => {
     const result = parseTrustedOrigins(undefined)
-    expect(result).toEqual(['http://localhost:1420'])
+    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
   })
 
-  it('returns default origin when env is empty string', () => {
+  it('returns default origins when env is empty string', () => {
     const result = parseTrustedOrigins('')
-    expect(result).toEqual(['http://localhost:1420'])
+    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
   })
 
-  it('uses custom default origin when provided', () => {
-    const result = parseTrustedOrigins(undefined, 'https://custom.example.com')
-    expect(result).toEqual(['https://custom.example.com'])
-  })
-
-  it('handles single origin', () => {
+  it('handles single origin and adds tauri origin', () => {
     const result = parseTrustedOrigins('https://app.example.com')
-    expect(result).toEqual(['https://app.example.com'])
+    expect(result).toEqual(['https://app.example.com', 'tauri://localhost'])
+  })
+
+  it('does not duplicate tauri origin if already included', () => {
+    const result = parseTrustedOrigins('http://localhost:1420,tauri://localhost')
+    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
   })
 })
 

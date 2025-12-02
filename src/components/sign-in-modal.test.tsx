@@ -7,12 +7,57 @@ import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+// Mock InputOTP to avoid timer issues in tests
+// The input-otp library uses internal timers that conflict with fake timers
+mock.module('@/components/ui/input-otp', () => ({
+  InputOTP: ({
+    children,
+    value,
+    onChange,
+    onComplete,
+    disabled,
+    maxLength,
+  }: {
+    children: React.ReactNode
+    value?: string
+    onChange?: (value: string) => void
+    onComplete?: (value: string) => void
+    disabled?: boolean
+    maxLength?: number
+  }) => {
+    return (
+      <div data-testid="mock-otp-input" data-disabled={disabled} data-max-length={maxLength}>
+        <input
+          type="text"
+          value={value || ''}
+          onChange={(e) => {
+            const newValue = e.target.value.slice(0, maxLength || 6)
+            onChange?.(newValue)
+            if (newValue.length === (maxLength || 6)) {
+              onComplete?.(newValue)
+            }
+          }}
+          disabled={disabled}
+          data-testid="otp-input"
+        />
+        {children}
+      </div>
+    )
+  },
+  InputOTPGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  InputOTPSlot: ({ index }: { index: number }) => <div data-slot-index={index} />,
+  InputOTPSeparator: () => <span>-</span>,
+}))
+
+// Import after mock
 import { SignInModal } from './sign-in-modal'
 
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
   let mockSignInMagicLink: ReturnType<typeof mock>
+  let mockSignInEmailOtp: ReturnType<typeof mock>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -27,6 +72,7 @@ describe('SignInModal', () => {
   beforeEach(() => {
     mockOnOpenChange = mock()
     mockSignInMagicLink = mock(() => Promise.resolve({ error: null }))
+    mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
   })
 
   afterEach(async () => {
@@ -37,6 +83,7 @@ describe('SignInModal', () => {
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
     const authClient = createMockAuthClient({
       signInMagicLink: mockSignInMagicLink,
+      signInEmailOtp: mockSignInEmailOtp,
     })
     return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
       wrapper: createTestProvider({ authClient }),
@@ -120,7 +167,7 @@ describe('SignInModal', () => {
       fireEvent.click(button)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       expect(mockSignInMagicLink).toHaveBeenCalledWith({
@@ -158,7 +205,7 @@ describe('SignInModal', () => {
       })
     })
 
-    it('shows success state after successful submission', async () => {
+    it('shows sent state after successful submission', async () => {
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -166,7 +213,7 @@ describe('SignInModal', () => {
       fireEvent.submit(input.closest('form')!)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       // In test environment (localhost), shows localhost message
@@ -181,7 +228,7 @@ describe('SignInModal', () => {
       fireEvent.submit(form)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       expect(mockSignInMagicLink).not.toHaveBeenCalled()
@@ -200,7 +247,7 @@ describe('SignInModal', () => {
       fireEvent.submit(input.closest('form')!)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       expect(screen.getByText('Invalid email address')).toBeInTheDocument()
@@ -217,7 +264,7 @@ describe('SignInModal', () => {
       fireEvent.submit(input.closest('form')!)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       expect(screen.getByText('Failed to send magic link')).toBeInTheDocument()
@@ -236,7 +283,7 @@ describe('SignInModal', () => {
       expect(input).toHaveValue('test@example.com')
     })
 
-    it('calls onOpenChange when close button is clicked in success state', async () => {
+    it('calls onOpenChange when close button is clicked in sent state', async () => {
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -244,7 +291,7 @@ describe('SignInModal', () => {
       fireEvent.submit(input.closest('form')!)
 
       await act(async () => {
-        await getClock().runAllAsync()
+        await getClock().tickAsync(100)
       })
 
       // Find the visible Close button (not the dialog X button which has sr-only text)
@@ -254,6 +301,103 @@ describe('SignInModal', () => {
       fireEvent.click(visibleCloseButton)
 
       expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+    })
+  })
+
+  describe('OTP verification', () => {
+    it('shows OTP input after sending magic link', async () => {
+      renderModal()
+
+      const input = screen.getByPlaceholderText('Email address')
+      fireEvent.change(input, { target: { value: 'test@example.com' } })
+      fireEvent.submit(input.closest('form')!)
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Should show OTP input prompt
+      expect(screen.getByText('Enter the 6-digit code')).toBeInTheDocument()
+      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+    })
+
+    it('shows success state after successful OTP verification', async () => {
+      renderModal()
+
+      // Send magic link first
+      const emailInput = screen.getByPlaceholderText('Email address')
+      fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
+      fireEvent.submit(emailInput.closest('form')!)
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Get the mocked OTP input and enter code
+      const otpInput = screen.getByTestId('otp-input')
+      fireEvent.change(otpInput, { target: { value: '123456' } })
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Should show success message (use getAllByText since DialogTitle duplicates it)
+      expect(screen.getAllByText('Welcome!').length).toBeGreaterThan(0)
+      expect(screen.getByText("You're now signed in.")).toBeInTheDocument()
+    })
+
+    it('shows error and clears OTP on verification failure', async () => {
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { message: 'Invalid code' },
+      })
+
+      renderModal()
+
+      // Send magic link first
+      const emailInput = screen.getByPlaceholderText('Email address')
+      fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
+      fireEvent.submit(emailInput.closest('form')!)
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Get the mocked OTP input and enter code
+      const otpInput = screen.getByTestId('otp-input')
+      fireEvent.change(otpInput, { target: { value: '123456' } })
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Should show error message
+      expect(screen.getByText('Invalid code')).toBeInTheDocument()
+    })
+
+    it('calls signIn.emailOtp with correct email and OTP', async () => {
+      renderModal()
+
+      // Send magic link first
+      const emailInput = screen.getByPlaceholderText('Email address')
+      fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
+      fireEvent.submit(emailInput.closest('form')!)
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      // Get the mocked OTP input and enter code
+      const otpInput = screen.getByTestId('otp-input')
+      fireEvent.change(otpInput, { target: { value: '123456' } })
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      expect(mockSignInEmailOtp).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        otp: '123456',
+      })
     })
   })
 })

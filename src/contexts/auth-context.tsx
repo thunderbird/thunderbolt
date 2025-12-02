@@ -2,7 +2,7 @@
 
 import { useSettings } from '@/hooks/use-settings'
 import { getPlatform } from '@/lib/platform'
-import { magicLinkClient } from 'better-auth/client/plugins'
+import { emailOTPClient, magicLinkClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
@@ -18,8 +18,9 @@ const createAuthClientInstance = (cloudUrl: string) => {
   return createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
-    plugins: [magicLinkClient()],
+    plugins: [magicLinkClient(), emailOTPClient()],
     fetchOptions: {
+      credentials: 'include', // Required for cookies to be sent/received
       headers: {
         'X-Client-Platform': platform,
       },

@@ -1,0 +1,206 @@
+/**
+ * Design Tokens from Figma
+ * 
+ * Primitive tokens from the design system.
+ * Use alongside existing Tailwind/shadcn semantic tokens.
+ * 
+ * Colors:    bg-neutral-500, text-brand-600, border-success-200
+ * Spacing:   p-spacing-4, gap-spacing-2, m-spacing-6
+ * Typography: font-heading, text-body-lg, leading-body-base
+ * Radius:    rounded-ds-md, rounded-ds-lg (prefixed to avoid Tailwind conflicts)
+ * Weights:   font-ds-medium, font-ds-semibold (prefixed to avoid Tailwind conflicts)
+ */
+
+@theme {
+  /* ============================================
+   * FONT FAMILIES
+   * Usage: font-heading, font-body, font-label
+   * ============================================ */
+  --font-heading: 'Mozilla Text', sans-serif;
+  --font-body: 'Mona Sans', sans-serif;
+  --font-label: 'Mozilla Text', sans-serif;
+
+  /* ============================================
+   * FONT SIZES - Heading (Mozilla Text)
+   * Usage: text-heading-xl
+   * ============================================ */
+  --font-size-heading-xl: 20px;
+
+  /* ============================================
+   * LINE HEIGHTS - Heading
+   * Usage: leading-heading-xl
+   * ============================================ */
+  --line-height-heading-xl: 28px;
+
+  /* ============================================
+   * FONT SIZES - Body (Mona Sans)
+   * Usage: text-body-lg, text-body-base, text-body-sm, text-body-xs
+   * ============================================ */
+  --font-size-body-lg: 18px;
+  --font-size-body-base: 16px;
+  --font-size-body-sm: 14px;
+  --font-size-body-xs: 12px;
+
+  /* ============================================
+   * FONT SIZES - Label (Mozilla Text, Medium)
+   * Usage: text-label-base, text-label-sm, text-label-xs
+   * ============================================ */
+  --font-size-label-base: 16px;
+  --font-size-label-sm: 14px;
+  --font-size-label-xs: 12px;
+
+  /* ============================================
+   * LINE HEIGHTS - Body
+   * Usage: leading-body-lg, leading-body-base, etc.
+   * ============================================ */
+  --line-height-body-lg: 28px;
+  --line-height-body-base: 24px;
+  --line-height-body-sm: 20px;
+  --line-height-body-xs: 16px;
+
+  /* ============================================
+   * LINE HEIGHTS - Label
+   * Usage: leading-label-base, leading-label-sm, leading-label-xs
+   * ============================================ */
+  --line-height-label-base: 24px;
+  --line-height-label-sm: 20px;
+  --line-height-label-xs: 16px;
+
+  /* ============================================
+   * FONT WEIGHTS (Design System)
+   * Usage: font-ds-regular, font-ds-medium, font-ds-semibold, font-ds-bold
+   * Note: Prefixed with 'ds-' to avoid overriding Tailwind defaults
+   * ============================================ */
+  --font-weight-ds-regular: 400;
+  --font-weight-ds-medium: 500;
+  --font-weight-ds-semibold: 600;
+  --font-weight-ds-bold: 700;
+
+  /* ============================================
+   * BORDER RADIUS (Design System)
+   * Usage: rounded-ds-sm, rounded-ds-md, rounded-ds-lg, rounded-ds-xl, rounded-ds-2xl
+   * Note: Prefixed with 'ds-' to avoid overriding Tailwind defaults
+   * ============================================ */
+  --radius-ds-sm: 4px;
+  --radius-ds-md: 6px;
+  --radius-ds-lg: 8px;
+  --radius-ds-xl: 12px;
+  --radius-ds-2xl: 16px;
+
+  /* ============================================
+   * SPACING
+   * Base unit: 4px
+   * Usage: p-spacing-4, gap-spacing-2, m-spacing-6
+   * ============================================ */
+  --spacing-spacing-1: 4px;
+  --spacing-spacing-2: 8px;
+  --spacing-spacing-3: 12px;
+  --spacing-spacing-4: 16px;
+  --spacing-spacing-5: 20px;
+  --spacing-spacing-6: 24px;
+  --spacing-spacing-7: 28px;
+  --spacing-spacing-8: 32px;
+  /* ============================================
+   * NEUTRAL - Gray scale
+   * ============================================ */
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #eff1f4;
+  --color-neutral-200: #eaecf0;
+  --color-neutral-300: #d0d5dd;
+  --color-neutral-400: #98a2b3;
+  --color-neutral-500: #667085;
+  --color-neutral-600: #475467;
+  --color-neutral-700: #344054;
+  --color-neutral-800: #1d2939;
+  --color-neutral-900: #101828;
+
+  /* ============================================
+   * BRAND - Primary Blue
+   * ============================================ */
+  --color-brand-50: #f2f7fc;
+  --color-brand-100: #d7e7f6;
+  --color-brand-200: #afd0ec;
+  --color-brand-300: #87b8e3;
+  --color-brand-400: #5fa0d9;
+  --color-brand-500: #3888d0;
+  --color-brand-600: #296fad;
+  --color-brand-700: #205788;
+  --color-brand-800: #12304a;
+  --color-brand-900: #091825;
+
+  /* ============================================
+   * LIME - Secondary brand (Yellow-Green)
+   * ============================================ */
+  --color-lime-50: #fcfdf5;
+  --color-lime-100: #f7fbda;
+  --color-lime-200: #f0f7b6;
+  --color-lime-300: #e7f193;
+  --color-lime-400: #e2ed84;
+  --color-lime-500: #dce875;
+  --color-lime-600: #c6d35d;
+  --color-lime-700: #a9b847;
+  --color-lime-800: #7b8533;
+  --color-lime-900: #4e5421;
+
+  /* ============================================
+   * SUCCESS - Green
+   * ============================================ */
+  --color-success-50: #f4fdf5;
+  --color-success-100: #ddf9e0;
+  --color-success-200: #bbf3c0;
+  --color-success-300: #99eda1;
+  --color-success-400: #6be577;
+  --color-success-500: #49df58;
+  --color-success-600: #23c934;
+  --color-success-700: #1b9727;
+  --color-success-800: #12651a;
+  --color-success-900: #09320d;
+
+  /* ============================================
+   * WARNING - Orange
+   * ============================================ */
+  --color-warning-50: #fffaf4;
+  --color-warning-100: #ffefdd;
+  --color-warning-200: #ffe0bc;
+  --color-warning-300: #ffcb8f;
+  --color-warning-400: #ffb662;
+  --color-warning-500: #ffab4b;
+  --color-warning-600: #ff8c09;
+  --color-warning-700: #c66a00;
+  --color-warning-800: #844600;
+  --color-warning-900: #422300;
+
+  /* ============================================
+   * ERROR - Red
+   * ============================================ */
+  --color-error-50: #fff3f3;
+  --color-error-100: #ffdada;
+  --color-error-200: #ffb5b5;
+  --color-error-300: #ff9090;
+  --color-error-400: #ff5f5f;
+  --color-error-500: #ff3a3a;
+  --color-error-600: #fa0000;
+  --color-error-700: #bc0000;
+  --color-error-800: #7d0000;
+  --color-error-900: #3f0000;
+
+  /* ============================================
+   * DARK - Dark mode backgrounds
+   * ============================================ */
+  --color-dark-50: #3d4a54;
+  --color-dark-100: #354149;
+  --color-dark-200: #2d383f;
+  --color-dark-300: #263035;
+  --color-dark-400: #1f282e;
+  --color-dark-500: #1a2329;
+  --color-dark-600: #141e27;
+  --color-dark-700: #111921;
+  --color-dark-800: #0d141a;
+  --color-dark-900: #090f13;
+
+  /* ============================================
+   * SHADES
+   * ============================================ */
+  --color-shade-white: #ffffff;
+  --color-shade-black: #000000;
+}

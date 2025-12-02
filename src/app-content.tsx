@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HttpClientProvider } from '@/contexts'
@@ -32,9 +32,9 @@ const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
 const DevSettingsPage = lazy(() => import('@/settings/dev-settings'))
 
-const queryClient = new QueryClient()
-
 export default function AppContent({ initData }: { initData: InitData }) {
+  const [queryClient] = useState(() => new QueryClient())
+
   return (
     <QueryClientProvider client={queryClient}>
       <HttpClientProvider httpClient={initData.httpClient}>

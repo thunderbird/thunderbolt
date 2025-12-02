@@ -6,9 +6,9 @@
  * 
  * Colors:     bg-neutral-500, text-brand-600, border-success-200
  * Typography: font-heading, text-body-lg, leading-body-base
- * Weights:    font-regular, font-medium, font-semibold, font-bold
- * Radius:     rounded-ds-md, rounded-ds-lg (prefixed - values differ from Tailwind)
+ * Radius:     Use Tailwind defaults (rounded, rounded-md, rounded-lg, rounded-xl, rounded-2xl)
  * Spacing:    Use Tailwind defaults (p-4, gap-2, m-6) - same 4px base unit
+ * Weights:    Use Tailwind defaults (font-normal, font-medium, font-semibold, font-bold)
  */
 
 @theme {
@@ -65,27 +65,6 @@
   --line-height-label-base: 24px;
   --line-height-label-sm: 20px;
   --line-height-label-xs: 16px;
-
-  /* ============================================
-   * FONT WEIGHTS
-   * Usage: font-regular, font-medium, font-semibold, font-bold
-   * Note: Values match Tailwind defaults (400/500/600/700)
-   * ============================================ */
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-
-  /* ============================================
-   * BORDER RADIUS (Design System)
-   * Usage: rounded-ds-sm, rounded-ds-md, rounded-ds-lg, rounded-ds-xl, rounded-ds-2xl
-   * Note: Prefixed with 'ds-' to avoid overriding Tailwind defaults
-   * ============================================ */
-  --radius-ds-sm: 4px;
-  --radius-ds-md: 6px;
-  --radius-ds-lg: 8px;
-  --radius-ds-xl: 12px;
-  --radius-ds-2xl: 16px;
 
   /* ============================================
    * NEUTRAL - Gray scale

@@ -4,11 +4,11 @@
  * Primitive tokens from the design system.
  * Use alongside existing Tailwind/shadcn semantic tokens.
  * 
- * Colors:    bg-neutral-500, text-brand-600, border-success-200
- * Spacing:   p-spacing-4, gap-spacing-2, m-spacing-6
+ * Colors:     bg-neutral-500, text-brand-600, border-success-200
  * Typography: font-heading, text-body-lg, leading-body-base
- * Radius:    rounded-ds-md, rounded-ds-lg (prefixed to avoid Tailwind conflicts)
- * Weights:   font-ds-medium, font-ds-semibold (prefixed to avoid Tailwind conflicts)
+ * Weights:    font-regular, font-medium, font-semibold, font-bold
+ * Radius:     rounded-ds-md, rounded-ds-lg (prefixed - values differ from Tailwind)
+ * Spacing:    Use Tailwind defaults (p-4, gap-2, m-6) - same 4px base unit
  */
 
 @theme {
@@ -67,14 +67,14 @@
   --line-height-label-xs: 16px;
 
   /* ============================================
-   * FONT WEIGHTS (Design System)
-   * Usage: font-ds-regular, font-ds-medium, font-ds-semibold, font-ds-bold
-   * Note: Prefixed with 'ds-' to avoid overriding Tailwind defaults
+   * FONT WEIGHTS
+   * Usage: font-regular, font-medium, font-semibold, font-bold
+   * Note: Values match Tailwind defaults (400/500/600/700)
    * ============================================ */
-  --font-weight-ds-regular: 400;
-  --font-weight-ds-medium: 500;
-  --font-weight-ds-semibold: 600;
-  --font-weight-ds-bold: 700;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 
   /* ============================================
    * BORDER RADIUS (Design System)
@@ -87,19 +87,6 @@
   --radius-ds-xl: 12px;
   --radius-ds-2xl: 16px;
 
-  /* ============================================
-   * SPACING
-   * Base unit: 4px
-   * Usage: p-spacing-4, gap-spacing-2, m-spacing-6
-   * ============================================ */
-  --spacing-spacing-1: 4px;
-  --spacing-spacing-2: 8px;
-  --spacing-spacing-3: 12px;
-  --spacing-spacing-4: 16px;
-  --spacing-spacing-5: 20px;
-  --spacing-spacing-6: 24px;
-  --spacing-spacing-7: 28px;
-  --spacing-spacing-8: 32px;
   /* ============================================
    * NEUTRAL - Gray scale
    * ============================================ */

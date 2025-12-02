@@ -294,11 +294,9 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Find the visible Close button (not the dialog X button which has sr-only text)
-      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
-      // The first one is the visible button, the second is the X icon with sr-only text
-      const visibleCloseButton = closeButtons.find((btn) => !btn.querySelector('.sr-only'))!
-      fireEvent.click(visibleCloseButton)
+      // Find the Cancel button
+      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
+      fireEvent.click(cancelButton)
 
       expect(mockOnOpenChange).toHaveBeenCalledWith(false)
     })
@@ -317,7 +315,7 @@ describe('SignInModal', () => {
       })
 
       // Should show OTP input prompt
-      expect(screen.getByText('Enter the 6-digit code')).toBeInTheDocument()
+      expect(screen.getByText('Or enter the 6-digit code')).toBeInTheDocument()
       expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
     })
 

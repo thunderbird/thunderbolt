@@ -5,8 +5,6 @@ import type { HandleError } from '@/types/handle-errors'
 
 type ErrorBoundaryProps = {
   children: ReactNode
-  fallback?: (error: Error, resetError: () => void) => ReactNode
-  onError?: (error: Error, errorInfo: { componentStack: string }) => void
 }
 
 type ErrorBoundaryState = {
@@ -26,14 +24,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error }
-  }
-
-  componentDidCatch(error: Error, errorInfo: { componentStack: string }) {
-    this.props.onError?.(error, errorInfo)
-  }
-
-  resetError = () => {
-    this.setState({ hasError: false, error: null })
   }
 
   render() {

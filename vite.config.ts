@@ -78,9 +78,15 @@ export default defineConfig({
       transformIndexHtml(html, { bundle }) {
         if (!bundle) return html
 
-        // find the main CSS file emitted by Vite
-        const cssFile = Object.keys(bundle).find((file) => file.endsWith('.css'))
-        if (!cssFile) return html
+        // Extract the CSS filename from the existing stylesheet link in the HTML
+        // This ensures we process the main entry CSS file, not chunk CSS files
+        const stylesheetMatch = html.match(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']\/([^"']+\.css)["'][^>]*>/i)
+        if (!stylesheetMatch) return html
+
+        const cssFile = stylesheetMatch[1]
+
+        // Verify the file exists in the bundle
+        if (!bundle[cssFile]) return html
 
         const preloadTag = `<link rel="preload" as="style" href="/${cssFile}">`
 
@@ -88,7 +94,7 @@ export default defineConfig({
         const asyncCssTag = `<link rel="stylesheet" href="/${cssFile}" media="print" onload="this.media='all'">`
 
         // Remove the original stylesheet and replace with async version
-        const stylesheetRegex = new RegExp(`<link[^>]+${cssFile}[^>]*>`)
+        const stylesheetRegex = new RegExp(`<link[^>]+${cssFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^>]*>`, 'i')
         const originalHtml = html
         html = html.replace(stylesheetRegex, asyncCssTag)
 

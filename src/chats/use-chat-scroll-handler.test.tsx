@@ -52,15 +52,6 @@ const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
   })) as unknown as typeof import('@ai-sdk/react').useChat
 }
 
-const resetChatStore = () => {
-  useChatStore.setState({
-    chats: new Map(),
-    selectedChatId: null,
-    mcpClients: [],
-    models: [],
-  })
-}
-
 // Mock useAutoScroll hook - returns stable mocks that can be accessed
 type MockUseAutoScrollReturn = {
   scrollToBottom: ReturnType<typeof mock>
@@ -109,7 +100,7 @@ describe('useChatScrollHandler', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    resetChatStore()
+    useChatStore.getState().reset()
 
     // Mock requestAnimationFrame
     rafCallbacks = []
@@ -131,7 +122,7 @@ describe('useChatScrollHandler', () => {
 
   afterEach(() => {
     // Reset store state after each test
-    resetChatStore()
+    useChatStore.getState().reset()
 
     // Restore original functions
     global.requestAnimationFrame = originalRequestAnimationFrame
@@ -143,16 +134,14 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll()
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -179,10 +168,7 @@ describe('useChatScrollHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     // Create a mock that reads from the store dynamically
     const mockUseChat = ((options?: { chat?: Chat<ThunderboltUIMessage> }) => {
-      const storeState = useChatStore.getState()
-      const chat =
-        options?.chat ??
-        (storeState.selectedChatId ? (storeState.chats.get(storeState.selectedChatId)?.chatInstance ?? null) : null)
+      const chat = options?.chat ?? useChatStore.getState().chatInstance
       if (!chat) {
         return {
           id: 'test-chat-id',
@@ -222,16 +208,14 @@ describe('useChatScrollHandler', () => {
     }) as unknown as typeof import('@ai-sdk/react').useChat
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(false, true)
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     const { rerender } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -258,16 +242,14 @@ describe('useChatScrollHandler', () => {
     ]
     const newMockChatInstance = createMockChatInstance(newMessages, 'ready')
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: newMockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: newMockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     rerender()
@@ -298,16 +280,14 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll(false, true) // userHasScrolled = false
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -339,16 +319,14 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll(true, false) // userHasScrolled = true
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -395,10 +373,7 @@ describe('useChatScrollHandler', () => {
     const mockChatInstance = createMockChatInstance([], 'ready')
     // Create a mock that reads from the store dynamically
     const mockUseChat = ((options?: { chat?: Chat<ThunderboltUIMessage> }) => {
-      const storeState = useChatStore.getState()
-      const chat =
-        options?.chat ??
-        (storeState.selectedChatId ? (storeState.chats.get(storeState.selectedChatId)?.chatInstance ?? null) : null)
+      const chat = options?.chat ?? useChatStore.getState().chatInstance
       if (!chat) {
         return {
           id: 'test-chat-id',
@@ -438,16 +413,14 @@ describe('useChatScrollHandler', () => {
     }) as unknown as typeof import('@ai-sdk/react').useChat
     const { mockHook, scrollToBottom } = createMockUseAutoScroll()
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     // Initial render with no messages
@@ -472,16 +445,14 @@ describe('useChatScrollHandler', () => {
     ]
     const newMockChatInstance = createMockChatInstance(messages, 'ready')
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: newMockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: newMockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     rerender()
@@ -524,16 +495,14 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll()
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     const { rerender } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -552,16 +521,14 @@ describe('useChatScrollHandler', () => {
     const fewerMessages: ThunderboltUIMessage[] = [messages[0]]
     const newMockChatInstance = createMockChatInstance(fewerMessages, 'ready')
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: newMockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: newMockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     rerender()
@@ -586,16 +553,14 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll()
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
@@ -637,16 +602,14 @@ describe('useChatScrollHandler', () => {
       }),
     ) as unknown as typeof import('@/hooks/use-auto-scroll').useAutoScroll
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockUseAutoScroll }), {

@@ -53,21 +53,12 @@ const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
   })) as unknown as typeof useChat
 }
 
-const resetChatStore = () => {
-  useChatStore.setState({
-    chats: new Map(),
-    selectedChatId: null,
-    mcpClients: [],
-    models: [],
-  })
-}
-
 describe('useChatAutomation', () => {
   let consoleErrorSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
     // Reset store state before each test
-    resetChatStore()
+    useChatStore.getState().reset()
 
     // Suppress console.error for tests that intentionally trigger errors
     consoleErrorSpy = mock(() => {})
@@ -76,7 +67,7 @@ describe('useChatAutomation', () => {
 
   afterEach(() => {
     // Reset store state after each test
-    resetChatStore()
+    useChatStore.getState().reset()
     consoleErrorSpy?.mockRestore()
   })
 
@@ -91,17 +82,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -127,17 +116,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -155,17 +142,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance([], 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -190,17 +175,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -225,17 +208,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     const { rerender } = renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -273,17 +254,15 @@ describe('useChatAutomation', () => {
 
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -316,17 +295,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
@@ -356,17 +333,15 @@ describe('useChatAutomation', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {

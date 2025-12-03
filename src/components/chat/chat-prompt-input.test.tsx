@@ -55,15 +55,6 @@ const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
   })) as unknown as typeof import('@ai-sdk/react').useChat
 }
 
-const resetChatStore = () => {
-  useChatStore.setState({
-    chats: new Map(),
-    selectedChatId: null,
-    mcpClients: [],
-    models: [],
-  })
-}
-
 const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThread => {
   return {
     id: 'thread-1',
@@ -151,14 +142,14 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    resetChatStore()
+    useChatStore.getState().reset()
   })
 
   afterEach(async () => {
     // Cleanup rendered components before resetting store to prevent errors during unmount
     cleanup()
     // Reset store state after each test
-    resetChatStore()
+    useChatStore.getState().reset()
     await resetTestDatabase()
   })
 
@@ -168,16 +159,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -204,16 +193,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -243,16 +230,14 @@ describe('ChatPromptInput', () => {
       const mockModel = createMockModel()
       const mockUseContextTracking = createMockUseContextTracking(false, true, 1000, 2000)
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -281,16 +266,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -332,16 +315,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -378,16 +359,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -413,16 +392,14 @@ describe('ChatPromptInput', () => {
       const mockModel = createMockModel()
       const mockUseContextTracking = createMockUseContextTracking(false, true, 1000, 2000)
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()
@@ -448,16 +425,14 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().setSelectedChat({
-        chat: {
-          chatInstance: mockChatInstance,
-          chatThread: createMockChatThread(),
-          id: 'thread-1',
-          selectedModel: mockModel,
-          triggerData: null,
-        },
+      useChatStore.getState().hydrate({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
         mcpClients: [],
         models: [mockModel],
+        selectedModel: mockModel,
+        triggerData: null,
       })
 
       const handleResetUserScroll = mock()

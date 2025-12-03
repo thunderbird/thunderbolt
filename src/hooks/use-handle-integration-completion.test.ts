@@ -53,19 +53,10 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-const resetChatStore = () => {
-  useChatStore.setState({
-    chats: new Map(),
-    selectedChatId: null,
-    mcpClients: [],
-    models: [],
-  })
-}
-
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
     // Reset the real store state before each test
-    resetChatStore()
+    useChatStore.getState().reset()
 
     if (global.sessionStorage) {
       global.sessionStorage.clear()
@@ -76,7 +67,7 @@ describe('useHandleIntegrationCompletion', () => {
 
   afterEach(async () => {
     // Reset the real store state after each test
-    resetChatStore()
+    useChatStore.getState().reset()
 
     await resetTestDatabase()
     if (global.sessionStorage) {
@@ -140,17 +131,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -169,17 +158,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -200,17 +187,15 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    // Use the real store and set selected chat with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: 'thread-1',
-        selectedModel: null,
-        triggerData: null,
-      },
+    // Use the real store and hydrate it with test data
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -237,9 +222,18 @@ describe('useHandleIntegrationCompletion', () => {
 
   it('should not process retry if chatThreadId is missing', async () => {
     const mockSaveMessages = createMockSaveMessages()
+    const mockChatInstance = createMockChatInstance()
 
-    // Use the real store - don't set a chat to test missing id scenario
-    // The store will have no selected chat, which simulates missing id
+    // Use the real store and hydrate it with test data (id is null)
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: null,
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
 
     await updateSettings({
       integrations_google_credentials: '',
@@ -291,16 +285,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -380,16 +372,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -457,16 +447,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     // Start with no credentials
@@ -519,16 +507,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -586,16 +572,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({
@@ -664,16 +648,14 @@ describe('useHandleIntegrationCompletion', () => {
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance: mockChatInstance,
-        chatThread: null,
-        id: threadId,
-        selectedModel: null,
-        triggerData: null,
-      },
+    useChatStore.getState().hydrate({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: threadId,
       mcpClients: [],
       models: [],
+      selectedModel: null,
+      triggerData: null,
     })
 
     await updateSettings({

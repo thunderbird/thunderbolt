@@ -108,6 +108,15 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => {
   )
 }
 
+const resetChatStore = () => {
+  useChatStore.setState({
+    chats: new Map(),
+    selectedChatId: null,
+    mcpClients: [],
+    models: [],
+  })
+}
+
 describe('useHydrateChatStore', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -119,7 +128,7 @@ describe('useHydrateChatStore', () => {
 
   beforeEach(async () => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetChatStore()
     await resetTestDatabase()
     // Create system model (required for getDefaultModelForThread)
     await createSystemModel()
@@ -127,7 +136,7 @@ describe('useHydrateChatStore', () => {
 
   afterEach(async () => {
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetChatStore()
     await resetTestDatabase()
   })
 
@@ -175,19 +184,20 @@ describe('useHydrateChatStore', () => {
       })
 
       const storeState = useChatStore.getState()
-      expect(storeState.id).toBe(threadId)
-      expect(storeState.chatThread).not.toBeNull()
-      expect(storeState.chatThread?.id).toBe(threadId)
-      expect(storeState.chatThread?.title).toBe('My Test Thread')
-      expect(storeState.selectedModel).not.toBeNull()
+      const chat = storeState.selectedChatId ? storeState.chats.get(storeState.selectedChatId) : null
+      expect(chat?.id).toBe(threadId)
+      expect(chat?.chatThread).not.toBeNull()
+      expect(chat?.chatThread?.id).toBe(threadId)
+      expect(chat?.chatThread?.title).toBe('My Test Thread')
+      expect(chat?.selectedModel).not.toBeNull()
       // getDefaultModelForThread returns the system model when no messages exist
-      expect(storeState.selectedModel?.isSystem).toBe(1)
+      expect(chat?.selectedModel?.isSystem).toBe(1)
       expect(storeState.models).toBeDefined()
       expect(storeState.models.length).toBeGreaterThan(0)
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.id).toBe(threadId)
+      expect(chat?.chatInstance).toBeDefined()
+      expect(chat?.chatInstance?.id).toBe(threadId)
       expect(storeState.mcpClients).toBeDefined()
-      expect(storeState.triggerData).toBeDefined()
+      expect(chat?.triggerData).toBeDefined()
     })
 
     it('should reset store before hydrating', async () => {
@@ -205,7 +215,8 @@ describe('useHydrateChatStore', () => {
       })
 
       const firstState = useChatStore.getState()
-      expect(firstState.id).toBe(threadId1)
+      const firstChat = firstState.selectedChatId ? firstState.chats.get(firstState.selectedChatId) : null
+      expect(firstChat?.id).toBe(threadId1)
 
       // Second hydration with different thread
       const { result: result2 } = renderHook(() => useHydrateChatStore({ id: threadId2, isNew: false }), {
@@ -217,9 +228,10 @@ describe('useHydrateChatStore', () => {
       })
 
       const secondState = useChatStore.getState()
-      expect(secondState.id).toBe(threadId2)
-      expect(secondState.id).not.toBe(threadId1)
-      expect(secondState.chatThread?.id).toBe(threadId2)
+      const secondChat = secondState.selectedChatId ? secondState.chats.get(secondState.selectedChatId) : null
+      expect(secondChat?.id).toBe(threadId2)
+      expect(secondChat?.id).not.toBe(threadId1)
+      expect(secondChat?.chatThread?.id).toBe(threadId2)
     })
 
     it('should hydrate store with messages when thread has messages', async () => {
@@ -241,9 +253,10 @@ describe('useHydrateChatStore', () => {
       })
 
       const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.messages).toBeDefined()
-      expect(storeState.chatInstance?.messages.length).toBe(2)
+      const chat = storeState.selectedChatId ? storeState.chats.get(storeState.selectedChatId) : null
+      expect(chat?.chatInstance).toBeDefined()
+      expect(chat?.chatInstance?.messages).toBeDefined()
+      expect(chat?.chatInstance?.messages.length).toBe(2)
     })
 
     it('should hydrate store with empty messages when thread has no messages', async () => {
@@ -259,9 +272,10 @@ describe('useHydrateChatStore', () => {
       })
 
       const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.messages).toBeDefined()
-      expect(storeState.chatInstance?.messages.length).toBe(0)
+      const chat = storeState.selectedChatId ? storeState.chats.get(storeState.selectedChatId) : null
+      expect(chat?.chatInstance).toBeDefined()
+      expect(chat?.chatInstance?.messages).toBeDefined()
+      expect(chat?.chatInstance?.messages.length).toBe(0)
     })
   })
 
@@ -280,7 +294,10 @@ describe('useHydrateChatStore', () => {
       })
 
       const storeStateBefore = useChatStore.getState()
-      expect(storeStateBefore.selectedModel).not.toBeNull()
+      const chatBefore = storeStateBefore.selectedChatId
+        ? storeStateBefore.chats.get(storeStateBefore.selectedChatId)
+        : null
+      expect(chatBefore?.selectedModel).not.toBeNull()
 
       // Save messages
       const newMessages: ThunderboltUIMessage[] = [

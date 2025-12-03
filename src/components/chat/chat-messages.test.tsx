@@ -80,6 +80,15 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
   }
 }
 
+const resetChatStore = () => {
+  useChatStore.setState({
+    chats: new Map(),
+    selectedChatId: null,
+    mcpClients: [],
+    models: [],
+  })
+}
+
 describe('ChatMessages', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -91,12 +100,12 @@ describe('ChatMessages', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetChatStore()
   })
 
   afterEach(async () => {
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetChatStore()
     await resetTestDatabase()
   })
 
@@ -109,14 +118,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       const { container } = render(<ChatMessages useChat={mockUseChat} />, {
@@ -134,14 +145,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance([])
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread({ isEncrypted: 1 }),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread({ isEncrypted: 1 }),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       const { container } = render(<ChatMessages useChat={mockUseChat} />, {
@@ -164,24 +177,26 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: createMockAutomationRun({
+            wasTriggeredByAutomation: true,
+            prompt: {
+              id: 'prompt-1',
+              title: 'Test Automation',
+              prompt: 'Automation prompt',
+              deletedAt: null,
+              defaultHash: null,
+              modelId: 'model-1',
+            },
+          }),
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: createMockAutomationRun({
-          wasTriggeredByAutomation: true,
-          prompt: {
-            id: 'prompt-1',
-            title: 'Test Automation',
-            prompt: 'Automation prompt',
-            deletedAt: null,
-            defaultHash: null,
-            modelId: 'model-1',
-          },
-        }),
       })
 
       const { container } = render(<ChatMessages useChat={mockUseChat} />, {
@@ -206,16 +221,18 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: createMockAutomationRun({
+            wasTriggeredByAutomation: true,
+          }),
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: createMockAutomationRun({
-          wasTriggeredByAutomation: true,
-        }),
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -246,14 +263,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       const { container } = render(<ChatMessages useChat={mockUseChat} />, {
@@ -274,14 +293,16 @@ describe('ChatMessages', () => {
       const chatError = new Error('Network error')
       const mockUseChat = createMockUseChat(mockChatInstance, chatError)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -300,14 +321,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'ready')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -326,14 +349,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -352,14 +377,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'ready')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -380,14 +407,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -412,14 +441,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
@@ -438,14 +469,16 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
+      useChatStore.getState().setSelectedChat({
+        chat: {
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          selectedModel: null,
+          triggerData: null,
+        },
         mcpClients: [],
         models: [],
-        selectedModel: null,
-        triggerData: null,
       })
 
       const { container } = render(<ChatMessages useChat={mockUseChat} />, {

@@ -2,17 +2,18 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
-import { Lock, Plus, Search, Sparkles, Shield } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Lock, Plus, Search, Shield, Sparkles } from 'lucide-react'
+import { memo, useMemo, useState } from 'react'
 import type { CategorizedModels, ModelSelectorProps } from './types'
 import type { ChatThread } from '@/layout/sidebar/types'
 
 type ModelSelectorContentProps = Pick<ModelSelectorProps, 'models' | 'selectedModel' | 'chatThread' | 'onAddModels'> & {
   onSelect: (modelId: string) => void
+  isMobile?: boolean
 }
 
 const getModelDescription = (model: Model): string => {
-  if (model.isConfidential) return 'Fast and confidential'
+  if (model.isConfidential === 1) return 'Fast and confidential'
   if (model.provider === 'anthropic') return 'For complex tasks'
   if (model.provider === 'openrouter') return 'Via OpenRouter'
   if (model.provider === 'openai') return 'OpenAI model'
@@ -20,7 +21,7 @@ const getModelDescription = (model: Model): string => {
 }
 
 const getModelIcon = (model: Model) => {
-  if (model.isConfidential) return <Shield className="size-5 text-muted-foreground" />
+  if (model.isConfidential === 1) return <Shield className="size-5 text-muted-foreground" />
   if (model.provider === 'anthropic') return <Sparkles className="size-5 text-muted-foreground" />
   return null
 }
@@ -47,7 +48,7 @@ type ModelItemProps = {
   onSelect: (modelId: string) => void
 }
 
-const ModelItem = ({ model, isSelected, isDisabled, onSelect }: ModelItemProps) => {
+const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemProps) => {
   const description = getModelDescription(model)
   const icon = getModelIcon(model)
 
@@ -73,7 +74,7 @@ const ModelItem = ({ model, isSelected, isDisabled, onSelect }: ModelItemProps) 
       {icon && <div className="flex-shrink-0 ml-3">{icon}</div>}
     </button>
   )
-}
+})
 
 type ModelSectionProps = {
   title: string
@@ -83,7 +84,7 @@ type ModelSectionProps = {
   onSelect: (modelId: string) => void
 }
 
-const ModelSection = ({ title, models, selectedModel, chatThread, onSelect }: ModelSectionProps) => {
+const ModelSection = memo(({ title, models, selectedModel, chatThread, onSelect }: ModelSectionProps) => {
   if (models.length === 0) return null
 
   return (
@@ -107,7 +108,7 @@ const ModelSection = ({ title, models, selectedModel, chatThread, onSelect }: Mo
       </div>
     </div>
   )
-}
+})
 
 export const ModelSelectorContent = ({
   models,
@@ -115,6 +116,7 @@ export const ModelSelectorContent = ({
   chatThread,
   onSelect,
   onAddModels,
+  isMobile = false,
 }: ModelSelectorContentProps) => {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -131,9 +133,9 @@ export const ModelSelectorContent = ({
 
   const categorized = useMemo(() => categorizeModels(filteredModels), [filteredModels])
 
-  return (
-    <div className="flex flex-col gap-2 w-full">
-      <div className="px-3 pt-3 flex-shrink-0">
+  const contentArea = (
+    <div className={cn('flex flex-col gap-2 bg-background', isMobile && 'rounded-xl')}>
+      <div className="px-4 pt-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -146,7 +148,7 @@ export const ModelSelectorContent = ({
       </div>
 
       <ScrollArea className="h-[300px]">
-        <div className="flex flex-col gap-4 px-1 pb-1">
+        <div className="flex flex-col gap-4 px-2 pb-2">
           <ModelSection
             title="Provided Models"
             models={categorized.provided}
@@ -170,7 +172,7 @@ export const ModelSelectorContent = ({
       </ScrollArea>
 
       {onAddModels && (
-        <div className="border-t px-3 py-3">
+        <div className="border-t px-4 py-4">
           <button
             type="button"
             onClick={onAddModels}
@@ -181,6 +183,18 @@ export const ModelSelectorContent = ({
           </button>
         </div>
       )}
+    </div>
+  )
+
+  if (!isMobile) {
+    return contentArea
+  }
+
+  return (
+    <div className="flex flex-col w-full px-4">
+      {/* Transparent spacer that shows blurred background */}
+      <div className="h-10" />
+      {contentArea}
     </div>
   )
 }

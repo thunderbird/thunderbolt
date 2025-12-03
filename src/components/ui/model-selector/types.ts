@@ -9,8 +9,6 @@ export type ModelSelectorProps = {
   onAddModels?: () => void
 }
 
-export type ModelCategory = 'provided' | 'custom'
-
 export type CategorizedModels = {
   provided: Model[]
   custom: Model[]

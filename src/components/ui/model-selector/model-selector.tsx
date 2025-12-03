@@ -37,6 +37,7 @@ export const ModelSelector = ({
       chatThread={chatThread}
       onSelect={handleSelect}
       onAddModels={onAddModels}
+      isMobile={isMobile}
     />
   )
 
@@ -48,7 +49,12 @@ export const ModelSelector = ({
             {triggerContent}
           </button>
         </SheetTrigger>
-        <SheetContent side="top" className="p-0 rounded-b-xl" overlayClassName="backdrop-blur-sm bg-black/30">
+        <SheetContent
+          side="top"
+          className="p-0 bg-transparent border-none shadow-none"
+          overlayClassName="backdrop-blur-sm bg-black/30"
+          hideCloseButton
+        >
           {content}
         </SheetContent>
       </Sheet>

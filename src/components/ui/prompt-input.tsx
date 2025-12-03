@@ -4,16 +4,12 @@ import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
 import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
 import { type ChatThread } from '@/layout/sidebar/types'
-import { ModelSelector } from './model-selector'
+import { ModelSelect } from './model-select'
 
-interface PromptInputProps {
-  chatThread: ChatThread | null
+type PromptInputProps = {
   value: string
   onChange: (value: string) => void
   placeholder?: string
-  models: Model[]
-  selectedModelId?: string
-  onModelChange: (model: string | null) => void
   showSubmitButton?: boolean
   onSubmit?: () => void
   isLoading?: boolean
@@ -24,22 +20,23 @@ interface PromptInputProps {
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
+  // Model selection props - optional, only used in automation modal
+  chatThread?: ChatThread | null
+  models?: Model[]
+  selectedModelId?: string
+  onModelChange?: (model: string | null) => void
 }
 
 /**
- * Reusable prompt input component with AutosizeTextarea and model selection
- * Used in both chat interface and automation modals with multi-line support
+ * Reusable prompt input component with AutosizeTextarea
+ * Model selection is optional - only shown when models prop is provided
  */
 export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
   (
     {
-      chatThread,
       value = '',
       onChange,
       placeholder = 'Say something...',
-      models,
-      selectedModelId,
-      onModelChange,
       showSubmitButton = true,
       onSubmit,
       isLoading = false,
@@ -50,12 +47,15 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       isStreaming = false,
       onStop,
       footerStartElements,
+      chatThread = null,
+      models,
+      selectedModelId,
+      onModelChange,
     },
     ref,
   ) => {
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      // Prevent submission while streaming
       if (!isStreaming) {
         onSubmit?.()
       }
@@ -69,6 +69,8 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         onSubmit?.()
       }
     }
+
+    const showModelSelect = models && models.length > 0 && onModelChange
 
     const content = (
       <>
@@ -87,12 +89,14 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
           <div className="flex gap-2 items-center">
-            <ModelSelector
-              chatThread={chatThread}
-              models={models}
-              selectedModelId={selectedModelId}
-              onModelChange={onModelChange}
-            />
+            {showModelSelect && (
+              <ModelSelect
+                chatThread={chatThread}
+                models={models}
+                selectedModelId={selectedModelId}
+                onModelChange={onModelChange}
+              />
+            )}
 
             {showSubmitButton &&
               (isStreaming ? (

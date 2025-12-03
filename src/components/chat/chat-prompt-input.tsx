@@ -42,18 +42,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ) => {
     const navigate = useNavigate()
 
-    const { chatInstance, chatThread, chatThreadId, models, sendMessage, selectedModel, setSelectedModel } =
-      useChatStore(
-        useShallow((state) => ({
-          chatInstance: state.chatInstance!,
-          chatThread: state.chatThread,
-          chatThreadId: state.id!,
-          models: state.models,
-          sendMessage: state.sendMessage,
-          selectedModel: state.selectedModel!,
-          setSelectedModel: state.setSelectedModel,
-        })),
-      )
+    const { chatInstance, chatThreadId, sendMessage, selectedModel } = useChatStore(
+      useShallow((state) => ({
+        chatInstance: state.chatInstance!,
+        chatThreadId: state.id!,
+        sendMessage: state.sendMessage,
+        selectedModel: state.selectedModel!,
+      })),
+    )
 
     const { messages, status, stop } = useChat({ chat: chatInstance })
 
@@ -71,7 +67,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     })
 
     const handleSubmit = async () => {
-      // Prevent submitting while streaming or if input is empty
       const textToSend = input.trim()
       if (isStreaming || !textToSend) return
 
@@ -80,12 +75,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         return
       }
 
-      // Clear the input immediately for responsive UX
       setInput('')
 
       await sendMessage(textToSend)
 
-      // Reset user scroll state and scroll to bottom when submitting a new message
       handleResetUserScroll()
       requestAnimationFrame(() => {
         handleScrollToBottom()
@@ -111,16 +104,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       user_has_completed_onboarding: false,
     })
 
-    /**
-     * This ensures that the textarea is focused when the mobile sidebar is closed.
-     * Before the textarea was focused when the mobile sidebar was open.
-     */
     useEffect(() => {
-      let timeout: any = null
+      let timeout: ReturnType<typeof setTimeout> | null = null
 
       if (isMobile && !openMobile && userHasCompletedOnboarding.value) {
         const textareaElement = formRef.current?.querySelector('textarea')
-        // wait sidebar to be closed, so layout is stable
         timeout = setTimeout(() => {
           textareaElement?.focus()
         }, 500)
@@ -138,7 +126,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         const textareaElement = formRef.current?.querySelector('textarea')
         textareaElement?.focus()
 
-        // Set the cursor position to the end of the text
         const textLength = textareaElement?.value.length ?? 0
         textareaElement?.setSelectionRange(textLength, textLength)
       },
@@ -149,13 +136,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <>
         <PromptInput
           ref={formRef}
-          chatThread={chatThread}
           value={input}
           onChange={(value: string) => setInput(value)}
           placeholder="Say something..."
-          models={models}
-          selectedModelId={selectedModel.id}
-          onModelChange={setSelectedModel}
           showSubmitButton
           onSubmit={handleSubmit}
           isLoading={isStreaming}

@@ -1,5 +1,4 @@
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { Lock, Plus, Search, Shield, Sparkles } from 'lucide-react'
@@ -147,7 +146,7 @@ export const ModelSelectorContent = ({
         </div>
       </div>
 
-      <ScrollArea className="h-[300px]">
+      <div className="h-[300px] overflow-y-auto">
         <div className="flex flex-col gap-4 px-2 pb-2">
           <ModelSection
             title="Provided Models"
@@ -169,7 +168,7 @@ export const ModelSelectorContent = ({
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">No models found</div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {onAddModels && (
         <div className="border-t px-4 py-4">

@@ -36,8 +36,17 @@ export const Header = () => {
   const isChatRoute = location.pathname.startsWith('/chats')
   const showModelSelector = isChatRoute && models.length > 0
 
+  const modelSelector = showModelSelector && (
+    <ModelSelector
+      models={models}
+      selectedModel={selectedModel}
+      chatThread={chatThread}
+      onModelChange={setSelectedModel}
+      onAddModels={handleAddModels}
+    />
+  )
+
   // Mobile: 3-column layout with centered model selector
-  // Desktop: Left-aligned model selector
   if (isMobile) {
     return (
       <header className="flex h-12 w-full items-center justify-between px-2 flex-shrink-0 border-b border-border">
@@ -48,17 +57,7 @@ export const Header = () => {
           </Button>
         </div>
 
-        <div className="flex items-center justify-center flex-1">
-          {showModelSelector && (
-            <ModelSelector
-              models={models}
-              selectedModel={selectedModel}
-              chatThread={chatThread}
-              onModelChange={setSelectedModel}
-              onAddModels={handleAddModels}
-            />
-          )}
-        </div>
+        <div className="flex items-center justify-center flex-1">{modelSelector}</div>
 
         <div className="flex items-center">
           {isChatRoute && (
@@ -74,16 +73,6 @@ export const Header = () => {
 
   // Desktop: Left-aligned
   return (
-    <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">
-      {showModelSelector && (
-        <ModelSelector
-          models={models}
-          selectedModel={selectedModel}
-          chatThread={chatThread}
-          onModelChange={setSelectedModel}
-          onAddModels={handleAddModels}
-        />
-      )}
-    </header>
+    <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">{modelSelector}</header>
   )
 }

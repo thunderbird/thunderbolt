@@ -5,4 +5,4 @@ export {
   defaultAutomations,
   hashPrompt,
 } from './automations'
-export { defaultModelQwen3Instruct, defaultModelQwen3Thinking, defaultModels, hashModel } from './models'
+export { defaultModels, hashModel } from './models'

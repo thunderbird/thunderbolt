@@ -24,7 +24,6 @@ import { useChatStore } from './chat-store'
 
 type UseHydrateChatStoreParams = {
   id: string
-  isNew: boolean
 }
 
 const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMessages: SaveMessagesFunction) => {
@@ -88,7 +87,7 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
   return instance
 }
 
-export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
@@ -116,20 +115,18 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
-    const { chats } = useChatStore.getState()
+    const { chats, updateChat } = useChatStore.getState()
 
     const chatItem = chats.get(id)
 
     if (!chatItem) throw new Error('No chat found')
 
-    const { selectedModel } = chatItem
-
-    if (!selectedModel) {
+    if (!chatItem.selectedModel) {
       throw new Error('No selected model')
     }
 
     // Fetch thread info to check if we need to generate a title
-    const thread = await getOrCreateChatThread(id, selectedModel.id)
+    const thread = await getOrCreateChatThread(id, chatItem.selectedModel.id)
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(id, messages)
@@ -142,7 +139,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       updateThreadTitle(messages, id)
     }
 
-    if (isNew) {
+    if (!chatItem.chatThread) {
+      updateChat(id, { chatThread: thread })
       navigate(`/chats/${id}`, { relative: 'path' })
     }
   }
@@ -165,17 +163,18 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       saveMessages,
     )
 
-    useChatStore.getState().setSelectedChat({
-      chat: {
-        chatInstance,
-        chatThread,
-        id,
-        selectedModel: defaultModel,
-        triggerData,
-      },
-      mcpClients,
-      models,
+    const { registerChat, setMcpClients, setModels } = useChatStore.getState()
+
+    registerChat({
+      chatInstance,
+      chatThread,
+      id,
+      selectedModel: defaultModel,
+      triggerData,
     })
+
+    setMcpClients(mcpClients)
+    setModels(models)
 
     setIsReady(true)
   }

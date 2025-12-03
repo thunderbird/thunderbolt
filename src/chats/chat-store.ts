@@ -20,9 +20,12 @@ type ChatStoreState = {
 }
 
 type ChatStoreActions = {
-  setSelectedChat(data: { chat: ChatItem; mcpClients: MCPClient[]; models: Model[] }): void
+  registerChat(chat: ChatItem): void
+  updateChat(chatId: string, data: Partial<ChatItem>): void
   sendMessage(chatId: string, text: string): Promise<void>
   setSelectedModel(chatId: string, modelId: string | null): void
+  setModels(models: Model[]): void
+  setMcpClients(mcpClients: MCPClient[]): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
@@ -36,7 +39,15 @@ const initialState: ChatStoreState = {
 export const useChatStore = create<ChatStore>()((set, get) => ({
   ...initialState,
 
-  setSelectedChat: ({ chat, mcpClients, models }) => {
+  setModels: (models: Model[]) => {
+    set({ models })
+  },
+
+  setMcpClients: (mcpClients: MCPClient[]) => {
+    set({ mcpClients })
+  },
+
+  registerChat: (chat) => {
     const { chats } = get()
 
     const updatedChats = new Map(chats)
@@ -47,9 +58,22 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({
       chats: updatedChats,
-      mcpClients,
-      models,
     })
+  },
+
+  updateChat: (chatId: string, data: Partial<ChatItem>) => {
+    const { chats } = get()
+
+    const chat = chats.get(chatId)
+
+    if (!chat) {
+      throw new Error('No chat found')
+    }
+
+    const updatedChats = new Map(chats)
+    updatedChats.set(chatId, { ...chat, ...data })
+
+    set({ chats: updatedChats })
   },
 
   sendMessage: async (chatId, text) => {

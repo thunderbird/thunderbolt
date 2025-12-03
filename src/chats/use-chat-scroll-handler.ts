@@ -5,20 +5,22 @@ import { useChatStore } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 type UseChatScrollHandlerProps = {
+  chatId: string
   useAutoScroll?: typeof useAutoScroll_default
   useChat?: typeof useChat_default
 }
 
 export const useChatScrollHandler = ({
+  chatId,
   useAutoScroll = useAutoScroll_default,
   useChat = useChat_default,
-}: UseChatScrollHandlerProps = {}) => {
+}: UseChatScrollHandlerProps) => {
   const { chatInstance } = useChatStore(
     useShallow((state) => {
-      const chatItem = state.chats.get(state.selectedChatId!)
+      const chatItem = state.chats.get(chatId)!
 
       return {
-        chatInstance: chatItem!.chatInstance!,
+        chatInstance: chatItem.chatInstance,
       }
     }),
   )

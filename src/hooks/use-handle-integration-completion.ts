@@ -9,6 +9,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { updateMessageCache } from '@/dal/chat-messages'
 
 type UseHandleIntegrationCompletionParams = {
+  chatId: string
   saveMessages: SaveMessagesFunction
 }
 
@@ -121,12 +122,15 @@ const waitForMessageInChat = async (
  * When an integration is connected, it automatically retries the user's original request
  * by sending a new message with the original text and triggering a response.
  */
-export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
+export const useHandleIntegrationCompletion = ({
+  chatId,
+  saveMessages,
+}: UseHandleIntegrationCompletionParams): void => {
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
   const { chatInstance, chatThreadId } = useChatStore(
     useShallow((state) => {
-      const chatItem = state.chats.get(state.selectedChatId!)
+      const chatItem = state.chats.get(chatId)
 
       return {
         chatInstance: chatItem?.chatInstance,

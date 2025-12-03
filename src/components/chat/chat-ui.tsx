@@ -11,25 +11,30 @@ import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 
-export default function ChatUI() {
+type ChatUIProps = {
+  chatId: string
+}
+
+export default function ChatUI({ chatId }: ChatUIProps) {
   const { chatInstance } = useChatStore(
     useShallow((state) => {
-      const chatItem = state.chats.get(state.selectedChatId!)
+      const chatItem = state.chats.get(chatId)!
 
       return {
-        chatInstance: chatItem!.chatInstance!,
+        chatInstance: chatItem.chatInstance,
       }
     }),
   )
 
   const { messages } = useChat({ chat: chatInstance })
 
-  useChatAutomation()
+  useChatAutomation({ chatId })
 
   const hasMessages = messages.length
 
-  const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
-    useChatScrollHandler()
+  const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } = useChatScrollHandler(
+    { chatId },
+  )
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
   const { isMobile, isReady } = useIsMobile()
@@ -61,7 +66,7 @@ export default function ChatUI() {
               exit={{ opacity: 0 }}
               className="flex-1 p-4 space-y-4 max-w-dvw hide-scrollbar"
             >
-              <ChatMessages />
+              <ChatMessages chatId={chatId} />
               <div ref={scrollTargetRef} />
             </motion.div>
           )}
@@ -96,6 +101,7 @@ export default function ChatUI() {
               }}
             >
               <ChatPromptInput
+                chatId={chatId}
                 handleResetUserScroll={resetUserScroll}
                 handleScrollToBottom={scrollToBottom}
                 ref={chatPromptInputRef}

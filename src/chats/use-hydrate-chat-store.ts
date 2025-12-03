@@ -33,11 +33,9 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
       if (!init) throw new Error('Missing init')
 
-      const { mcpClients, chats, selectedChatId } = useChatStore.getState()
+      const { mcpClients, chats } = useChatStore.getState()
 
-      if (!selectedChatId) throw new Error('No selected chat')
-
-      const chatItem = chats.get(selectedChatId)
+      const chatItem = chats.get(id)
 
       if (!chatItem) throw new Error('No chat found')
 
@@ -65,11 +63,9 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message }) => {
-      const { chats, selectedChatId } = useChatStore.getState()
+      const { chats } = useChatStore.getState()
 
-      if (!selectedChatId) throw new Error('No selected chat')
-
-      const chatItem = chats.get(selectedChatId)
+      const chatItem = chats.get(id)
 
       if (!chatItem) throw new Error('No chat found')
 
@@ -133,17 +129,17 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     // Fetch thread info to check if we need to generate a title
-    const thread = await getOrCreateChatThread(id!, selectedModel.id)
+    const thread = await getOrCreateChatThread(id, selectedModel.id)
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(id!, messages)
+    await saveMessagesWithContextUpdate(id, messages)
 
     // Invalidate context size query to trigger re-fetch
     queryClient.invalidateQueries({ queryKey: ['contextSize', id] })
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {
-      updateThreadTitle(messages, id!)
+      updateThreadTitle(messages, id)
     }
 
     if (isNew) {

@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 type SavePartialAssistantMessagesHandlerProps = PropsWithChildren<{
+  chatId: string
   saveMessages: SaveMessagesFunction
   useChat?: typeof useChat_default
 }>
@@ -15,17 +16,18 @@ type SavePartialAssistantMessagesHandlerProps = PropsWithChildren<{
  * Using dependency injection to avoid mocking modules in tests which generates a lot of noise.
  */
 export const SavePartialAssistantMessagesHandler = ({
+  chatId,
   children,
   saveMessages,
   useChat = useChat_default,
 }: SavePartialAssistantMessagesHandlerProps) => {
   const { chatInstance, chatThreadId } = useChatStore(
     useShallow((state) => {
-      const chatItem = state.chats.get(state.selectedChatId!)
+      const chatItem = state.chats.get(chatId)!
 
       return {
-        chatInstance: chatItem!.chatInstance!,
-        chatThreadId: chatItem!.id!,
+        chatInstance: chatItem.chatInstance,
+        chatThreadId: chatItem.id,
       }
     }),
   )

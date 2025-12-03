@@ -18,6 +18,7 @@ export type ChatPromptInputRef = {
 }
 
 type ChatPromptInputProps = {
+  chatId: string
   handleResetUserScroll(): void
   handleScrollToBottom(): void
   useNavigate?: typeof useNavigate_default
@@ -30,6 +31,7 @@ type ChatPromptInputProps = {
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
   (
     {
+      chatId,
       handleResetUserScroll,
       handleScrollToBottom,
       useNavigate = useNavigate_default,
@@ -45,15 +47,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { chatInstance, chatThread, chatThreadId, models, sendMessage, selectedModel, setSelectedModel } =
       useChatStore(
         useShallow((state) => {
-          const chatItem = state.chats.get(state.selectedChatId!)
+          const chatItem = state.chats.get(chatId)!
 
           return {
-            chatInstance: chatItem!.chatInstance!,
-            chatThread: chatItem!.chatThread!,
-            chatThreadId: chatItem!.id!,
+            chatInstance: chatItem.chatInstance,
+            chatThread: chatItem.chatThread,
+            chatThreadId: chatItem.id,
             models: state.models,
             sendMessage: state.sendMessage,
-            selectedModel: chatItem!.selectedModel!,
+            selectedModel: chatItem.selectedModel,
             setSelectedModel: state.setSelectedModel,
           }
         }),
@@ -87,7 +89,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       // Clear the input immediately for responsive UX
       setInput('')
 
-      await sendMessage(textToSend)
+      await sendMessage(chatId, textToSend)
 
       // Reset user scroll state and scroll to bottom when submitting a new message
       handleResetUserScroll()
@@ -159,7 +161,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           placeholder="Say something..."
           models={models}
           selectedModelId={selectedModel.id}
-          onModelChange={setSelectedModel}
+          onModelChange={(modelId) => setSelectedModel(chatId, modelId)}
           showSubmitButton
           onSubmit={handleSubmit}
           isLoading={isStreaming}

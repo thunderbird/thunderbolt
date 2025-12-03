@@ -14,7 +14,7 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
   const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
 
-  useHandleIntegrationCompletion({ saveMessages })
+  useHandleIntegrationCompletion({ chatId: id, saveMessages })
 
   useEffect(() => {
     hydrateChatStore()
@@ -25,7 +25,9 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
   }
 
   return (
-    <SavePartialAssistantMessagesHandler saveMessages={saveMessages}>{children}</SavePartialAssistantMessagesHandler>
+    <SavePartialAssistantMessagesHandler chatId={id} saveMessages={saveMessages}>
+      {children}
+    </SavePartialAssistantMessagesHandler>
   )
 }
 
@@ -42,7 +44,7 @@ export default function ChatDetailPage() {
 
   return (
     <ChatHydrateHandler key={id} id={id} isNew={isNew}>
-      <ChatUI />
+      <ChatUI chatId={id} />
     </ChatHydrateHandler>
   )
 }

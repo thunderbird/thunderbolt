@@ -6,31 +6,29 @@ import { type Chat } from '@ai-sdk/react'
 import { create } from 'zustand'
 
 type ChatItem = {
-  chatInstance: Chat<ThunderboltUIMessage> | null
+  chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
   id: string
-  selectedModel: Model | null
+  selectedModel: Model
   triggerData: AutomationRun | null
 }
 
 type ChatStoreState = {
   chats: Map<string, ChatItem>
-  selectedChatId: string | null
   mcpClients: MCPClient[]
   models: Model[]
 }
 
 type ChatStoreActions = {
   setSelectedChat(data: { chat: ChatItem; mcpClients: MCPClient[]; models: Model[] }): void
-  sendMessage(text: string): Promise<void>
-  setSelectedModel(modelId: string | null): void
+  sendMessage(chatId: string, text: string): Promise<void>
+  setSelectedModel(chatId: string, modelId: string | null): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
   chats: new Map(),
-  selectedChatId: null,
   mcpClients: [],
   models: [],
 }
@@ -49,20 +47,15 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({
       chats: updatedChats,
-      selectedChatId: chat.id,
       mcpClients,
       models,
     })
   },
 
-  sendMessage: async (text) => {
-    const { chats, selectedChatId } = get()
+  sendMessage: async (chatId, text) => {
+    const { chats } = get()
 
-    if (!selectedChatId) {
-      throw new Error('No selected chat')
-    }
-
-    const chat = chats.get(selectedChatId)
+    const chat = chats.get(chatId)
 
     if (!chat) {
       throw new Error('No chat found')
@@ -98,8 +91,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     })
   },
 
-  setSelectedModel: async (modelId) => {
-    const { models, chats, selectedChatId } = get()
+  setSelectedModel: async (chatId, modelId) => {
+    const { models, chats } = get()
 
     const model = models.find((m) => m.id === modelId)
 
@@ -107,18 +100,14 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('Model not found')
     }
 
-    if (!selectedChatId) {
-      throw new Error('No selected chat')
-    }
-
-    const chat = chats.get(selectedChatId)
+    const chat = chats.get(chatId)
 
     if (!chat) {
       throw new Error('No chat found')
     }
 
     const updatedChats = new Map(chats)
-    updatedChats.set(selectedChatId, { ...chat, selectedModel: model })
+    updatedChats.set(chatId, { ...chat, selectedModel: model })
 
     set({ chats: updatedChats })
 

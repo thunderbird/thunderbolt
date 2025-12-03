@@ -374,6 +374,48 @@ describe('parseContentParts', () => {
         { type: 'text', content: 'Some text' },
       ])
     })
+
+    it('removes lone < at the end (potential widget start)', () => {
+      const text = 'Some text <'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Some text' }])
+    })
+
+    it('removes partial <w prefix at the end', () => {
+      const text = 'Some text <w'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Some text' }])
+    })
+
+    it('removes partial <wi prefix at the end', () => {
+      const text = 'Some text <wi'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Some text' }])
+    })
+
+    it('removes partial <widget prefix at the end (without colon)', () => {
+      const text = 'Some text <widget'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Some text' }])
+    })
+
+    it('does not remove non-widget HTML tags like <div', () => {
+      const text = 'Some text <div'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Some text <div' }])
+    })
+
+    it('does not remove < followed by space', () => {
+      const text = '5 < 10'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: '5 < 10' }])
+    })
   })
 
   describe('extensibility', () => {

@@ -23,10 +23,15 @@ export const ModelSelector = ({
   }
 
   const triggerContent = (
-    <div className="flex items-center gap-1.5 cursor-pointer">
-      {selectedModel?.isConfidential === 1 && <Lock className="size-3.5 text-warning-500" />}
+    <div
+      className={cn(
+        'flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-colors text-sm',
+        open ? 'bg-secondary' : 'hover:bg-secondary/50',
+      )}
+    >
+      {selectedModel?.isConfidential === 1 && <Lock className="size-3.5 text-muted-foreground" />}
       <span className="font-medium">{selectedModel?.name ?? 'Select Model'}</span>
-      <ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} />
+      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-180')} />
     </div>
   )
 

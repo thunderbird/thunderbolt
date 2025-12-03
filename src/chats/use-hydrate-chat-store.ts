@@ -104,7 +104,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const saveMessages: SaveMessagesFunction = async ({ messages }) => {
-    const selectedModel = useChatStore.getState().selectedModel
+    const { selectedModel, chatThread: currentThread, setChatThread } = useChatStore.getState()
 
     if (!selectedModel) {
       throw new Error('No selected model')
@@ -112,6 +112,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // Fetch thread info to check if we need to generate a title
     const thread = await getOrCreateChatThread(id!, selectedModel.id)
+
+    // Update store's chatThread if it was just created (first message scenario)
+    // This ensures the model selector disables incompatible models immediately
+    if (!currentThread && thread) {
+      setChatThread(thread)
+    }
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(id!, messages)

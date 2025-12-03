@@ -19,6 +19,7 @@ type ChatStoreActions = {
   hydrate(data: ChatStoreState): void
   reset(): void
   sendMessage(text: string): Promise<void>
+  setChatThread(chatThread: ChatThread | null): void
   setSelectedModel(modelId: string | null): void
 }
 
@@ -70,6 +71,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       length: text.length,
       prompt_number: chatInstance.messages.length + 1,
     })
+  },
+
+  setChatThread: (chatThread) => {
+    set({ chatThread })
   },
 
   setSelectedModel: async (modelId) => {

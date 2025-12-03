@@ -19,14 +19,6 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'fireworks',
     internalName: 'accounts/fireworks/models/mistral-large-3-fp8',
   },
-  'qwen3-235b-a22b-instruct-2507': {
-    provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/qwen3-235b-a22b-instruct-2507',
-  },
-  'qwen3-235b-a22b-thinking-2507': {
-    provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/qwen3-235b-a22b-thinking-2507',
-  },
 }
 
 /**

@@ -66,7 +66,7 @@ describe('Inference Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: 'qwen3-235b-a22b-instruct-2507',
+      model: 'mistral-large-3-fp8',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -325,12 +325,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = [
-        'gpt-oss-120b',
-        'mistral-large-3-fp8',
-        'qwen3-235b-a22b-instruct-2507',
-        'qwen3-235b-a22b-thinking-2507',
-      ]
+      const expectedModels = ['gpt-oss-120b', 'mistral-large-3-fp8']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

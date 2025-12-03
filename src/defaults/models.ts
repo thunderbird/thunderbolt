@@ -45,23 +45,6 @@ export const defaultModelGptOss120b: Model = {
   defaultHash: null,
 }
 
-export const defaultModelQwen3Instruct: Model = {
-  id: '0198ecc5-cc2b-735b-b478-7c6770371b84',
-  name: 'qwen3-instruct',
-  provider: 'thunderbolt',
-  model: 'qwen3-235b-a22b-instruct-2507',
-  isSystem: 0,
-  enabled: 1,
-  isConfidential: 0,
-  contextWindow: 256000,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-}
-
 export const defaultModelMistralLarge3Instruct: Model = {
   id: '019ae611-26e5-7445-8fec-a326229f847f',
   name: 'mistral-large-3-instruct',
@@ -79,29 +62,7 @@ export const defaultModelMistralLarge3Instruct: Model = {
   defaultHash: null,
 }
 
-export const defaultModelQwen3Thinking: Model = {
-  id: '0198ecc5-cc2b-735b-b478-80dcfed4ea97',
-  name: 'qwen3-thinking',
-  provider: 'thunderbolt',
-  model: 'qwen3-235b-a22b-thinking-2507',
-  isSystem: 0,
-  enabled: 1,
-  isConfidential: 0,
-  startWithReasoning: 1,
-  contextWindow: 256000,
-  toolUsage: 1,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-}
-
 /**
  * Array of all default models for iteration
  */
-export const defaultModels: ReadonlyArray<Model> = [
-  defaultModelGptOss120b,
-  defaultModelMistralLarge3Instruct,
-  defaultModelQwen3Instruct,
-  defaultModelQwen3Thinking,
-] as const
+export const defaultModels: ReadonlyArray<Model> = [defaultModelGptOss120b, defaultModelMistralLarge3Instruct] as const

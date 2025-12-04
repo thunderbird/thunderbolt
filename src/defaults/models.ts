@@ -44,6 +44,7 @@ export const defaultModelGptOss120b: Model = {
   url: null,
   defaultHash: null,
   maintainer: 'openai',
+  description: 'Fast and confidential',
 }
 
 export const defaultModelQwen3Instruct: Model = {
@@ -62,6 +63,7 @@ export const defaultModelQwen3Instruct: Model = {
   url: null,
   defaultHash: null,
   maintainer: null,
+  description: 'Balance between privacy and power',
 }
 
 export const defaultModelQwen3Thinking: Model = {
@@ -80,6 +82,7 @@ export const defaultModelQwen3Thinking: Model = {
   url: null,
   defaultHash: null,
   maintainer: null,
+  description: 'Balance between privacy and power',
 }
 
 /**

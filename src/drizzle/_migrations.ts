@@ -69,4 +69,9 @@ export const migrations: Migration[] = [
     name: '0011_mean_blob.sql',
     sql: 'ALTER TABLE `models` ADD `maintainer` text;',
   },
+  {
+    hash: '0012_windy_kat_farrell',
+    name: '0012_windy_kat_farrell.sql',
+    sql: 'ALTER TABLE `models` ADD `description` text;',
+  },
 ]

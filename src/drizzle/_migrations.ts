@@ -65,13 +65,8 @@ export const migrations: Migration[] = [
     sql: 'ALTER TABLE `chat_messages` ADD `metadata` text;',
   },
   {
-    hash: '0011_mean_blob',
-    name: '0011_mean_blob.sql',
-    sql: 'ALTER TABLE `models` ADD `maintainer` text;',
-  },
-  {
-    hash: '0012_windy_kat_farrell',
-    name: '0012_windy_kat_farrell.sql',
-    sql: 'ALTER TABLE `models` ADD `description` text;',
+    hash: '0011_soft_tyger_tiger',
+    name: '0011_soft_tyger_tiger.sql',
+    sql: 'ALTER TABLE `models` ADD `maintainer` text;--> statement-breakpoint\nALTER TABLE `models` ADD `description` text;',
   },
 ]

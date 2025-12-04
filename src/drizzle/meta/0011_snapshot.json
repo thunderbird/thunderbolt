@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d1c88c13-1386-47a1-9850-61d65991a582",
+  "id": "a1b0add3-d0a1-47f6-ae69-fe7247e866a4",
   "prevId": "a243238c-9f85-4313-858f-2d42350d4188",
   "tables": {
     "chat_messages": {
@@ -372,6 +372,13 @@
         },
         "maintainer": {
           "name": "maintainer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

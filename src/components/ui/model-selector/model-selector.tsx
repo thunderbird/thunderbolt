@@ -1,5 +1,4 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Lock } from 'lucide-react'
@@ -42,38 +41,24 @@ export const ModelSelector = ({
       chatThread={chatThread}
       onSelect={handleSelect}
       onAddModels={onAddModels}
-      isMobile={isMobile}
     />
   )
 
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <button type="button" className="flex items-center">
-            {triggerContent}
-          </button>
-        </SheetTrigger>
-        <SheetContent
-          side="top"
-          className="p-0 bg-transparent border-none shadow-none"
-          overlayClassName="backdrop-blur-sm bg-black/30"
-          hideCloseButton
-        >
-          {content}
-        </SheetContent>
-      </Sheet>
-    )
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
       <PopoverTrigger asChild>
-        <button type="button" className="flex items-center">
+        <button type="button" className={cn('flex items-center', isMobile && open && 'relative z-50')}>
           {triggerContent}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-0">
+      {/* Blur backdrop for mobile */}
+      {isMobile && open && (
+        <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={() => setOpen(false)} />
+      )}
+      <PopoverContent
+        align={isMobile ? 'center' : 'start'}
+        className={cn('p-0', isMobile ? 'w-[calc(100vw-2rem)]' : 'w-80')}
+      >
         {content}
       </PopoverContent>
     </Popover>

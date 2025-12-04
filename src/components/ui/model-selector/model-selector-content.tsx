@@ -12,10 +12,7 @@ type ModelSelectorContentProps = Pick<ModelSelectorProps, 'models' | 'selectedMo
 }
 
 const getModelDescription = (model: Model): string => {
-  if (model.isConfidential === 1) return 'Fast and confidential'
-  if (model.provider === 'anthropic') return 'For complex tasks'
-  if (model.provider === 'openrouter') return 'Via OpenRouter'
-  if (model.provider === 'openai') return 'OpenAI model'
+  if (model.description) return model.description
   return model.model
 }
 
@@ -49,7 +46,7 @@ type ModelItemProps = {
 
 const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemProps) => {
   const description = getModelDescription(model)
-  const logoPath = getProviderLogoPath(model)
+  // const logoPath = getProviderLogoPath(model)
 
   return (
     <button
@@ -57,7 +54,7 @@ const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemPr
       disabled={isDisabled}
       onClick={() => onSelect(model.id)}
       className={cn(
-        'w-full flex items-center justify-between p-3 rounded-lg transition-colors text-left',
+        'w-full flex items-center justify-between px-3 py-2 mt-1.5 rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         isDisabled && 'opacity-50 cursor-not-allowed',
@@ -70,7 +67,9 @@ const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemPr
         </div>
         <span className="text-sm text-muted-foreground truncate">{description}</span>
       </div>
+      {/* TODO: Re-enable provider logos once we have proper definition on that
       {logoPath && <img src={logoPath} alt={`${model.provider} logo`} className="size-8 flex-shrink-0 ml-3" />}
+      */}
     </button>
   )
 })
@@ -133,7 +132,7 @@ export const ModelSelectorContent = ({
   const categorized = useMemo(() => categorizeModels(filteredModels), [filteredModels])
 
   const contentArea = (
-    <div className={cn('flex flex-col gap-2 bg-background', isMobile && 'rounded-xl')}>
+    <div className="flex flex-col gap-2 bg-background rounded-xl">
       <div className="px-4 pt-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

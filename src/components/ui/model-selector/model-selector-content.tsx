@@ -66,7 +66,7 @@ const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemPr
       <div className="flex flex-col gap-0.5 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium truncate">{model.name}</span>
-          {model.isConfidential === 1 && <Lock className="size-3.5 text-warning-500 flex-shrink-0" />}
+          {model.isConfidential === 1 && <Lock className="size-3.5 text-amber-500 flex-shrink-0" />}
         </div>
         <span className="text-sm text-muted-foreground truncate">{description}</span>
       </div>

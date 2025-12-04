@@ -95,6 +95,7 @@ export default function NewModelPage() {
       deletedAt: null,
       defaultHash: null, // User-created, not based on a default
       maintainer: null,
+      description: null,
     })
   }
 

@@ -195,13 +195,6 @@ export const aiFetchStreamingResponse = async ({
     const maxSteps = 20
     const maxAttempts = 2
 
-    const messageMetadata = ({ part }: { part: { type: string; usage?: LanguageModelV2Usage } }) => {
-      if (part.type === 'finish-step') {
-        return { modelId, usage: part.usage }
-      }
-      return { modelId }
-    }
-
     /**
      * Run a single streamText attempt and return the result along with metadata
      */
@@ -270,9 +263,55 @@ export const aiFetchStreamingResponse = async ({
         let currentMessages = convertToModelMessages(messages)
         let attemptNumber = 1
         let isRetry = false
+        let reasoningIdCounter = 0
+
+        /**
+         * Creates a messageMetadata function that generates incremental IDs for reasoning parts.
+         * This is necessary because all reasoning-start parts come with the same id `reasoning-0`,
+         * so we generate unique IDs (reasoning-0, reasoning-1, etc.) and track timing metadata
+         * for reasoning and tool calls across the stream.
+         */
+        const createMessageMetadata = () => {
+          return ({
+            part,
+          }: {
+            part: { type: string; id?: string; toolCallId?: string; usage?: LanguageModelV2Usage }
+          }) => {
+            switch (part.type) {
+              case 'finish-step':
+                return { modelId, usage: part.usage }
+              case 'tool-call':
+                return {
+                  reasoningTime: { [part.toolCallId ?? part.id ?? 'unknown']: { startedAt: Date.now() } },
+                }
+              case 'reasoning-start': {
+                const reasoningId: string = `reasoning-${reasoningIdCounter}`
+                reasoningIdCounter++
+                return {
+                  reasoningTime: { [reasoningId]: { startedAt: Date.now() } },
+                }
+              }
+              case 'tool-result':
+                return {
+                  reasoningTime: { [part.toolCallId ?? part.id ?? 'unknown']: { finishedAt: Date.now() } },
+                }
+              case 'reasoning-end': {
+                // Find the corresponding reasoning-start ID by decrementing the counter
+                // Since reasoning-end comes after reasoning-start, we need to use the previous ID
+                const reasoningId: string = `reasoning-${reasoningIdCounter - 1}`
+                return {
+                  reasoningTime: { [reasoningId]: { finishedAt: Date.now() } },
+                }
+              }
+              default:
+                return { modelId }
+            }
+          }
+        }
 
         while (attemptNumber <= maxAttempts) {
           const result = runStreamText(currentMessages)
+          const messageMetadata = createMessageMetadata()
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

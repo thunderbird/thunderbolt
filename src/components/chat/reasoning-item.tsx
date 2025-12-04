@@ -7,6 +7,7 @@ import { type ReasoningUIPart, type ToolUIPart } from 'ai'
 type ReasoningItemProps = {
   part: ReasoningGroupItem
   onClick: () => void
+  reasoningTime: { startedAt: number; finishedAt: number }
 }
 
 const getItemData = (part: ReasoningGroupItem) => {
@@ -40,7 +41,7 @@ const getItemData = (part: ReasoningGroupItem) => {
   }
 }
 
-export const ReasoningItem = ({ part, onClick }: ReasoningItemProps) => {
+export const ReasoningItem = ({ part, onClick, reasoningTime }: ReasoningItemProps) => {
   const itemData = getItemData(part)
 
   if (!itemData) {
@@ -63,7 +64,11 @@ export const ReasoningItem = ({ part, onClick }: ReasoningItemProps) => {
         <span className="text-sm font-medium truncate text-foreground">{itemData.displayName}</span>
       </div>
       <span className="text-xs text-muted-foreground flex-shrink-0">
-        {itemData.duration ? formatDuration(itemData.duration) : itemData.isLoading ? '...' : '—'}
+        {reasoningTime
+          ? formatDuration(reasoningTime.finishedAt - reasoningTime.startedAt)
+          : itemData.isLoading
+            ? '...'
+            : '—'}
       </span>
     </button>
   )

@@ -8,11 +8,10 @@ import {
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
 import type { TextUIPart } from 'ai'
-import { memo, useEffect, useRef, type ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 import { ReasoningGroup } from './reasoning-group'
-import { updateMessage } from '@/dal'
 
 interface AssistantMessageProps {
   message: ThunderboltUIMessage
@@ -27,7 +26,12 @@ const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300
  * Handles different part types (reasoning, tools, text) and manages loading states.
  * @internal - Exported for testing only
  */
-export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: boolean, messageId: string) => {
+export const mountMessageParts = (
+  groupedParts: GroupedUIPart[],
+  isStreaming: boolean,
+  messageId: string,
+  reasoningTime: Record<string, { startedAt: number; finishedAt: number }>,
+) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0 && isStreaming) {
@@ -53,6 +57,7 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
             hasTextPart={hasTextPart}
+            reasoningTime={reasoningTime}
           />,
         )
         break
@@ -66,79 +71,17 @@ export const mountMessageParts = (groupedParts: GroupedUIPart[], isStreaming: bo
   return partElements
 }
 
-const useTrackMessagePartDuration = (parts: any[]) => {
-  const partsStartTimes = useRef(new Map<number, number>())
-  const partsEndTimes = useRef(new Map<number, number>())
-
-  useEffect(() => {
-    parts.forEach((part, index) => {
-      const isPartStreaming =
-        part.state !== 'done' && part.state !== 'output-available' && part.state !== 'output-error'
-
-      if (isPartStreaming && !partsStartTimes.current.has(index)) {
-        partsStartTimes.current.set(index, Date.now())
-      }
-
-      if (!isPartStreaming && !partsEndTimes.current.has(index)) {
-        partsEndTimes.current.set(index, Date.now())
-      }
-    })
-  }, [parts])
-
-  return parts.map((item, index) => {
-    const startTime = partsStartTimes.current.get(index)
-    const endTime = partsEndTimes.current.get(index)
-    const duration = endTime && startTime ? endTime - startTime : null
-
-    const [partType] = splitPartType(item.type)
-
-    return {
-      ...item,
-      ...(['tool', 'reasoning'].includes(partType) && duration
-        ? {
-            metadata: {
-              ...(item as any).metadata,
-              duration,
-            },
-          }
-        : {}),
-    }
-  })
-}
-
-type UseSaveMessagePartsDurationParams = {
-  isStreaming: boolean
-  message: ThunderboltUIMessage
-  updatedParts: any[]
-}
-
-const useSaveMessagePartsDuration = ({ isStreaming, message, updatedParts }: UseSaveMessagePartsDurationParams) => {
-  const refIsStreaming = useRef(isStreaming)
-
-  useEffect(() => {
-    if (refIsStreaming.current && !isStreaming) {
-      refIsStreaming.current = false
-
-      // delay the update to ensure the parts are updated in the database
-      const timeout = setTimeout(async () => {
-        await updateMessage(message.id, { parts: updatedParts })
-      }, 500)
-
-      return () => clearTimeout(timeout)
-    }
-  }, [isStreaming, message, updatedParts])
-}
-
 export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
-  const partsWithDuration = useTrackMessagePartDuration(message.parts)
-
-  useSaveMessagePartsDuration({ isStreaming, message, updatedParts: partsWithDuration })
-
-  const filteredParts = filterMessageParts(partsWithDuration) as GroupableUIPart[]
+  const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
 
   const groupedParts = groupMessageParts(filteredParts)
 
-  const partElements: ReactNode[] = mountMessageParts(groupedParts, isStreaming, message.id)
+  const partElements: ReactNode[] = mountMessageParts(
+    groupedParts,
+    isStreaming,
+    message.id,
+    message.metadata?.reasoningTime,
+  )
 
   return (
     <div>

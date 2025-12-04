@@ -6,7 +6,6 @@ import { ReasoningDisplay } from './reasoning-display'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { ReasoningItem } from './reasoning-item'
 import { ReasoningGroupTitle } from './reasoning-group-title'
-import { useMemo } from 'react'
 import { useObjectView } from '@/content-view/context'
 
 type ReasoningGroupProps = {
@@ -14,9 +13,16 @@ type ReasoningGroupProps = {
   isStreaming: boolean
   isLastPartInMessage: boolean
   hasTextPart: boolean
+  reasoningTime: Record<string, { startedAt: number; finishedAt: number }>
 }
 
-export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTextPart }: ReasoningGroupProps) => {
+export const ReasoningGroup = ({
+  parts,
+  isStreaming,
+  isLastPartInMessage,
+  hasTextPart,
+  reasoningTime,
+}: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
   const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
@@ -32,13 +38,9 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTex
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
 
-  const totalDuration = useMemo(
-    () =>
-      parts.reduce((previous, current) => {
-        return (previous + ((current.content as any).metadata?.duration ?? 0)) as number
-      }, 0),
-    [parts],
-  )
+  const totalDuration = Object.values(reasoningTime ?? {}).reduce((previous, current) => {
+    return (previous + (current.finishedAt - current.startedAt)) as number
+  }, 0)
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],
@@ -67,13 +69,16 @@ export const ReasoningGroup = ({ parts, isStreaming, isLastPartInMessage, hasTex
             scrollContainerRef.current = el
           }}
         >
-          {parts.map((part, index) => (
-            <ReasoningItem
-              key={index}
-              part={part}
-              onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
-            />
-          ))}
+          {parts.map((part, index) => {
+            return (
+              <ReasoningItem
+                key={index}
+                part={part}
+                onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
+                reasoningTime={reasoningTime?.[part.id]}
+              />
+            )
+          })}
           <div ref={scrollTargetRef} />
         </div>
       </Expandable>

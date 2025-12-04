@@ -64,4 +64,9 @@ export const migrations: Migration[] = [
     name: '0010_tricky_squadron_supreme.sql',
     sql: 'ALTER TABLE `chat_messages` ADD `metadata` text;',
   },
+  {
+    hash: '0011_mean_blob',
+    name: '0011_mean_blob.sql',
+    sql: 'ALTER TABLE `models` ADD `maintainer` text;',
+  },
 ]

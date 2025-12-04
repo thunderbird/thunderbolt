@@ -43,6 +43,7 @@ export const defaultModelGptOss120b: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
+  maintainer: 'openai',
 }
 
 export const defaultModelQwen3Instruct: Model = {
@@ -60,6 +61,7 @@ export const defaultModelQwen3Instruct: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
+  maintainer: null,
 }
 
 export const defaultModelQwen3Thinking: Model = {
@@ -77,6 +79,7 @@ export const defaultModelQwen3Thinking: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
+  maintainer: null,
 }
 
 /**

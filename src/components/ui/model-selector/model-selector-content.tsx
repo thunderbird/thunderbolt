@@ -1,7 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
-import { Lock, Plus, Search, Shield, Sparkles } from 'lucide-react'
+import { Lock, Plus, Search } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import type { CategorizedModels, ModelSelectorProps } from './types'
 import type { ChatThread } from '@/layout/sidebar/types'
@@ -19,10 +19,10 @@ const getModelDescription = (model: Model): string => {
   return model.model
 }
 
-const getModelIcon = (model: Model) => {
-  if (model.isConfidential === 1) return <Shield className="size-5 text-muted-foreground" />
-  if (model.provider === 'anthropic') return <Sparkles className="size-5 text-muted-foreground" />
-  return null
+/** Returns the provider logo path for system models with a maintainer */
+const getProviderLogoPath = (model: Model): string | null => {
+  if (!model.isSystem || !model.maintainer) return null
+  return `/providers/${model.maintainer}.svg`
 }
 
 const categorizeModels = (models: Model[]): CategorizedModels => {
@@ -49,7 +49,7 @@ type ModelItemProps = {
 
 const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemProps) => {
   const description = getModelDescription(model)
-  const icon = getModelIcon(model)
+  const logoPath = getProviderLogoPath(model)
 
   return (
     <button
@@ -70,7 +70,7 @@ const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemPr
         </div>
         <span className="text-sm text-muted-foreground truncate">{description}</span>
       </div>
-      {icon && <div className="flex-shrink-0 ml-3">{icon}</div>}
+      {logoPath && <img src={logoPath} alt={`${model.provider} logo`} className="size-8 flex-shrink-0 ml-3" />}
     </button>
   )
 })
@@ -88,7 +88,7 @@ const ModelSection = memo(({ title, models, selectedModel, chatThread, onSelect 
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-xs font-medium text-muted-foreground px-3 py-2">{title}</h3>
+      <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{title}</h3>
       <div className="flex flex-col">
         {models.map((model) => {
           const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false

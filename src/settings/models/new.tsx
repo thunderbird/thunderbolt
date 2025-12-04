@@ -94,6 +94,7 @@ export default function NewModelPage() {
       contextWindow: null,
       deletedAt: null,
       defaultHash: null, // User-created, not based on a default
+      maintainer: null,
     })
   }
 

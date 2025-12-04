@@ -1,2 +1,2 @@
 export { ModelSelector } from './model-selector'
-export type { ModelSelectorProps, CategorizedModels } from './types'
+export type { ModelSelectorProps } from './types'

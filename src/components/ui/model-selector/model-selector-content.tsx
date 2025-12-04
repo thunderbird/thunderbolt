@@ -1,14 +1,13 @@
 import { Input } from '@/components/ui/input'
+import type { ChatThread } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { Lock, Plus, Search } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import type { CategorizedModels, ModelSelectorProps } from './types'
-import type { ChatThread } from '@/layout/sidebar/types'
 
 type ModelSelectorContentProps = Pick<ModelSelectorProps, 'models' | 'selectedModel' | 'chatThread' | 'onAddModels'> & {
   onSelect: (modelId: string) => void
-  isMobile?: boolean
 }
 
 const getModelDescription = (model: Model): string => {
@@ -17,10 +16,10 @@ const getModelDescription = (model: Model): string => {
 }
 
 /** Returns the provider logo path for system models with a maintainer */
-const getProviderLogoPath = (model: Model): string | null => {
-  if (!model.isSystem || !model.maintainer) return null
-  return `/providers/${model.maintainer}.svg`
-}
+// const getProviderLogoPath = (model: Model): string | null => {
+//   if (!model.isSystem || !model.maintainer) return null
+//   return `/providers/${model.maintainer}.svg`
+// }
 
 const categorizeModels = (models: Model[]): CategorizedModels => {
   const provided: Model[] = []
@@ -73,6 +72,7 @@ const ModelItem = memo(({ model, isSelected, isDisabled, onSelect }: ModelItemPr
     </button>
   )
 })
+ModelItem.displayName = 'ModelItem'
 
 type ModelSectionProps = {
   title: string
@@ -107,6 +107,7 @@ const ModelSection = memo(({ title, models, selectedModel, chatThread, onSelect 
     </div>
   )
 })
+ModelSection.displayName = 'ModelSection'
 
 export const ModelSelectorContent = ({
   models,
@@ -114,7 +115,6 @@ export const ModelSelectorContent = ({
   chatThread,
   onSelect,
   onAddModels,
-  isMobile = false,
 }: ModelSelectorContentProps) => {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -131,7 +131,7 @@ export const ModelSelectorContent = ({
 
   const categorized = useMemo(() => categorizeModels(filteredModels), [filteredModels])
 
-  const contentArea = (
+  return (
     <div className="flex flex-col gap-2 bg-background rounded-xl">
       <div className="px-4 pt-4">
         <div className="relative">
@@ -181,18 +181,6 @@ export const ModelSelectorContent = ({
           </button>
         </div>
       )}
-    </div>
-  )
-
-  if (!isMobile) {
-    return contentArea
-  }
-
-  return (
-    <div className="flex flex-col w-full px-4">
-      {/* Transparent spacer that shows blurred background */}
-      <div className="h-10" />
-      {contentArea}
     </div>
   )
 }

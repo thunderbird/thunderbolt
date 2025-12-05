@@ -325,7 +325,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = ['gpt-oss-120b', 'mistral-large-3', 'sonnet-4.5']
+      const expectedModels = ['gpt-oss-120b', 'mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

@@ -15,6 +15,10 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'thunderbolt',
     internalName: 'openai/gpt-oss-120b',
   },
+  'mistral-medium-3.1': {
+    provider: 'mistral',
+    internalName: 'mistral-medium-2508',
+  },
   'mistral-large-3': {
     provider: 'mistral',
     internalName: 'mistral-large-2512',

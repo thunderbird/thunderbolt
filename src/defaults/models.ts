@@ -66,6 +66,25 @@ export const defaultModelMistralLarge3Instruct: Model = {
   description: 'Balance between privacy and power',
 }
 
+export const defaultModelMistralMedium31: Model = {
+  id: '019ae612-5b8d-7a92-c4f3-9e6g8d3b2f10',
+  name: 'mistral-medium-3.1',
+  provider: 'thunderbolt',
+  model: 'mistral-medium-3.1',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 0,
+  contextWindow: 131072,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'mistral',
+  description: 'Balanced performance and efficiency',
+}
+
 export const defaultModelSonnet45: Model = {
   id: '019ae612-4a7c-7f91-b3e2-8d5f7c2a1e09',
   name: 'sonnet-4.5',
@@ -90,6 +109,7 @@ export const defaultModelSonnet45: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
+  defaultModelMistralMedium31,
   defaultModelMistralLarge3Instruct,
   defaultModelSonnet45,
 ] as const

@@ -2,7 +2,7 @@
 
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
-import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
+import { createContext, type ComponentProps, type ReactNode } from 'react'
 
 import {
   Dialog,
@@ -23,8 +23,6 @@ import { cn } from '@/lib/utils'
 // =============================================================================
 
 const ResponsiveModalContext = createContext<{ isMobile: boolean }>({ isMobile: false })
-
-const useResponsiveModalContext = () => useContext(ResponsiveModalContext)
 
 // =============================================================================
 // Main ResponsiveModal component

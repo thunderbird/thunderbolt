@@ -73,6 +73,40 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     },
   })
 
+  const originalSendMessage = instance.sendMessage.bind(instance)
+
+  // Override the sendMessage method to check if the model is available for the chat thread
+  instance.sendMessage = async function (message, options) {
+    const { chatThread, selectedModel } = useChatStore.getState()
+
+    if (!selectedModel) {
+      throw new Error('No selected model')
+    }
+
+    if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
+      throw new Error(
+        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
+      )
+    }
+
+    trackEvent('chat_send_prompt', {
+      model: selectedModel,
+      // @ts-ignore
+      length: message?.text?.length ?? 0,
+      prompt_number: instance.messages.length + 1,
+    })
+
+    return originalSendMessage(
+      {
+        ...message,
+        metadata: {
+          modelId: selectedModel.id,
+        },
+      } as ThunderboltUIMessage,
+      options,
+    )
+  }
+
   return instance
 }
 
@@ -104,7 +138,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const saveMessages: SaveMessagesFunction = async ({ messages }) => {
-    const selectedModel = useChatStore.getState().selectedModel
+    const { selectedModel, chatThread: currentThread, setChatThread } = useChatStore.getState()
 
     if (!selectedModel) {
       throw new Error('No selected model')
@@ -112,6 +146,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // Fetch thread info to check if we need to generate a title
     const thread = await getOrCreateChatThread(id!, selectedModel.id)
+
+    // Update store's chatThread if it was just created (first message scenario)
+    // This ensures the model selector disables incompatible models immediately
+    if (!currentThread && thread) {
+      setChatThread(thread)
+    }
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(id!, messages)

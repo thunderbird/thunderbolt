@@ -43,6 +43,8 @@ export const defaultModelGptOss120b: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
+  maintainer: 'openai',
+  description: 'Fast and confidential',
 }
 
 export const defaultModelMistralLarge3Instruct: Model = {
@@ -60,6 +62,8 @@ export const defaultModelMistralLarge3Instruct: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
+  maintainer: null,
+  description: 'Balance between privacy and power',
 }
 
 /**

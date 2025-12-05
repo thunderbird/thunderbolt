@@ -12,7 +12,7 @@ export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
  * Created by `groupMessageParts` to render related reasoning + tool calls in a single group
  * for better UX (showing them as a batch rather than scattered individually).
  */
-export type ReasoningGroupItem<T = unknown> = { type: 'tool' | 'reasoning'; content: T }
+export type ReasoningGroupItem<T = unknown> = { type: 'tool' | 'reasoning'; content: T; id: string }
 
 export type ReasoningGroupUIPart = {
   type: 'reasoning_group'
@@ -67,6 +67,10 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
     currentItems = []
   }
 
+  // This is used to generate a unique id for each reasoning part
+  // with this id we can get the reasoning time for each part we have saved message metadata
+  let reasoningIdCounter = 0
+
   // Walk through the incoming parts and buffer every consecutive tool call.
   parts.forEach((part) => {
     const [partType] = splitPartType(part.type)
@@ -74,10 +78,11 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
     if (partType === 'tool' || partType === 'reasoning') {
       if (partType === 'tool') {
         const toolPart = part as ToolUIPart
-        currentItems.push({ type: 'tool', content: toolPart })
+        currentItems.push({ type: 'tool', content: toolPart, id: toolPart.toolCallId })
       } else {
         const reasoningPart = part as ReasoningUIPart
-        currentItems.push({ type: 'reasoning', content: reasoningPart })
+        currentItems.push({ type: 'reasoning', content: reasoningPart, id: `reasoning-${reasoningIdCounter}` })
+        reasoningIdCounter++
       }
       return
     }

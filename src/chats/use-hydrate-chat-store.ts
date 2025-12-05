@@ -96,7 +96,15 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
       prompt_number: instance.messages.length + 1,
     })
 
-    return originalSendMessage(message, options)
+    return originalSendMessage(
+      {
+        ...message,
+        metadata: {
+          modelId: selectedModel.id,
+        },
+      } as ThunderboltUIMessage,
+      options,
+    )
   }
 
   return instance

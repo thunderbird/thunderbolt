@@ -150,12 +150,9 @@ export const SearchableMenu = <T,>({
   }, [items, searchQuery])
 
   const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
-    // Close immediately using flushSync to force synchronous update
     flushSync(() => {
-      setSearchQuery('')
-      setInternalOpen(false)
+      setOpen(false)
     })
-    controlledOnOpenChange?.(false)
     onValueChange(id, item)
   }
 

@@ -21,7 +21,7 @@ export type SearchableMenuProps<T = unknown> = {
   /** Currently selected item ID */
   value?: string
   /** Callback when selection changes */
-  onValueChange: (id: string, item?: SearchableMenuItem<T>) => void
+  onValueChange: (id: string, item: SearchableMenuItem<T>) => void
   /** Enable search functionality */
   searchable?: boolean
   /** Search input placeholder */

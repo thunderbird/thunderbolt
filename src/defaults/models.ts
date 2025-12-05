@@ -48,7 +48,7 @@ export const defaultModelGptOss120b: Model = {
 }
 
 export const defaultModelMistralLarge3Instruct: Model = {
-  id: '019ae611-26e5-7445-8fec-a326229f847f',
+  id: '019af08a-f7b4-7ebf-ae40-d558193977d8',
   name: 'mistral-large-3',
   provider: 'thunderbolt',
   model: 'mistral-large-3',
@@ -67,7 +67,7 @@ export const defaultModelMistralLarge3Instruct: Model = {
 }
 
 export const defaultModelMistralMedium31: Model = {
-  id: '019ae612-5b8d-7a92-c4f3-9e6g8d3b2f10',
+  id: '019af08a-9836-783d-ab56-39b9fec48af1',
   name: 'mistral-medium-3.1',
   provider: 'thunderbolt',
   model: 'mistral-medium-3.1',
@@ -86,7 +86,7 @@ export const defaultModelMistralMedium31: Model = {
 }
 
 export const defaultModelSonnet45: Model = {
-  id: '019ae612-4a7c-7f91-b3e2-8d5f7c2a1e09',
+  id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
   name: 'sonnet-4.5',
   provider: 'thunderbolt',
   model: 'sonnet-4.5',

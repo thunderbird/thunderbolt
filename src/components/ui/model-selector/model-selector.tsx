@@ -60,7 +60,7 @@ export const ModelSelector = ({
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
-      {selectedModel?.isConfidential === 1 && <Lock className="size-3.5 text-muted-foreground" />}
+      {selected?.data?.model.isConfidential === 1 && <Lock className="size-3.5 text-muted-foreground" />}
       <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>

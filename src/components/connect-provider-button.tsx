@@ -7,6 +7,7 @@ import { useState } from 'react'
 type ConnectProviderButtonProps = {
   provider: OAuthProvider
   isConnected?: boolean
+  isProcessing?: boolean
   onSuccess?: () => void
   onError?: (error: Error) => void
   onDisconnect?: () => void
@@ -29,6 +30,7 @@ type ConnectProviderButtonProps = {
 export const ConnectProviderButton = ({
   provider,
   isConnected = false,
+  isProcessing = false,
   onSuccess,
   onError,
   onDisconnect,
@@ -43,35 +45,28 @@ export const ConnectProviderButton = ({
   allowDisconnect = false,
   useOAuthConnectHook,
 }: ConnectProviderButtonProps) => {
-  const [isConnecting, setIsConnecting] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
   // Use injected hook for testing, or real implementation in production
   const oauthHook = useOAuthConnectHook ?? useOAuthConnect
-  const { connect } = oauthHook({
-    onSuccess: () => {
-      onSuccess?.()
-    },
-    onError: (error) => {
-      onError?.(error)
-    },
+  const { connect, isConnecting: isConnectingFromHook } = oauthHook({
+    connectingKey: provider,
+    onSuccess,
+    onError,
     setPreferredName,
     returnContext,
   })
+
+  const isConnecting = isConnectingFromHook || isProcessing
 
   const handleClick = async () => {
     if (isConnected && allowDisconnect) {
       onDisconnect?.()
       return
     }
-    if (isConnected) return
+    if (isConnected || isConnecting) return
 
-    setIsConnecting(true)
-    try {
-      await connect(provider)
-    } finally {
-      setIsConnecting(false)
-    }
+    await connect(provider)
   }
 
   const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'

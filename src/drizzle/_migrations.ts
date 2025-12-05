@@ -64,4 +64,14 @@ export const migrations: Migration[] = [
     name: '0010_tricky_squadron_supreme.sql',
     sql: 'ALTER TABLE `chat_messages` ADD `metadata` text;',
   },
+  {
+    hash: '0011_soft_tyger_tiger',
+    name: '0011_soft_tyger_tiger.sql',
+    sql: 'ALTER TABLE `models` ADD `maintainer` text;--> statement-breakpoint\nALTER TABLE `models` ADD `description` text;',
+  },
+  {
+    hash: '0012_clear_expediter',
+    name: '0012_clear_expediter.sql',
+    sql: 'ALTER TABLE `models` RENAME COLUMN "maintainer" TO "vendor";',
+  },
 ]

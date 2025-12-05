@@ -1,4 +1,4 @@
-# Thunderbolt [[Demo]](https://thunderbolt-h9p7.onrender.com)
+# Thunderbolt [[Demo]](https://www.thunderbolt.io)
 
 [![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml)
 
@@ -10,7 +10,7 @@ The easiest way to start development:
 
 1. Create a `.env` file with:
    ```
-   VITE_THUNDERBOLT_CLOUD_URL=https://thunderbolt-cloud.onrender.com
+   VITE_THUNDERBOLT_CLOUD_URL=https://api.thunderbolt.io
    ```
 2. Run `bun dev`
 3. Open http://localhost:1420 in your browser
@@ -291,10 +291,6 @@ Set these environment variables when signing:
 export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/thunderbolt.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="your-password-here"
 ```
-
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ## Building for Devices
 

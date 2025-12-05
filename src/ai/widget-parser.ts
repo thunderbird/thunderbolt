@@ -106,7 +106,10 @@ export const parseContentParts = (text: string): ContentPart[] => {
     let textAfter = text.slice(lastIndex).trim()
 
     // Remove incomplete widget tags at the end (for streaming)
-    const incompleteWidgetTagMatch = textAfter.match(/<widget:[a-z0-9-]*(?:\s+[^>]*)?$/)
+    // Matches: < | <w | <wi | <wid | <widg | <widge | <widget | <widget:... (incomplete)
+    const incompleteWidgetTagMatch = textAfter.match(
+      /<(?:widget:[a-z0-9-]*(?:\s+[^>]*)?|w(?:i(?:d(?:g(?:e(?:t)?)?)?)?)?)?$/i,
+    )
     if (incompleteWidgetTagMatch) {
       textAfter = textAfter.slice(0, incompleteWidgetTagMatch.index).trim()
     }

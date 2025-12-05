@@ -95,21 +95,21 @@ function AppRoutes(_: { initData: InitData }) {
 export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
 
-  if (initError) {
-    return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
-  }
+  const renderAppContent = () => {
+    if (initError) {
+      return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
+    }
 
-  if (!initData) {
-    return <Loading />
-  }
+    if (!initData) {
+      return <Loading />
+    }
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <HttpClientProvider httpClient={initData.httpClient}>
-        <AuthProvider>
-          <SignInModalProvider>
-            <PostHogProvider client={initData.posthogClient}>
-              <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+    return (
+      <QueryClientProvider client={queryClient}>
+        <HttpClientProvider httpClient={initData.httpClient}>
+          <AuthProvider>
+            <SignInModalProvider>
+              <PostHogProvider client={initData.posthogClient}>
                 <TrayProvider tray={initData.tray} window={initData.window}>
                   <MCPProvider>
                     <SidebarProvider>
@@ -122,11 +122,17 @@ export const App = () => {
                     </SidebarProvider>
                   </MCPProvider>
                 </TrayProvider>
-              </ThemeProvider>
-            </PostHogProvider>
-          </SignInModalProvider>
-        </AuthProvider>
-      </HttpClientProvider>
-    </QueryClientProvider>
+              </PostHogProvider>
+            </SignInModalProvider>
+          </AuthProvider>
+        </HttpClientProvider>
+      </QueryClientProvider>
+    )
+  }
+
+  return (
+    <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+      {renderAppContent()}
+    </ThemeProvider>
   )
 }

@@ -58,6 +58,7 @@ describe('OnboardingAuthStep', () => {
     const mockOAuthConnectHook = () => ({
       connect: mockConnect,
       processCallback: mockProcessCallback,
+      isConnecting: false,
       error: null,
       clearError: mockClearError,
     })
@@ -128,8 +129,8 @@ describe('OnboardingAuthStep', () => {
     it('should not call connect when button is disabled', () => {
       renderComponent({ isProcessing: true })
 
-      // When processing, the button shows "Connected!" and is disabled
-      const connectButton = screen.getByRole('button', { name: /Connected!/i })
+      // When processing, the button shows "Connecting..." and is disabled
+      const connectButton = screen.getByRole('button', { name: /Connecting/i })
       fireEvent.click(connectButton)
 
       expect(mockConnect).not.toHaveBeenCalled()
@@ -138,20 +139,20 @@ describe('OnboardingAuthStep', () => {
 
   describe('Loading states', () => {
     it('should show loading state when isProcessing is true', () => {
+      renderComponent({ isProcessing: true })
+
+      const connectButton = screen.getByRole('button', { name: /Connecting/i })
+      expect(connectButton).toBeInTheDocument()
+    })
+
+    it('should show connecting state when OAuth callback is in location state', () => {
       mockLocation.state = { oauth: { code: 'test_code', state: 'test_state' } } as {
         oauth: { code: string; state: string }
       }
 
       renderComponent()
 
-      const connectButton = screen.getByRole('button', { name: /Connect Google/i })
-      expect(connectButton).toBeInTheDocument()
-    })
-
-    it('should show connected state during connection', () => {
-      renderComponent({ isProcessing: true })
-
-      const connectButton = screen.getByRole('button', { name: /Connected!/i })
+      const connectButton = screen.getByRole('button', { name: /Connecting/i })
       expect(connectButton).toBeInTheDocument()
     })
 
@@ -627,15 +628,46 @@ describe('OnboardingAuthStep', () => {
         oauth: { code: string; state: string }
       }
 
-      renderComponent()
+      const { rerender } = render(
+        <OnboardingAuthStep
+          providers={['google']}
+          isProcessing={false}
+          isConnected={false}
+          onConnectionChange={mockOnConnectionChange}
+          useOAuthConnectHook={() => ({
+            connect: mockConnect,
+            processCallback: mockProcessCallback,
+            isConnecting: false,
+            error: null,
+            clearError: mockClearError,
+          })}
+        />,
+        { wrapper: createQueryTestWrapper() },
+      )
 
       await waitFor(() => {
         expect(mockProcessCallback).toHaveBeenCalled()
       })
 
-      // Clear the error state and try again
+      // Clear the location state and rerender to simulate returning to normal state
       mockLocation.state = null
       mockProcessCallback.mockClear()
+
+      rerender(
+        <OnboardingAuthStep
+          providers={['google']}
+          isProcessing={false}
+          isConnected={false}
+          onConnectionChange={mockOnConnectionChange}
+          useOAuthConnectHook={() => ({
+            connect: mockConnect,
+            processCallback: mockProcessCallback,
+            isConnecting: false,
+            error: null,
+            clearError: mockClearError,
+          })}
+        />,
+      )
 
       const connectButton = screen.getByRole('button', { name: /Connect Google/i })
       fireEvent.click(connectButton)

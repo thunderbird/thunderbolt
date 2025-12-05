@@ -13,7 +13,7 @@ const mapModel = (model: Model) => {
 
 /**
  * Gets all models from the database (excluding soft-deleted)
- * Sorted with system model first, then alphabetically by name
+ * Sorted with system models first, then alphabetically by name
  */
 export const getAllModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db
@@ -28,7 +28,7 @@ export const getAllModels = async (): Promise<Model[]> => {
 
 /**
  * Gets all available (enabled) models from the database (excluding soft-deleted)
- * Sorted with system model first, then alphabetically by name
+ * Sorted with system models first, then alphabetically by name
  */
 export const getAvailableModels = async (): Promise<Model[]> => {
   const db = DatabaseSingleton.instance.db

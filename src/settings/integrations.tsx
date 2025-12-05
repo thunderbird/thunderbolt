@@ -49,6 +49,11 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [isProcessingCallback, setIsProcessingCallback] = useState(() => {
+    const oauth = (location.state as { oauth?: unknown } | null)?.oauth
+    return !!oauth
+  })
+
   const { processCallback } = useOAuthConnect({
     onSuccess: () => {
       loadIntegrations()
@@ -65,15 +70,17 @@ export default function IntegrationsPage() {
 
   // Handle OAuth callback when navigated back from /oauth/callback
   useEffect(() => {
-    const oauth = (location.state as any)?.oauth
+    const oauth = (location.state as { oauth?: { code?: string; state?: string; error?: string } } | null)?.oauth
     if (!oauth) return
 
     const handleCallback = async () => {
+      setIsProcessingCallback(true)
       try {
         await processCallback(oauth)
       } catch (err) {
         console.error('Failed to complete OAuth:', err)
       } finally {
+        setIsProcessingCallback(false)
         navigate('.', { replace: true, state: null })
       }
     }
@@ -103,29 +110,21 @@ export default function IntegrationsPage() {
       // Thunderbolt Pro integration ----------------------------------------
       const proStatus = await getProStatus()
 
-      let gParsedCredentials: any = null
-      let gUserEmail: string | undefined = undefined
-
-      if (integrationsGoogleCredentials) {
+      const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
+        if (!credentialsJson) return undefined
         try {
-          gParsedCredentials = JSON.parse(integrationsGoogleCredentials)
-          gUserEmail = gParsedCredentials.profile?.email
+          return JSON.parse(credentialsJson) as Integration['credentials']
         } catch (e) {
-          console.error('Failed to parse Google credentials:', e)
+          console.error('Failed to parse credentials:', e)
+          return undefined
         }
       }
 
-      let mParsedCredentials: any = null
-      let mUserEmail: string | undefined = undefined
+      const gParsedCredentials = parseCredentials(integrationsGoogleCredentials)
+      const gUserEmail = gParsedCredentials?.profile?.email
 
-      if (integrationsMicrosoftCredentials) {
-        try {
-          mParsedCredentials = JSON.parse(integrationsMicrosoftCredentials)
-          mUserEmail = mParsedCredentials.profile?.email
-        } catch (e) {
-          console.error('Failed to parse Microsoft credentials:', e)
-        }
-      }
+      const mParsedCredentials = parseCredentials(integrationsMicrosoftCredentials)
+      const mUserEmail = mParsedCredentials?.profile?.email
 
       const integrations = [
         {
@@ -261,6 +260,7 @@ export default function IntegrationsPage() {
                   <ConnectProviderButton
                     provider={integration.provider as OAuthProvider}
                     isConnected={false}
+                    isProcessing={isProcessingCallback}
                     onSuccess={() => {
                       loadIntegrations()
                     }}

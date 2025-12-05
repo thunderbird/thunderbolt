@@ -3,7 +3,7 @@ import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import OpenAI from 'openai'
 
-export type InferenceProvider = 'fireworks' | 'thunderbolt'
+export type InferenceProvider = 'fireworks' | 'thunderbolt' | 'mistral' | 'anthropic'
 
 type InferenceClient = {
   client: OpenAI | PostHogOpenAI
@@ -19,6 +19,16 @@ let fireworksClient: OpenAI | PostHogOpenAI | null = null
  * Lazily initialized Thunderbolt client
  */
 let thunderboltClient: OpenAI | PostHogOpenAI | null = null
+
+/**
+ * Lazily initialized Mistral client
+ */
+let mistralClient: OpenAI | PostHogOpenAI | null = null
+
+/**
+ * Lazily initialized Anthropic client
+ */
+let anthropicClient: OpenAI | PostHogOpenAI | null = null
 
 /**
  * Get the Fireworks AI client
@@ -93,11 +103,86 @@ const getThunderboltClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI =>
 }
 
 /**
+ * Get the Mistral AI client using OpenAI-compatible API
+ */
+const getMistralClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
+  if (mistralClient && !fetchFn) {
+    return mistralClient
+  }
+
+  const settings = getSettings()
+
+  if (!settings.mistralApiKey) {
+    throw new Error('Mistral API key not configured')
+  }
+
+  const params = {
+    apiKey: settings.mistralApiKey,
+    baseURL: 'https://api.mistral.ai/v1',
+    ...(fetchFn && { fetch: fetchFn }),
+  }
+
+  const client = isPostHogConfigured()
+    ? new PostHogOpenAI({
+        ...params,
+        posthog: getPostHogClient(fetchFn),
+      })
+    : new OpenAI(params)
+
+  if (!fetchFn) {
+    mistralClient = client
+  }
+
+  return client
+}
+
+/**
+ * Get the Anthropic AI client using OpenAI-compatible API
+ */
+const getAnthropicClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
+  if (anthropicClient && !fetchFn) {
+    return anthropicClient
+  }
+
+  const settings = getSettings()
+
+  if (!settings.anthropicApiKey) {
+    throw new Error('Anthropic API key not configured')
+  }
+
+  const params = {
+    apiKey: settings.anthropicApiKey,
+    baseURL: 'https://api.anthropic.com/v1/',
+    ...(fetchFn && { fetch: fetchFn }),
+  }
+
+  const client = isPostHogConfigured()
+    ? new PostHogOpenAI({
+        ...params,
+        posthog: getPostHogClient(fetchFn),
+      })
+    : new OpenAI(params)
+
+  if (!fetchFn) {
+    anthropicClient = client
+  }
+
+  return client
+}
+
+/**
  * Get the appropriate inference client based on provider
  * Clients are lazily initialized and reused across requests
  */
 export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof fetch): InferenceClient => {
-  const client = provider === 'thunderbolt' ? getThunderboltClient(fetchFn) : getFireworksClient(fetchFn)
+  const clientMap: Record<InferenceProvider, () => OpenAI | PostHogOpenAI> = {
+    thunderbolt: () => getThunderboltClient(fetchFn),
+    mistral: () => getMistralClient(fetchFn),
+    anthropic: () => getAnthropicClient(fetchFn),
+    fireworks: () => getFireworksClient(fetchFn),
+  }
+
+  const client = clientMap[provider]()
 
   return {
     client,
@@ -112,6 +197,8 @@ export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof
 export const clearInferenceClientCache = () => {
   fireworksClient = null
   thunderboltClient = null
+  mistralClient = null
+  anthropicClient = null
 }
 
 /**

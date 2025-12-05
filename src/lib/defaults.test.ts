@@ -82,6 +82,8 @@ describe('defaults-hash', () => {
       id: model.id,
       deletedAt: model.deletedAt,
       defaultHash: model.defaultHash,
+      vendor: model.vendor,
+      description: model.description,
     }
     expect(hashModel(model)).toBe(hashModel(reorderedModel))
   })

@@ -5,14 +5,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 import { type ChatThread } from '@/layout/sidebar/types'
 import { memo } from 'react'
 
-interface ModelSelectorProps {
+type ModelSelectProps = {
   chatThread: ChatThread | null
   models: Model[]
   selectedModelId?: string
   onModelChange: (model: string | null) => void
 }
 
-export const ModelSelector = memo(({ chatThread, models, selectedModelId, onModelChange }: ModelSelectorProps) => {
+/**
+ * Simple model selection dropdown for use in forms like automation modal
+ * For the main chat interface, use ModelSelector from ./model-selector instead
+ */
+export const ModelSelect = memo(({ chatThread, models, selectedModelId, onModelChange }: ModelSelectProps) => {
   return (
     <Select value={selectedModelId} onValueChange={onModelChange}>
       <SelectTrigger className="rounded-full" size="sm">

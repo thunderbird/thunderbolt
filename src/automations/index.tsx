@@ -64,6 +64,7 @@ export default function AutomationsPage() {
       const prompt = prompts.find((p) => p.id === promptId)
 
       const threadId = await runAutomation(promptId)
+      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate(`/chats/${threadId}`)
       trackEvent('automation_run', {
         automation_id: promptId,

@@ -66,7 +66,30 @@ export const defaultModelMistralLarge3Instruct: Model = {
   description: 'Balance between privacy and power',
 }
 
+export const defaultModelSonnet45: Model = {
+  id: '019ae612-4a7c-7f91-b3e2-8d5f7c2a1e09',
+  name: 'sonnet-4.5',
+  provider: 'thunderbolt',
+  model: 'sonnet-4.5',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 0,
+  contextWindow: 200000,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'anthropic',
+  description: 'Advanced reasoning and creativity',
+}
+
 /**
  * Array of all default models for iteration
  */
-export const defaultModels: ReadonlyArray<Model> = [defaultModelGptOss120b, defaultModelMistralLarge3Instruct] as const
+export const defaultModels: ReadonlyArray<Model> = [
+  defaultModelGptOss120b,
+  defaultModelMistralLarge3Instruct,
+  defaultModelSonnet45,
+] as const

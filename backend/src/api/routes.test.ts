@@ -35,6 +35,7 @@ describe('Main Routes', () => {
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
       fireworksApiKey: 'test-api-key',
       mistralApiKey: '',
+      anthropicApiKey: '',
       exaApiKey: '',
       thunderboltInferenceUrl: '',
       thunderboltInferenceApiKey: '',

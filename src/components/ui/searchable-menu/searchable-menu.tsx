@@ -183,10 +183,10 @@ export const SearchableMenu = <T,>({
 
       <PopoverContent
         align={isMobile ? 'center' : align}
-        className={cn('p-0 rounded-xl', contentClassName)}
+        className={cn('p-0 rounded-md', contentClassName)}
         style={{ width: contentWidth }}
       >
-        <div className="flex flex-col gap-2 bg-background rounded-xl">
+        <div className="flex flex-col gap-2 bg-background rounded-md">
           {searchable && (
             <div className="px-4 pt-4">
               <div className="relative">
@@ -196,6 +196,7 @@ export const SearchableMenu = <T,>({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
+                  autoFocus={false}
                 />
               </div>
             </div>

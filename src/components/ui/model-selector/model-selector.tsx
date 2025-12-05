@@ -89,7 +89,7 @@ export const ModelSelector = ({
     <button
       type="button"
       onClick={onAddModels}
-      className="flex items-center gap-2 text-sm font-medium hover:text-foreground text-muted-foreground transition-colors w-full"
+      className="flex items-center gap-2 text-sm font-medium hover:text-foreground text-muted-foreground transition-colors w-full cursor-pointer"
     >
       <Plus className="size-4" />
       Add Models
@@ -101,7 +101,7 @@ export const ModelSelector = ({
       items={groupedItems}
       value={selectedModel?.id}
       onValueChange={onModelChange}
-      searchPlaceholder="Search Model"
+      searchPlaceholder="Search Models"
       emptyMessage="No models found"
       blurBackdrop
       trigger={renderTrigger}

@@ -30,7 +30,7 @@ export const mountMessageParts = (
   groupedParts: GroupedUIPart[],
   isStreaming: boolean,
   messageId: string,
-  reasoningTime: Record<string, { startedAt: number; finishedAt: number }>,
+  reasoningTime: Record<string, { startedAt?: number; finishedAt?: number }>,
 ) => {
   const partElements: ReactNode[] = []
 
@@ -80,7 +80,7 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
     groupedParts,
     isStreaming,
     message.id,
-    message.metadata?.reasoningTime,
+    message.metadata?.reasoningTime ?? {},
   )
 
   return (

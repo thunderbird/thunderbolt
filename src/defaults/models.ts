@@ -43,16 +43,16 @@ export const defaultModelGptOss120b: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  maintainer: 'openai',
+  vendor: 'openai',
   description: 'Fast and confidential',
 }
 
 export const defaultModelMistralLarge3Instruct: Model = {
   id: '019ae611-26e5-7445-8fec-a326229f847f',
-  name: 'mistral-large-3-instruct',
+  name: 'mistral-large-3',
   provider: 'thunderbolt',
-  model: 'mistral-large-3-fp8',
-  isSystem: 0,
+  model: 'mistral-large-3',
+  isSystem: 1,
   enabled: 1,
   isConfidential: 0,
   contextWindow: 250000,
@@ -62,7 +62,7 @@ export const defaultModelMistralLarge3Instruct: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  maintainer: null,
+  vendor: 'mistral',
   description: 'Balance between privacy and power',
 }
 

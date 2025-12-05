@@ -2,6 +2,7 @@ import { widgetPrompts } from '@/widgets'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
+  modelName: string
   preferredName: string
   location: {
     name?: string
@@ -20,7 +21,7 @@ export type PromptParams = {
 /**
  * Creates a system prompt for the AI assistant with user context and guidelines.
  */
-export const createPrompt = ({ preferredName, location, localization }: PromptParams) => {
+export const createPrompt = ({ modelName, preferredName, location, localization }: PromptParams) => {
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -41,7 +42,7 @@ export const createPrompt = ({ preferredName, location, localization }: PromptPa
     .filter(Boolean)
     .join('\n')
 
-  return `You are a helpful executive assistant.
+  return `You are an executive assistant using the **${modelName}** model.
 Reasoning: low
 
 # Principles

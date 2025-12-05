@@ -49,7 +49,7 @@ describe('Inference Routes', () => {
     // Mock dependencies
     getInferenceClientSpy = spyOn(inferenceClient, 'getInferenceClient').mockReturnValue({
       client: mockOpenAIClient as unknown as OpenAI,
-      provider: 'fireworks',
+      provider: 'mistral',
     })
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
@@ -66,7 +66,7 @@ describe('Inference Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: 'mistral-large-3-fp8',
+      model: 'mistral-large-3',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -79,7 +79,7 @@ describe('Inference Routes', () => {
       getInferenceClientSpy.mockClear()
       getInferenceClientSpy.mockReturnValue({
         client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'fireworks',
+        provider: 'mistral',
       })
     })
 
@@ -105,7 +105,7 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: `accounts/fireworks/models/${validRequestBody.model}`,
+        model: 'mistral-large-2512',
         messages: validRequestBody.messages,
         temperature: validRequestBody.temperature,
         tools: undefined,
@@ -147,7 +147,7 @@ describe('Inference Routes', () => {
       )
     })
 
-    it('should route qwen models to fireworks provider', async () => {
+    it('should route mistral models to mistral provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
@@ -160,10 +160,10 @@ describe('Inference Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(getInferenceClientSpy).toHaveBeenCalledWith('fireworks')
+      expect(getInferenceClientSpy).toHaveBeenCalledWith('mistral')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: `accounts/fireworks/models/${validRequestBody.model}`,
+          model: 'mistral-large-2512',
         }),
       )
     })
@@ -212,7 +212,7 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           posthogProperties: expect.objectContaining({
-            model_provider: 'fireworks',
+            model_provider: 'mistral',
             endpoint: '/chat/completions',
             has_tools: false,
             temperature: validRequestBody.temperature,
@@ -325,7 +325,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = ['gpt-oss-120b', 'mistral-large-3-fp8']
+      const expectedModels = ['gpt-oss-120b', 'mistral-large-3']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

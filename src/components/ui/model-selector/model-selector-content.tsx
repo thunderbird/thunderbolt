@@ -15,10 +15,10 @@ const getModelDescription = (model: Model): string => {
   return model.model
 }
 
-/** Returns the provider logo path for system models with a maintainer */
+/** Returns the provider logo path for system models with a vendor */
 // const getProviderLogoPath = (model: Model): string | null => {
-//   if (!model.isSystem || !model.maintainer) return null
-//   return `/providers/${model.maintainer}.svg`
+//   if (!model.isSystem || !model.vendor) return null
+//   return `/providers/${model.vendor}.svg`
 // }
 
 const categorizeModels = (models: Model[]): CategorizedModels => {

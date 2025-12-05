@@ -13,7 +13,7 @@ type ReasoningGroupProps = {
   isStreaming: boolean
   isLastPartInMessage: boolean
   hasTextPart: boolean
-  reasoningTime: Record<string, { startedAt: number; finishedAt: number }>
+  reasoningTime: Record<string, { startedAt?: number; finishedAt?: number }>
 }
 
 export const ReasoningGroup = ({
@@ -39,7 +39,10 @@ export const ReasoningGroup = ({
     : ''
 
   const totalDuration = Object.values(reasoningTime ?? {}).reduce((previous, current) => {
-    return (previous + (current.finishedAt - current.startedAt)) as number
+    if (current.finishedAt === undefined) {
+      return previous
+    }
+    return (previous + ((current.finishedAt ?? 0) - (current.startedAt ?? 0))) as number
   }, 0)
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({

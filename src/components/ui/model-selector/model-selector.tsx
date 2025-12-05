@@ -24,6 +24,7 @@ const categorizeModels = (
       id: model.id,
       label: model.name,
       description: model.description || model.model,
+      searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
       icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-amber-500" /> : undefined,
       disabled: isDisabled,
       data: { model, isDisabled },

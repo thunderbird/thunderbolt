@@ -55,7 +55,7 @@ export const defaultModelMistralLarge3Instruct: Model = {
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  contextWindow: 250000,
+  contextWindow: 256000,
   toolUsage: 1,
   startWithReasoning: 0,
   deletedAt: null,

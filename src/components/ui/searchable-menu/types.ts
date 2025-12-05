@@ -7,6 +7,8 @@ export type SearchableMenuItem<T = unknown> = {
   icon?: ReactNode
   disabled?: boolean
   data?: T
+  /** Additional searchable text (not displayed) */
+  searchTerms?: string
 }
 
 export type SearchableMenuGroup<T = unknown> = {

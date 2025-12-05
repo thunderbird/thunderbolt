@@ -133,20 +133,21 @@ export const SearchableMenu = <T,>({
 
     const query = searchQuery.toLowerCase()
 
+    const matchesQuery = (item: SearchableMenuItem<T>) =>
+      item.label.toLowerCase().includes(query) ||
+      item.description?.toLowerCase().includes(query) ||
+      item.searchTerms?.toLowerCase().includes(query)
+
     if (isGroupedItems(items)) {
       return items
         .map((group) => ({
           ...group,
-          items: group.items.filter(
-            (item) => item.label.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query),
-          ),
+          items: group.items.filter(matchesQuery),
         }))
         .filter((group) => group.items.length > 0)
     }
 
-    return items.filter(
-      (item) => item.label.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query),
-    )
+    return items.filter(matchesQuery)
   }, [items, searchQuery])
 
   const handleSelect = (id: string, item: SearchableMenuItem<T>) => {

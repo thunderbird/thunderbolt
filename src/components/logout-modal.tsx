@@ -40,7 +40,7 @@ const SelectableCard = ({ selected, onSelect, icon, title, description, variant 
       type="button"
       onClick={onSelect}
       className={cn(
-        'group relative flex w-full items-center gap-4 rounded-xl border bg-card p-4 text-left transition-all',
+        'group relative flex w-full items-center gap-4 rounded-xl border bg-card p-4 text-left transition-all cursor-pointer',
         'hover:border-muted-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected && !isDestructive && 'border-primary/50 bg-primary/5 shadow-sm shadow-primary/10',
         selected && isDestructive && 'border-destructive/50 bg-destructive/5 shadow-sm shadow-destructive/10',
@@ -56,7 +56,7 @@ const SelectableCard = ({ selected, onSelect, icon, title, description, variant 
           !selected && 'border-muted-foreground/40 group-hover:border-muted-foreground/60',
         )}
       >
-        {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+        {selected && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
       </div>
 
       {/* Icon */}

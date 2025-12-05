@@ -15,9 +15,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 
 // =============================================================================
 // Context for sharing mobile state and close handler with sub-components

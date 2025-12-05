@@ -1,3 +1,5 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Lock, Star, Zap } from 'lucide-react'
 import { useState } from 'react'
@@ -195,6 +197,10 @@ const InteractiveTemplate = () => {
 }
 
 export const Interactive: Story = {
+  args: {
+    items: flatItems,
+    onValueChange: () => {},
+  },
   render: () => <InteractiveTemplate />,
   parameters: {
     docs: {
@@ -223,11 +229,106 @@ const InteractiveGroupedTemplate = () => {
 }
 
 export const InteractiveGrouped: Story = {
+  args: {
+    items: groupedItems,
+    onValueChange: () => {},
+  },
   render: () => <InteractiveGroupedTemplate />,
   parameters: {
     docs: {
       description: {
         story: 'Interactive grouped menu mimicking the model selector use case.',
+      },
+    },
+  },
+}
+
+type DisabledItemData = {
+  disabledReason?: string
+}
+
+const itemsWithDisabledReasons: SearchableMenuItem<DisabledItemData>[] = [
+  {
+    id: 'available',
+    label: 'Available Model',
+    description: 'This model can be selected',
+    icon: <Zap className="size-4 text-yellow-500" />,
+  },
+  {
+    id: 'confidential',
+    label: 'Confidential Model',
+    description: 'End-to-end encrypted',
+    icon: <Lock className="size-4 text-green-500" />,
+    disabled: true,
+    data: { disabledReason: 'This model is only available in encrypted chats' },
+  },
+  {
+    id: 'non-confidential',
+    label: 'Standard Model',
+    description: 'Fast responses',
+    disabled: true,
+    data: { disabledReason: 'Non-confidential models cannot be used in encrypted chats' },
+  },
+]
+
+const DisabledWithTooltipsTemplate = () => {
+  const [value, setValue] = useState('available')
+
+  const renderItem = (item: SearchableMenuItem<DisabledItemData>, isSelected: boolean) => {
+    const content = (
+      <div
+        className={cn(
+          'w-full flex items-center justify-between px-3 py-2 mt-1.5 rounded-lg transition-colors text-left cursor-pointer',
+          'hover:bg-accent/50',
+          isSelected && 'bg-accent',
+          item.disabled && 'opacity-50 cursor-not-allowed',
+        )}
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{item.label}</span>
+            {item.icon}
+          </div>
+          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
+        </div>
+      </div>
+    )
+
+    if (item.disabled && item.data?.disabledReason) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>{content}</div>
+          </TooltipTrigger>
+          <TooltipContent side="right">{item.data.disabledReason}</TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return content
+  }
+
+  return (
+    <SearchableMenu
+      items={itemsWithDisabledReasons}
+      value={value}
+      onValueChange={(id) => setValue(id)}
+      searchPlaceholder="Search models..."
+      renderItem={renderItem}
+    />
+  )
+}
+
+export const DisabledWithTooltips: Story = {
+  args: {
+    items: itemsWithDisabledReasons,
+    onValueChange: () => {},
+  },
+  render: () => <DisabledWithTooltipsTemplate />,
+  parameters: {
+    docs: {
+      description: {
+        story: 'Disabled items show a tooltip explaining why they cannot be selected (e.g., encryption mismatch).',
       },
     },
   },

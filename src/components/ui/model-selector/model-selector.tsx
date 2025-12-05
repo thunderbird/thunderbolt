@@ -1,4 +1,5 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { ChevronDown, Lock, Plus } from 'lucide-react'
@@ -7,7 +8,7 @@ import type { ModelSelectorProps } from './types'
 
 type ModelItemData = {
   model: Model
-  isDisabled: boolean
+  disabledReason?: string
 }
 
 const categorizeModels = (
@@ -20,14 +21,20 @@ const categorizeModels = (
   for (const model of models) {
     const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
 
+    const getDisabledReason = () => {
+      if (!isDisabled) return undefined
+      if (model.isConfidential === 1) return 'This model is only available in encrypted chats'
+      return 'Non-confidential models cannot be used in encrypted chats'
+    }
+
     const item: SearchableMenuItem<ModelItemData> = {
       id: model.id,
       label: model.name,
       description: model.description || model.model,
       searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-      icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-amber-500" /> : undefined,
+      icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-500" /> : undefined,
       disabled: isDisabled,
-      data: { model, isDisabled },
+      data: { model, disabledReason: getDisabledReason() },
     }
 
     if (model.isSystem) {
@@ -66,24 +73,39 @@ export const ModelSelector = ({
     </div>
   )
 
-  const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
-    <div
-      className={cn(
-        'w-full flex items-center justify-between px-3 py-2 mt-1.5 rounded-lg transition-colors text-left cursor-pointer',
-        'hover:bg-accent/50',
-        isSelected && 'bg-accent',
-        item.disabled && 'opacity-50 cursor-not-allowed',
-      )}
-    >
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{item.label}</span>
-          {item.icon}
+  const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {
+    const content = (
+      <div
+        className={cn(
+          'w-full flex items-center justify-between px-3 py-2 mt-1.5 rounded-lg transition-colors text-left cursor-pointer',
+          'hover:bg-accent/50',
+          isSelected && 'bg-accent',
+          item.disabled && 'opacity-50 cursor-not-allowed',
+        )}
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{item.label}</span>
+            {item.icon}
+          </div>
+          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
         </div>
-        <span className="text-sm text-muted-foreground truncate">{item.description}</span>
       </div>
-    </div>
-  )
+    )
+
+    if (item.disabled && item.data?.disabledReason) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>{content}</div>
+          </TooltipTrigger>
+          <TooltipContent side="right">{item.data.disabledReason}</TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return content
+  }
 
   const footer = onAddModels ? (
     <button

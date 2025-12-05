@@ -145,7 +145,7 @@ describe('Models DAL', () => {
         id: disabledModelId,
         provider: 'thunderbolt',
         name: 'Disabled Model',
-        model: 'qwen3-235b-a22b-instruct-2507',
+        model: 'mistral-large-3',
         isSystem: 0,
         enabled: 0,
       })

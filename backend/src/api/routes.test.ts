@@ -1,8 +1,8 @@
 import type { Settings } from '@/config/settings'
 import * as settingsModule from '@/config/settings'
-import { createTestDb } from '@/test-utils/db'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createTestDb } from '@/test-utils/db'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { createApp } from '../index'
 
@@ -34,6 +34,8 @@ describe('Main Routes', () => {
     // Mock settings for analytics route
     getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
       fireworksApiKey: 'test-api-key',
+      mistralApiKey: '',
+      anthropicApiKey: '',
       exaApiKey: '',
       thunderboltInferenceUrl: '',
       thunderboltInferenceApiKey: '',

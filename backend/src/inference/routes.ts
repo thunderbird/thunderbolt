@@ -1,6 +1,6 @@
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
-import { OpenAI as PostHogOpenAI } from '@posthog/ai'
+import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import { getInferenceClient, type InferenceProvider } from './client'
@@ -15,13 +15,17 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'thunderbolt',
     internalName: 'openai/gpt-oss-120b',
   },
-  'qwen3-235b-a22b-instruct-2507': {
-    provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/qwen3-235b-a22b-instruct-2507',
+  'mistral-medium-3.1': {
+    provider: 'mistral',
+    internalName: 'mistral-medium-2508',
   },
-  'qwen3-235b-a22b-thinking-2507': {
-    provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/qwen3-235b-a22b-thinking-2507',
+  'mistral-large-3': {
+    provider: 'mistral',
+    internalName: 'mistral-large-2512',
+  },
+  'sonnet-4.5': {
+    provider: 'anthropic',
+    internalName: 'claude-sonnet-4-5',
   },
 }
 
@@ -44,9 +48,10 @@ export const createInferenceRoutes = () => {
     }
 
     const { provider, internalName } = modelConfig
+
     const { client } = getInferenceClient(provider)
 
-    console.log(`Routing model "${body.model}" to ${provider} provider`)
+    console.info(`Routing model "${body.model}" to ${provider} provider`)
 
     try {
       const completion = await (client as PostHogOpenAI).chat.completions.create({

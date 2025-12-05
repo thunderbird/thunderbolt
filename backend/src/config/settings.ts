@@ -6,6 +6,8 @@ import { z } from 'zod'
 const settingsSchema = z.object({
   // API Keys
   fireworksApiKey: z.string().default(''),
+  mistralApiKey: z.string().default(''),
+  anthropicApiKey: z.string().default(''),
   exaApiKey: z.string().default(''),
   thunderboltInferenceUrl: z.string().default(''),
   thunderboltInferenceApiKey: z.string().default(''),
@@ -50,6 +52,8 @@ export type Settings = z.infer<typeof settingsSchema>
 const parseSettings = (): Settings => {
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
+    mistralApiKey: process.env.MISTRAL_API_KEY || '',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',

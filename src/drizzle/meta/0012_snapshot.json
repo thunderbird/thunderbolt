@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b2c1bde4-e1b2-5807-bf7a-0f8358f977b5",
+  "id": "4add795e-c7ee-4225-afe8-e3e0fdb04bc7",
   "prevId": "a1b0add3-d0a1-47f6-ae69-fe7247e866a4",
   "tables": {
     "chat_messages": {
@@ -625,7 +625,9 @@
   "_meta": {
     "schemas": {},
     "tables": {},
-    "columns": {}
+    "columns": {
+      "\"models\".\"maintainer\"": "\"models\".\"vendor\""
+    }
   },
   "internal": {
     "indexes": {}

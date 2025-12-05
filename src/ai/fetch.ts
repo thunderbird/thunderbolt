@@ -164,6 +164,7 @@ export const aiFetchStreamingResponse = async ({
   }
 
   const systemPrompt = createPrompt({
+    modelName: model.name,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,

@@ -496,8 +496,7 @@ export default function ModelsPage() {
           const thunderboltModels = [
             { id: 'kimi-k2-instruct', name: 'Kimi K2', supports_tools: true },
             { id: 'deepseek-r1-0528', name: 'DeepSeek R1', supports_tools: true },
-            { id: 'qwen3-235b-a22b-instruct-2507', name: 'Qwen 3', supports_tools: true },
-            { id: 'qwen3-235b-a22b-thinking-2507', name: 'Qwen 3 (Thinking)', supports_tools: true },
+            { id: 'mistral-large-3', name: 'Mistral Large 3', supports_tools: true },
             { id: 'llama-v3p1-405b-instruct', name: 'Llama 3.1', supports_tools: true },
           ]
           dispatch({ type: 'FETCH_MODELS_SUCCESS', models: thunderboltModels })

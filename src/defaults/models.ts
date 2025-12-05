@@ -47,12 +47,12 @@ export const defaultModelGptOss120b: Model = {
   description: 'Fast and confidential',
 }
 
-export const defaultModelQwen3Instruct: Model = {
-  id: '0198ecc5-cc2b-735b-b478-7c6770371b84',
-  name: 'qwen3-instruct',
+export const defaultModelMistralLarge3Instruct: Model = {
+  id: '019ae611-26e5-7445-8fec-a326229f847f',
+  name: 'mistral-large-3',
   provider: 'thunderbolt',
-  model: 'qwen3-235b-a22b-instruct-2507',
-  isSystem: 0,
+  model: 'mistral-large-3',
+  isSystem: 1,
   enabled: 1,
   isConfidential: 0,
   contextWindow: 256000,
@@ -62,27 +62,46 @@ export const defaultModelQwen3Instruct: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  vendor: null,
+  vendor: 'mistral',
   description: 'Balance between privacy and power',
 }
 
-export const defaultModelQwen3Thinking: Model = {
-  id: '0198ecc5-cc2b-735b-b478-80dcfed4ea97',
-  name: 'qwen3-thinking',
+export const defaultModelMistralMedium31: Model = {
+  id: '019ae612-5b8d-7a92-c4f3-9e6g8d3b2f10',
+  name: 'mistral-medium-3.1',
   provider: 'thunderbolt',
-  model: 'qwen3-235b-a22b-thinking-2507',
-  isSystem: 0,
+  model: 'mistral-medium-3.1',
+  isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  startWithReasoning: 1,
-  contextWindow: 256000,
+  contextWindow: 131072,
   toolUsage: 1,
+  startWithReasoning: 0,
   deletedAt: null,
   apiKey: null,
   url: null,
   defaultHash: null,
-  vendor: null,
-  description: 'Balance between privacy and power',
+  vendor: 'mistral',
+  description: 'Balanced performance and efficiency',
+}
+
+export const defaultModelSonnet45: Model = {
+  id: '019ae612-4a7c-7f91-b3e2-8d5f7c2a1e09',
+  name: 'sonnet-4.5',
+  provider: 'thunderbolt',
+  model: 'sonnet-4.5',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 0,
+  contextWindow: 200000,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'anthropic',
+  description: 'Advanced reasoning and creativity',
 }
 
 /**
@@ -90,6 +109,7 @@ export const defaultModelQwen3Thinking: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
-  defaultModelQwen3Instruct,
-  defaultModelQwen3Thinking,
+  defaultModelMistralMedium31,
+  defaultModelMistralLarge3Instruct,
+  defaultModelSonnet45,
 ] as const

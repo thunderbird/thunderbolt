@@ -75,24 +75,24 @@ export const ResponsiveModal = ({
           <DialogOverlay />
           <DialogPrimitive.Content
             className={cn(
-              'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col duration-200',
+              'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 duration-200',
               isMobile
-                ? 'inset-0 w-full h-dvh border-0 rounded-none shadow-none'
-                : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg border sm:max-w-md shadow-lg min-h-[550px] max-h-[85vh]',
+                ? 'inset-0 w-full min-h-dvh border-0 rounded-none shadow-none overflow-y-auto'
+                : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg border sm:max-w-md shadow-lg min-h-[550px] max-h-[85vh] flex flex-col',
               className,
             )}
             style={
               isMobile
                 ? {
                     paddingTop: 'calc(var(--safe-area-top-padding, 0px) + 56px)',
-                    paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px + var(--kb, 0px))',
+                    paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px)',
                     paddingLeft: 24,
                     paddingRight: 24,
                   }
                 : { padding: 24 }
             }
           >
-            {children}
+            {isMobile ? <div className="flex flex-col min-h-full">{children}</div> : children}
             {showCloseButton && (
               <DialogPrimitive.Close
                 className="ring-offset-background focus:ring-ring absolute right-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none"
@@ -146,7 +146,10 @@ type ResponsiveModalContentProps = ComponentProps<'div'> & {
  * Use `centered` prop to vertically center content.
  */
 export const ResponsiveModalContent = ({ className, centered, ...props }: ResponsiveModalContentProps) => (
-  <div className={cn('flex-1 py-4 overflow-auto', centered && 'flex flex-col justify-center', className)} {...props} />
+  <div
+    className={cn('flex-1 py-4 px-1 -mx-1 overflow-auto', centered && 'flex flex-col justify-center', className)}
+    {...props}
+  />
 )
 
 // =============================================================================

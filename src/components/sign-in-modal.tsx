@@ -187,7 +187,9 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
             <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="email"
+              name="email"
               type="email"
+              inputMode="email"
               placeholder="Email address"
               value={state.email}
               onChange={(e) => actions.setEmail(e.target.value)}

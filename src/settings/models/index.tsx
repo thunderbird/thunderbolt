@@ -382,7 +382,7 @@ export default function ModelsPage() {
         tokenizer: null,
         deletedAt: null,
         defaultHash: null, // User-created, not based on a default
-        maintainer: null,
+        vendor: null,
         description: null,
       }
       const model = await createModel(modelConfigWithDefaults)

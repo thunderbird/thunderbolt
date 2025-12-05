@@ -43,7 +43,7 @@ export const defaultModelGptOss120b: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  maintainer: 'openai',
+  vendor: 'openai',
   description: 'Fast and confidential',
 }
 
@@ -62,7 +62,7 @@ export const defaultModelQwen3Instruct: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  maintainer: null,
+  vendor: null,
   description: 'Balance between privacy and power',
 }
 
@@ -81,7 +81,7 @@ export const defaultModelQwen3Thinking: Model = {
   apiKey: null,
   url: null,
   defaultHash: null,
-  maintainer: null,
+  vendor: null,
   description: 'Balance between privacy and power',
 }
 

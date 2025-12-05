@@ -59,7 +59,7 @@ export const modelsTable = sqliteTable('models', {
   contextWindow: integer('context_window'),
   deletedAt: integer('deleted_at'),
   defaultHash: text('default_hash'),
-  maintainer: text('maintainer'),
+  vendor: text('vendor'),
   description: text('description'),
 })
 

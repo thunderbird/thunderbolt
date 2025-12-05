@@ -9,9 +9,9 @@ import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
 import type { TextUIPart } from 'ai'
 import { memo, type ReactNode } from 'react'
+import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
-import { ReasoningGroup } from './reasoning-group'
 
 interface AssistantMessageProps {
   message: ThunderboltUIMessage
@@ -30,7 +30,7 @@ export const mountMessageParts = (
   groupedParts: GroupedUIPart[],
   isStreaming: boolean,
   messageId: string,
-  reasoningTime: Record<string, { startedAt?: number; finishedAt?: number }>,
+  reasoningTime: Record<string, number>,
 ) => {
   const partElements: ReactNode[] = []
 

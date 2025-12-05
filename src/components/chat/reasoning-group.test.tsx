@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
-import '@testing-library/jest-dom'
-import { ReasoningGroup } from './reasoning-group'
-import type { ReasoningGroupItem } from '@/lib/assistant-message'
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { ContentViewProvider } from '@/content-view/context'
+import type { ReasoningGroupItem } from '@/lib/assistant-message'
+import '@testing-library/jest-dom'
+import { render, screen } from '@testing-library/react'
+import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import { describe, expect, it } from 'bun:test'
+import { ReasoningGroup } from './reasoning-group'
 
 const createMockReasoningPart = (
   state: 'streaming' | 'complete' = 'complete',
@@ -48,7 +48,7 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => {
   return <ContentViewProvider>{children}</ContentViewProvider>
 }
 
-const testReasoningTime: Record<string, { startedAt: number; finishedAt: number }> = {}
+const testReasoningTime: Record<string, number> = {}
 
 describe('ReasoningGroup', () => {
   describe('rendering', () => {
@@ -286,9 +286,9 @@ describe('ReasoningGroup', () => {
         { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' },
       ]
       const reasoningTime = {
-        [searchTool.toolCallId]: { startedAt: 0, finishedAt: 1000 },
-        [readFileTool.toolCallId]: { startedAt: 1000, finishedAt: 2500 },
-        'reasoning-0': { startedAt: 2500, finishedAt: 3000 },
+        [searchTool.toolCallId]: 1000,
+        [readFileTool.toolCallId]: 1500,
+        'reasoning-0': 500,
       }
       render(
         <ReasoningGroup
@@ -316,7 +316,7 @@ describe('ReasoningGroup', () => {
         { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
       ]
       const reasoningTime = {
-        [readFileTool.toolCallId]: { startedAt: 0, finishedAt: 2000 },
+        [readFileTool.toolCallId]: 2000,
       }
       render(
         <ReasoningGroup

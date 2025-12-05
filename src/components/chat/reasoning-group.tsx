@@ -1,19 +1,19 @@
-import { type ReasoningGroupItem } from '@/lib/assistant-message'
-import { Expandable } from '../ui/expandable'
-import { CheckIcon, Loader2 } from 'lucide-react'
-import { type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { ReasoningDisplay } from './reasoning-display'
-import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { ReasoningItem } from './reasoning-item'
-import { ReasoningGroupTitle } from './reasoning-group-title'
 import { useObjectView } from '@/content-view/context'
+import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { type ReasoningGroupItem } from '@/lib/assistant-message'
+import { type ReasoningUIPart, type ToolUIPart } from 'ai'
+import { CheckIcon, Loader2 } from 'lucide-react'
+import { Expandable } from '../ui/expandable'
+import { ReasoningDisplay } from './reasoning-display'
+import { ReasoningGroupTitle } from './reasoning-group-title'
+import { ReasoningItem } from './reasoning-item'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
   isStreaming: boolean
   isLastPartInMessage: boolean
   hasTextPart: boolean
-  reasoningTime: Record<string, { startedAt?: number; finishedAt?: number }>
+  reasoningTime: Record<string, number>
 }
 
 export const ReasoningGroup = ({
@@ -38,12 +38,7 @@ export const ReasoningGroup = ({
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
 
-  const totalDuration = Object.values(reasoningTime ?? {}).reduce((previous, current) => {
-    if (current.finishedAt === undefined) {
-      return previous
-    }
-    return (previous + ((current.finishedAt ?? 0) - (current.startedAt ?? 0))) as number
-  }, 0)
+  const totalDuration = Object.values(reasoningTime ?? {}).reduce((previous, current) => previous + current, 0)
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],

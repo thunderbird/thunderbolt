@@ -37,7 +37,7 @@ const createToolGroupPart = (tools: ToolUIPart[]): ReasoningGroupUIPart =>
 
 describe('mountMessageParts', () => {
   const testMessageId = 'test-message-id'
-  const testReasoningTime: Record<string, { startedAt: number; finishedAt: number }> = {}
+  const testReasoningTime: Record<string, number> = {}
 
   describe('empty parts', () => {
     it('renders synthetic loading part when no parts exist', () => {

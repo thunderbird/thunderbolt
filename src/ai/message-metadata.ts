@@ -1,0 +1,60 @@
+import type { LanguageModelV2Usage } from '@ai-sdk/provider'
+import type { UIMessageMetadata } from '@/types'
+
+type StreamPart = {
+  type: string
+  id?: string
+  toolCallId?: string
+  usage?: LanguageModelV2Usage
+}
+
+/**
+ * Creates a messageMetadata function that tracks timing for reasoning and tool calls.
+ * Start times are tracked locally; only duration is emitted on completion.
+ *
+ * @param modelId - The model ID to include in metadata
+ * @returns A function that processes stream parts and returns appropriate metadata
+ */
+export const createMessageMetadata = (modelId: string) => {
+  const startTimes = new Map<string, number>()
+  const reasoningStack: string[] = []
+  let reasoningIdCounter = 0
+
+  return ({ part }: { part: StreamPart }): UIMessageMetadata => {
+    switch (part.type) {
+      case 'finish-step':
+        return { modelId, usage: part.usage }
+
+      case 'tool-call': {
+        const id = part.toolCallId ?? part.id ?? 'unknown'
+        startTimes.set(id, Date.now())
+        return { modelId }
+      }
+
+      case 'reasoning-start': {
+        const id = `reasoning-${reasoningIdCounter++}`
+        startTimes.set(id, Date.now())
+        reasoningStack.push(id)
+        return { modelId }
+      }
+
+      case 'tool-result': {
+        const id = part.toolCallId ?? part.id ?? 'unknown'
+        const startTime = startTimes.get(id)
+        const duration = startTime ? Date.now() - startTime : undefined
+        return duration ? { reasoningTime: { [id]: duration } } : { modelId }
+      }
+
+      case 'reasoning-end': {
+        const id = reasoningStack.pop()
+        if (!id) return { modelId }
+        const startTime = startTimes.get(id)
+        const duration = startTime ? Date.now() - startTime : undefined
+        return duration ? { reasoningTime: { [id]: duration } } : { modelId }
+      }
+
+      default:
+        return { modelId }
+    }
+  }
+}

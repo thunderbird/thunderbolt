@@ -1,13 +1,13 @@
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
-import { Brain, DotIcon, Loader2 } from 'lucide-react'
-import { formatDuration, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { formatDuration, splitPartType } from '@/lib/utils'
 import { type ReasoningUIPart, type ToolUIPart } from 'ai'
+import { Brain, DotIcon, Loader2 } from 'lucide-react'
 
 type ReasoningItemProps = {
   part: ReasoningGroupItem
   onClick: () => void
-  reasoningTime?: { startedAt?: number; finishedAt?: number }
+  reasoningTime?: number
 }
 
 const getItemData = (part: ReasoningGroupItem) => {
@@ -64,11 +64,7 @@ export const ReasoningItem = ({ part, onClick, reasoningTime }: ReasoningItemPro
         <span className="text-sm font-medium truncate text-foreground">{itemData.displayName}</span>
       </div>
       <span className="text-xs text-muted-foreground flex-shrink-0">
-        {reasoningTime?.finishedAt && reasoningTime?.startedAt
-          ? formatDuration(reasoningTime.finishedAt - reasoningTime.startedAt)
-          : itemData.isLoading
-            ? '...'
-            : '—'}
+        {reasoningTime ? formatDuration(reasoningTime) : itemData.isLoading ? '...' : '—'}
       </span>
     </button>
   )

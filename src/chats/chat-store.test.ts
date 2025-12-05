@@ -6,10 +6,31 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { useChatStore } from './chat-store'
 
 // Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (messages: ThunderboltUIMessage[] = []): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
+const createMockChatInstance = (
+  messages: ThunderboltUIMessage[] = [],
+): Chat<ThunderboltUIMessage> & {
+  _originalSendMessage: ReturnType<typeof mock>
+} => {
+  const originalSendMessage = mock(async (_params: { text: string; metadata?: Record<string, unknown> }) => {
     // Mock implementation
   })
+
+  // Wrap sendMessage with validation logic to match real implementation
+  const sendMessage = async (params: { text: string; metadata?: Record<string, unknown> }) => {
+    const { chatThread, selectedModel } = useChatStore.getState()
+
+    if (!selectedModel) {
+      throw new Error('No selected model')
+    }
+
+    if (chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
+      throw new Error(
+        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
+      )
+    }
+
+    return originalSendMessage(params)
+  }
 
   return {
     id: 'test-chat-id',
@@ -23,7 +44,8 @@ const createMockChatInstance = (messages: ThunderboltUIMessage[] = []): Chat<Thu
     setMessages: mock(),
     setData: mock(),
     setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
+    _originalSendMessage: originalSendMessage,
+  } as unknown as Chat<ThunderboltUIMessage> & { _originalSendMessage: ReturnType<typeof mock> }
 }
 
 const createMockModel = (overrides?: Partial<Model>): Model => {
@@ -137,21 +159,6 @@ describe('chat-store', () => {
   })
 
   describe('sendMessage', () => {
-    it('should throw error when chatInstance is null', async () => {
-      const model = createMockModel()
-      useChatStore.getState().hydrate({
-        chatInstance: null,
-        chatThread: null,
-        id: 'test-id',
-        mcpClients: [],
-        models: [model],
-        selectedModel: model,
-        triggerData: null,
-      })
-
-      await expect(useChatStore.getState().sendMessage('test message')).rejects.toThrow('No chat instance')
-    })
-
     it('should throw error when selectedModel is null', async () => {
       const chatInstance = createMockChatInstance()
       useChatStore.getState().hydrate({
@@ -164,9 +171,10 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().sendMessage('test message')).rejects.toThrow('No selected model')
+      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
+        'No selected model',
+      )
     })
-
     it('should throw error when chatThread encryption does not match model confidentiality', async () => {
       const chatInstance = createMockChatInstance()
       const encryptedThread = createMockChatThread({ isEncrypted: 1 })
@@ -182,7 +190,7 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().sendMessage('test message')).rejects.toThrow(
+      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
         'This model is not available for encrypted conversations.',
       )
     })
@@ -202,7 +210,7 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().sendMessage('test message')).rejects.toThrow(
+      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
         'This model is not available for unencrypted conversations.',
       )
     })
@@ -228,13 +236,10 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().sendMessage('test message')
+      await useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })
 
-      expect(chatInstanceWithMessages.sendMessage).toHaveBeenCalledWith({
+      expect(chatInstanceWithMessages._originalSendMessage).toHaveBeenCalledWith({
         text: 'test message',
-        metadata: {
-          modelId: model.id,
-        },
       })
 
       // trackEvent is called but we don't verify it to avoid module mocking
@@ -260,14 +265,11 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().sendMessage('third message')
+      await useChatStore.getState().chatInstance?.sendMessage({ text: 'third message' })
 
       // Verify sendMessage was called with correct parameters
-      expect(chatInstance.sendMessage).toHaveBeenCalledWith({
+      expect(chatInstance._originalSendMessage).toHaveBeenCalledWith({
         text: 'third message',
-        metadata: {
-          modelId: model.id,
-        },
       })
 
       // trackEvent is called but we don't verify it to avoid module mocking

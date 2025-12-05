@@ -42,16 +42,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ) => {
     const navigate = useNavigate()
 
-    const { chatInstance, chatThreadId, sendMessage, selectedModel } = useChatStore(
+    const { chatInstance, chatThreadId, selectedModel } = useChatStore(
       useShallow((state) => ({
         chatInstance: state.chatInstance!,
         chatThreadId: state.id!,
-        sendMessage: state.sendMessage,
         selectedModel: state.selectedModel!,
       })),
     )
 
-    const { messages, status, stop } = useChat({ chat: chatInstance })
+    const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
     const isStreaming = status === 'streaming'
 
@@ -67,22 +66,29 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     })
 
     const handleSubmit = async () => {
-      const textToSend = input.trim()
-      if (isStreaming || !textToSend) return
+      try {
+        // Prevent submitting while streaming or if input is empty
+        const textToSend = input.trim()
+        if (isStreaming || !textToSend) return
 
-      if (isOverflowing) {
-        handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
-        return
+        if (isOverflowing) {
+          handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
+          return
+        }
+
+        // Clear the input immediately for responsive UX
+        setInput('')
+
+        await sendMessage({ text: textToSend })
+
+        // Reset user scroll state and scroll to bottom when submitting a new message
+        handleResetUserScroll()
+        requestAnimationFrame(() => {
+          handleScrollToBottom()
+        })
+      } catch (error) {
+        console.error('Error submitting message:', error)
       }
-
-      setInput('')
-
-      await sendMessage(textToSend)
-
-      handleResetUserScroll()
-      requestAnimationFrame(() => {
-        handleScrollToBottom()
-      })
     }
 
     const handleNewChat = async () => {

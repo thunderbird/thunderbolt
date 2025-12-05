@@ -73,6 +73,40 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
     },
   })
 
+  const originalSendMessage = instance.sendMessage.bind(instance)
+
+  // Override the sendMessage method to check if the model is available for the chat thread
+  instance.sendMessage = async function (message, options) {
+    const { chatThread, selectedModel } = useChatStore.getState()
+
+    if (!selectedModel) {
+      throw new Error('No selected model')
+    }
+
+    if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
+      throw new Error(
+        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
+      )
+    }
+
+    trackEvent('chat_send_prompt', {
+      model: selectedModel,
+      // @ts-ignore
+      length: message?.text?.length ?? 0,
+      prompt_number: instance.messages.length + 1,
+    })
+
+    return originalSendMessage(
+      {
+        ...message,
+        metadata: {
+          modelId: selectedModel.id,
+        },
+      } as ThunderboltUIMessage,
+      options,
+    )
+  }
+
   return instance
 }
 

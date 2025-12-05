@@ -17,12 +17,16 @@ import {
 } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 
 // =============================================================================
-// Context for sharing mobile state with sub-components
+// Context for sharing mobile state and close handler with sub-components
 // =============================================================================
 
-const ResponsiveModalContext = createContext<{ isMobile: boolean }>({ isMobile: false })
+const ResponsiveModalContext = createContext<{ isMobile: boolean; onClose: () => void }>({
+  isMobile: false,
+  onClose: () => {},
+})
 
 // =============================================================================
 // Main ResponsiveModal component
@@ -68,8 +72,10 @@ export const ResponsiveModal = ({
 }: ResponsiveModalProps) => {
   const { isMobile } = useIsMobile()
 
+  const handleClose = () => onOpenChange(false)
+
   return (
-    <ResponsiveModalContext.Provider value={{ isMobile }}>
+    <ResponsiveModalContext.Provider value={{ isMobile, onClose: handleClose }}>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogPortal>
           <DialogOverlay />
@@ -77,30 +83,42 @@ export const ResponsiveModal = ({
             className={cn(
               'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 duration-200',
               isMobile
-                ? 'inset-0 w-full min-h-dvh border-0 rounded-none shadow-none overflow-y-auto'
+                ? 'inset-0 w-full min-h-dvh border-0 rounded-none shadow-none overflow-y-auto flex flex-col'
                 : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg border sm:max-w-md shadow-lg min-h-[550px] max-h-[85vh] flex flex-col',
               className,
             )}
             style={
               isMobile
                 ? {
-                    paddingTop: 'calc(var(--safe-area-top-padding, 0px) + 56px)',
+                    paddingTop: 'var(--safe-area-top-padding, 0px)',
                     paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px)',
-                    paddingLeft: 24,
-                    paddingRight: 24,
                   }
                 : { padding: 24 }
             }
           >
-            {isMobile ? <div className="flex flex-col min-h-full">{children}</div> : children}
-            {showCloseButton && (
-              <DialogPrimitive.Close
-                className="ring-offset-background focus:ring-ring absolute right-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none"
-                style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
-              >
-                <XIcon className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </DialogPrimitive.Close>
+            {isMobile ? (
+              <>
+                {/* Close button positioned to match sidebar header's close button position */}
+                {showCloseButton && (
+                  <div
+                    className="absolute right-2 z-10"
+                    style={{ top: 'calc(var(--safe-area-top-padding, 0px) + 8px)' }}
+                  >
+                    <SidebarCloseButton onClick={handleClose} />
+                  </div>
+                )}
+                <div className="flex flex-col min-h-full flex-1 px-6 pt-14">{children}</div>
+              </>
+            ) : (
+              <>
+                {children}
+                {showCloseButton && (
+                  <DialogPrimitive.Close className="ring-offset-background focus:ring-ring absolute right-4 top-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+                    <XIcon className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                  </DialogPrimitive.Close>
+                )}
+              </>
             )}
           </DialogPrimitive.Content>
         </DialogPortal>

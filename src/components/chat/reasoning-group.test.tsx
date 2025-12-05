@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
-import '@testing-library/jest-dom'
-import { ReasoningGroup } from './reasoning-group'
-import type { ReasoningGroupItem } from '@/lib/assistant-message'
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { ContentViewProvider } from '@/content-view/context'
+import type { ReasoningGroupItem } from '@/lib/assistant-message'
+import '@testing-library/jest-dom'
+import { render, screen } from '@testing-library/react'
+import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import { describe, expect, it } from 'bun:test'
+import { ReasoningGroup } from './reasoning-group'
 
 const createMockReasoningPart = (
   state: 'streaming' | 'complete' = 'complete',
@@ -48,25 +48,45 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => {
   return <ContentViewProvider>{children}</ContentViewProvider>
 }
 
+const testReasoningTime: Record<string, number> = {}
+
 describe('ReasoningGroup', () => {
   describe('rendering', () => {
     it('should render Expandable component with ReasoningGroupTitle', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // Check that Expandable is rendered (it should contain the title)
       expect(screen.getByText(/completed|searching|processing/i)).toBeInTheDocument()
     })
 
     it('should render ReasoningItem for each part', () => {
+      const searchTool = createMockToolPart('search')
+      const readFileTool = createMockToolPart('read_file')
       const parts: ReasoningGroupItem[] = [
-        { type: 'tool', content: createMockToolPart('search') },
-        { type: 'tool', content: createMockToolPart('read_file') },
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
       ]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -77,9 +97,16 @@ describe('ReasoningGroup', () => {
     })
 
     it('should render CheckIcon when not thinking', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -89,9 +116,16 @@ describe('ReasoningGroup', () => {
     })
 
     it('should render Loader2 when thinking', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -103,9 +137,16 @@ describe('ReasoningGroup', () => {
 
   describe('isThinking logic', () => {
     it('should be thinking when isLastPartInMessage and isStreaming are both true', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -115,9 +156,16 @@ describe('ReasoningGroup', () => {
     })
 
     it('should not be thinking when isLastPartInMessage is false', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={false} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -127,9 +175,16 @@ describe('ReasoningGroup', () => {
     })
 
     it('should not be thinking when isStreaming is false', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -141,9 +196,16 @@ describe('ReasoningGroup', () => {
 
   describe('ReasoningDisplay conditional rendering', () => {
     it('should render ReasoningDisplay when hasTextPart is false and reasoning part exists', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: createMockReasoningPart('streaming') }]
+      const reasoningPart = createMockReasoningPart('streaming')
+      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -153,30 +215,60 @@ describe('ReasoningGroup', () => {
     })
 
     it('should not render ReasoningDisplay when hasTextPart is true', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: createMockReasoningPart('complete') }]
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={true} />, {
-        wrapper: TestWrapper,
-      })
+      const reasoningPart = createMockReasoningPart('complete')
+      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={true}
+          reasoningTime={testReasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // ReasoningDisplay should not render
       expect(screen.queryByText('Let me think about this...')).not.toBeInTheDocument()
     })
 
     it('should not render ReasoningDisplay when no reasoning part exists', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // ReasoningDisplay should not render
       expect(screen.queryByText('Let me think about this...')).not.toBeInTheDocument()
     })
 
     it('should render ReasoningDisplay with streaming state when reasoning is streaming', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: createMockReasoningPart('streaming') }]
-      render(<ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      const reasoningPart = createMockReasoningPart('streaming')
+      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // ReasoningDisplay should render the reasoning text
       expect(screen.getByText('Let me think about this...')).toBeInTheDocument()
@@ -185,14 +277,31 @@ describe('ReasoningGroup', () => {
 
   describe('duration calculation', () => {
     it('should calculate total duration from all parts', () => {
+      const searchTool = createMockToolPart('search', 'output-available', 1000)
+      const readFileTool = createMockToolPart('read_file', 'output-available', 1500)
+      const reasoningPart = createMockReasoningPart('complete', 500)
       const parts: ReasoningGroupItem[] = [
-        { type: 'tool', content: createMockToolPart('search', 'output-available', 1000) },
-        { type: 'tool', content: createMockToolPart('read_file', 'output-available', 1500) },
-        { type: 'reasoning', content: createMockReasoningPart('complete', 500) },
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
+        { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' },
       ]
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      const reasoningTime = {
+        [searchTool.toolCallId]: 1000,
+        [readFileTool.toolCallId]: 1500,
+        'reasoning-0': 500,
+      }
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={reasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // Total duration should be 3000ms (1000 + 1500 + 500)
       // The ReasoningGroupTitle should display this duration
@@ -200,13 +309,27 @@ describe('ReasoningGroup', () => {
     })
 
     it('should handle parts without duration', () => {
+      const searchTool = createMockToolPart('search')
+      const readFileTool = createMockToolPart('read_file', 'output-available', 2000)
       const parts: ReasoningGroupItem[] = [
-        { type: 'tool', content: createMockToolPart('search') },
-        { type: 'tool', content: createMockToolPart('read_file', 'output-available', 2000) },
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
       ]
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      const reasoningTime = {
+        [readFileTool.toolCallId]: 2000,
+      }
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={reasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // Total duration should be 2000ms (0 + 2000)
       expect(screen.getByText(/2\.0s|2s/i)).toBeInTheDocument()
@@ -215,9 +338,16 @@ describe('ReasoningGroup', () => {
 
   describe('onClick handler', () => {
     it('should call openObjectSidebar when ReasoningItem is clicked', () => {
-      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: createMockToolPart('search') }]
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -232,9 +362,15 @@ describe('ReasoningGroup', () => {
 
     it('should call openObjectSidebar with reasoning part when reasoning item is clicked', () => {
       const reasoningPart = createMockReasoningPart('complete')
-      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart }]
+      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -248,13 +384,22 @@ describe('ReasoningGroup', () => {
 
   describe('tools filtering', () => {
     it('should filter tools from parts correctly', () => {
+      const searchTool = createMockToolPart('search')
+      const reasoningPart = createMockReasoningPart('streaming')
+      const readFileTool = createMockToolPart('read_file')
       const parts: ReasoningGroupItem[] = [
-        { type: 'tool', content: createMockToolPart('search') },
-        { type: 'reasoning', content: createMockReasoningPart('streaming') },
-        { type: 'tool', content: createMockToolPart('read_file') },
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' },
+        { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
       ]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -270,9 +415,18 @@ describe('ReasoningGroup', () => {
 
     it('should handle empty parts array', () => {
       const parts: ReasoningGroupItem[] = []
-      render(<ReasoningGroup parts={parts} isStreaming={false} isLastPartInMessage={false} hasTextPart={false} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       // Should still render the Expandable component
       // The title should show "Thought for 0s" or similar
@@ -282,13 +436,22 @@ describe('ReasoningGroup', () => {
 
   describe('currentReasoningPart', () => {
     it('should use the last reasoning part for ReasoningDisplay', () => {
+      const firstReasoning = createMockReasoningPart('streaming', undefined, 'First reasoning')
+      const searchTool = createMockToolPart('search')
+      const lastReasoning = createMockReasoningPart('streaming', undefined, 'Last reasoning')
       const parts: ReasoningGroupItem[] = [
-        { type: 'reasoning', content: createMockReasoningPart('streaming', undefined, 'First reasoning') },
-        { type: 'tool', content: createMockToolPart('search') },
-        { type: 'reasoning', content: createMockReasoningPart('streaming', undefined, 'Last reasoning') },
+        { type: 'reasoning', content: firstReasoning, id: 'reasoning-0' },
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'reasoning', content: lastReasoning, id: 'reasoning-1' },
       ]
       const { container } = render(
-        <ReasoningGroup parts={parts} isStreaming={true} isLastPartInMessage={true} hasTextPart={false} />,
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
         { wrapper: TestWrapper },
       )
 

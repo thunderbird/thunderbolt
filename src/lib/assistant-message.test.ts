@@ -26,8 +26,8 @@ describe('assistant-message utilities', () => {
       expect(grouped[0]).toEqual({
         type: 'reasoning_group',
         items: [
-          { type: 'tool', content: toolAlpha },
-          { type: 'tool', content: toolBeta },
+          { type: 'tool', content: toolAlpha, id: toolAlpha.toolCallId },
+          { type: 'tool', content: toolBeta, id: toolBeta.toolCallId },
         ],
       })
       expect(grouped[1]).toBe(textPart)
@@ -45,10 +45,10 @@ describe('assistant-message utilities', () => {
       expect(grouped[0]).toEqual({
         type: 'reasoning_group',
         items: [
-          { type: 'tool', content: toolAlpha },
-          { type: 'tool', content: toolBeta },
-          { type: 'reasoning', content: reasoningPart },
-          { type: 'tool', content: toolGamma },
+          { type: 'tool', content: toolAlpha, id: toolAlpha.toolCallId },
+          { type: 'tool', content: toolBeta, id: toolBeta.toolCallId },
+          { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' },
+          { type: 'tool', content: toolGamma, id: toolGamma.toolCallId },
         ],
       })
     })
@@ -65,14 +65,14 @@ describe('assistant-message utilities', () => {
       expect(grouped[0]).toEqual({
         type: 'reasoning_group',
         items: [
-          { type: 'tool', content: toolAlpha },
-          { type: 'tool', content: toolBeta },
+          { type: 'tool', content: toolAlpha, id: toolAlpha.toolCallId },
+          { type: 'tool', content: toolBeta, id: toolBeta.toolCallId },
         ],
       })
       expect(grouped[1]).toBe(textPart)
       expect(grouped[2]).toEqual({
         type: 'reasoning_group',
-        items: [{ type: 'tool', content: toolGamma }],
+        items: [{ type: 'tool', content: toolGamma, id: toolGamma.toolCallId }],
       })
     })
   })

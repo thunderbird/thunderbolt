@@ -1,9 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
-import '@testing-library/jest-dom'
-import { ReasoningItem } from './reasoning-item'
 import type { ReasoningGroupItem } from '@/lib/assistant-message'
+import '@testing-library/jest-dom'
+import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import { describe, expect, it, mock } from 'bun:test'
+import { ReasoningItem } from './reasoning-item'
 
 const createMockReasoningPart = (state: 'streaming' | 'complete' = 'complete', duration?: number): ReasoningUIPart => {
   const part = {
@@ -40,7 +40,7 @@ const createMockToolPart = (
 }
 
 describe('ReasoningItem', () => {
-  const testReasoningTime = { startedAt: 0, finishedAt: 1000 }
+  const testReasoningTime = 1000
 
   describe('reasoning type', () => {
     it('should render reasoning item with "Thinking" label', () => {
@@ -84,11 +84,8 @@ describe('ReasoningItem', () => {
       const reasoningPart = createMockReasoningPart('complete', 1500)
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
-      // reasoningTime takes precedence over metadata duration
-      // Use non-zero startedAt since 0 is falsy and would fail the component's check
-      const reasoningTime = { startedAt: 100, finishedAt: 1600 }
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={reasoningTime} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={1500} />)
 
       // formatDuration(1500) should format to something like "1.5s"
       expect(screen.getByText(/1\.5s|1s/i)).toBeInTheDocument()
@@ -206,11 +203,8 @@ describe('ReasoningItem', () => {
       const toolPart = createMockToolPart('test_tool', 'output-available', 2500)
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
-      // reasoningTime takes precedence over metadata duration
-      // Use non-zero startedAt since 0 is falsy and would fail the component's check
-      const reasoningTime = { startedAt: 100, finishedAt: 2600 }
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={reasoningTime} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={2500} />)
 
       // formatDuration(2500) should format to something like "2.5s"
       expect(screen.getByText(/2\.5s|2s/i)).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { cn, formatDuration, splitPartType } from '@/lib/utils'
+import { formatDuration, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { type ToolUIPart } from 'ai'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -17,52 +17,33 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
     setActiveIndex(tools.length - 1)
   }, [tools.length])
 
+  const activeTool = tools[activeIndex]
+  const activeToolMetadata = activeTool
+    ? getToolMetadataSync(splitPartType(activeTool.type)[1], activeTool.input)
+    : null
+
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
-        {isThinking ? (
-          tools.map((tool, index) => {
-            const isActive = index === activeIndex
-            const isBelow = index < activeIndex
-
-            const [, toolName] = splitPartType(tool.type)
-            const metadata = getToolMetadataSync(toolName, tool.input)
-
-            return (
-              <motion.div
-                key={index}
-                initial={{ y: 20, opacity: 0 }}
-                animate={{
-                  y: isActive ? 0 : isBelow ? -10 : 20,
-                  opacity: isActive ? 1 : 0,
-                  scale: isActive ? 1 : 0.98,
-                  zIndex: isActive ? 10 : isBelow ? index : 0,
-                }}
-                exit={{ y: -20, opacity: 0 }}
-                transition={{
-                  duration: 0.3,
-                  ease: [0.4, 0, 0.2, 1], // Custom easing function
-                }}
-                className={cn('w-full', !isActive && 'pointer-events-none absolute inset-0')}
-              >
-                <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
-                  {metadata.loadingMessage}
-                </span>
-              </motion.div>
-            )
-          })
+        {isThinking && activeToolMetadata ? (
+          <motion.div
+            key={`tool-${activeIndex}`}
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            className="w-full"
+          >
+            <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
+              {activeToolMetadata.loadingMessage}
+            </span>
+          </motion.div>
         ) : (
           <motion.div
+            key="completed"
             initial={{ y: 20, opacity: 0 }}
-            animate={{
-              y: 0,
-              opacity: 1,
-              scale: 1,
-            }}
-            transition={{
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1], // Custom easing function
-            }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="w-full"
           >
             {tools.length > 0

@@ -30,9 +30,12 @@ type SidebarFooterProps = {
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const authClient = useAuth()
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
+
+  // On mobile, always treat the sidebar as expanded when it's open
+  const isExpanded = isMobile || state === 'expanded'
 
   const handleSignInClick = () => {
     // Close mobile sidebar first so modal is visible
@@ -57,9 +60,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate text-muted-foreground">Loading...</span>
-              </div>
+              {isExpanded && (
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate text-muted-foreground">Loading...</span>
+                </div>
+              )}
             </SidebarMenuButton>
           ) : !user ? (
             // Not logged in - show "Sign In" button
@@ -67,10 +72,12 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border">
                 <Sparkles className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
-                <span className="truncate font-semibold">Sign In</span>
-                <span className="truncate text-xs text-muted-foreground">Sync chats between devices</span>
-              </div>
+              {isExpanded && (
+                <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">Sign In</span>
+                  <span className="truncate text-xs text-muted-foreground">Sync chats between devices</span>
+                </div>
+              )}
             </SidebarMenuButton>
           ) : (
             // Logged in - show user menu
@@ -83,11 +90,15 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border">
                     <Sparkles className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
-                    {displayName && <span className="truncate font-semibold">{displayName}</span>}
-                    <span className="truncate text-xs">{displayEmail}</span>
-                  </div>
-                  <ChevronsUpDown className="ml-auto size-4" />
+                  {isExpanded && (
+                    <>
+                      <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
+                        {displayName && <span className="truncate font-semibold">{displayName}</span>}
+                        <span className="truncate text-xs">{displayEmail}</span>
+                      </div>
+                      <ChevronsUpDown className="ml-auto size-4" />
+                    </>
+                  )}
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent

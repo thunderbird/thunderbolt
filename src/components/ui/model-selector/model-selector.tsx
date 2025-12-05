@@ -118,11 +118,15 @@ export const ModelSelector = ({
     </button>
   ) : undefined
 
+  const handleModelChange = (id: string) => {
+    onModelChange(id)
+  }
+
   return (
     <SearchableMenu
       items={groupedItems}
       value={selectedModel?.id}
-      onValueChange={onModelChange}
+      onValueChange={handleModelChange}
       searchPlaceholder="Search Models"
       emptyMessage="No models found"
       blurBackdrop

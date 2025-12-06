@@ -48,6 +48,7 @@ export const Expanded: Story = {
     thread: mockThread,
     isActive: false,
     isCollapsed: false,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,

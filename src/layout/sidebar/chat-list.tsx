@@ -17,6 +17,7 @@ export const ChatList = ({
   chatThreads,
   currentChatThreadId,
   isCollapsed,
+  isMobile,
   debouncedSearchQuery,
   deleteAllChatsMutation,
   deleteChatMutation,
@@ -33,7 +34,7 @@ export const ChatList = ({
   return (
     <>
       <SidebarGroup className="flex-1 flex flex-col min-h-0">
-        {!isCollapsed && (
+        {!isCollapsed && chatThreads.length > 0 && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
@@ -47,7 +48,9 @@ export const ChatList = ({
         )}
         <div
           className={`transition-all duration-300 ease-in-out flex-shrink-0 ${
-            showSearch && !isCollapsed ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0 overflow-hidden'
+            showSearch && !isCollapsed && chatThreads.length > 0
+              ? 'max-h-12 opacity-100 mt-2'
+              : 'max-h-0 opacity-0 overflow-hidden'
           }`}
         >
           <SearchInput
@@ -59,7 +62,7 @@ export const ChatList = ({
           />
         </div>
         <SidebarMenu className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y">
-          {isCollapsed && (
+          {isCollapsed && chatThreads.length > 0 && (
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">
@@ -88,6 +91,7 @@ export const ChatList = ({
               thread={thread}
               isActive={thread.id === currentChatThreadId}
               isCollapsed={isCollapsed}
+              isMobile={isMobile}
               deleteChatMutation={deleteChatMutation}
               threadIdRef={threadIdRef}
               deleteChatDialogRef={deleteChatDialogRef}

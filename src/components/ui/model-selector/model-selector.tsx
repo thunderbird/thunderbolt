@@ -23,8 +23,8 @@ const categorizeModels = (
 
     const getDisabledReason = () => {
       if (!isDisabled) return undefined
-      if (model.isConfidential === 1) return 'This model is only available in encrypted chats'
-      return 'Non-confidential models cannot be used in encrypted chats'
+      if (model.isConfidential === 1) return 'This model is only available in confidential chats'
+      return 'Non-confidential models cannot be used in confidential chats'
     }
 
     const item: SearchableMenuItem<ModelItemData> = {
@@ -32,7 +32,7 @@ const categorizeModels = (
       label: model.name,
       description: model.description || model.model,
       searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-      icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-500" /> : undefined,
+      icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-600 dark:text-green-500" /> : undefined,
       disabled: isDisabled,
       data: { model, disabledReason: getDisabledReason() },
     }

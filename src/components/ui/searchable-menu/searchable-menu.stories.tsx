@@ -260,14 +260,14 @@ const itemsWithDisabledReasons: SearchableMenuItem<DisabledItemData>[] = [
     description: 'End-to-end encrypted',
     icon: <Lock className="size-4 text-green-500" />,
     disabled: true,
-    data: { disabledReason: 'This model is only available in encrypted chats' },
+    data: { disabledReason: 'This model is only available in confidential chats' },
   },
   {
     id: 'non-confidential',
     label: 'Standard Model',
     description: 'Fast responses',
     disabled: true,
-    data: { disabledReason: 'Non-confidential models cannot be used in encrypted chats' },
+    data: { disabledReason: 'Non-confidential models cannot be used in confidential chats' },
   },
 ]
 

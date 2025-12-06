@@ -103,16 +103,16 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 <Button
                   type="button"
                   variant="default"
-                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  className="size-8 rounded-lg flex items-center justify-center"
                   onClick={onStop}
                 >
-                  <Square className="size-3" />
+                  <Square className="size-4" />
                 </Button>
               ) : (
                 <Button
                   type="submit"
                   variant="default"
-                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  className="size-8 rounded-lg flex items-center justify-center"
                   disabled={isLoading || !value.trim()}
                 >
                   <ArrowUp className="size-4" />

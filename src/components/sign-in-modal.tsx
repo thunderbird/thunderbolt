@@ -17,6 +17,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { useAuth } from '@/contexts'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
 import { useSignInModalState } from './use-sign-in-modal-state'
@@ -32,6 +33,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const displayName = preferredName.value as string
   const emailInputRef = useRef<HTMLInputElement>(null)
+  const { isMobile } = useIsMobile()
 
   const { state, actions } = useSignInModalState({
     authClient,
@@ -46,9 +48,12 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   }
 
   const handleOpenAutoFocus = (event: Event) => {
-    // Prevent default Radix focus behavior and explicitly focus the email input
+    // Prevent default Radix focus behavior
     event.preventDefault()
-    emailInputRef.current?.focus()
+    // Only autofocus on desktop - mobile keyboards are disruptive
+    if (!isMobile) {
+      emailInputRef.current?.focus()
+    }
   }
 
   // Success state

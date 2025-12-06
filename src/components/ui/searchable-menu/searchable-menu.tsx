@@ -174,7 +174,7 @@ export const SearchableMenu = <T,>({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn('flex items-center', showBlur && 'relative z-50')}>
+        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
           {triggerContent}
         </button>
       </PopoverTrigger>
@@ -183,7 +183,7 @@ export const SearchableMenu = <T,>({
 
       <PopoverContent
         align={isMobile ? 'center' : align}
-        className={cn('p-0 rounded-md', contentClassName)}
+        className={cn('p-0 rounded-md duration-100', contentClassName)}
         style={{ width: contentWidth }}
       >
         <div className="flex flex-col gap-2 bg-background rounded-md">

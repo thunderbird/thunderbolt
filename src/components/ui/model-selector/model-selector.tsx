@@ -134,6 +134,7 @@ export const ModelSelector = ({
       renderItem={renderItem}
       footer={footer}
       width={320}
+      maxHeight={340}
     />
   )
 }

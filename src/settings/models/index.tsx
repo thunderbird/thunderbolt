@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/page-header'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  ResponsiveModal,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
-  ResponsiveModalTrigger,
 } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
@@ -780,14 +780,13 @@ export default function ModelsPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-12 w-full max-w-[760px] mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Models</h1>
-        <ResponsiveModal open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <ResponsiveModalTrigger asChild>
-            <Button variant="outline" size="icon">
+      <PageHeader title="Models">
+        <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />
             </Button>
-          </ResponsiveModalTrigger>
+          </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
@@ -1123,8 +1122,8 @@ export default function ModelsPage() {
               </form>
             </Form>
           </ResponsiveModalContentComposable>
-        </ResponsiveModal>
-      </div>
+        </Dialog>
+      </PageHeader>
 
       <div className="grid gap-4">
         {models.map((model) => {

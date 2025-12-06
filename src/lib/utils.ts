@@ -233,3 +233,11 @@ export const formatDuration = (ms: number): string => {
   }
   return `${seconds.toFixed(1)}s`
 }
+
+/**
+ * Check if a URL points to localhost
+ */
+export const isLocalhostUrl = (url: string | null): boolean => {
+  if (!url) return false
+  return url.startsWith('http://localhost')
+}

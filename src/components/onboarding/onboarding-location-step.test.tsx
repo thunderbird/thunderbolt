@@ -4,11 +4,33 @@ import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { OnboardingLocationStep } from './onboarding-location-step'
+
+// Mock Popover components to bypass Radix UI flakiness in CI (portals/animations)
+// We force render the content to ensure we can test the form logic inside
+mock.module('@/components/ui/popover', () => ({
+  Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
+// Mock Command components to bypass cmk/Radix issues in CI
+mock.module('@/components/ui/command', () => ({
+  Command: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandInput: (props: any) => <input {...props} />,
+  CommandList: ({ children }: { children: React.ReactNode }) => <div cmdk-list="">{children}</div>,
+  CommandEmpty: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandItem: ({ children, onSelect, ...props }: any) => (
+    <div onClick={() => onSelect?.(children)} role="option" data-value={children} {...props}>
+      {children}
+    </div>
+  ),
+}))
 
 const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
   const { state, actions } = useOnboardingState()

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { PromptInput } from '@/components/ui/prompt-input'
 import {
   ResponsiveModal,
-  ResponsiveModalContent,
+  ResponsiveModalContentComposable,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -274,7 +274,7 @@ export default function AutomationFormModal({
 
   return (
     <ResponsiveModal open={isOpen} onOpenChange={onOpenChange}>
-      <ResponsiveModalContent className="sm:max-w-[600px] p-0">
+      <ResponsiveModalContentComposable className="sm:max-w-[600px] p-0">
         <ResponsiveModalHeader className="px-6 pt-6">
           <ResponsiveModalTitle>{prompt ? 'Edit Automation' : 'Create Automation'}</ResponsiveModalTitle>
         </ResponsiveModalHeader>
@@ -382,7 +382,7 @@ export default function AutomationFormModal({
             </Card>
           </form>
         </Form>
-      </ResponsiveModalContent>
+      </ResponsiveModalContentComposable>
     </ResponsiveModal>
   )
 }

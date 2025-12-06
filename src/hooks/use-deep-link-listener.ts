@@ -1,6 +1,6 @@
-import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { getSettings } from '@/dal'
 import { isTauri } from '@/lib/platform'
+import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -12,9 +12,15 @@ type OAuthCallbackData = {
   error: string | null
 }
 
+type VerifyLinkData = {
+  email: string
+  otp: string
+}
+
 type NavigateTarget = {
   path: string
-  oauth: OAuthCallbackData
+  oauth?: OAuthCallbackData
+  verifyLink?: VerifyLinkData
 }
 
 /**
@@ -56,6 +62,26 @@ export const parseOAuthCallback = (url: URL): OAuthCallbackData | null => {
     state,
     error: errorDescription || error,
   }
+}
+
+/**
+ * Parses verify link callback parameters from a deep link URL
+ * The URL contains email and otp params which are used to verify via emailOtp sign-in
+ * Exported for testing
+ */
+export const parseVerifyLinkCallback = (url: URL): VerifyLinkData | null => {
+  if (url.hostname !== 'thunderbolt.io' || !url.pathname.startsWith('/auth/verify')) {
+    return null
+  }
+
+  const email = url.searchParams.get('email')
+  const otp = url.searchParams.get('otp')
+
+  if (!email || !otp) {
+    return null
+  }
+
+  return { email, otp }
 }
 
 type DeepLinkDependencies = {
@@ -102,7 +128,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
     }
 
     const handleDeepLinks = async (urls: string[]) => {
-      const nonOAuthUrls: string[] = []
+      const unhandledUrls: string[] = []
 
       for (const urlString of urls) {
         try {
@@ -119,18 +145,31 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
               state: { oauth: target.oauth },
               replace: true,
             })
-          } else {
-            // Collect non-OAuth URLs for custom handler
-            nonOAuthUrls.push(urlString)
+            continue
           }
+
+          // Handle verify link callback deep links (email + OTP from magic link)
+          const verifyData = parseVerifyLinkCallback(url)
+          if (verifyData) {
+            // Navigate to the verify page with email and otp params
+            // The MagicLinkVerify component will use these to call emailOtp sign-in
+            const params = new URLSearchParams({ email: verifyData.email, otp: verifyData.otp })
+            navigate(`/auth/verify?${params.toString()}`, {
+              replace: true,
+            })
+            continue
+          }
+
+          // Collect unhandled URLs for custom handler
+          unhandledUrls.push(urlString)
         } catch (err) {
           console.error('Failed to handle deep link:', urlString, err)
         }
       }
 
-      // Call custom handler only for non-OAuth URLs, once
-      if (handler && nonOAuthUrls.length > 0) {
-        await handler(nonOAuthUrls)
+      // Call custom handler only for unhandled URLs, once
+      if (handler && unhandledUrls.length > 0) {
+        await handler(unhandledUrls)
       }
     }
 

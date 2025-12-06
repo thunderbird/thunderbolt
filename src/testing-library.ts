@@ -60,7 +60,9 @@ let globalClock: InstalledClock | null = null
 
 // Mock jest global for @testing-library/dom's waitFor which tries to use jest.advanceTimersByTime
 // This must be defined after globalClock so it can access it
-;(globalThis as { jest?: { advanceTimersByTime: (ms: number) => void } }).jest = {
+const existingJest = (globalThis as any).jest || {}
+;(globalThis as any).jest = {
+  ...existingJest,
   advanceTimersByTime: (ms: number) => {
     if (globalClock) {
       globalClock.tick(ms)

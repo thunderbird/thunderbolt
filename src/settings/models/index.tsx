@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   ResponsiveModal,
-  ResponsiveModalContent,
+  ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
@@ -788,7 +788,7 @@ export default function ModelsPage() {
               <Plus />
             </Button>
           </ResponsiveModalTrigger>
-          <ResponsiveModalContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+          <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
               <ResponsiveModalDescription>Configure a new AI model for your assistant.</ResponsiveModalDescription>
@@ -1122,7 +1122,7 @@ export default function ModelsPage() {
                 </div>
               </form>
             </Form>
-          </ResponsiveModalContent>
+          </ResponsiveModalContentComposable>
         </ResponsiveModal>
       </div>
 

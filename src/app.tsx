@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 
 import ChatDetailPage from '@/chats/detail'
+import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { HttpClientProvider } from '@/contexts'
+import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
@@ -80,6 +81,9 @@ function AppRoutes(_: { initData: InitData }) {
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="dev-settings" element={<DevSettingsPage />} />
         </Route>
+
+        {/* Magic link verification - shows modal over app */}
+        <Route path="auth/verify" element={<MagicLinkVerify />} />
       </Route>
 
       {/* OAuth callback route */}
@@ -103,20 +107,24 @@ export const App = () => {
     return (
       <QueryClientProvider client={queryClient}>
         <HttpClientProvider httpClient={initData.httpClient}>
-          <PostHogProvider client={initData.posthogClient}>
-            <TrayProvider tray={initData.tray} window={initData.window}>
-              <MCPProvider>
-                <SidebarProvider>
-                  <ContentViewProvider
-                    initialSideviewType={initData.sideviewType}
-                    initialSideviewId={initData.sideviewId}
-                  >
-                    <AppContent initData={initData} />
-                  </ContentViewProvider>
-                </SidebarProvider>
-              </MCPProvider>
-            </TrayProvider>
-          </PostHogProvider>
+          <AuthProvider>
+            <SignInModalProvider>
+              <PostHogProvider client={initData.posthogClient}>
+                <TrayProvider tray={initData.tray} window={initData.window}>
+                  <MCPProvider>
+                    <SidebarProvider>
+                      <ContentViewProvider
+                        initialSideviewType={initData.sideviewType}
+                        initialSideviewId={initData.sideviewId}
+                      >
+                        <AppContent initData={initData} />
+                      </ContentViewProvider>
+                    </SidebarProvider>
+                  </MCPProvider>
+                </TrayProvider>
+              </PostHogProvider>
+            </SignInModalProvider>
+          </AuthProvider>
         </HttpClientProvider>
       </QueryClientProvider>
     )

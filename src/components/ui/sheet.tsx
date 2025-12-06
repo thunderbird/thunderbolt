@@ -1,6 +1,6 @@
-import { type ComponentProps } from 'react'
 import * as SheetPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
+import { type ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -25,7 +25,7 @@ function SheetOverlay({ className, ...props }: ComponentProps<typeof SheetPrimit
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50',
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur-md',
         className,
       )}
       {...props}
@@ -104,4 +104,4 @@ function SheetDescription({ className, ...props }: ComponentProps<typeof SheetPr
   )
 }
 
-export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription }
+export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger }

@@ -26,6 +26,7 @@
     "@opentelemetry/sdk-trace-node": "^2.1.0",
     "@posthog/ai": "^6.4.1",
     "@types/bun": "^1.2.22",
+    "better-auth": "^1.4.2",
     "bun-types": "^1.2.22",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
@@ -35,6 +36,7 @@
     "pino": "^9.11.0",
     "postgres": "^3.4.7",
     "posthog-node": "^5.8.8",
+    "resend": "^6.5.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

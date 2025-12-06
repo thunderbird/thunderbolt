@@ -39,7 +39,7 @@ const settingsSchema = z.object({
   corsAllowHeaders: z
     .string()
     .default(
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform',
     ),
   corsExposeHeaders: z.string().default('mcp-session-id'),
 })
@@ -74,7 +74,7 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id',
   }
 

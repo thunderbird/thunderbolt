@@ -1,9 +1,9 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SearchableMenu, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import type { ChatThread } from '@/layout/sidebar/types'
+import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
-import { Lock } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
-import { type ChatThread } from '@/layout/sidebar/types'
-import { memo } from 'react'
+import { ChevronDown, Lock } from 'lucide-react'
+import { memo, useMemo } from 'react'
 
 type ModelSelectProps = {
   chatThread: ChatThread | null
@@ -12,39 +12,63 @@ type ModelSelectProps = {
   onModelChange: (model: string | null) => void
 }
 
+type ModelItemData = {
+  model: Model
+  isDisabled: boolean
+}
+
 /**
- * Simple model selection dropdown for use in forms like automation modal
- * For the main chat interface, use ModelSelector from ./model-selector instead
+ * Simple model selection dropdown for use in forms like automation modal.
+ * Uses SearchableMenu without search functionality.
+ * For the main chat interface with search, use ModelSelector from ./model-selector instead.
  */
 export const ModelSelect = memo(({ chatThread, models, selectedModelId, onModelChange }: ModelSelectProps) => {
-  return (
-    <Select value={selectedModelId} onValueChange={onModelChange}>
-      <SelectTrigger className="rounded-full" size="sm">
-        <SelectValue placeholder="Select a model" />
-      </SelectTrigger>
-      <SelectContent>
-        {models.map((model) => {
-          const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+  const items = useMemo((): SearchableMenuItem<ModelItemData>[] => {
+    return models.map((model) => {
+      const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+      return {
+        id: model.id,
+        label: model.name,
+        icon: model.isConfidential === 1 ? <Lock className="size-3.5" /> : undefined,
+        disabled: isDisabled,
+        data: { model, isDisabled },
+      }
+    })
+  }, [models, chatThread])
 
-          return (
-            <Tooltip key={model.id}>
-              <TooltipTrigger asChild>
-                <SelectItem disabled={isDisabled} value={model.id} style={{ pointerEvents: 'auto' }}>
-                  <div className="flex items-center gap-2">
-                    {model.isConfidential ? <Lock className="size-3.5" /> : null}
-                    <p className="text-left">{model.name}</p>
-                  </div>
-                </SelectItem>
-              </TooltipTrigger>
-              {chatThread && isDisabled && (
-                <TooltipContent side="left">
-                  <p>{`This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          )
-        })}
-      </SelectContent>
-    </Select>
+  const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-colors text-sm border h-9 min-w-[140px]',
+        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+      )}
+    >
+      <div className="flex items-center gap-2 truncate">
+        {selected?.icon}
+        <span className="truncate">{selected?.label ?? 'Select a model'}</span>
+      </div>
+      <ChevronDown
+        className={cn('size-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')}
+      />
+    </div>
+  )
+
+  const handleChange = (id: string) => {
+    onModelChange(id)
+  }
+
+  return (
+    <SearchableMenu
+      items={items}
+      value={selectedModelId}
+      onValueChange={handleChange}
+      searchable={false}
+      blurBackdrop={false}
+      trigger={renderTrigger}
+      width={220}
+      maxHeight={250}
+    />
   )
 })
+
+ModelSelect.displayName = 'ModelSelect'

@@ -5,8 +5,8 @@ import { memo } from 'react'
 export const EncryptionMessage = memo(() => (
   <TimelineMessage>
     <div className="flex flex-row items-center gap-2">
-      <Lock className="size-4 text-blue-600 dark:text-blue-400" />
-      <p className="text-blue-700 dark:text-blue-300">This conversation is encrypted</p>
+      <Lock className="size-4 text-green-600 dark:text-green-500" />
+      <p className="text-green-600 dark:text-green-500">This conversation is confidential</p>
     </div>
   </TimelineMessage>
 ))

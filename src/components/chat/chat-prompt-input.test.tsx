@@ -1,13 +1,13 @@
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { useChatStore } from '@/chats/chat-store'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import type { ChatThread, Model, ThunderboltUIMessage } from '@/types'
+import { type Chat } from '@ai-sdk/react'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
-import { useChatStore } from '@/chats/chat-store'
-import type { ThunderboltUIMessage, ChatThread, Model } from '@/types'
-import { type Chat } from '@ai-sdk/react'
 import { createElement } from 'react'
 import { BrowserRouter } from 'react-router'
+import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
 // Mock Chat instance - minimal implementation for testing
 const createMockChatInstance = (
@@ -218,7 +218,7 @@ describe('ChatPromptInput', () => {
       )
 
       // Verify textarea is rendered
-      const textarea = screen.getByPlaceholderText('Say something...')
+      const textarea = screen.getByPlaceholderText('Ask me anything...')
       expect(textarea).toBeInTheDocument()
     })
   })
@@ -256,7 +256,7 @@ describe('ChatPromptInput', () => {
       )
 
       // Component should render without errors
-      expect(screen.getByPlaceholderText('Say something...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
     })
   })
 
@@ -295,7 +295,7 @@ describe('ChatPromptInput', () => {
       expect(ref.current).not.toBeNull()
       expect(typeof ref.current?.focus).toBe('function')
 
-      const textarea = screen.getByPlaceholderText('Say something...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
       const focusSpy = mock(() => {})
       const setSelectionRangeSpy = mock(() => {})
 
@@ -348,7 +348,7 @@ describe('ChatPromptInput', () => {
         ref.current?.setInput('Test input')
       })
 
-      const textarea = screen.getByPlaceholderText('Say something...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
       expect(textarea.value).toBe('Test input')
     })
   })

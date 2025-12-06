@@ -21,7 +21,7 @@ export const ChatListItem = ({
           onClick={() => onChatClick(thread.id)}
           isActive={isActive}
           className="cursor-pointer"
-          tooltip={thread.title}
+          tooltip={thread.title ?? undefined}
         >
           <MessageCircle className="size-4 shrink-0" />
         </SidebarMenuButton>

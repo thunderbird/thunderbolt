@@ -73,6 +73,7 @@ export const ExpandedActive: Story = {
     thread: mockThread,
     isActive: true,
     isCollapsed: false,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
@@ -97,6 +98,7 @@ export const ExpandedEncrypted: Story = {
     thread: encryptedThread,
     isActive: false,
     isCollapsed: false,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
@@ -121,6 +123,7 @@ export const Collapsed: Story = {
     thread: mockThread,
     isActive: false,
     isCollapsed: true,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
@@ -145,6 +148,7 @@ export const CollapsedActive: Story = {
     thread: mockThread,
     isActive: true,
     isCollapsed: true,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
@@ -169,6 +173,7 @@ export const CollapsedEncrypted: Story = {
     thread: encryptedThread,
     isActive: false,
     isCollapsed: true,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
@@ -193,6 +198,7 @@ export const Deleting: Story = {
     thread: mockThread,
     isActive: false,
     isCollapsed: false,
+    isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: true,

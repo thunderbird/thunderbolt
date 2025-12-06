@@ -82,7 +82,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           minHeight={52}
           maxHeight={240}
           autoFocus={autoFocus}
-          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none"
+          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-1"
         />
 
         <div className="flex gap-2 justify-between items-center w-full">

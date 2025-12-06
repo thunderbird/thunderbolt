@@ -12,14 +12,15 @@ type OAuthCallbackData = {
   error: string | null
 }
 
-type MagicLinkData = {
-  token: string
+type VerifyLinkData = {
+  email: string
+  otp: string
 }
 
 type NavigateTarget = {
   path: string
   oauth?: OAuthCallbackData
-  magicLink?: MagicLinkData
+  verifyLink?: VerifyLinkData
 }
 
 /**
@@ -64,20 +65,23 @@ export const parseOAuthCallback = (url: URL): OAuthCallbackData | null => {
 }
 
 /**
- * Parses magic link callback parameters from a deep link URL
+ * Parses verify link callback parameters from a deep link URL
+ * The URL contains email and otp params which are used to verify via emailOtp sign-in
  * Exported for testing
  */
-export const parseMagicLinkCallback = (url: URL): MagicLinkData | null => {
+export const parseVerifyLinkCallback = (url: URL): VerifyLinkData | null => {
   if (url.hostname !== 'thunderbolt.io' || !url.pathname.startsWith('/auth/verify')) {
     return null
   }
 
-  const token = url.searchParams.get('token')
-  if (!token) {
+  const email = url.searchParams.get('email')
+  const otp = url.searchParams.get('otp')
+
+  if (!email || !otp) {
     return null
   }
 
-  return { token }
+  return { email, otp }
 }
 
 type DeepLinkDependencies = {
@@ -144,12 +148,13 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             continue
           }
 
-          // Handle magic link callback deep links
-          const magicLinkData = parseMagicLinkCallback(url)
-          if (magicLinkData) {
-            // Navigate to the magic link verify page with the token as a query param
-            // The MagicLinkVerify component will handle the verification
-            navigate(`/auth/verify?token=${encodeURIComponent(magicLinkData.token)}`, {
+          // Handle verify link callback deep links (email + OTP from magic link)
+          const verifyData = parseVerifyLinkCallback(url)
+          if (verifyData) {
+            // Navigate to the verify page with email and otp params
+            // The MagicLinkVerify component will use these to call emailOtp sign-in
+            const params = new URLSearchParams({ email: verifyData.email, otp: verifyData.otp })
+            navigate(`/auth/verify?${params.toString()}`, {
               replace: true,
             })
             continue

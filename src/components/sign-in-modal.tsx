@@ -2,6 +2,7 @@
 
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { AlertTriangle, Brain, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
+import { useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +30,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const displayName = preferredName.value as string
+  const emailInputRef = useRef<HTMLInputElement>(null)
 
   const { state, actions } = useSignInModalState({
     authClient,
@@ -40,6 +42,12 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
       actions.handleOpenChange(false)
     }
     onOpenChange(newOpen)
+  }
+
+  const handleOpenAutoFocus = (event: Event) => {
+    // Prevent default Radix focus behavior and explicitly focus the email input
+    event.preventDefault()
+    emailInputRef.current?.focus()
   }
 
   // Success state
@@ -154,7 +162,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
 
   // Initial email entry state
   return (
-    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange} onOpenAutoFocus={handleOpenAutoFocus}>
       <ResponsiveModalHeader className="text-center">
         <ResponsiveModalTitle className="text-2xl font-semibold">Unlock more features</ResponsiveModalTitle>
         <ResponsiveModalDescription>Sign in to get more out of Thunderbolt</ResponsiveModalDescription>
@@ -186,6 +194,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
           <div className="relative w-full">
             <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={emailInputRef}
               id="email"
               name="email"
               type="email"
@@ -196,7 +205,6 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
               className="h-12 pl-12 text-base"
               disabled={state.status === 'sending'}
               autoComplete="email"
-              autoFocus
             />
           </div>
 

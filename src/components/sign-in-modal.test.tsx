@@ -56,7 +56,7 @@ import { SignInModal } from './sign-in-modal'
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
-  let mockSignInMagicLink: ReturnType<typeof mock>
+  let mockSendVerificationOtp: ReturnType<typeof mock>
   let mockSignInEmailOtp: ReturnType<typeof mock>
 
   beforeAll(async () => {
@@ -71,7 +71,7 @@ describe('SignInModal', () => {
 
   beforeEach(() => {
     mockOnOpenChange = mock()
-    mockSignInMagicLink = mock(() => Promise.resolve({ error: null }))
+    mockSendVerificationOtp = mock(() => Promise.resolve({ error: null }))
     mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
   })
 
@@ -82,7 +82,7 @@ describe('SignInModal', () => {
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
     const authClient = createMockAuthClient({
-      signInMagicLink: mockSignInMagicLink,
+      sendVerificationOtp: mockSendVerificationOtp,
       signInEmailOtp: mockSignInEmailOtp,
     })
     return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
@@ -157,7 +157,7 @@ describe('SignInModal', () => {
   })
 
   describe('form submission', () => {
-    it('calls signIn.magicLink with trimmed email', async () => {
+    it('calls emailOtp.sendVerificationOtp with trimmed email', async () => {
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -170,15 +170,15 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSignInMagicLink).toHaveBeenCalledWith({
+      expect(mockSendVerificationOtp).toHaveBeenCalledWith({
         email: 'test@example.com',
-        callbackURL: '/',
+        type: 'sign-in',
       })
     })
 
     it('shows loading state while sending', async () => {
       let resolvePromise: (value: { error: null }) => void
-      mockSignInMagicLink.mockReturnValue(
+      mockSendVerificationOtp.mockReturnValue(
         new Promise((resolve) => {
           resolvePromise = resolve
         }),
@@ -231,13 +231,13 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSignInMagicLink).not.toHaveBeenCalled()
+      expect(mockSendVerificationOtp).not.toHaveBeenCalled()
     })
   })
 
   describe('error handling', () => {
     it('shows error message on API error', async () => {
-      mockSignInMagicLink.mockResolvedValue({
+      mockSendVerificationOtp.mockResolvedValue({
         error: { message: 'Invalid email address' },
       })
       renderModal()
@@ -254,7 +254,7 @@ describe('SignInModal', () => {
     })
 
     it('shows default error message when error has no message', async () => {
-      mockSignInMagicLink.mockResolvedValue({
+      mockSendVerificationOtp.mockResolvedValue({
         error: {},
       })
       renderModal()
@@ -267,7 +267,7 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(screen.getByText('Failed to send magic link')).toBeInTheDocument()
+      expect(screen.getByText('Failed to send verification code')).toBeInTheDocument()
     })
   })
 
@@ -303,7 +303,7 @@ describe('SignInModal', () => {
   })
 
   describe('OTP verification', () => {
-    it('shows OTP input after sending magic link', async () => {
+    it('shows OTP input after sending verification code', async () => {
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
@@ -322,7 +322,7 @@ describe('SignInModal', () => {
     it('shows success state after successful OTP verification', async () => {
       renderModal()
 
-      // Send magic link first
+      // Send verification code first
       const emailInput = screen.getByPlaceholderText('Email address')
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)
@@ -351,7 +351,7 @@ describe('SignInModal', () => {
 
       renderModal()
 
-      // Send magic link first
+      // Send verification code first
       const emailInput = screen.getByPlaceholderText('Email address')
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)
@@ -375,7 +375,7 @@ describe('SignInModal', () => {
     it('calls signIn.emailOtp with correct email and OTP', async () => {
       renderModal()
 
-      // Send magic link first
+      // Send verification code first
       const emailInput = screen.getByPlaceholderText('Email address')
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)

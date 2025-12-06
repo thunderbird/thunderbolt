@@ -21,6 +21,7 @@ mock.module('react-router', () => ({
 describe('MagicLinkVerify', () => {
   let consoleSpies: ConsoleSpies
   let mockRefetchSession: ReturnType<typeof mock>
+  let mockSignInEmailOtp: ReturnType<typeof mock>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -35,30 +36,23 @@ describe('MagicLinkVerify', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
     mockRefetchSession = mock(() => Promise.resolve({ data: null, error: null }))
-    mockSearchParams.delete('token')
-
-    // Mock fetch for verification - default to success
-    globalThis.fetch = mock(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      ),
-    ) as unknown as typeof fetch
+    mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
+    mockSearchParams.delete('email')
+    mockSearchParams.delete('otp')
   })
 
   afterEach(async () => {
     await resetTestDatabase()
   })
 
-  const renderComponent = (token?: string) => {
-    if (token) {
-      mockSearchParams.set('token', token)
-    }
+  const renderComponent = (email?: string, otp?: string) => {
+    if (email) mockSearchParams.set('email', email)
+    if (otp) mockSearchParams.set('otp', otp)
+
     const authClient = createMockAuthClient({
       session: null,
       isPending: false,
+      signInEmailOtp: mockSignInEmailOtp,
     })
     // Override useSession to use our mock refetch
     authClient.useSession = () =>
@@ -81,68 +75,68 @@ describe('MagicLinkVerify', () => {
     })
   }
 
-  describe('missing token', () => {
-    it('shows error when token is missing', async () => {
-      renderComponent()
+  describe('missing parameters', () => {
+    it('shows error when email is missing', async () => {
+      renderComponent(undefined, '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
-      expect(screen.getByText('The link may have expired. Please request a new one.')).toBeInTheDocument()
+      expect(screen.getByText('Invalid verification link. Please request a new one.')).toBeInTheDocument()
     })
 
-    it('does not call fetch when token is missing', async () => {
+    it('shows error when otp is missing', async () => {
+      renderComponent('user@example.com', undefined)
+      await waitForStateChange()
+
+      expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+    })
+
+    it('shows error when both params are missing', async () => {
       renderComponent()
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
-      expect(globalThis.fetch).not.toHaveBeenCalled()
+    })
+
+    it('does not call signIn.emailOtp when params are missing', async () => {
+      renderComponent()
+      await waitForStateChange()
+
+      expect(mockSignInEmailOtp).not.toHaveBeenCalled()
     })
   })
 
   describe('verification loading state', () => {
     it('shows loading state initially', () => {
-      // Set up a fetch that never resolves to keep loading state
-      globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
+      // Set up a signIn that never resolves to keep loading state
+      mockSignInEmailOtp.mockReturnValue(new Promise(() => {}))
 
-      renderComponent('valid-token')
+      renderComponent('user@example.com', '123456')
 
-      expect(screen.getByText('Verifying...')).toBeInTheDocument()
+      expect(screen.getByText('Signing you in...')).toBeInTheDocument()
     })
   })
 
   describe('successful verification', () => {
     it('shows success state on successful verification', async () => {
-      renderComponent('valid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
     })
 
-    it('calls fetch with correct URL and credentials', async () => {
-      renderComponent('valid-token')
+    it('calls signIn.emailOtp with email and otp', async () => {
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/auth/magic-link/verify?token=valid-token'),
-        expect.objectContaining({
-          method: 'GET',
-          credentials: 'include',
-        }),
-      )
-    })
-
-    it('encodes special characters in token', async () => {
-      renderComponent('token+with/special=chars')
-      await waitForStateChange()
-
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('token%2Bwith%2Fspecial%3Dchars'),
-        expect.anything(),
-      )
+      expect(mockSignInEmailOtp).toHaveBeenCalledWith({
+        email: 'user@example.com',
+        otp: '123456',
+      })
     })
 
     it('navigates to home on continue click', async () => {
-      renderComponent('valid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
@@ -154,7 +148,7 @@ describe('MagicLinkVerify', () => {
     })
 
     it('refetches session after successful verification', async () => {
-      renderComponent('valid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
@@ -163,41 +157,58 @@ describe('MagicLinkVerify', () => {
   })
 
   describe('verification error', () => {
-    it('shows error state when response is not ok', async () => {
-      globalThis.fetch = mock(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ error: 'Invalid token' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      ) as unknown as typeof fetch
+    it('shows error state when verification fails', async () => {
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { message: 'Invalid OTP' },
+      })
 
-      renderComponent('invalid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+      expect(screen.getByText('Invalid OTP')).toBeInTheDocument()
     })
 
-    it('shows error when fetch fails', async () => {
-      globalThis.fetch = mock(() => Promise.reject(new Error('Network error'))) as unknown as typeof fetch
+    it('shows specific error for TOO_MANY_ATTEMPTS', async () => {
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts' },
+      })
 
-      renderComponent('any-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+      expect(screen.getByText('Too many attempts. Please request a new code.')).toBeInTheDocument()
+    })
+
+    it('shows specific error for INVALID_OTP', async () => {
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { code: 'INVALID_OTP', message: 'Invalid OTP' },
+      })
+
+      renderComponent('user@example.com', '123456')
+      await waitForStateChange()
+
+      expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+      expect(screen.getByText('The link has expired or is invalid. Please request a new one.')).toBeInTheDocument()
+    })
+
+    it('shows error when signIn throws', async () => {
+      mockSignInEmailOtp.mockRejectedValue(new Error('Network error'))
+
+      renderComponent('user@example.com', '123456')
+      await waitForStateChange()
+
+      expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
     })
 
     it('navigates to home on close click', async () => {
-      globalThis.fetch = mock(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ error: 'Invalid' }), {
-            status: 400,
-          }),
-        ),
-      ) as unknown as typeof fetch
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { message: 'Invalid' },
+      })
 
-      renderComponent('invalid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
@@ -209,15 +220,11 @@ describe('MagicLinkVerify', () => {
     })
 
     it('does not refetch session when verification fails', async () => {
-      globalThis.fetch = mock(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ error: 'Invalid' }), {
-            status: 400,
-          }),
-        ),
-      ) as unknown as typeof fetch
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { message: 'Invalid' },
+      })
 
-      renderComponent('invalid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
@@ -226,31 +233,19 @@ describe('MagicLinkVerify', () => {
   })
 
   describe('modal behavior', () => {
-    it('shows verifying text during verification', () => {
-      globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
-
-      renderComponent('token')
-
-      expect(screen.getByText('Verifying...')).toBeInTheDocument()
-    })
-
     it('shows close button after error', async () => {
-      globalThis.fetch = mock(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ error: 'Invalid' }), {
-            status: 400,
-          }),
-        ),
-      ) as unknown as typeof fetch
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { message: 'Invalid' },
+      })
 
-      renderComponent('invalid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     })
 
     it('shows continue button after success', async () => {
-      renderComponent('valid-token')
+      renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()

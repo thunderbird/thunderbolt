@@ -9,8 +9,10 @@ type MockAuthClientOptions = {
     }
   } | null
   isPending?: boolean
-  signInMagicLink?: (options: { email: string; callbackURL: string }) => Promise<{ error: { message: string } | null }>
-  signInEmailOtp?: (options: { email: string; otp: string }) => Promise<{ error: { message: string } | null }>
+  signInEmailOtp?: (options: {
+    email: string
+    otp: string
+  }) => Promise<{ error: { message: string; code?: string } | null }>
   sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
   signOut?: () => Promise<void>
 }
@@ -23,7 +25,6 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
   const {
     session = null,
     isPending = false,
-    signInMagicLink = async () => ({ error: null }),
     signInEmailOtp = async () => ({ error: null }),
     sendVerificationOtp = async () => ({ error: null }),
     signOut = async () => {},
@@ -39,7 +40,6 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
       refetch: async () => ({ data: session, error: null }),
     }),
     signIn: {
-      magicLink: signInMagicLink,
       emailOtp: signInEmailOtp,
     },
     emailOtp: {

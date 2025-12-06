@@ -50,103 +50,53 @@ export const getValidatedOrigin = (trustedOrigins: string[], request?: Request):
 }
 
 /**
- * Build a magic link URL for email verification
+ * Build a verify URL that embeds the email and OTP
+ * When clicked, the frontend auto-submits the OTP via the standard emailOtp sign-in endpoint
  * Uses deep link URL for mobile platforms so the link opens the app
  */
-export const buildMagicLinkUrl = (origin: string, token: string, request?: Request): string => {
+export const buildVerifyUrl = (origin: string, email: string, otp: string, request?: Request): string => {
   const baseUrl = isDeepLinkPlatform(request) ? DEEP_LINK_HOST : origin
-  return `${baseUrl}/auth/verify?token=${encodeURIComponent(token)}`
+  const params = new URLSearchParams({ email, otp })
+  return `${baseUrl}/auth/verify?${params.toString()}`
 }
 
-/** OTP length for email verification codes */
-export const OTP_LENGTH = 6
-
-/** OTP expiration time in seconds (5 minutes) */
-export const OTP_EXPIRES_IN = 300
-
-/**
- * Generate a cryptographically secure random numeric OTP of specified length
- */
-export const generateOTP = (length: number = OTP_LENGTH): string => {
-  const array = new Uint8Array(length)
-  crypto.getRandomValues(array)
-  // Map each byte to a digit 0-9 (using modulo to avoid bias for small ranges)
-  return Array.from(array, (byte) => (byte % 10).toString()).join('')
-}
-
-/**
- * In-memory store for OTPs linked to magic link tokens
- * Maps email -> { otp, expiresAt }
- * This allows us to send a single email with both the magic link and OTP
- */
-const otpStore = new Map<string, { otp: string; expiresAt: number }>()
-
-/**
- * Store an OTP for an email address
- */
-export const storeOTPForEmail = (email: string, otp: string): void => {
-  otpStore.set(email, {
-    otp,
-    expiresAt: Date.now() + OTP_EXPIRES_IN * 1000,
-  })
-}
-
-/**
- * Get and validate stored OTP for an email
- * Returns the OTP if valid, null if expired or not found
- */
-export const getStoredOTP = (email: string): string | null => {
-  const stored = otpStore.get(email)
-  if (!stored) return null
-  if (Date.now() > stored.expiresAt) {
-    otpStore.delete(email)
-    return null
+type ResendClient = {
+  emails: {
+    send: (params: {
+      from: string
+      to: string
+      subject: string
+      html: string
+    }) => Promise<{ data?: { id: string } | null; error?: { message: string } | null }>
   }
-  return stored.otp
 }
 
-/**
- * Clear stored OTP for an email (after successful verification)
- */
-export const clearStoredOTP = (email: string): void => {
-  otpStore.delete(email)
-}
-
-type SendAuthEmailParams = {
-  resend: {
-    emails: {
-      send: (params: {
-        from: string
-        to: string
-        subject: string
-        html: string
-      }) => Promise<{ data?: { id: string } | null; error?: { message: string } | null }>
-    }
-  } | null
+type SendSignInEmailParams = {
+  resend: ResendClient | null
   email: string
-  magicLinkUrl: string
   otp: string
+  verifyUrl: string
   isProduction: boolean
 }
 
 /**
- * Send authentication email with both magic link and OTP code
+ * Send sign-in email with both OTP code and a clickable link
  */
-export const sendAuthEmail = async ({
+export const sendSignInEmail = async ({
   resend,
   email,
-  magicLinkUrl,
   otp,
+  verifyUrl,
   isProduction,
-}: SendAuthEmailParams): Promise<void> => {
-  console.info(`📧 Sending auth email to ${email}`)
+}: SendSignInEmailParams): Promise<void> => {
+  console.info(`📧 Sending sign-in email to ${email}`)
 
   if (!resend) {
     if (isProduction) {
       console.error('❌ Cannot send email: RESEND_API_KEY is not configured')
       throw new Error('Email service not configured')
     }
-    console.info(`🔗 [DEV] Magic link URL (no email sent): ${magicLinkUrl}`)
+    console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
     return
   }
@@ -170,7 +120,7 @@ export const sendAuthEmail = async ({
         
         <p style="font-size: 14px; color: #6a6a6a; text-align: center; margin-bottom: 16px;">or</p>
         
-        <a href="${magicLinkUrl}" style="display: block; background: #1a1a1a; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; text-align: center; font-weight: 500; font-size: 16px;">
+        <a href="${verifyUrl}" style="display: block; background: #1a1a1a; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; text-align: center; font-weight: 500; font-size: 16px;">
           Sign in with magic link
         </a>
         
@@ -182,9 +132,9 @@ export const sendAuthEmail = async ({
   })
 
   if (error) {
-    console.error('❌ Failed to send auth email:', error)
+    console.error('❌ Failed to send sign-in email:', error)
     throw new Error(`Failed to send email: ${error.message}`)
   }
 
-  console.info(`✅ Auth email sent successfully. ID: ${data?.id}`)
+  console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)
 }

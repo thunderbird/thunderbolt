@@ -1,36 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildMagicLinkUrl, generateOTP, getValidatedOrigin, isDeepLinkPlatform, parseTrustedOrigins } from './utils'
-
-describe('generateOTP', () => {
-  it('generates a 6-digit code by default', () => {
-    const otp = generateOTP()
-    expect(otp).toHaveLength(6)
-    expect(/^\d{6}$/.test(otp)).toBe(true)
-  })
-
-  it('generates a code of specified length', () => {
-    const otp = generateOTP(8)
-    expect(otp).toHaveLength(8)
-    expect(/^\d{8}$/.test(otp)).toBe(true)
-  })
-
-  it('generates only numeric characters', () => {
-    // Generate multiple OTPs to increase confidence
-    for (let i = 0; i < 100; i++) {
-      const otp = generateOTP()
-      expect(/^\d+$/.test(otp)).toBe(true)
-    }
-  })
-
-  it('generates different codes on subsequent calls', () => {
-    const codes = new Set<string>()
-    for (let i = 0; i < 100; i++) {
-      codes.add(generateOTP())
-    }
-    // With cryptographic randomness, we expect most codes to be unique
-    expect(codes.size).toBeGreaterThan(90)
-  })
-})
+import { buildVerifyUrl, getValidatedOrigin, isDeepLinkPlatform, parseTrustedOrigins } from './utils'
 
 describe('parseTrustedOrigins', () => {
   it('parses comma-separated origins and adds tauri origin', () => {
@@ -142,62 +111,51 @@ describe('isDeepLinkPlatform', () => {
   })
 })
 
-describe('buildMagicLinkUrl', () => {
-  it('builds URL with origin and token for non-mobile platforms', () => {
-    const result = buildMagicLinkUrl('https://app.example.com', 'abc123')
-    expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
+describe('buildVerifyUrl', () => {
+  it('builds URL with email and otp for non-mobile platforms', () => {
+    const result = buildVerifyUrl('https://app.example.com', 'user@example.com', '123456')
+    expect(result).toBe('https://app.example.com/auth/verify?email=user%40example.com&otp=123456')
   })
 
   it('uses deep link URL for iOS platform', () => {
     const request = new Request('https://api.example.com', {
       headers: { 'x-client-platform': 'ios' },
     })
-    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
-    expect(result).toBe('https://thunderbolt.io/auth/verify?token=abc123')
+    const result = buildVerifyUrl('https://app.example.com', 'user@example.com', '123456', request)
+    expect(result).toBe('https://thunderbolt.io/auth/verify?email=user%40example.com&otp=123456')
   })
 
   it('uses deep link URL for Android platform', () => {
     const request = new Request('https://api.example.com', {
       headers: { 'x-client-platform': 'android' },
     })
-    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
-    expect(result).toBe('https://thunderbolt.io/auth/verify?token=abc123')
+    const result = buildVerifyUrl('https://app.example.com', 'user@example.com', '123456', request)
+    expect(result).toBe('https://thunderbolt.io/auth/verify?email=user%40example.com&otp=123456')
   })
 
   it('uses origin URL for web platform', () => {
     const request = new Request('https://api.example.com', {
       headers: { 'x-client-platform': 'web' },
     })
-    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
-    expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
+    const result = buildVerifyUrl('https://app.example.com', 'user@example.com', '123456', request)
+    expect(result).toBe('https://app.example.com/auth/verify?email=user%40example.com&otp=123456')
   })
 
   it('uses origin URL for desktop platform', () => {
     const request = new Request('https://api.example.com', {
       headers: { 'x-client-platform': 'macos' },
     })
-    const result = buildMagicLinkUrl('https://app.example.com', 'abc123', request)
-    expect(result).toBe('https://app.example.com/auth/verify?token=abc123')
+    const result = buildVerifyUrl('https://app.example.com', 'user@example.com', '123456', request)
+    expect(result).toBe('https://app.example.com/auth/verify?email=user%40example.com&otp=123456')
   })
 
-  it('encodes special characters in token', () => {
-    const result = buildMagicLinkUrl('https://app.example.com', 'token+with/special=chars')
-    expect(result).toBe('https://app.example.com/auth/verify?token=token%2Bwith%2Fspecial%3Dchars')
-  })
-
-  it('handles empty token', () => {
-    const result = buildMagicLinkUrl('https://app.example.com', '')
-    expect(result).toBe('https://app.example.com/auth/verify?token=')
+  it('encodes special characters in email', () => {
+    const result = buildVerifyUrl('https://app.example.com', 'user+tag@example.com', '123456')
+    expect(result).toBe('https://app.example.com/auth/verify?email=user%2Btag%40example.com&otp=123456')
   })
 
   it('handles localhost origin', () => {
-    const result = buildMagicLinkUrl('http://localhost:1420', 'test-token')
-    expect(result).toBe('http://localhost:1420/auth/verify?token=test-token')
-  })
-
-  it('handles origin with trailing slash gracefully', () => {
-    // Note: origin should not have trailing slash, but function handles it
-    const result = buildMagicLinkUrl('https://app.example.com/', 'token')
-    expect(result).toBe('https://app.example.com//auth/verify?token=token')
+    const result = buildVerifyUrl('http://localhost:1420', 'user@example.com', '123456')
+    expect(result).toBe('http://localhost:1420/auth/verify?email=user%40example.com&otp=123456')
   })
 })

@@ -40,6 +40,8 @@ type ResponsiveModalProps = {
   className?: string
   /** Whether to show the close button (default: true) */
   showCloseButton?: boolean
+  /** Callback fired when focus moves into the content after opening */
+  onOpenAutoFocus?: (event: Event) => void
 }
 
 /**
@@ -69,6 +71,7 @@ export const ResponsiveModal = ({
   children,
   className,
   showCloseButton = true,
+  onOpenAutoFocus,
 }: ResponsiveModalProps) => {
   const { isMobile } = useIsMobile()
 
@@ -80,6 +83,7 @@ export const ResponsiveModal = ({
         <DialogPortal>
           <DialogOverlay />
           <DialogPrimitive.Content
+            onOpenAutoFocus={onOpenAutoFocus}
             className={cn(
               'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 duration-200',
               isMobile

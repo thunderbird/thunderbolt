@@ -73,27 +73,16 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
 
     dispatch({ type: 'START_SENDING' })
 
-    // Send magic link (this generates OTP and sends email with both)
-    const { error: magicLinkError } = await authClient.signIn.magicLink({
-      email: trimmedEmail,
-      callbackURL: '/',
-    })
-
-    if (magicLinkError) {
-      dispatch({ type: 'SEND_ERROR', payload: magicLinkError.message || 'Failed to send magic link' })
-      return
-    }
-
-    // Register the OTP with the emailOTP plugin so verification works
-    // This doesn't send another email - it just stores the OTP in the database
-    const { error: otpError } = await authClient.emailOtp.sendVerificationOtp({
+    // Send OTP via emailOtp plugin
+    // This stores the OTP in the database and sends an email with both OTP and magic link
+    const { error } = await authClient.emailOtp.sendVerificationOtp({
       email: trimmedEmail,
       type: 'sign-in',
     })
 
-    if (otpError) {
-      // OTP registration failed, but magic link was sent - user can still use the link
-      console.warn('OTP registration failed:', otpError.message)
+    if (error) {
+      dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
+      return
     }
 
     dispatch({ type: 'SEND_SUCCESS' })
@@ -105,7 +94,7 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      // Use emailOtp.signIn to verify OTP and create session
+      // Use emailOtp signIn to verify OTP and create session
       const result = await authClient.signIn.emailOtp({
         email: state.email.trim(),
         otp: value,
@@ -117,7 +106,6 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
       }
 
       // Sign-in successful - show success state
-      // Note: Don't refetch session here as it can cause race conditions
       // The session will be updated on next render/navigation
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (err) {

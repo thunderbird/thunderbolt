@@ -9,46 +9,52 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useAuth } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 
-type VerifyState = 'verifying' | 'success' | 'error'
+type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
 
 /**
  * Magic link verification page
- * Handles the callback when user clicks magic link from email
- * Shows a modal with verification progress and result
+ * Handles the callback when user clicks the magic link from email
+ * The URL contains email and otp params which we use to verify via the emailOtp sign-in endpoint
  */
 export const MagicLinkVerify = () => {
   const authClient = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [state, setState] = useState<VerifyState>('verifying')
+  const [state, setState] = useState<VerifyState>({ status: 'verifying' })
 
-  const { preferredName, cloudUrl } = useSettings({ preferred_name: '', cloud_url: 'http://localhost:8000/v1' })
+  const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = preferredName.value as string
 
   // Get refetch function to update session cache after verification
   const { refetch: refetchSession } = authClient.useSession()
 
-  const token = searchParams.get('token')
+  const email = searchParams.get('email')
+  const otp = searchParams.get('otp')
 
   useEffect(() => {
-    const verifyToken = async () => {
-      if (!token) {
-        setState('error')
+    const verify = async () => {
+      if (!email || !otp) {
+        setState({ status: 'error', message: 'Invalid verification link. Please request a new one.' })
         return
       }
 
       try {
-        // Call the backend verify endpoint directly
-        // This sets the session cookie and returns user data
-        const verifyUrl = `${cloudUrl.value}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`
-
-        const response = await fetch(verifyUrl, {
-          method: 'GET',
-          credentials: 'include', // Important: include cookies for session
+        // Use the standard emailOtp sign-in endpoint
+        // This is what Better Auth provides - no custom endpoint needed
+        const result = await authClient.signIn.emailOtp({
+          email,
+          otp,
         })
 
-        if (!response.ok) {
-          setState('error')
+        if (result.error) {
+          // Handle specific error codes from Better Auth
+          if (result.error.code === 'TOO_MANY_ATTEMPTS') {
+            setState({ status: 'error', message: 'Too many attempts. Please request a new code.' })
+          } else if (result.error.code === 'INVALID_OTP') {
+            setState({ status: 'error', message: 'The link has expired or is invalid. Please request a new one.' })
+          } else {
+            setState({ status: 'error', message: result.error.message || 'Verification failed. Please try again.' })
+          }
           return
         }
 
@@ -56,14 +62,14 @@ export const MagicLinkVerify = () => {
         // This ensures the sidebar and other components see the new session immediately
         await refetchSession()
 
-        setState('success')
+        setState({ status: 'success' })
       } catch {
-        setState('error')
+        setState({ status: 'error', message: 'Something went wrong. Please try again.' })
       }
     }
 
-    verifyToken()
-  }, [token, refetchSession, cloudUrl.value])
+    verify()
+  }, [email, otp, authClient, refetchSession])
 
   const handleContinue = () => {
     navigate('/', { replace: true })
@@ -74,7 +80,7 @@ export const MagicLinkVerify = () => {
   }
 
   // Modal is always open on this route - can only close via buttons
-  const canClose = state !== 'verifying'
+  const canClose = state.status !== 'verifying'
 
   return (
     <Dialog
@@ -95,27 +101,19 @@ export const MagicLinkVerify = () => {
           if (!canClose) e.preventDefault()
         }}
       >
-        {state === 'verifying' && (
+        {state.status === 'verifying' && (
           <>
             <DialogHeader>
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
                 <Loader2 className="h-6 w-6 animate-spin text-white" />
               </div>
               <DialogTitle className="text-center text-xl">Signing you in...</DialogTitle>
-              <DialogDescription className="text-center">
-                Please wait while we verify your magic link.
-              </DialogDescription>
+              <DialogDescription className="text-center">Please wait while we verify your link.</DialogDescription>
             </DialogHeader>
-            <div className="flex justify-center py-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Verifying...
-              </div>
-            </div>
           </>
         )}
 
-        {state === 'success' && (
+        {state.status === 'success' && (
           <>
             <DialogHeader>
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
@@ -134,16 +132,14 @@ export const MagicLinkVerify = () => {
           </>
         )}
 
-        {state === 'error' && (
+        {state.status === 'error' && (
           <>
             <DialogHeader>
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
                 <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
               <DialogTitle className="text-center text-xl">Verification Failed</DialogTitle>
-              <DialogDescription className="text-center">
-                The link may have expired. Please request a new one.
-              </DialogDescription>
+              <DialogDescription className="text-center">{state.message}</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center py-4">
               <Button variant="outline" onClick={handleClose} className="w-full">

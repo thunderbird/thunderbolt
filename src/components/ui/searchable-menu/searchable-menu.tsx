@@ -179,14 +179,20 @@ export const SearchableMenu = <T,>({
         </button>
       </PopoverTrigger>
 
-      {showBlur && <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={() => setOpen(false)} />}
+      {showBlur && (
+        <div
+          className="fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30"
+          onClick={() => setOpen(false)}
+        />
+      )}
 
       <PopoverContent
         align={isMobile ? 'center' : align}
-        className={cn('p-0 rounded-md duration-100', contentClassName)}
+        className={cn('p-0 rounded-lg duration-100', contentClassName)}
         style={{ width: contentWidth }}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col gap-2 bg-background rounded-md">
+        <div className="flex flex-col gap-2 bg-background rounded-lg">
           {searchable && (
             <div className="px-4 pt-4">
               <div className="relative">

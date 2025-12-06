@@ -84,7 +84,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
           <button
             type="button"
             onClick={actions.goBack}
-            className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-full hover:bg-muted transition-colors"
+            className="absolute left-4 top-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-muted transition-colors"
             aria-label="Go back"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -195,24 +195,18 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
 
       <form onSubmit={actions.handleSubmit} className="contents">
         <ResponsiveModalContent centered className="gap-4">
-          <div className="flex flex-col gap-3 text-left w-full">
-            <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex flex-col gap-4 text-left w-full rounded-lg bg-muted/50 p-4 mb-4">
+            <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15">
                 <RefreshCw className="h-5 w-5 text-sky-600 dark:text-sky-400" />
               </div>
-              <div>
-                <p className="text-sm font-medium">Access your chats everywhere</p>
-                <p className="text-xs text-muted-foreground">Encrypted sync between all devices</p>
-              </div>
+              <p className="text-sm">Sync chats between devices</p>
             </div>
-            <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/15">
                 <Brain className="h-5 w-5 text-violet-600 dark:text-violet-400" />
               </div>
-              <div>
-                <p className="text-sm font-medium">Premium AI</p>
-                <p className="text-xs text-muted-foreground">More powerful models from Anthropic</p>
-              </div>
+              <p className="text-sm">Access more powerful AI models</p>
             </div>
           </div>
 
@@ -239,9 +233,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
             </p>
           )}
 
-          <p className="text-center text-xs text-muted-foreground">
-            No password needed. We&apos;ll send you a secure link to sign in.
-          </p>
+          <p className="text-center text-xs text-muted-foreground">We&apos;ll send you a secure link to sign in.</p>
         </ResponsiveModalContent>
 
         <ResponsiveModalFooter>

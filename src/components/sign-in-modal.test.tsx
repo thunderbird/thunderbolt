@@ -103,8 +103,8 @@ describe('SignInModal', () => {
 
     it('displays feature cards', () => {
       renderModal()
-      expect(screen.getByText('Premium AI')).toBeInTheDocument()
-      expect(screen.getByText('Access your chats everywhere')).toBeInTheDocument()
+      expect(screen.getByText('Access more powerful AI models')).toBeInTheDocument()
+      expect(screen.getByText('Sync chats between devices')).toBeInTheDocument()
     })
 
     it('displays email input placeholder', () => {

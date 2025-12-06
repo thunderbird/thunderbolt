@@ -1,9 +1,10 @@
 'use client'
 
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { AlertTriangle, Brain, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Brain, Check, CheckCircle2, Loader2, Mail, RefreshCw } from 'lucide-react'
 import { useRef } from 'react'
 
+import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
@@ -79,8 +80,18 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   if (state.status === 'sent' || state.status === 'verifying') {
     return (
       <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
-        <ResponsiveModalHeader className="sr-only">
-          <ResponsiveModalTitle>{isLocalhost ? 'Check the backend logs' : 'Enter your code'}</ResponsiveModalTitle>
+        <ResponsiveModalHeader>
+          <button
+            type="button"
+            onClick={actions.goBack}
+            className="absolute left-4 top-4 flex h-8 w-8 items-center justify-center rounded-full hover:bg-muted transition-colors"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <ResponsiveModalTitle className="sr-only">
+            {isLocalhost ? 'Check the backend logs' : 'Enter your code'}
+          </ResponsiveModalTitle>
         </ResponsiveModalHeader>
 
         <ResponsiveModalContent centered className="items-center text-center gap-4">
@@ -145,9 +156,23 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
 
             {state.errorMessage && <p className="text-sm text-destructive">{state.errorMessage}</p>}
 
-            {!isLocalhost && (
-              <p className="pt-2 text-xs text-muted-foreground">Or click the magic link in your email</p>
-            )}
+            <ActionFeedbackButton
+              variant="ghost"
+              size="sm"
+              onClick={actions.handleResend}
+              disabled={state.status === 'verifying'}
+              className="text-muted-foreground hover:text-foreground"
+              successContent={
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Sent
+                </>
+              }
+            >
+              Resend Email
+            </ActionFeedbackButton>
+
+            {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
           </div>
         </ResponsiveModalContent>
 

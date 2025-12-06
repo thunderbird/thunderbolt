@@ -1,5 +1,5 @@
-import { useReducer, type FormEvent } from 'react'
 import type { AuthClient } from '@/contexts'
+import { useReducer, type FormEvent } from 'react'
 
 type ModalStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
 
@@ -20,6 +20,8 @@ type Action =
   | { type: 'VERIFY_SUCCESS' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
+  | { type: 'GO_BACK' }
+  | { type: 'SET_ERROR'; payload: string }
 
 const initialState: State = {
   email: '',
@@ -48,6 +50,10 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'sent', otp: '', errorMessage: action.payload }
     case 'RESET':
       return initialState
+    case 'GO_BACK':
+      return { ...state, status: 'idle', otp: '', errorMessage: '' }
+    case 'SET_ERROR':
+      return { ...state, errorMessage: action.payload }
     default:
       return state
   }
@@ -123,6 +129,30 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
 
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
   const setOtp = (otp: string) => dispatch({ type: 'SET_OTP', payload: otp })
+  const goBack = () => dispatch({ type: 'GO_BACK' })
+
+  /** Resends the verification email. Returns true on success, false on failure. */
+  const handleResend = async (): Promise<boolean> => {
+    const trimmedEmail = state.email.trim()
+    if (!trimmedEmail) return false
+
+    // Clear any previous error
+    dispatch({ type: 'SET_ERROR', payload: '' })
+
+    const { error } = await authClient.emailOtp.sendVerificationOtp({
+      email: trimmedEmail,
+      type: 'sign-in',
+    })
+
+    if (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
+      return false
+    }
+
+    // Clear OTP input for fresh entry
+    dispatch({ type: 'SET_OTP', payload: '' })
+    return true
+  }
 
   return {
     state,
@@ -130,6 +160,8 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
       handleSubmit,
       handleOtpComplete,
       handleOpenChange,
+      handleResend,
+      goBack,
       setEmail,
       setOtp,
     },

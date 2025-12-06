@@ -1,9 +1,9 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
+import { type ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
-import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
-import { type ChatThread } from '@/layout/sidebar/types'
+import { forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ModelSelect } from './model-select'
 
 type PromptInputProps = {

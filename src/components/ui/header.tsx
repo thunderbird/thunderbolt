@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { Menu, SquarePen } from 'lucide-react'
+import { Menu, MessageCirclePlus } from 'lucide-react'
 import { ModelSelector } from './model-selector'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
@@ -48,9 +48,11 @@ export const Header = () => {
 
   // Mobile: 3-column layout with centered model selector
   if (isMobile) {
+    const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
+
     return (
       <header className="flex h-12 w-full items-center justify-between px-2 flex-shrink-0 border-b border-border">
-        <div className="flex items-center">
+        <div className="flex items-center w-7">
           <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={toggleSidebar}>
             <Menu className="h-5 w-5" />
             <span className="sr-only">Toggle Sidebar</span>
@@ -59,10 +61,10 @@ export const Header = () => {
 
         <div className="flex items-center justify-center flex-1">{modelSelector}</div>
 
-        <div className="flex items-center">
-          {isChatRoute && (
+        <div className="flex items-center w-7 justify-end">
+          {showNewChatButton && (
             <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={handleNewChat}>
-              <SquarePen className="h-5 w-5" />
+              <MessageCirclePlus className="h-5 w-5" />
               <span className="sr-only">New Chat</span>
             </Button>
           )}

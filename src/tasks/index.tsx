@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -470,14 +471,18 @@ export default function TasksPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <h1 className="mt-8 text-4xl font-bold tracking-tight">Tasks</h1>
+          <PageHeader title="Tasks">
             {!showEmptyState && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button size="icon" onClick={() => setIsAddingNew(true)} disabled={isAddingNew}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="rounded-lg"
+                      onClick={() => setIsAddingNew(true)}
+                      disabled={isAddingNew}
+                    >
                       <Plus className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -487,7 +492,7 @@ export default function TasksPage() {
                 </Tooltip>
               </TooltipProvider>
             )}
-          </div>
+          </PageHeader>
 
           {/* Search - always visible to maintain focus and avoid flicker */}
           <SearchInput

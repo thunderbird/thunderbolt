@@ -1,6 +1,6 @@
 import { NavLink } from '@/components/ui/nav-link'
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
-import { CheckSquare, Settings, SquarePen, Zap } from 'lucide-react'
+import { CheckSquare, MessageCirclePlus, Settings, Zap } from 'lucide-react'
 
 type NavigationMenuProps = {
   isMobile: boolean
@@ -26,7 +26,7 @@ export const NavigationMenu = ({
           className="cursor-pointer"
           isActive={currentPath === '/chats/new'}
         >
-          <SquarePen className="size-4" />
+          <MessageCirclePlus className="size-4" />
           <span>New Chat</span>
         </SidebarMenuButton>
       </SidebarMenuItem>

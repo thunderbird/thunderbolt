@@ -1,16 +1,15 @@
+import { useChatStore } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { trackEvent as trackEvent_default } from '@/lib/posthog'
+import { type Model } from '@/types'
+import { useChat as useChat_default } from '@ai-sdk/react'
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { useNavigate as useNavigate_default } from 'react-router'
+import { useShallow } from 'zustand/react/shallow'
+import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { type Model } from '@/types'
-import { ContextOverflowModal } from '../context-overflow-modal'
-import { useNavigate as useNavigate_default } from 'react-router'
-import { trackEvent as trackEvent_default } from '@/lib/posthog'
-import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
-import { useChat as useChat_default } from '@ai-sdk/react'
 import { useSidebar as useSidebar_default } from '../ui/sidebar'
-import { useSettings } from '@/hooks/use-settings'
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -104,28 +103,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       })
     }, [])
 
-    const { isMobile, openMobile } = useSidebar()
-
-    const { userHasCompletedOnboarding } = useSettings({
-      user_has_completed_onboarding: false,
-    })
-
-    useEffect(() => {
-      let timeout: ReturnType<typeof setTimeout> | null = null
-
-      if (isMobile && !openMobile && userHasCompletedOnboarding.value) {
-        const textareaElement = formRef.current?.querySelector('textarea')
-        timeout = setTimeout(() => {
-          textareaElement?.focus()
-        }, 500)
-      }
-
-      return () => {
-        if (timeout) {
-          clearTimeout(timeout)
-        }
-      }
-    }, [isMobile, openMobile, userHasCompletedOnboarding.value])
+    const { isMobile } = useSidebar()
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -144,7 +122,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           ref={formRef}
           value={input}
           onChange={(value: string) => setInput(value)}
-          placeholder="Say something..."
+          placeholder="Ask me anything..."
           showSubmitButton
           onSubmit={handleSubmit}
           isLoading={isStreaming}
@@ -152,7 +130,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           onStop={stop}
           autoFocus={!isMobile}
           submitOnEnter={!isStreaming}
-          className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+          className="flex flex-col gap-2 bg-background dark:bg-input/30 border dark:border-input p-3 rounded-2xl w-full"
           footerStartElements={
             isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
           }

@@ -78,6 +78,20 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
+            {!hasMessages && (
+              <AnimatePresence>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ delay: 0.1 }}
+                  className="w-full max-w-[696px] overflow-x-auto pb-3"
+                >
+                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
+                </motion.div>
+              </AnimatePresence>
+            )}
+
             <motion.div
               className="w-full max-w-[696px] min-w-[268px]"
               layout
@@ -93,20 +107,6 @@ export default function ChatUI() {
                 ref={chatPromptInputRef}
               />
             </motion.div>
-
-            {!hasMessages && (
-              <AnimatePresence>
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ delay: 0.1 }}
-                  className="w-full overflow-x-auto pb-2"
-                >
-                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
-                </motion.div>
-              </AnimatePresence>
-            )}
           </motion.div>
         </motion.div>
       </div>

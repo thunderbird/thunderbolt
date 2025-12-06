@@ -2,29 +2,29 @@ import { AvailableTools } from '@/components/available-tools'
 import { StatusIndicator } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  ResponsiveModal,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
-  ResponsiveModalTrigger,
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { mcpServersTable } from '@/db/tables'
+import { getHttpMcpServers } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
+import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { type McpServer } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { getHttpMcpServers } from '@/dal'
-import { type McpServer } from '@/types'
 
 interface ServerTools {
   [serverId: string]: string[]
@@ -301,14 +301,13 @@ export default function McpServersPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">MCP Servers</h1>
-        <ResponsiveModal open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <ResponsiveModalTrigger asChild>
-            <Button variant="outline" size="icon">
+      <PageHeader title="MCP Servers">
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />
             </Button>
-          </ResponsiveModalTrigger>
+          </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
@@ -377,8 +376,8 @@ export default function McpServersPage() {
               </Button>
             </div>
           </ResponsiveModalContentComposable>
-        </ResponsiveModal>
-      </div>
+        </Dialog>
+      </PageHeader>
 
       <div className="grid gap-4">
         {servers.map((server) => {

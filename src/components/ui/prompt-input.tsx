@@ -1,9 +1,9 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
+import { type ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
-import { forwardRef, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
-import { type ChatThread } from '@/layout/sidebar/types'
+import { forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ModelSelect } from './model-select'
 
 type PromptInputProps = {
@@ -82,7 +82,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           minHeight={52}
           maxHeight={240}
           autoFocus={autoFocus}
-          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none"
+          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-1"
         />
 
         <div className="flex gap-2 justify-between items-center w-full">
@@ -103,16 +103,16 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 <Button
                   type="button"
                   variant="default"
-                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  className="size-8 rounded-lg flex items-center justify-center"
                   onClick={onStop}
                 >
-                  <Square className="size-3" />
+                  <Square className="size-4" />
                 </Button>
               ) : (
                 <Button
                   type="submit"
                   variant="default"
-                  className="h-6 w-6 rounded-full flex items-center justify-center"
+                  className="size-8 rounded-lg flex items-center justify-center"
                   disabled={isLoading || !value.trim()}
                 >
                   <ArrowUp className="size-4" />

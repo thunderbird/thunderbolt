@@ -26,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -302,7 +303,7 @@ export default function PreferencesSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
-      <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Preferences</h1>
+      <PageHeader title="Preferences" />
 
       <SectionCard title="Appearance">
         <div className="flex flex-col gap-2">

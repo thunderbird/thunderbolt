@@ -77,6 +77,23 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
   }
 
   const hydrateChatStore = async () => {
+    const { createSession, sessions, setCurrentSessionId, setMcpClients, setModels } = useChatStore.getState()
+
+    // If the session already exists, set the current session id and update the mcp clients and models
+    if (sessions.has(id)) {
+      setCurrentSessionId(id)
+
+      const [models, mcpClients] = await Promise.all([getAvailableModels(), getEnabledClients()])
+
+      setMcpClients(mcpClients)
+      setModels(models)
+
+      setIsReady(true)
+
+      return
+    }
+
+    // If the session does not exist, create it below
     const settings = await getSettings({ selected_model: String })
 
     const [defaultModel, chatThread, initialMessages, models, triggerData, mcpClients] = await Promise.all([
@@ -94,8 +111,6 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
       saveMessages,
     )
 
-    const { createSession, setMcpClients, setModels } = useChatStore.getState()
-
     createSession({
       chatInstance,
       chatThread,
@@ -103,6 +118,8 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
       selectedModel: defaultModel,
       triggerData,
     })
+
+    setCurrentSessionId(id)
 
     setMcpClients(mcpClients)
     setModels(models)

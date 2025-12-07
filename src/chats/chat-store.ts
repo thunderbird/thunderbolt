@@ -14,6 +14,7 @@ type ChatSession = {
 }
 
 type ChatStoreState = {
+  currentSessionId: string | null
   mcpClients: MCPClient[]
   models: Model[]
   sessions: Map<string, ChatSession>
@@ -21,18 +22,20 @@ type ChatStoreState = {
 
 type ChatStoreActions = {
   createSession(session: ChatSession): void
-  updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
+  setCurrentSessionId(id: string): void
   setMcpClients(mcpClients: MCPClient[]): void
   setModels(models: Model[]): void
   setSelectedModel(id: string, modelId: string | null): void
+  updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
-  sessions: new Map(),
+  currentSessionId: null,
   mcpClients: [],
   models: [],
+  sessions: new Map(),
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
@@ -51,18 +54,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
   },
 
-  updateSession: (id, session) => {
-    const { sessions } = get()
-
-    const existingSession = sessions.get(id)
-
-    if (!existingSession) {
-      throw new Error('No session found')
-    }
-
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...existingSession, ...session })
-    set({ sessions: nextSessions })
+  setCurrentSessionId: (id) => {
+    set({ currentSessionId: id })
   },
 
   setMcpClients: (mcpClients) => {
@@ -96,5 +89,19 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     updateSettings({ selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
+  },
+
+  updateSession: (id, session) => {
+    const { sessions } = get()
+
+    const existingSession = sessions.get(id)
+
+    if (!existingSession) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...existingSession, ...session })
+    set({ sessions: nextSessions })
   },
 }))

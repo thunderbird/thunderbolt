@@ -42,11 +42,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const navigate = useNavigate()
 
     const { chatInstance, chatThreadId, selectedModel } = useChatStore(
-      useShallow((state) => ({
-        chatInstance: state.chatInstance!,
-        chatThreadId: state.id!,
-        selectedModel: state.selectedModel!,
-      })),
+      useShallow((state) => {
+        const session = state.sessions.get(state.currentSessionId!)!
+
+        return {
+          chatInstance: session.chatInstance,
+          chatThreadId: session.id,
+          selectedModel: session.selectedModel,
+        }
+      }),
     )
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })

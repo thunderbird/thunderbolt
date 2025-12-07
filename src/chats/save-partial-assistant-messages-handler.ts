@@ -20,10 +20,14 @@ export const SavePartialAssistantMessagesHandler = ({
   useChat = useChat_default,
 }: SavePartialAssistantMessagesHandlerProps) => {
   const { chatInstance, chatThreadId } = useChatStore(
-    useShallow((state) => ({
-      chatInstance: state.chatInstance!,
-      chatThreadId: state.id!,
-    })),
+    useShallow((state) => {
+      const session = state.sessions.get(state.currentSessionId!)!
+
+      return {
+        chatInstance: session.chatInstance,
+        chatThreadId: session.id,
+      }
+    }),
   )
 
   const { status, messages } = useChat({ chat: chatInstance })

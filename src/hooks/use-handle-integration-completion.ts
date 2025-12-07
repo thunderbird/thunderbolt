@@ -125,10 +125,14 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
   const { chatInstance, chatThreadId } = useChatStore(
-    useShallow((state) => ({
-      chatInstance: state.chatInstance,
-      chatThreadId: state.id,
-    })),
+    useShallow((state) => {
+      const session = state.sessions.get(state.currentSessionId ?? '')
+
+      return {
+        chatInstance: session?.chatInstance,
+        chatThreadId: session?.id,
+      }
+    }),
   )
 
   const { data: integrationStatus } = useIntegrationStatus()

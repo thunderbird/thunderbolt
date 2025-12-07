@@ -18,6 +18,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModelV2 } from '@ai-sdk/provider'
 import ky, { type KyInstance } from 'ky'
+import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
 // > [Error] Chat error: – Error: Unhandled chunk type: text-start — run-tools-transformation.ts:275
@@ -261,6 +262,7 @@ export const aiFetchStreamingResponse = async ({
     // - First stream: sendFinish: false (in case we need to continue)
     // - Continuation stream: sendStart: false (continues same message)
     const stream = createUIMessageStream({
+      generateId: uuidv7,
       execute: async ({ writer }) => {
         let currentMessages = convertToModelMessages(messages)
         let attemptNumber = 1

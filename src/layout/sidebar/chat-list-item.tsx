@@ -3,6 +3,9 @@ import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal } from 'lucide-react'
 import type { ChatListItemProps } from './types'
+import { useChatStore } from '@/chats/chat-store'
+import { useShallow } from 'zustand/react/shallow'
+import { useChat } from '@ai-sdk/react'
 
 export const ChatListItem = ({
   thread,
@@ -14,6 +17,19 @@ export const ChatListItem = ({
   deleteChatDialogRef,
   onChatClick,
 }: ChatListItemProps) => {
+  const { chatInstance, currentSessionId } = useChatStore(
+    useShallow((state) => {
+      const session = state.sessions.get(thread.id)
+
+      return {
+        chatInstance: session?.chatInstance,
+        currentSessionId: state.currentSessionId,
+      }
+    }),
+  )
+
+  const { status } = useChat(chatInstance ? { chat: chatInstance } : undefined)
+
   if (isCollapsed) {
     return (
       <SidebarMenuItem key={thread.id}>
@@ -37,6 +53,9 @@ export const ChatListItem = ({
           isActive={isActive}
           className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground flex items-center gap-2"
         >
+          {status === 'streaming' && thread.id !== currentSessionId && (
+            <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
+          )}
           <span className="truncate flex-1 min-w-0">{thread.title}</span>
           <DropdownMenuTrigger asChild>
             <MoreHorizontal

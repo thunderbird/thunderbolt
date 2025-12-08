@@ -951,7 +951,7 @@ describe('Google Tools', () => {
         file_name: 'photo.jpg',
         content: '',
         truncated: false,
-        error: 'Cannot extract text from image/jpeg. Only Google Docs and text files are supported.',
+        error: 'Cannot extract text from image/jpeg. Only Google Docs, Sheets, Slides, and text files are supported.',
       })
     })
 

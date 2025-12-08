@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
 import { oauthRetryEvent, getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
@@ -9,10 +10,8 @@ import { chatThreadsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
 import { updateSettings } from '@/dal/settings'
-import type { Model, ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
+import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
-import { useChatStore } from '@/chats/chat-store'
 
 const mockAddEventListener = mock()
 const mockRemoveEventListener = mock()
@@ -53,64 +52,6 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-/**
- * Helper to hydrate the store with a session (replaces old hydrate method)
- */
-const hydrateStore = (state: {
-  chatInstance: Chat<ThunderboltUIMessage>
-  chatThread: null
-  id: string | null
-  mcpClients: never[]
-  models: Model[]
-  selectedModel: Model | null
-  triggerData: null
-}) => {
-  const store = useChatStore.getState()
-
-  // Set models first
-  store.setModels(state.models)
-
-  // Set MCP clients
-  store.setMcpClients(state.mcpClients)
-
-  // Only create session if we have an id
-  if (state.id) {
-    // Create session with a default model if selectedModel is null
-    const defaultModel =
-      state.selectedModel ??
-      ({
-        id: 'default-model',
-        provider: 'openai',
-        name: 'Default Model',
-        model: 'gpt-4',
-        isSystem: 0,
-        enabled: 1,
-        isConfidential: 0,
-      } as Model)
-
-    store.createSession({
-      chatInstance: state.chatInstance,
-      chatThread: state.chatThread,
-      id: state.id,
-      selectedModel: defaultModel,
-      triggerData: state.triggerData,
-    })
-    store.setCurrentSessionId(state.id)
-  }
-}
-
-/**
- * Helper to reset the store (replaces old reset method)
- */
-const resetStore = () => {
-  useChatStore.setState({
-    currentSessionId: null,
-    mcpClients: [],
-    models: [],
-    sessions: new Map(),
-  })
-}
-
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
     // Reset the real store state before each test
@@ -132,29 +73,6 @@ describe('useHandleIntegrationCompletion', () => {
       global.sessionStorage.clear()
     }
   })
-
-  /**
-   * Creates a mock chat instance for testing that matches the Chat interface
-   */
-  const createMockChatInstance = (messages: ThunderboltUIMessage[] = []): Chat<ThunderboltUIMessage> => {
-    const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-      // Mock implementation
-    })
-
-    return {
-      id: 'test-chat-id',
-      messages,
-      sendMessage,
-      status: 'ready',
-      regenerate: mock(),
-      stop: mock(),
-      append: mock(),
-      reload: mock(),
-      setMessages: mock(),
-      setData: mock(),
-      setStatus: mock(),
-    } as unknown as Chat<ThunderboltUIMessage>
-  }
 
   /**
    * Creates a mock saveMessages function for testing

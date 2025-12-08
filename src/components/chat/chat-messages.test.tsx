@@ -1,139 +1,24 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import {
+  createMockAutomationRun,
+  createMockChatInstance,
+  createMockChatThread,
+  createMockUseChat,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { ChatMessages } from './chat-messages'
-import { useChatStore } from '@/chats/chat-store'
-import type { ThunderboltUIMessage, ChatThread, AutomationRun, Model } from '@/types'
-import { type Chat } from '@ai-sdk/react'
+import type { ThunderboltUIMessage } from '@/types'
 
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
-): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-  const regenerate = mock(() => Promise.resolve())
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status,
-    regenerate,
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
-}
-
-// Mock useChat hook that reads from chat instance
-const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>, error?: Error) => {
-  return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
-    id: chatInstance.id,
-    status: chatInstance.status,
-    messages: chatInstance.messages,
-    error,
-    isLoading: false,
-    reload: mock(),
-    stop: chatInstance.stop,
-    append: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    sendMessage: chatInstance.sendMessage,
-    regenerate: chatInstance.regenerate,
-    resumeStream: mock(),
-    addToolResult: mock(),
-    clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
-}
-
-const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThread => {
-  return {
-    id: 'thread-1',
-    title: 'Test Thread',
-    isEncrypted: 0,
-    ...overrides,
-  } as ChatThread
-}
-
-const createMockAutomationRun = (overrides?: Partial<AutomationRun>): AutomationRun => {
-  return {
-    prompt: null,
-    wasTriggeredByAutomation: false,
-    isAutomationDeleted: false,
-    ...overrides,
-  }
-}
-
-const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => {
-  return {
-    id: 'msg-1',
-    role: 'user',
-    parts: [{ type: 'text', text: 'Hello' }],
-    ...overrides,
-  }
-}
-
-/**
- * Helper to hydrate the store with a session (replaces old hydrate method)
- */
-const hydrateStore = (state: {
-  chatInstance: Chat<ThunderboltUIMessage>
-  chatThread: ChatThread | null
-  id: string
-  mcpClients: never[]
-  models: Model[]
-  selectedModel: Model | null
-  triggerData: AutomationRun | null
-}) => {
-  const store = useChatStore.getState()
-
-  // Set models first
-  store.setModels(state.models)
-
-  // Set MCP clients
-  store.setMcpClients(state.mcpClients)
-
-  // Create session with a default model if selectedModel is null
-  const defaultModel =
-    state.selectedModel ??
-    ({
-      id: 'default-model',
-      provider: 'openai',
-      name: 'Default Model',
-      model: 'gpt-4',
-      isSystem: 0,
-      enabled: 1,
-      isConfidential: 0,
-    } as Model)
-
-  store.createSession({
-    chatInstance: state.chatInstance,
-    chatThread: state.chatThread,
-    id: state.id,
-    selectedModel: defaultModel,
-    triggerData: state.triggerData,
-  })
-  store.setCurrentSessionId(state.id)
-}
-
-/**
- * Helper to reset the store (replaces old reset method)
- */
-const resetStore = () => {
-  useChatStore.setState({
-    currentSessionId: null,
-    mcpClients: [],
-    models: [],
-    sessions: new Map(),
-  })
-}
+const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => ({
+  id: 'msg-1',
+  role: 'user',
+  parts: [{ type: 'text', text: 'Hello' }],
+  ...overrides,
+})
 
 describe('ChatMessages', () => {
   beforeAll(async () => {

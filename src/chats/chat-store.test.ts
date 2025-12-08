@@ -1,143 +1,17 @@
 import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
-import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import {
+  createMockAutomationRun,
+  createMockChatInstanceWithValidation,
+  createMockChatThread,
+  createMockModel,
+  getCurrentSession,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
+import type { Model, ThunderboltUIMessage } from '@/types'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useChatStore } from './chat-store'
-
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-): Chat<ThunderboltUIMessage> & {
-  _originalSendMessage: ReturnType<typeof mock>
-} => {
-  const originalSendMessage = mock(async (_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-
-  // Wrap sendMessage with validation logic to match real implementation
-  const sendMessage = async (params: { text: string; metadata?: Record<string, unknown> }) => {
-    const { currentSessionId, sessions } = useChatStore.getState()
-    const session = currentSessionId ? sessions.get(currentSessionId) : null
-
-    if (!session?.selectedModel) {
-      throw new Error('No selected model')
-    }
-
-    const chatThread = session.chatThread
-
-    if (chatThread && chatThread.isEncrypted !== session.selectedModel.isConfidential) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
-    }
-
-    return originalSendMessage(params)
-  }
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status: 'ready',
-    regenerate: mock(),
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-    _originalSendMessage: originalSendMessage,
-  } as unknown as Chat<ThunderboltUIMessage> & { _originalSendMessage: ReturnType<typeof mock> }
-}
-
-const createMockModel = (overrides?: Partial<Model>): Model => {
-  return {
-    id: 'model-1',
-    provider: 'openai',
-    name: 'Test Model',
-    model: 'gpt-4',
-    isSystem: 0,
-    enabled: 1,
-    isConfidential: 0,
-    ...overrides,
-  } as Model
-}
-
-const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThread => {
-  return {
-    id: 'thread-1',
-    title: 'Test Thread',
-    isEncrypted: 0,
-    ...overrides,
-  } as ChatThread
-}
-
-const createMockAutomationRun = (overrides?: Partial<AutomationRun>): AutomationRun => {
-  return {
-    prompt: null,
-    wasTriggeredByAutomation: false,
-    isAutomationDeleted: false,
-    ...overrides,
-  }
-}
-
-/**
- * Helper to hydrate the store with a session (replaces old hydrate method)
- */
-const hydrateStore = (state: {
-  chatInstance: Chat<ThunderboltUIMessage> | null
-  chatThread: ChatThread | null
-  id: string
-  mcpClients?: unknown[]
-  models?: Model[]
-  selectedModel: Model | null
-  triggerData: AutomationRun | null
-}) => {
-  const store = useChatStore.getState()
-
-  // Set models first (needed for setSelectedModel)
-  if (state.models) {
-    store.setModels(state.models)
-  }
-
-  // Set MCP clients
-  if (state.mcpClients) {
-    store.setMcpClients(state.mcpClients as never[])
-  }
-
-  // Create session
-  if (state.id && state.chatInstance && state.selectedModel) {
-    store.createSession({
-      chatInstance: state.chatInstance,
-      chatThread: state.chatThread,
-      id: state.id,
-      selectedModel: state.selectedModel,
-      triggerData: state.triggerData,
-    })
-    store.setCurrentSessionId(state.id)
-  }
-}
-
-/**
- * Helper to reset the store (replaces old reset method)
- */
-const resetStore = () => {
-  useChatStore.setState({
-    currentSessionId: null,
-    mcpClients: [],
-    models: [],
-    sessions: new Map(),
-  })
-}
-
-/**
- * Helper to get current session
- */
-const getCurrentSession = () => {
-  const { currentSessionId, sessions } = useChatStore.getState()
-  return currentSessionId ? sessions.get(currentSessionId) : null
-}
 
 describe('chat-store', () => {
   beforeAll(async () => {
@@ -161,7 +35,7 @@ describe('chat-store', () => {
 
   describe('createSession', () => {
     it('should set all state values correctly', () => {
-      const chatInstance = createMockChatInstance()
+      const chatInstance = createMockChatInstanceWithValidation()
       const chatThread = createMockChatThread()
       const model = createMockModel()
       const automationRun = createMockAutomationRun()
@@ -192,7 +66,7 @@ describe('chat-store', () => {
   describe('reset', () => {
     it('should reset store to initial state', () => {
       // First hydrate with some data
-      const chatInstance = createMockChatInstance()
+      const chatInstance = createMockChatInstanceWithValidation()
       const model = createMockModel()
 
       hydrateStore({
@@ -221,7 +95,7 @@ describe('chat-store', () => {
 
   describe('sendMessage', () => {
     it('should throw error when selectedModel is null', async () => {
-      const chatInstance = createMockChatInstance()
+      const chatInstance = createMockChatInstanceWithValidation()
 
       // Create session without selected model - need to manually set up
       useChatStore.getState().setModels([])
@@ -247,7 +121,7 @@ describe('chat-store', () => {
     })
 
     it('should throw error when chatThread encryption does not match model confidentiality', async () => {
-      const chatInstance = createMockChatInstance()
+      const chatInstance = createMockChatInstanceWithValidation()
       const encryptedThread = createMockChatThread({ isEncrypted: 1 })
       const nonConfidentialModel = createMockModel({ isConfidential: 0 })
 
@@ -268,7 +142,7 @@ describe('chat-store', () => {
     })
 
     it('should throw error when unencrypted thread is used with confidential model', async () => {
-      const chatInstance = createMockChatInstance()
+      const chatInstance = createMockChatInstanceWithValidation()
       const unencryptedThread = createMockChatThread({ isEncrypted: 0 })
       const confidentialModel = createMockModel({ isConfidential: 1 })
 
@@ -297,7 +171,7 @@ describe('chat-store', () => {
           parts: [{ type: 'text', text: 'Hello' }],
         },
       ]
-      const chatInstanceWithMessages = createMockChatInstance(messages)
+      const chatInstanceWithMessages = createMockChatInstanceWithValidation(messages)
 
       hydrateStore({
         chatInstance: chatInstanceWithMessages,
@@ -326,7 +200,7 @@ describe('chat-store', () => {
         { id: 'msg-2', role: 'assistant', parts: [{ type: 'text', text: 'Response' }] },
         { id: 'msg-3', role: 'user', parts: [{ type: 'text', text: 'Second' }] },
       ]
-      const chatInstance = createMockChatInstance(messages)
+      const chatInstance = createMockChatInstanceWithValidation(messages)
       const model = createMockModel()
 
       hydrateStore({
@@ -357,7 +231,7 @@ describe('chat-store', () => {
       const model2 = createMockModel({ id: 'model-2' })
 
       hydrateStore({
-        chatInstance: createMockChatInstance(),
+        chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
@@ -376,7 +250,7 @@ describe('chat-store', () => {
       const model2 = createMockModel({ id: 'model-2', name: 'Model 2' })
 
       hydrateStore({
-        chatInstance: createMockChatInstance(),
+        chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
@@ -400,7 +274,7 @@ describe('chat-store', () => {
       const model = createMockModel({ id: 'custom-model-id' })
 
       hydrateStore({
-        chatInstance: createMockChatInstance(),
+        chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
@@ -420,7 +294,7 @@ describe('chat-store', () => {
       const model = createMockModel({ id: 'tracked-model' })
 
       hydrateStore({
-        chatInstance: createMockChatInstance(),
+        chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],

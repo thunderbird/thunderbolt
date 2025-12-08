@@ -1,56 +1,17 @@
+import {
+  createMockChatInstance,
+  createMockUseChat,
+  getCurrentSession,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
-import type { Model, ThunderboltUIMessage } from '@/types'
+import type { ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatScrollHandler } from './use-chat-scroll-handler'
-import { useChatStore } from './chat-store'
-
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
-): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status,
-    regenerate: mock(),
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
-}
-
-// Mock useChat hook that reads from chat instance
-const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
-  return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
-    id: chatInstance.id,
-    status: chatInstance.status,
-    messages: chatInstance.messages,
-    error: undefined,
-    isLoading: false,
-    reload: mock(),
-    stop: chatInstance.stop,
-    append: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    sendMessage: chatInstance.sendMessage,
-    regenerate: chatInstance.regenerate,
-    resumeStream: mock(),
-    addToolResult: mock(),
-    clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
-}
 
 // Mock useAutoScroll hook - returns stable mocks that can be accessed
 type MockUseAutoScrollReturn = {
@@ -90,76 +51,6 @@ const createMockUseAutoScroll = (
     resetUserScroll,
     mockHook,
   }
-}
-
-/**
- * Helper to hydrate the store with a session (replaces old hydrate method)
- */
-const hydrateStore = (state: {
-  chatInstance: Chat<ThunderboltUIMessage>
-  chatThread: null
-  id: string
-  mcpClients: never[]
-  models: Model[]
-  selectedModel: Model | null
-  triggerData: null
-}) => {
-  const store = useChatStore.getState()
-
-  // Set models first
-  store.setModels(state.models)
-
-  // Set MCP clients
-  store.setMcpClients(state.mcpClients)
-
-  // Create session with a default model if selectedModel is null
-  const defaultModel =
-    state.selectedModel ??
-    ({
-      id: 'default-model',
-      provider: 'openai',
-      name: 'Default Model',
-      model: 'gpt-4',
-      isSystem: 0,
-      enabled: 1,
-      isConfidential: 0,
-    } as Model)
-
-  const sessionData = {
-    chatInstance: state.chatInstance,
-    chatThread: state.chatThread,
-    id: state.id,
-    selectedModel: defaultModel,
-    triggerData: state.triggerData,
-  }
-
-  // If session already exists, update it; otherwise create it
-  if (store.sessions.has(state.id)) {
-    store.updateSession(state.id, sessionData)
-  } else {
-    store.createSession(sessionData)
-  }
-  store.setCurrentSessionId(state.id)
-}
-
-/**
- * Helper to reset the store (replaces old reset method)
- */
-const resetStore = () => {
-  useChatStore.setState({
-    currentSessionId: null,
-    mcpClients: [],
-    models: [],
-    sessions: new Map(),
-  })
-}
-
-/**
- * Helper to get current session
- */
-const getCurrentSession = () => {
-  const { currentSessionId, sessions } = useChatStore.getState()
-  return currentSessionId ? sessions.get(currentSessionId) : null
 }
 
 describe('useChatScrollHandler', () => {

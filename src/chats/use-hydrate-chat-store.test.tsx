@@ -1,4 +1,5 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -87,34 +88,12 @@ const createTestThread = async (modelId: string, title: string = 'Test Thread') 
 /**
  * Helper function to create test messages
  */
-const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => {
-  return {
-    id: uuidv7(),
-    role: 'user',
-    parts: [{ type: 'text', text: 'Hello' }],
-    ...overrides,
-  }
-}
-
-/**
- * Helper to reset the store (replaces old reset method)
- */
-const resetStore = () => {
-  useChatStore.setState({
-    currentSessionId: null,
-    mcpClients: [],
-    models: [],
-    sessions: new Map(),
-  })
-}
-
-/**
- * Helper to get current session
- */
-const getCurrentSession = () => {
-  const { currentSessionId, sessions } = useChatStore.getState()
-  return currentSessionId ? sessions.get(currentSessionId) : null
-}
+const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => ({
+  id: uuidv7(),
+  role: 'user',
+  parts: [{ type: 'text', text: 'Hello' }],
+  ...overrides,
+})
 
 /**
  * Wrapper that includes Router context for useNavigate and MCPProvider

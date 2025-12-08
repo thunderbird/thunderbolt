@@ -85,8 +85,7 @@ export const createChatInstance = (
 
     trackEvent('chat_send_prompt', {
       model: selectedModel,
-      // @ts-ignore
-      length: message?.text?.length ?? 0,
+      length: message && 'text' in message ? (message.text?.length ?? 0) : 0,
       prompt_number: instance.messages.length + 1,
     })
 

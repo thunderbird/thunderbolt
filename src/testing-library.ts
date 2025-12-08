@@ -3,7 +3,24 @@ import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { InstalledClock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
-import { afterEach, beforeEach, expect } from 'bun:test'
+import { afterEach, beforeEach, expect, mock } from 'bun:test'
+
+// Mock posthog-js globally to prevent browser detection errors in tests
+// PostHog tries to access browser APIs like navigator.userAgent.match() during module load,
+// which fails in Happy-DOM's test environment
+mock.module('posthog-js', () => ({
+  default: {
+    init: () => null,
+    capture: () => {},
+    identify: () => {},
+    reset: () => {},
+    opt_out_capturing: () => {},
+    opt_in_capturing: () => {},
+    has_opted_out_capturing: () => false,
+    get_distinct_id: () => 'test-distinct-id',
+    captureException: () => {},
+  },
+}))
 
 expect.extend(matchers)
 

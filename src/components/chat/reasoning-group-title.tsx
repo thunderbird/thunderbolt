@@ -28,7 +28,8 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
         {isThinking && activeToolMetadata ? (
           <motion.div
             key={`tool-${activeIndex}`}
-            initial={{ y: 20, opacity: 0 }}
+            // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
+            initial={activeTool?.state === 'input-streaming' ? { y: 20, opacity: 0 } : { y: 0, opacity: 1 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: -20, opacity: 0 }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}

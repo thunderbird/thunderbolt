@@ -40,7 +40,11 @@ export const ChatListItem = ({
           className="cursor-pointer"
           tooltip={thread.title ?? undefined}
         >
-          <MessageCircle className="size-4 shrink-0" />
+          {status === 'streaming' && thread.id !== currentSessionId ? (
+            <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
+          ) : (
+            <MessageCircle className="size-4 shrink-0" />
+          )}
         </SidebarMenuButton>
       </SidebarMenuItem>
     )
@@ -54,16 +58,18 @@ export const ChatListItem = ({
           isActive={isActive}
           className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground flex items-center gap-2"
         >
-          <AnimatePresence>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              {status === 'streaming' && thread.id !== currentSessionId && (
-                <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
-              )}
-            </motion.div>
-            <motion.div layout>
-              <span className="truncate flex-1 min-w-0">{thread.title}</span>
-            </motion.div>
-          </AnimatePresence>
+          <div className="flex items-center gap-2 flex-1">
+            <AnimatePresence>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {status === 'streaming' && thread.id !== currentSessionId && (
+                  <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
+                )}
+              </motion.div>
+              <motion.div layout>
+                <span className="truncate flex-1 min-w-0">{thread.title}</span>
+              </motion.div>
+            </AnimatePresence>
+          </div>
           <DropdownMenuTrigger asChild>
             <MoreHorizontal
               className={cn(

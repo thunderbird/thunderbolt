@@ -17,13 +17,16 @@ const createMockChatInstance = (
 
   // Wrap sendMessage with validation logic to match real implementation
   const sendMessage = async (params: { text: string; metadata?: Record<string, unknown> }) => {
-    const { chatThread, selectedModel } = useChatStore.getState()
+    const { currentSessionId, sessions } = useChatStore.getState()
+    const session = currentSessionId ? sessions.get(currentSessionId) : null
 
-    if (!selectedModel) {
+    if (!session?.selectedModel) {
       throw new Error('No selected model')
     }
 
-    if (chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
+    const chatThread = session.chatThread
+
+    if (chatThread && chatThread.isEncrypted !== session.selectedModel.isConfidential) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )
@@ -79,6 +82,63 @@ const createMockAutomationRun = (overrides?: Partial<AutomationRun>): Automation
   }
 }
 
+/**
+ * Helper to hydrate the store with a session (replaces old hydrate method)
+ */
+const hydrateStore = (state: {
+  chatInstance: Chat<ThunderboltUIMessage> | null
+  chatThread: ChatThread | null
+  id: string
+  mcpClients?: unknown[]
+  models?: Model[]
+  selectedModel: Model | null
+  triggerData: AutomationRun | null
+}) => {
+  const store = useChatStore.getState()
+
+  // Set models first (needed for setSelectedModel)
+  if (state.models) {
+    store.setModels(state.models)
+  }
+
+  // Set MCP clients
+  if (state.mcpClients) {
+    store.setMcpClients(state.mcpClients as never[])
+  }
+
+  // Create session
+  if (state.id && state.chatInstance && state.selectedModel) {
+    store.createSession({
+      chatInstance: state.chatInstance,
+      chatThread: state.chatThread,
+      id: state.id,
+      selectedModel: state.selectedModel,
+      triggerData: state.triggerData,
+    })
+    store.setCurrentSessionId(state.id)
+  }
+}
+
+/**
+ * Helper to reset the store (replaces old reset method)
+ */
+const resetStore = () => {
+  useChatStore.setState({
+    currentSessionId: null,
+    mcpClients: [],
+    models: [],
+    sessions: new Map(),
+  })
+}
+
+/**
+ * Helper to get current session
+ */
+const getCurrentSession = () => {
+  const { currentSessionId, sessions } = useChatStore.getState()
+  return currentSessionId ? sessions.get(currentSessionId) : null
+}
+
 describe('chat-store', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -90,23 +150,23 @@ describe('chat-store', () => {
 
   beforeEach(async () => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
   })
 
   afterEach(async () => {
     // Ensure store is reset after each test to prevent test pollution
-    useChatStore.getState().reset()
+    resetStore()
   })
 
-  describe('hydrate', () => {
+  describe('createSession', () => {
     it('should set all state values correctly', () => {
       const chatInstance = createMockChatInstance()
       const chatThread = createMockChatThread()
       const model = createMockModel()
       const automationRun = createMockAutomationRun()
 
-      const state = {
+      hydrateStore({
         chatInstance,
         chatThread,
         id: 'test-id',
@@ -114,18 +174,18 @@ describe('chat-store', () => {
         models: [model],
         selectedModel: model,
         triggerData: automationRun,
-      }
+      })
 
-      useChatStore.getState().hydrate(state)
-
+      const session = getCurrentSession()
       const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBe(chatInstance)
-      expect(storeState.chatThread).toBe(chatThread)
-      expect(storeState.id).toBe('test-id')
+
+      expect(session?.chatInstance).toBe(chatInstance)
+      expect(session?.chatThread).toBe(chatThread)
+      expect(session?.id).toBe('test-id')
       expect(storeState.mcpClients).toEqual([])
       expect(storeState.models).toEqual([model])
-      expect(storeState.selectedModel).toBe(model)
-      expect(storeState.triggerData).toBe(automationRun)
+      expect(session?.selectedModel).toBe(model)
+      expect(session?.triggerData).toBe(automationRun)
     })
   })
 
@@ -134,7 +194,8 @@ describe('chat-store', () => {
       // First hydrate with some data
       const chatInstance = createMockChatInstance()
       const model = createMockModel()
-      useChatStore.getState().hydrate({
+
+      hydrateStore({
         chatInstance,
         chatThread: createMockChatThread(),
         id: 'test-id',
@@ -145,42 +206,52 @@ describe('chat-store', () => {
       })
 
       // Then reset
-      useChatStore.getState().reset()
+      resetStore()
 
+      const session = getCurrentSession()
       const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBeNull()
-      expect(storeState.chatThread).toBeNull()
-      expect(storeState.id).toBeNull()
+
+      expect(session).toBeNull()
+      expect(storeState.currentSessionId).toBeNull()
       expect(storeState.mcpClients).toEqual([])
       expect(storeState.models).toEqual([])
-      expect(storeState.selectedModel).toBeNull()
-      expect(storeState.triggerData).toBeNull()
+      expect(storeState.sessions.size).toBe(0)
     })
   })
 
   describe('sendMessage', () => {
     it('should throw error when selectedModel is null', async () => {
       const chatInstance = createMockChatInstance()
-      useChatStore.getState().hydrate({
-        chatInstance,
-        chatThread: null,
-        id: 'test-id',
-        mcpClients: [],
-        models: [],
-        selectedModel: null,
-        triggerData: null,
-      })
 
-      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
-        'No selected model',
-      )
+      // Create session without selected model - need to manually set up
+      useChatStore.getState().setModels([])
+      useChatStore.setState((state) => ({
+        ...state,
+        sessions: new Map([
+          [
+            'test-id',
+            {
+              chatInstance,
+              chatThread: null,
+              id: 'test-id',
+              selectedModel: null as unknown as Model,
+              triggerData: null,
+            },
+          ],
+        ]),
+        currentSessionId: 'test-id',
+      }))
+
+      const session = getCurrentSession()
+      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow('No selected model')
     })
+
     it('should throw error when chatThread encryption does not match model confidentiality', async () => {
       const chatInstance = createMockChatInstance()
       const encryptedThread = createMockChatThread({ isEncrypted: 1 })
       const nonConfidentialModel = createMockModel({ isConfidential: 0 })
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance,
         chatThread: encryptedThread,
         id: 'test-id',
@@ -190,7 +261,8 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
+      const session = getCurrentSession()
+      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
         'This model is not available for encrypted conversations.',
       )
     })
@@ -200,7 +272,7 @@ describe('chat-store', () => {
       const unencryptedThread = createMockChatThread({ isEncrypted: 0 })
       const confidentialModel = createMockModel({ isConfidential: 1 })
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance,
         chatThread: unencryptedThread,
         id: 'test-id',
@@ -210,7 +282,8 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
+      const session = getCurrentSession()
+      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
         'This model is not available for unencrypted conversations.',
       )
     })
@@ -226,7 +299,7 @@ describe('chat-store', () => {
       ]
       const chatInstanceWithMessages = createMockChatInstance(messages)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: chatInstanceWithMessages,
         chatThread: null,
         id: 'test-id',
@@ -236,7 +309,8 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().chatInstance?.sendMessage({ text: 'test message' })
+      const session = getCurrentSession()
+      await session?.chatInstance?.sendMessage({ text: 'test message' })
 
       expect(chatInstanceWithMessages._originalSendMessage).toHaveBeenCalledWith({
         text: 'test message',
@@ -255,7 +329,7 @@ describe('chat-store', () => {
       const chatInstance = createMockChatInstance(messages)
       const model = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance,
         chatThread: null,
         id: 'test-id',
@@ -265,7 +339,8 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().chatInstance?.sendMessage({ text: 'third message' })
+      const session = getCurrentSession()
+      await session?.chatInstance?.sendMessage({ text: 'third message' })
 
       // Verify sendMessage was called with correct parameters
       expect(chatInstance._originalSendMessage).toHaveBeenCalledWith({
@@ -281,8 +356,8 @@ describe('chat-store', () => {
       const model1 = createMockModel({ id: 'model-1' })
       const model2 = createMockModel({ id: 'model-2' })
 
-      useChatStore.getState().hydrate({
-        chatInstance: null,
+      hydrateStore({
+        chatInstance: createMockChatInstance(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
@@ -291,15 +366,17 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await expect(useChatStore.getState().setSelectedModel('nonexistent-model')).rejects.toThrow('Model not found')
+      await expect(useChatStore.getState().setSelectedModel('test-id', 'nonexistent-model')).rejects.toThrow(
+        'Model not found',
+      )
     })
 
     it('should set selected model and update settings', async () => {
       const model1 = createMockModel({ id: 'model-1', name: 'Model 1' })
       const model2 = createMockModel({ id: 'model-2', name: 'Model 2' })
 
-      useChatStore.getState().hydrate({
-        chatInstance: null,
+      hydrateStore({
+        chatInstance: createMockChatInstance(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
@@ -308,11 +385,11 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('model-2')
+      await useChatStore.getState().setSelectedModel('test-id', 'model-2')
 
-      const storeState = useChatStore.getState()
-      expect(storeState.selectedModel).toBe(model2)
-      expect(storeState.selectedModel?.id).toBe('model-2')
+      const session = getCurrentSession()
+      expect(session?.selectedModel).toBe(model2)
+      expect(session?.selectedModel?.id).toBe('model-2')
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings({ selected_model: String })
@@ -322,17 +399,17 @@ describe('chat-store', () => {
     it('should update settings with correct model id', async () => {
       const model = createMockModel({ id: 'custom-model-id' })
 
-      useChatStore.getState().hydrate({
-        chatInstance: null,
+      hydrateStore({
+        chatInstance: createMockChatInstance(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
         models: [model],
-        selectedModel: null,
+        selectedModel: model,
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('custom-model-id')
+      await useChatStore.getState().setSelectedModel('test-id', 'custom-model-id')
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings({ selected_model: String })
@@ -342,22 +419,22 @@ describe('chat-store', () => {
     it('should complete without errors when setting model', async () => {
       const model = createMockModel({ id: 'tracked-model' })
 
-      useChatStore.getState().hydrate({
-        chatInstance: null,
+      hydrateStore({
+        chatInstance: createMockChatInstance(),
         chatThread: null,
         id: 'test-id',
         mcpClients: [],
         models: [model],
-        selectedModel: null,
+        selectedModel: model,
         triggerData: null,
       })
 
       // trackEvent is called but we don't verify it to avoid module mocking
       // The function is safe to call and won't throw even if posthogClient is null
-      await useChatStore.getState().setSelectedModel('tracked-model')
+      await useChatStore.getState().setSelectedModel('test-id', 'tracked-model')
 
-      const storeState = useChatStore.getState()
-      expect(storeState.selectedModel?.id).toBe('tracked-model')
+      const session = getCurrentSession()
+      expect(session?.selectedModel?.id).toBe('tracked-model')
     })
   })
 })

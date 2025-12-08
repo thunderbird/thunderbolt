@@ -1,8 +1,8 @@
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
-import type { ThunderboltUIMessage } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatScrollHandler } from './use-chat-scroll-handler'
 import { useChatStore } from './chat-store'
@@ -92,6 +92,76 @@ const createMockUseAutoScroll = (
   }
 }
 
+/**
+ * Helper to hydrate the store with a session (replaces old hydrate method)
+ */
+const hydrateStore = (state: {
+  chatInstance: Chat<ThunderboltUIMessage>
+  chatThread: null
+  id: string
+  mcpClients: never[]
+  models: Model[]
+  selectedModel: Model | null
+  triggerData: null
+}) => {
+  const store = useChatStore.getState()
+
+  // Set models first
+  store.setModels(state.models)
+
+  // Set MCP clients
+  store.setMcpClients(state.mcpClients)
+
+  // Create session with a default model if selectedModel is null
+  const defaultModel =
+    state.selectedModel ??
+    ({
+      id: 'default-model',
+      provider: 'openai',
+      name: 'Default Model',
+      model: 'gpt-4',
+      isSystem: 0,
+      enabled: 1,
+      isConfidential: 0,
+    } as Model)
+
+  const sessionData = {
+    chatInstance: state.chatInstance,
+    chatThread: state.chatThread,
+    id: state.id,
+    selectedModel: defaultModel,
+    triggerData: state.triggerData,
+  }
+
+  // If session already exists, update it; otherwise create it
+  if (store.sessions.has(state.id)) {
+    store.updateSession(state.id, sessionData)
+  } else {
+    store.createSession(sessionData)
+  }
+  store.setCurrentSessionId(state.id)
+}
+
+/**
+ * Helper to reset the store (replaces old reset method)
+ */
+const resetStore = () => {
+  useChatStore.setState({
+    currentSessionId: null,
+    mcpClients: [],
+    models: [],
+    sessions: new Map(),
+  })
+}
+
+/**
+ * Helper to get current session
+ */
+const getCurrentSession = () => {
+  const { currentSessionId, sessions } = useChatStore.getState()
+  return currentSessionId ? sessions.get(currentSessionId) : null
+}
+
 describe('useChatScrollHandler', () => {
   let originalRequestAnimationFrame: typeof requestAnimationFrame
   let originalCancelAnimationFrame: typeof cancelAnimationFrame
@@ -100,7 +170,7 @@ describe('useChatScrollHandler', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
 
     // Mock requestAnimationFrame
     rafCallbacks = []
@@ -121,8 +191,10 @@ describe('useChatScrollHandler', () => {
   })
 
   afterEach(() => {
+    // Cleanup rendered components before resetting store to prevent errors during unmount
+    cleanup()
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetStore()
 
     // Restore original functions
     global.requestAnimationFrame = originalRequestAnimationFrame
@@ -134,7 +206,7 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll()
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -168,7 +240,8 @@ describe('useChatScrollHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     // Create a mock that reads from the store dynamically
     const mockUseChat = ((options?: { chat?: Chat<ThunderboltUIMessage> }) => {
-      const chat = options?.chat ?? useChatStore.getState().chatInstance
+      const session = getCurrentSession()
+      const chat = options?.chat ?? session?.chatInstance
       if (!chat) {
         return {
           id: 'test-chat-id',
@@ -208,7 +281,7 @@ describe('useChatScrollHandler', () => {
     }) as unknown as typeof import('@ai-sdk/react').useChat
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(false, true)
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -242,7 +315,7 @@ describe('useChatScrollHandler', () => {
     ]
     const newMockChatInstance = createMockChatInstance(newMessages, 'ready')
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: newMockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -280,7 +353,7 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll(false, true) // userHasScrolled = false
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -319,7 +392,7 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll(true, false) // userHasScrolled = true
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -373,7 +446,8 @@ describe('useChatScrollHandler', () => {
     const mockChatInstance = createMockChatInstance([], 'ready')
     // Create a mock that reads from the store dynamically
     const mockUseChat = ((options?: { chat?: Chat<ThunderboltUIMessage> }) => {
-      const chat = options?.chat ?? useChatStore.getState().chatInstance
+      const session = getCurrentSession()
+      const chat = options?.chat ?? session?.chatInstance
       if (!chat) {
         return {
           id: 'test-chat-id',
@@ -413,7 +487,7 @@ describe('useChatScrollHandler', () => {
     }) as unknown as typeof import('@ai-sdk/react').useChat
     const { mockHook, scrollToBottom } = createMockUseAutoScroll()
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -445,7 +519,7 @@ describe('useChatScrollHandler', () => {
     ]
     const newMockChatInstance = createMockChatInstance(messages, 'ready')
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: newMockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -495,7 +569,7 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll()
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -521,7 +595,7 @@ describe('useChatScrollHandler', () => {
     const fewerMessages: ThunderboltUIMessage[] = [messages[0]]
     const newMockChatInstance = createMockChatInstance(fewerMessages, 'ready')
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: newMockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -553,7 +627,7 @@ describe('useChatScrollHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll()
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -602,7 +676,7 @@ describe('useChatScrollHandler', () => {
       }),
     ) as unknown as typeof import('@/hooks/use-auto-scroll').useAutoScroll
 
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',

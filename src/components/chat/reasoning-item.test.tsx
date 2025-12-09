@@ -48,7 +48,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       expect(screen.getByText('Thinking')).toBeInTheDocument()
     })
@@ -58,7 +60,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       // Check that Brain icon is rendered (it's an SVG, so we check for the button)
       const button = screen.getByRole('button')
@@ -72,7 +76,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning />)
 
       // Check for loader (Loader2 has animate-spin class)
       const button = screen.getByRole('button')
@@ -85,7 +89,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={1500} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={1500} isGroupReasoning={false} />)
 
       // formatDuration(1500) should format to something like "1.5s"
       expect(screen.getByText(/1\.5s|1s/i)).toBeInTheDocument()
@@ -96,7 +100,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning />)
 
       expect(screen.getByText('...')).toBeInTheDocument()
     })
@@ -106,7 +110,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning={false} />)
 
       expect(screen.getByText('—')).toBeInTheDocument()
     })
@@ -116,7 +120,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       const button = screen.getByRole('button')
       fireEvent.click(button)
@@ -131,7 +137,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       // The display name comes from getToolMetadataSync which formats the tool name
       // For 'search', it should format to something like "Search"
@@ -143,7 +151,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       const button = screen.getByRole('button')
       expect(button).toBeInTheDocument()
@@ -156,7 +166,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning />)
 
       const button = screen.getByRole('button')
       const loader = button.querySelector('.animate-spin')
@@ -168,7 +178,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning />)
 
       const button = screen.getByRole('button')
       const loader = button.querySelector('.animate-spin')
@@ -180,7 +190,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       const button = screen.getByRole('button')
       const loader = button.querySelector('.animate-spin')
@@ -192,7 +204,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       const button = screen.getByRole('button')
       const loader = button.querySelector('.animate-spin')
@@ -204,7 +218,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={2500} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={2500} isGroupReasoning={false} />)
 
       // formatDuration(2500) should format to something like "2.5s"
       expect(screen.getByText(/2\.5s|2s/i)).toBeInTheDocument()
@@ -215,7 +229,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning />)
 
       expect(screen.getByText('...')).toBeInTheDocument()
     })
@@ -225,7 +239,7 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} />)
+      render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning={false} />)
 
       expect(screen.getByText('—')).toBeInTheDocument()
     })
@@ -235,7 +249,9 @@ describe('ReasoningItem', () => {
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
-      render(<ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />)
+      render(
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
+      )
 
       const button = screen.getByRole('button')
       fireEvent.click(button)
@@ -250,7 +266,7 @@ describe('ReasoningItem', () => {
       const mockOnClick = mock()
 
       const { container } = render(
-        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} />,
+        <ReasoningItem part={part} onClick={mockOnClick} reasoningTime={testReasoningTime} isGroupReasoning={false} />,
       )
 
       expect(container.firstChild).toBeNull()

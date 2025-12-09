@@ -943,7 +943,6 @@ describe('Google Tools', () => {
         file_id: 'doc123',
         file_name: 'My Document.docx',
         content: mockContent,
-        truncated: false,
       })
     })
 
@@ -967,7 +966,6 @@ describe('Google Tools', () => {
         file_id: 'txt123',
         file_name: 'notes.txt',
         content: mockContent,
-        truncated: false,
       })
     })
 
@@ -990,7 +988,6 @@ describe('Google Tools', () => {
         file_name: 'photo.jpg',
         mime_type: 'image/jpeg',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'unsupported_type',
         file_category: 'image',
@@ -1012,7 +1009,6 @@ describe('Google Tools', () => {
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'access_denied',
       })
@@ -1033,32 +1029,9 @@ describe('Google Tools', () => {
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'not_found',
       })
-    })
-
-    it('should truncate long content', async () => {
-      const params: GetDriveFileContentParams = {
-        file_id: 'long123',
-      }
-
-      const mockFileResponse = {
-        id: 'long123',
-        name: 'long-document.docx',
-        mimeType: 'application/vnd.google-apps.document',
-      }
-
-      // Create a string longer than the 50000 character limit
-      const longContent = 'A'.repeat(60000)
-      mockTruncateText.mockReturnValue('A'.repeat(50000) + '...[truncated]')
-
-      const mockHttpClient = createMockHttpClient([mockFileResponse, longContent])
-      const result = await getDriveFileContent(params, mockHttpClient)
-
-      expect(result.truncated).toBe(true)
-      expect(mockTruncateText).toHaveBeenCalledWith(longContent, 50000)
     })
   })
 })

@@ -225,7 +225,6 @@ export type DriveFileContent = {
   file_name: string
   mime_type: string
   content: string | null
-  truncated: boolean
   /** When true, text extraction was not possible */
   extraction_failed?: boolean
   /** Category of failure: 'unsupported_type' | 'access_denied' | 'not_found' */
@@ -736,18 +735,10 @@ export const getDriveFileContent = async (
         file_name: fileName,
         mime_type: mimeType,
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'unsupported_type',
         file_category: getDriveFileCategory(mimeType),
       }
-    }
-
-    // Truncate if too long for LLM context
-    const maxLength = 50000
-    const truncated = content.length > maxLength
-    if (truncated) {
-      content = truncateText(content, maxLength)
     }
 
     return {
@@ -755,7 +746,6 @@ export const getDriveFileContent = async (
       file_name: fileName,
       mime_type: mimeType,
       content,
-      truncated,
     }
   } catch (error: unknown) {
     const httpError = error as { response?: { status: number } }
@@ -765,7 +755,6 @@ export const getDriveFileContent = async (
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'access_denied',
       }
@@ -777,7 +766,6 @@ export const getDriveFileContent = async (
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'not_found',
       }

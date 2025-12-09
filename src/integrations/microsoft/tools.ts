@@ -102,7 +102,6 @@ export type OneDriveFileContent = {
   file_name: string
   mime_type: string
   content: string | null
-  truncated: boolean
   extraction_failed?: boolean
   failure_reason?: 'unsupported_type' | 'access_denied' | 'not_found'
   file_category?: 'pdf' | 'image' | 'video' | 'audio' | 'binary' | 'office' | 'unknown'
@@ -286,7 +285,6 @@ export const getOneDriveFileContent = async (
         file_name: fileName,
         mime_type: mimeType,
         content: textResponse,
-        truncated: false,
       }
     }
 
@@ -296,7 +294,6 @@ export const getOneDriveFileContent = async (
       file_name: fileName,
       mime_type: mimeType,
       content: null,
-      truncated: false,
       extraction_failed: true,
       failure_reason: 'unsupported_type',
       file_category: getOneDriveFileCategory(mimeType),
@@ -309,7 +306,6 @@ export const getOneDriveFileContent = async (
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'access_denied',
       }
@@ -321,7 +317,6 @@ export const getOneDriveFileContent = async (
         file_name: 'Unknown',
         mime_type: 'unknown',
         content: null,
-        truncated: false,
         extraction_failed: true,
         failure_reason: 'not_found',
       }

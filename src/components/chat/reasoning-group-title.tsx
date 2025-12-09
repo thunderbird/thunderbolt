@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react'
 
 type ReasoningGroupTitleProps = {
   totalDuration: number
-  isThinking: boolean
+  isGroupReasoning: boolean
   tools: ToolUIPart[]
 }
 
-export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: ReasoningGroupTitleProps) => {
+export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: ReasoningGroupTitleProps) => {
   const [activeIndex, setActiveIndex] = useState(tools.length - 1)
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isThinking, tools }: Reason
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
-        {isThinking && activeToolMetadata ? (
+        {isGroupReasoning && activeToolMetadata ? (
           <motion.div
             key={`tool-${activeIndex}`}
             // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)

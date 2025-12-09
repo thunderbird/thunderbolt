@@ -13,6 +13,7 @@ import {
   checkCalendar,
   checkInbox,
   draftEmail,
+  extractDriveFileId,
   getDriveFileContent,
   getEmail,
   searchDrive,
@@ -880,6 +881,44 @@ describe('Google Tools', () => {
       expect(mockTransformDriveQuery).toHaveBeenCalledWith(
         "name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'",
       )
+    })
+  })
+
+  describe('extractDriveFileId', () => {
+    it('should extract file ID from Google Drive file URL', () => {
+      const url = 'https://drive.google.com/file/d/1abc123XYZ_-def456/view?usp=sharing'
+      expect(extractDriveFileId(url)).toBe('1abc123XYZ_-def456')
+    })
+
+    it('should extract file ID from Google Docs URL', () => {
+      const url = 'https://docs.google.com/document/d/1abc123XYZ_-def456/edit?tab=t.0'
+      expect(extractDriveFileId(url)).toBe('1abc123XYZ_-def456')
+    })
+
+    it('should extract file ID from Google Sheets URL', () => {
+      const url =
+        'https://docs.google.com/spreadsheets/d/1u45_haUZDqq9C0Yum7ZNpx-KPNW_RMLvulcmBpvGcf0/edit?gid=1351715876#gid=1351715876'
+      expect(extractDriveFileId(url)).toBe('1u45_haUZDqq9C0Yum7ZNpx-KPNW_RMLvulcmBpvGcf0')
+    })
+
+    it('should extract file ID from Google Slides URL', () => {
+      const url = 'https://docs.google.com/presentation/d/1abc123XYZ_-def456/edit#slide=id.p'
+      expect(extractDriveFileId(url)).toBe('1abc123XYZ_-def456')
+    })
+
+    it('should return input as-is if already a file ID', () => {
+      const fileId = '1abc123XYZ_-def456'
+      expect(extractDriveFileId(fileId)).toBe('1abc123XYZ_-def456')
+    })
+
+    it('should return input as-is for unrecognized URL patterns', () => {
+      const unknownUrl = 'https://example.com/some/path'
+      expect(extractDriveFileId(unknownUrl)).toBe(unknownUrl)
+    })
+
+    it('should handle URL with trailing slash', () => {
+      const url = 'https://docs.google.com/document/d/1abc123XYZ_-def456/'
+      expect(extractDriveFileId(url)).toBe('1abc123XYZ_-def456')
     })
   })
 

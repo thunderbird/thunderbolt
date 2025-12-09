@@ -1,9 +1,11 @@
 import { createPrompt } from '@/ai/prompt'
 import {
+  detectsToolRefusal,
+  type EnabledIntegrations,
   extractTextFromMessages,
   hasToolCalls,
   isFinalStep,
-  NUDGE_MESSAGES,
+  nudgeMessages,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
@@ -28,6 +30,8 @@ import { v7 as uuidv7 } from 'uuid'
 import {
   convertToModelMessages,
   createUIMessageStream,
+  InvalidToolInputError,
+  NoSuchToolError,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
   stepCountIs,
@@ -139,7 +143,15 @@ export const aiFetchStreamingResponse = async ({
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
+    integrations_google_is_enabled: false,
+    integrations_microsoft_is_enabled: false,
   })
+
+  // Track which integrations are enabled for tool refusal detection
+  const enabledIntegrations: EnabledIntegrations = {
+    google: settings.integrationsGoogleIsEnabled,
+    microsoft: settings.integrationsMicrosoftIsEnabled,
+  }
 
   const model = await db.query.modelsTable.findFirst({
     where: eq(modelsTable.id, modelId),
@@ -164,6 +176,9 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
+  const toolNames = supportsTools ? Object.keys(toolset) : []
+  const isMistralModel = model.model.toLowerCase().includes('mistral')
+
   const systemPrompt = createPrompt({
     modelName: model.name,
     preferredName: settings.preferredName,
@@ -179,6 +194,7 @@ export const aiFetchStreamingResponse = async ({
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
+    toolNames: toolNames.length > 0 ? toolNames : undefined,
   })
 
   try {
@@ -198,6 +214,10 @@ export const aiFetchStreamingResponse = async ({
     const maxSteps = 20
     const maxAttempts = 2
 
+    // Mistral models have known issues with parallel tool calls - disable for reliability
+    // See: https://github.com/vllm-project/vllm/issues/9019
+    const providerOptions = isMistralModel ? { mistral: { parallelToolCalls: false } } : undefined
+
     /**
      * Run a single streamText attempt and return the result along with metadata
      */
@@ -209,6 +229,7 @@ export const aiFetchStreamingResponse = async ({
         messages: inputMessages,
         tools: supportsTools ? toolset : undefined,
         stopWhen: stepCountIs(maxSteps),
+        providerOptions,
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           // Final step: disable tools to force a response
@@ -216,43 +237,54 @@ export const aiFetchStreamingResponse = async ({
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
               activeTools: [],
-              messages: [...stepMessages, { role: 'user' as const, content: NUDGE_MESSAGES.finalStep }],
+              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.finalStep }],
+            }
+          }
+
+          // Check if previous step contained a tool refusal WITHOUT actually trying tools
+          // Only nudge if the model refused to use tools it didn't even attempt
+          // If the model tried a tool and got an error, the refusal language is legitimate
+          // Only check for refusals of integrations that are actually enabled
+          const lastStep = steps[steps.length - 1]
+          const lastStepMadeToolCalls = lastStep?.finishReason === 'tool-calls'
+          if (
+            lastStep?.text &&
+            detectsToolRefusal(lastStep.text, enabledIntegrations) &&
+            supportsTools &&
+            !lastStepMadeToolCalls // Don't nudge if model actually tried tools
+          ) {
+            return {
+              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.toolRefusal }],
             }
           }
 
           // Nudge after many tool calls (but not on final step)
           if (shouldShowPreventiveNudge(steps)) {
             return {
-              messages: [...stepMessages, { role: 'user' as const, content: NUDGE_MESSAGES.preventive }],
+              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.preventive }],
             }
           }
         },
 
         abortSignal,
-        onStepFinish: (step) => {
-          console.info('step', {
-            text: step.text,
-            finishReason: step.finishReason,
-            toolCallCount: step.toolCalls?.length || 0,
-          })
 
-          // When a step includes tool calls, log their names and arguments for easier debugging
-          step.toolCalls?.forEach((call, idx) => {
-            console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
-            console.log('Arguments:', call)
-            console.groupEnd()
-          })
-        },
-        onFinish: (finish) => {
-          console.info('finish', {
-            text: finish.text,
-            finishReason: finish.finishReason,
-            toolCallCount: finish.toolCalls?.length || 0,
-            usage: finish.totalUsage,
-          })
-        },
-        onError: (error) => {
-          console.error('streamText error', error)
+        // Handle malformed tool calls from models with weaker tool-calling capabilities
+        experimental_repairToolCall: async ({ toolCall, error }) => {
+          // Don't attempt to repair calls to non-existent tools
+          if (NoSuchToolError.isInstance(error)) {
+            console.warn(`Tool "${toolCall.toolName}" does not exist, skipping`)
+            return null
+          }
+
+          // Log invalid tool arguments and skip the call
+          if (InvalidToolInputError.isInstance(error)) {
+            console.warn(`Invalid arguments for tool "${toolCall.toolName}": ${error.message}`)
+            return null
+          }
+
+          // For other errors, skip the tool call
+          console.warn(`Tool call error for "${toolCall.toolName}":`, error)
+          return null
         },
       })
     }
@@ -300,7 +332,7 @@ export const aiFetchStreamingResponse = async ({
               currentMessages = [
                 ...currentMessages,
                 ...response.messages,
-                { role: 'user' as const, content: NUDGE_MESSAGES.retry },
+                { role: 'user' as const, content: nudgeMessages.retry },
               ]
 
               isRetry = true

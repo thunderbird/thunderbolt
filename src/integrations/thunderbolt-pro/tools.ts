@@ -42,7 +42,8 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   },
   {
     name: 'fetch_content',
-    description: `Fetch and parse content from a webpage URL.`,
+    description:
+      'Fetch and parse content from a PUBLIC webpage URL. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
     verb: 'fetching {url}',
     parameters: fetchContentSchema,
     execute: (params: FetchContentParams) => fetchContent(params, httpClient),

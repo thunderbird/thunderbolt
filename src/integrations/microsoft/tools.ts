@@ -24,8 +24,23 @@ export const getMessageSchema = z
   })
   .strict()
 
+export const searchOneDriveSchema = z
+  .object({
+    query: z.string().describe('Search query to find files in OneDrive'),
+    max_results: z.number().optional().default(20).describe('Maximum number of files to return (default: 20, max: 50)'),
+  })
+  .strict()
+
+export const getOneDriveFileContentSchema = z
+  .object({
+    file_id: z.string().describe('The OneDrive file ID to retrieve content from'),
+  })
+  .strict()
+
 export type ListMessagesParams = z.infer<typeof listMessagesSchema>
 export type GetMessageParams = z.infer<typeof getMessageSchema>
+export type SearchOneDriveParams = z.infer<typeof searchOneDriveSchema>
+export type GetOneDriveFileContentParams = z.infer<typeof getOneDriveFileContentSchema>
 
 // ---------------------------------------------------------------------------
 // Microsoft Graph minimal types (subset)
@@ -47,6 +62,68 @@ type GraphMessage = {
 export type GraphListMessagesResponse = {
   value?: GraphMessage[]
   '@odata.nextLink'?: string
+}
+
+type OneDriveFile = {
+  id: string
+  name: string
+  size?: number
+  createdDateTime?: string
+  lastModifiedDateTime?: string
+  webUrl?: string
+  file?: { mimeType?: string }
+  folder?: { childCount?: number }
+  parentReference?: { path?: string }
+}
+
+type OneDriveSearchResponse = {
+  value?: OneDriveFile[]
+  '@odata.nextLink'?: string
+}
+
+export type OneDriveFileResult = {
+  id: string
+  name: string
+  mime_type: string
+  size_bytes?: number
+  created_time: string
+  modified_time: string
+  web_url: string
+  is_folder: boolean
+  path?: string
+}
+
+/**
+ * Result of attempting to extract text content from a OneDrive file.
+ * Uses structured metadata to let the LLM craft appropriate responses.
+ */
+export type OneDriveFileContent = {
+  file_id: string
+  file_name: string
+  mime_type: string
+  content: string | null
+  truncated: boolean
+  extraction_failed?: boolean
+  failure_reason?: 'unsupported_type' | 'access_denied' | 'not_found'
+  file_category?: 'pdf' | 'image' | 'video' | 'audio' | 'binary' | 'office' | 'unknown'
+}
+
+/** Categorize MIME type for LLM context when file type is unsupported */
+const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_category'] => {
+  if (mime === 'application/pdf') return 'pdf'
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (
+    mime.includes('officedocument') ||
+    mime.includes('msword') ||
+    mime.includes('ms-excel') ||
+    mime.includes('ms-powerpoint')
+  ) {
+    return 'office'
+  }
+  if (mime.includes('octet-stream') || mime.includes('binary')) return 'binary'
+  return 'unknown'
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +213,124 @@ export const getMessage = async (params: GetMessageParams, httpClient: KyInstanc
   return message
 }
 
+/**
+ * Search OneDrive files
+ */
+export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: KyInstance = ky) => {
+  const credentials = await getMicrosoftCredentials()
+  const accessToken = await ensureValidToken(credentials)
+
+  const searchParams = new URLSearchParams()
+  searchParams.set('$top', Math.min(params.max_results ?? 20, 50).toString())
+  searchParams.set('$select', 'id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,parentReference')
+
+  const response = await httpClient
+    .get(`https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(params.query)}')`, {
+      searchParams,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    .json<OneDriveSearchResponse>()
+
+  const files: OneDriveFileResult[] = (response.value || []).map((file) => ({
+    id: file.id,
+    name: file.name,
+    mime_type: file.file?.mimeType || (file.folder ? 'folder' : 'application/octet-stream'),
+    size_bytes: file.size,
+    created_time: file.createdDateTime || '',
+    modified_time: file.lastModifiedDateTime || '',
+    web_url: file.webUrl || '',
+    is_folder: !!file.folder,
+    path: file.parentReference?.path,
+  }))
+
+  return {
+    files,
+    total_count: files.length,
+    has_more: !!response['@odata.nextLink'],
+  }
+}
+
+/**
+ * Get text content from a OneDrive file
+ * Works with text files only. Returns structured metadata for unsupported types.
+ */
+export const getOneDriveFileContent = async (
+  params: GetOneDriveFileContentParams,
+  httpClient: KyInstance = ky,
+): Promise<OneDriveFileContent> => {
+  const credentials = await getMicrosoftCredentials()
+  const accessToken = await ensureValidToken(credentials)
+
+  try {
+    // Get file metadata
+    const fileResponse = await httpClient
+      .get(`https://graph.microsoft.com/v1.0/me/drive/items/${params.file_id}`, {
+        searchParams: { $select: 'id,name,file' },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .json<OneDriveFile>()
+
+    const fileName = fileResponse.name || 'Unknown'
+    const mimeType = fileResponse.file?.mimeType || 'application/octet-stream'
+
+    // Only support text files for now
+    if (mimeType.startsWith('text/')) {
+      const textResponse = await httpClient
+        .get(`https://graph.microsoft.com/v1.0/me/drive/items/${params.file_id}/content`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        .text()
+
+      return {
+        file_id: params.file_id,
+        file_name: fileName,
+        mime_type: mimeType,
+        content: textResponse,
+        truncated: false,
+      }
+    }
+
+    // Unsupported file type - return structured metadata for LLM
+    return {
+      file_id: params.file_id,
+      file_name: fileName,
+      mime_type: mimeType,
+      content: null,
+      truncated: false,
+      extraction_failed: true,
+      failure_reason: 'unsupported_type',
+      file_category: getOneDriveFileCategory(mimeType),
+    }
+  } catch (error: unknown) {
+    const httpError = error as { response?: { status: number } }
+    if (httpError.response?.status === 403) {
+      return {
+        file_id: params.file_id,
+        file_name: 'Unknown',
+        mime_type: 'unknown',
+        content: null,
+        truncated: false,
+        extraction_failed: true,
+        failure_reason: 'access_denied',
+      }
+    }
+
+    if (httpError.response?.status === 404) {
+      return {
+        file_id: params.file_id,
+        file_name: 'Unknown',
+        mime_type: 'unknown',
+        content: null,
+        truncated: false,
+        extraction_failed: true,
+        failure_reason: 'not_found',
+      }
+    }
+
+    throw error
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tool configs consumed by the UI / AI layer
 // ---------------------------------------------------------------------------
@@ -158,6 +353,21 @@ export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
     verb: 'Getting Microsoft message',
     parameters: getMessageSchema,
     execute: (params: GetMessageParams) => getMessage(params, httpClient),
+  },
+  {
+    name: 'microsoft_search_onedrive',
+    description: 'Search OneDrive files by name or content',
+    verb: 'Searching OneDrive',
+    parameters: searchOneDriveSchema,
+    execute: (params: SearchOneDriveParams) => searchOneDrive(params, httpClient),
+  },
+  {
+    name: 'microsoft_get_onedrive_file_content',
+    description:
+      'Get text content from a OneDrive file. Currently supports text files only. For unsupported types (PDFs, Office docs, images, etc.), returns file metadata with extraction_failed=true - explain the limitation helpfully to the user.',
+    verb: 'Getting OneDrive file content',
+    parameters: getOneDriveFileContentSchema,
+    execute: (params: GetOneDriveFileContentParams) => getOneDriveFileContent(params, httpClient),
   },
 ]
 

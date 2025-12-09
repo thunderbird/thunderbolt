@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  detectsToolRefusal,
   extractTextFromMessages,
   hasToolCalls,
   isFinalStep,
-  NUDGE_MESSAGES,
+  nudgeMessages,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from './step-logic'
@@ -209,19 +210,103 @@ describe('shouldRetry', () => {
   })
 })
 
-describe('NUDGE_MESSAGES', () => {
+describe('nudgeMessages', () => {
   test('finalStep message is defined and non-empty', () => {
-    expect(NUDGE_MESSAGES.finalStep).toBeTruthy()
-    expect(NUDGE_MESSAGES.finalStep.length).toBeGreaterThan(0)
+    expect(nudgeMessages.finalStep).toBeTruthy()
+    expect(nudgeMessages.finalStep.length).toBeGreaterThan(0)
   })
 
   test('preventive message is defined and non-empty', () => {
-    expect(NUDGE_MESSAGES.preventive).toBeTruthy()
-    expect(NUDGE_MESSAGES.preventive.length).toBeGreaterThan(0)
+    expect(nudgeMessages.preventive).toBeTruthy()
+    expect(nudgeMessages.preventive.length).toBeGreaterThan(0)
   })
 
   test('retry message is defined and non-empty', () => {
-    expect(NUDGE_MESSAGES.retry).toBeTruthy()
-    expect(NUDGE_MESSAGES.retry.length).toBeGreaterThan(0)
+    expect(nudgeMessages.retry).toBeTruthy()
+    expect(nudgeMessages.retry.length).toBeGreaterThan(0)
+  })
+
+  test('toolRefusal message is defined and non-empty', () => {
+    expect(nudgeMessages.toolRefusal).toBeTruthy()
+    expect(nudgeMessages.toolRefusal.length).toBeGreaterThan(0)
+  })
+})
+
+describe('detectsToolRefusal', () => {
+  describe('generic patterns (always checked)', () => {
+    test('detects "not connected to" pattern', () => {
+      expect(detectsToolRefusal("I'm not connected to your account.")).toBe(true)
+    })
+
+    test('detects "not currently connected" pattern', () => {
+      expect(detectsToolRefusal("I'm not currently connected to your account.")).toBe(true)
+    })
+
+    test('detects "share the file with me" pattern', () => {
+      expect(detectsToolRefusal('Please share the file with me directly.')).toBe(true)
+    })
+
+    test('is case insensitive', () => {
+      expect(detectsToolRefusal("I'M NOT CONNECTED TO your account.")).toBe(true)
+    })
+  })
+
+  describe('Google-specific patterns', () => {
+    test('detects Google refusal when Google is enabled', () => {
+      expect(detectsToolRefusal("I can't access your Google Drive.", { google: true })).toBe(true)
+      expect(detectsToolRefusal('I cannot access your Gmail.', { google: true })).toBe(true)
+    })
+
+    test('ignores Google refusal when Google is NOT enabled', () => {
+      // Model legitimately can't access Google - don't trigger nudge
+      expect(detectsToolRefusal("I can't access your Google Drive.", { google: false })).toBe(false)
+      expect(detectsToolRefusal("I can't access your Google Drive.", {})).toBe(false)
+    })
+  })
+
+  describe('Microsoft-specific patterns', () => {
+    test('detects Microsoft refusal when Microsoft is enabled', () => {
+      expect(detectsToolRefusal("I can't access your OneDrive.", { microsoft: true })).toBe(true)
+      expect(detectsToolRefusal('I cannot access your Outlook.', { microsoft: true })).toBe(true)
+    })
+
+    test('ignores Microsoft refusal when Microsoft is NOT enabled', () => {
+      // Model legitimately can't access Microsoft - don't trigger nudge
+      expect(detectsToolRefusal("I can't access your OneDrive.", { microsoft: false })).toBe(false)
+      expect(detectsToolRefusal("I can't access your OneDrive.", {})).toBe(false)
+    })
+  })
+
+  describe('mixed scenarios', () => {
+    test('detects correct integration when both are enabled', () => {
+      const both = { google: true, microsoft: true }
+      expect(detectsToolRefusal("I can't access your Google Drive.", both)).toBe(true)
+      expect(detectsToolRefusal("I can't access your OneDrive.", both)).toBe(true)
+    })
+
+    test('only detects enabled integration', () => {
+      expect(detectsToolRefusal("I can't access your Google Drive.", { google: true, microsoft: false })).toBe(true)
+      expect(detectsToolRefusal("I can't access your OneDrive.", { google: true, microsoft: false })).toBe(false)
+    })
+  })
+
+  describe('false positives prevention', () => {
+    test('returns false for legitimate tool error responses', () => {
+      const enabled = { google: true, microsoft: true }
+      // These are legitimate responses after a tool was tried and failed
+      expect(detectsToolRefusal('The file requires permission to view.', enabled)).toBe(false)
+      expect(detectsToolRefusal('Access denied - you may not have permission.', enabled)).toBe(false)
+      expect(detectsToolRefusal("I can't extract text from this PDF format.", enabled)).toBe(false)
+    })
+
+    test('returns false for normal responses', () => {
+      expect(detectsToolRefusal('Here is the summary of your document.')).toBe(false)
+      expect(detectsToolRefusal('I found the following information.')).toBe(false)
+      expect(detectsToolRefusal('The weather in San Francisco is sunny.')).toBe(false)
+    })
+
+    test('returns false for empty string', () => {
+      expect(detectsToolRefusal('')).toBe(false)
+    })
   })
 })

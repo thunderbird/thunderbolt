@@ -267,6 +267,31 @@ export const aiFetchStreamingResponse = async ({
         },
 
         abortSignal,
+        onStepFinish: (step) => {
+          console.info('step', {
+            text: step.text,
+            finishReason: step.finishReason,
+            toolCallCount: step.toolCalls?.length || 0,
+          })
+
+          // When a step includes tool calls, log their names and arguments for easier debugging
+          step.toolCalls?.forEach((call, idx) => {
+            console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
+            console.log('Arguments:', call)
+            console.groupEnd()
+          })
+        },
+        onFinish: (finish) => {
+          console.info('finish', {
+            text: finish.text,
+            finishReason: finish.finishReason,
+            toolCallCount: finish.toolCalls?.length || 0,
+            usage: finish.totalUsage,
+          })
+        },
+        onError: (error) => {
+          console.error('streamText error', error)
+        },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities
         experimental_repairToolCall: async ({ toolCall, error }) => {

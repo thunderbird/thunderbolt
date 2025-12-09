@@ -949,9 +949,12 @@ describe('Google Tools', () => {
       expect(result).toMatchObject({
         file_id: 'img123',
         file_name: 'photo.jpg',
-        content: '',
+        mime_type: 'image/jpeg',
+        content: null,
         truncated: false,
-        error: 'Cannot extract text from image/jpeg. Only Google Docs, Sheets, Slides, and text files are supported.',
+        extraction_failed: true,
+        failure_reason: 'unsupported_type',
+        file_category: 'image',
       })
     })
 
@@ -968,9 +971,11 @@ describe('Google Tools', () => {
       expect(result).toMatchObject({
         file_id: 'private123',
         file_name: 'Unknown',
-        content: '',
+        mime_type: 'unknown',
+        content: null,
         truncated: false,
-        error: 'Access denied. Make sure you have permission to read this file.',
+        extraction_failed: true,
+        failure_reason: 'access_denied',
       })
     })
 
@@ -987,9 +992,11 @@ describe('Google Tools', () => {
       expect(result).toMatchObject({
         file_id: 'missing123',
         file_name: 'Unknown',
-        content: '',
+        mime_type: 'unknown',
+        content: null,
         truncated: false,
-        error: 'File not found.',
+        extraction_failed: true,
+        failure_reason: 'not_found',
       })
     })
 

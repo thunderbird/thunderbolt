@@ -216,12 +216,32 @@ export type DriveFile = {
   description?: string
 }
 
+/**
+ * Result of attempting to extract text content from a Google Drive file.
+ * Uses structured metadata to let the LLM craft appropriate responses.
+ */
 export type DriveFileContent = {
   file_id: string
   file_name: string
-  content: string
+  mime_type: string
+  content: string | null
   truncated: boolean
-  error?: string
+  /** When true, text extraction was not possible */
+  extraction_failed?: boolean
+  /** Category of failure: 'unsupported_type' | 'access_denied' | 'not_found' */
+  failure_reason?: 'unsupported_type' | 'access_denied' | 'not_found'
+  /** Hint about the file type category for LLM context */
+  file_category?: 'pdf' | 'image' | 'video' | 'audio' | 'binary' | 'unknown'
+}
+
+/** Categorize MIME type for LLM context when file type is unsupported */
+const getDriveFileCategory = (mime: string): DriveFileContent['file_category'] => {
+  if (mime === 'application/pdf') return 'pdf'
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (mime.includes('octet-stream') || mime.includes('binary')) return 'binary'
+  return 'unknown'
 }
 
 // =============================================================================
@@ -689,13 +709,16 @@ export const getDriveFileContent = async (
       })
       content = await response.text()
     } else {
-      // Unsupported file type
+      // Unsupported file type - return structured metadata for LLM to craft response
       return {
         file_id: params.file_id,
         file_name: fileName,
-        content: '',
+        mime_type: mimeType,
+        content: null,
         truncated: false,
-        error: `Cannot extract text from ${mimeType}. Only Google Docs, Sheets, Slides, and text files are supported.`,
+        extraction_failed: true,
+        failure_reason: 'unsupported_type',
+        file_category: getDriveFileCategory(mimeType),
       }
     }
 
@@ -709,27 +732,33 @@ export const getDriveFileContent = async (
     return {
       file_id: params.file_id,
       file_name: fileName,
+      mime_type: mimeType,
       content,
       truncated,
     }
-  } catch (error: any) {
-    if (error.response?.status === 403) {
+  } catch (error: unknown) {
+    const httpError = error as { response?: { status: number } }
+    if (httpError.response?.status === 403) {
       return {
         file_id: params.file_id,
         file_name: 'Unknown',
-        content: '',
+        mime_type: 'unknown',
+        content: null,
         truncated: false,
-        error: 'Access denied. Make sure you have permission to read this file.',
+        extraction_failed: true,
+        failure_reason: 'access_denied',
       }
     }
 
-    if (error.response?.status === 404) {
+    if (httpError.response?.status === 404) {
       return {
         file_id: params.file_id,
         file_name: 'Unknown',
-        content: '',
+        mime_type: 'unknown',
+        content: null,
         truncated: false,
-        error: 'File not found.',
+        extraction_failed: true,
+        failure_reason: 'not_found',
       }
     }
 
@@ -810,7 +839,8 @@ export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
   },
   {
     name: 'google_get_drive_file_content',
-    description: 'Get the text content from a Google Drive file (Google Docs, Sheets as CSV, Slides, and text files)',
+    description:
+      'Get text content from a Google Drive file. Supports Google Docs, Sheets (as CSV), Slides, and text files. For unsupported types (PDFs, images, etc.), returns file metadata with extraction_failed=true - explain the limitation helpfully to the user.',
     verb: 'Getting Drive file content',
     parameters: getDriveFileContentSchema,
     execute: (params: GetDriveFileContentParams) => getDriveFileContent(params, httpClient),

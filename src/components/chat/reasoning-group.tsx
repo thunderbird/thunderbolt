@@ -31,7 +31,7 @@ export const ReasoningGroup = ({
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
-  const isGroupReasoning = (isLastPartInMessage && isStreaming) || currentReasoningPart?.content.state === 'streaming'
+  const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
 
   // Create unique instance key for reasoning display
   const reasoningInstanceKey = currentReasoningPart
@@ -74,6 +74,7 @@ export const ReasoningGroup = ({
                 part={part}
                 onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
                 reasoningTime={reasoningTime?.[part.id]}
+                isGroupReasoning={isGroupReasoning}
               />
             )
           })}

@@ -73,6 +73,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         capture_pageview: false,
         capture_pageleave: false,
         disable_surveys: true,
+        disable_session_recording: true,
+        disable_scroll_properties: true,
+        capture_performance: false,
         persistence: 'localStorage',
         before_send: (event) => {
           if (!event) return null

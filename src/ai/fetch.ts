@@ -1,7 +1,5 @@
 import { createPrompt } from '@/ai/prompt'
 import {
-  detectsToolRefusal,
-  type EnabledIntegrations,
   extractTextFromMessages,
   hasToolCalls,
   isFinalStep,
@@ -143,15 +141,7 @@ export const aiFetchStreamingResponse = async ({
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_is_enabled: false,
   })
-
-  // Track which integrations are enabled for tool refusal detection
-  const enabledIntegrations: EnabledIntegrations = {
-    google: settings.integrationsGoogleIsEnabled,
-    microsoft: settings.integrationsMicrosoftIsEnabled,
-  }
 
   const model = await db.query.modelsTable.findFirst({
     where: eq(modelsTable.id, modelId),
@@ -176,8 +166,6 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
-  const toolNames = supportsTools ? Object.keys(toolset) : []
-
   const systemPrompt = createPrompt({
     modelName: model.name,
     preferredName: settings.preferredName,
@@ -193,7 +181,6 @@ export const aiFetchStreamingResponse = async ({
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
-    toolNames: toolNames.length > 0 ? toolNames : undefined,
   })
 
   try {
@@ -241,23 +228,6 @@ export const aiFetchStreamingResponse = async ({
             return {
               activeTools: [],
               messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.finalStep }],
-            }
-          }
-
-          // Check if previous step contained a tool refusal WITHOUT actually trying tools
-          // Only nudge if the model refused to use tools it didn't even attempt
-          // If the model tried a tool and got an error, the refusal language is legitimate
-          // Only check for refusals of integrations that are actually enabled
-          const lastStep = steps[steps.length - 1]
-          const lastStepMadeToolCalls = lastStep?.finishReason === 'tool-calls'
-          if (
-            lastStep?.text &&
-            detectsToolRefusal(lastStep.text, enabledIntegrations) &&
-            supportsTools &&
-            !lastStepMadeToolCalls // Don't nudge if model actually tried tools
-          ) {
-            return {
-              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.toolRefusal }],
             }
           }
 

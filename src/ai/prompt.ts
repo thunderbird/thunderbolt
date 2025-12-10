@@ -16,14 +16,12 @@ export type PromptParams = {
     timeFormat: string
     currency: string
   }
-  /** Names of available tools - when provided, explicitly listed in system prompt */
-  toolNames?: string[]
 }
 
 /**
  * Creates a system prompt for the AI assistant with user context and guidelines.
  */
-export const createPrompt = ({ modelName, preferredName, location, localization, toolNames }: PromptParams) => {
+export const createPrompt = ({ modelName, preferredName, location, localization }: PromptParams) => {
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -43,12 +41,6 @@ export const createPrompt = ({ modelName, preferredName, location, localization,
   ]
     .filter(Boolean)
     .join('\n')
-
-  // Explicitly list available tools to prevent models from hallucinating limitations
-  const availableToolsSection =
-    toolNames && toolNames.length > 0
-      ? `\n## Available Tools\nYou have access to these tools: ${toolNames.join(', ')}. Use them when appropriate—do not claim you cannot access integrations or services if a relevant tool exists.`
-      : ''
 
   return `You are an executive assistant using the **${modelName}** model.
 Reasoning: low
@@ -72,7 +64,6 @@ ${contextSection}
 
 # Tools
 IMPORTANT: Search first, answer second. Your training data is outdated—use tools to get current information.
-${availableToolsSection}
 
 Always use tools for:
 • Current information: news, events, weather, prices, versions, updates

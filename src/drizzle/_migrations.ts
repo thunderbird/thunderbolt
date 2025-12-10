@@ -74,4 +74,9 @@ export const migrations: Migration[] = [
     name: '0012_clear_expediter.sql',
     sql: 'ALTER TABLE `models` RENAME COLUMN "maintainer" TO "vendor";',
   },
+  {
+    hash: '0013_keen_tattoo',
+    name: '0013_keen_tattoo.sql',
+    sql: 'ALTER TABLE `models` ADD `supports_parallel_tool_calls` integer DEFAULT 1 NOT NULL;',
+  },
 ]

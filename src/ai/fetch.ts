@@ -177,7 +177,6 @@ export const aiFetchStreamingResponse = async ({
   }
 
   const toolNames = supportsTools ? Object.keys(toolset) : []
-  const isMistralModel = model.model.toLowerCase().includes('mistral')
 
   const systemPrompt = createPrompt({
     modelName: model.name,
@@ -214,9 +213,13 @@ export const aiFetchStreamingResponse = async ({
     const maxSteps = 20
     const maxAttempts = 2
 
-    // Mistral models have known issues with parallel tool calls - disable for reliability
+    // Some models have issues with parallel tool calls - disable based on model configuration
+    // Uses vendor (actual model maker like 'mistral') for provider options key since the
+    // backend recognizes vendor-specific options. Falls back to provider for user-created models.
     // See: https://github.com/vllm-project/vllm/issues/9019
-    const providerOptions = isMistralModel ? { mistral: { parallelToolCalls: false } } : undefined
+    const providerOptionsKey = model.vendor ?? model.provider
+    const providerOptions =
+      model.supportsParallelToolCalls === 0 ? { [providerOptionsKey]: { parallelToolCalls: false } } : undefined
 
     /**
      * Run a single streamText attempt and return the result along with metadata

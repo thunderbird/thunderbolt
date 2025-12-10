@@ -56,6 +56,7 @@ export const modelsTable = sqliteTable('models', {
   toolUsage: integer('tool_usage').default(1).notNull(),
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
+  supportsParallelToolCalls: integer('supports_parallel_tool_calls').default(1).notNull(),
   contextWindow: integer('context_window'),
   deletedAt: integer('deleted_at'),
   defaultHash: text('default_hash'),

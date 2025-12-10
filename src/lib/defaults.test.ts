@@ -79,6 +79,7 @@ describe('defaults-hash', () => {
       toolUsage: model.toolUsage,
       isConfidential: model.isConfidential,
       startWithReasoning: model.startWithReasoning,
+      supportsParallelToolCalls: model.supportsParallelToolCalls,
       id: model.id,
       deletedAt: model.deletedAt,
       defaultHash: model.defaultHash,

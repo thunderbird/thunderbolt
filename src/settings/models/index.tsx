@@ -378,6 +378,7 @@ export default function ModelsPage() {
         toolUsage: 1,
         isConfidential: 0,
         startWithReasoning: 0,
+        supportsParallelToolCalls: 1,
         contextWindow: null,
         tokenizer: null,
         deletedAt: null,

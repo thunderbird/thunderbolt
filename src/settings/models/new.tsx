@@ -91,6 +91,7 @@ export default function NewModelPage() {
       toolUsage: 1,
       isConfidential: 0,
       startWithReasoning: 0,
+      supportsParallelToolCalls: 1,
       contextWindow: null,
       deletedAt: null,
       defaultHash: null, // User-created, not based on a default

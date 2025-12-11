@@ -3,9 +3,12 @@
  */
 export const instructions = `## Connect Integration Widget
 
-If email/calendar tools (google_check_inbox, microsoft_list_messages, etc.) are available, use them directly.
+### Tools to check
 
-Only show this widget when tools are missing AND user requests email/calendar.
+- Email: google_check_inbox, google_search_emails, google_get_email, google_draft_email, microsoft_list_messages
+- Calendar: google_check_calendar
+
+If these tools are available, use them directly. Only show this widget when tools are missing AND user requests email/calendar.
 
 ### BEFORE showing widget, check "Integration status:" in Context
 
@@ -37,4 +40,37 @@ Attributes (all required):
 ### Display Rule
 
 When status is READY, output ONLY the widget tag. No text before or after.
+
+### Provider Selection
+
+- "google" → Gmail, Google Calendar, or when user mentions "Google", "Gmail"
+- "microsoft" → Outlook, or when user mentions "Microsoft", "Outlook", "Office 365"
+- "" (empty) → User didn't specify, let widget show both options
+
+### Service Selection
+
+- "email" → Check inbox, search emails, read/send emails
+- "calendar" → View events, check schedule
+- "both" → Only when request explicitly needs BOTH (rare)
+
+### Examples
+
+**CORRECT - Status is READY, tools missing:**
+- "Summarize my emails" → <widget:connect-integration provider="" service="email" reason="" override="" />
+- "Check my Gmail" → <widget:connect-integration provider="google" service="email" reason="" override="" />
+- "What's on my calendar?" → <widget:connect-integration provider="" service="calendar" reason="" override="" />
+
+**CORRECT - Status is PROMPTS_DISABLED:**
+- User: "Check my email"
+- You: "I can't access your emails right now. Would you like to connect your email account?"
+- User: "Yes"
+- You: <widget:connect-integration provider="" service="email" reason="" override="true" />
+
+**CORRECT - Tools available:**
+- "Summarize my emails" + google_check_inbox exists → Use the tool directly, don't show widget
+
+**WRONG:**
+- ❌ "I don't have access to your email" → Instead show the widget
+- ❌ Showing widget when tools are available → Use tools instead
+- ❌ Showing widget for questions like "Can you check email?" → Just explain the feature
 `

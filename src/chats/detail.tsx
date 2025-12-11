@@ -17,6 +17,7 @@ const ChatHydrateHandler = ({ children, id }: ChatHydrateHandlerProps) => {
 
   useEffect(() => {
     hydrateChatStore()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   if (!isReady) {

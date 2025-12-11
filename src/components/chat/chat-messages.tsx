@@ -4,8 +4,7 @@ import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
 import { useMemo } from 'react'
-import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 type ChatMessagesProps = {
@@ -13,18 +12,7 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, chatThreadId, triggerData } = useChatStore(
-    useShallow((state) => {
-      const session = state.sessions.get(state.currentSessionId!)!
-
-      return {
-        chatInstance: session.chatInstance,
-        chatThread: session.chatThread,
-        chatThreadId: session.id,
-        triggerData: session.triggerData,
-      }
-    }),
-  )
+  const { chatInstance, chatThread, id: chatThreadId, triggerData } = useCurrentChatSession()
 
   const { error: chatError, status, messages } = useChat({ chat: chatInstance })
 

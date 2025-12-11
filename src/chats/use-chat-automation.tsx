@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useChatStore } from './chat-store'
-import { useShallow } from 'zustand/react/shallow'
+import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 type UseChatAutomationProps = {
@@ -8,15 +7,7 @@ type UseChatAutomationProps = {
 }
 
 export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
-  const { chatInstance } = useChatStore(
-    useShallow((state) => {
-      const session = state.sessions.get(state.currentSessionId!)!
-
-      return {
-        chatInstance: session.chatInstance,
-      }
-    }),
-  )
+  const { chatInstance } = useCurrentChatSession()
 
   const { messages } = useChat({ chat: chatInstance })
 

@@ -6,21 +6,12 @@ import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
-import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 
 export default function ChatUI() {
-  const { chatInstance } = useChatStore(
-    useShallow((state) => {
-      const session = state.sessions.get(state.currentSessionId!)!
-
-      return {
-        chatInstance: session.chatInstance,
-      }
-    }),
-  )
+  const { chatInstance } = useCurrentChatSession()
 
   const { messages } = useChat({ chat: chatInstance })
 

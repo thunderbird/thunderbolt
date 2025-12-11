@@ -4,10 +4,11 @@ import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
+import { useShallow } from 'zustand/react/shallow'
 
 type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
-  chatThread: ChatThread | null // @todo: make required
+  chatThread: ChatThread | null
   id: string
   selectedModel: Model
   triggerData: AutomationRun | null
@@ -105,3 +106,24 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
   },
 }))
+
+/**
+ * Returns the current chat session, throwing if none exists.
+ *
+ * Use this hook in components/hooks that fundamentally require an active session to function
+ * (e.g., chat UI, message handlers). The throw ensures these components never render in an
+ * invalid state.
+ *
+ * For components where a session is optional and they can still function without one
+ * (e.g., Header, ChatListItem, useHandleIntegrationCompletion), access the store directly
+ * with optional chaining: `state.sessions.get(state.currentSessionId ?? '')?.someProperty`
+ */
+export const useCurrentChatSession = () => {
+  const session = useChatStore(useShallow((state) => state.sessions.get(state.currentSessionId ?? '')))
+
+  if (!session) {
+    throw new Error('No session found')
+  }
+
+  return session
+}

@@ -1,8 +1,7 @@
 import { useThrottledCallback } from '@/hooks/use-throttle'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { type PropsWithChildren, useEffect } from 'react'
-import { useChatStore } from './chat-store'
-import { useShallow } from 'zustand/react/shallow'
+import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 type SavePartialAssistantMessagesHandlerProps = PropsWithChildren<{
@@ -19,16 +18,7 @@ export const SavePartialAssistantMessagesHandler = ({
   saveMessages,
   useChat = useChat_default,
 }: SavePartialAssistantMessagesHandlerProps) => {
-  const { chatInstance, chatThreadId } = useChatStore(
-    useShallow((state) => {
-      const session = state.sessions.get(state.currentSessionId!)!
-
-      return {
-        chatInstance: session.chatInstance,
-        chatThreadId: session.id,
-      }
-    }),
-  )
+  const { chatInstance, id: chatThreadId } = useCurrentChatSession()
 
   const { status, messages } = useChat({ chat: chatInstance })
 

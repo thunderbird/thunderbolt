@@ -16,12 +16,14 @@ export type PromptParams = {
     timeFormat: string
     currency: string
   }
+  /** Integration status for the model to check before showing connect widget */
+  integrationStatus: string
 }
 
 /**
  * Creates a system prompt for the AI assistant with user context and guidelines.
  */
-export const createPrompt = ({ modelName, preferredName, location, localization }: PromptParams) => {
+export const createPrompt = ({ modelName, preferredName, location, localization, integrationStatus }: PromptParams) => {
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -38,6 +40,7 @@ export const createPrompt = ({ modelName, preferredName, location, localization 
       ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
       : 'User location: Unknown (ask before using location-based features)',
     `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.dateFormat}, ${localization.timeFormat}, ${localization.currency}`,
+    `Integration status: ${integrationStatus}`,
   ]
     .filter(Boolean)
     .join('\n')

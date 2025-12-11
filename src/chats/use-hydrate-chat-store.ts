@@ -100,6 +100,7 @@ const createChatInstance = (id: string, messages: ThunderboltUIMessage[], saveMe
       {
         ...message,
         metadata: {
+          ...message?.metadata,
           modelId: selectedModel.id,
         },
       } as ThunderboltUIMessage,

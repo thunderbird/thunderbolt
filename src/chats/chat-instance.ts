@@ -77,7 +77,7 @@ export const createChatInstance = (
       throw new Error('No selected model')
     }
 
-    if (chatThread && chatThread.isEncrypted !== selectedModel?.isConfidential) {
+    if (chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )

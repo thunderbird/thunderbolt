@@ -60,12 +60,17 @@ export const ChatListItem = ({
         >
           <div className="flex items-center gap-2 flex-1">
             <AnimatePresence>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                key={`${thread.id}-loading`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 {status === 'streaming' && thread.id !== currentSessionId && (
                   <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
                 )}
               </motion.div>
-              <motion.div layout>
+              <motion.div key={`${thread.id}-title`} layout>
                 <span className="truncate flex-1 min-w-0">{thread.title}</span>
               </motion.div>
             </AnimatePresence>

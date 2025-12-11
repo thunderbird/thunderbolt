@@ -122,7 +122,7 @@ export const useCurrentChatSession = () => {
   const session = useChatStore(useShallow((state) => state.sessions.get(state.currentSessionId ?? '')))
 
   if (!session) {
-    throw new Error('No session found')
+    throw new Error('No chat session found')
   }
 
   return session

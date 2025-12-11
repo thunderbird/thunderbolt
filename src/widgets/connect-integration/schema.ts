@@ -10,6 +10,8 @@ export const schema = z.object({
     provider: z.enum(['google', 'microsoft', '']),
     service: z.enum(['email', 'calendar', 'both']),
     reason: z.string(),
+    /** Use "true" to show widget even when user chose "Don't ask again", otherwise "" */
+    override: z.enum(['true', '']),
   }),
 })
 

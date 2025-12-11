@@ -576,7 +576,8 @@ describe('parseContentParts', () => {
 
   describe('connect-integration widgets', () => {
     it('parses connect-integration with all attributes', () => {
-      const text = '<widget:connect-integration provider="google" service="email" reason="to check your inbox" />'
+      const text =
+        '<widget:connect-integration provider="google" service="email" reason="to check your inbox" override="" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -588,6 +589,7 @@ describe('parseContentParts', () => {
               provider: 'google',
               service: 'email',
               reason: 'to check your inbox',
+              override: '',
             },
           },
         },
@@ -595,7 +597,7 @@ describe('parseContentParts', () => {
     })
 
     it('parses connect-integration with empty provider and reason', () => {
-      const text = '<widget:connect-integration provider="" service="email" reason="" />'
+      const text = '<widget:connect-integration provider="" service="email" reason="" override="" />'
       const result = parseContentParts(text)
 
       expect(result).toEqual([
@@ -607,6 +609,7 @@ describe('parseContentParts', () => {
               provider: '',
               service: 'email',
               reason: '',
+              override: '',
             },
           },
         },

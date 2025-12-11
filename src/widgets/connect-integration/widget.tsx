@@ -27,6 +27,8 @@ type ConnectIntegrationWidgetProps = {
   service: 'email' | 'calendar' | 'both'
   reason: string
   messageId: string
+  /** When "true", shows widget even if user chose "Don't ask again" */
+  override: 'true' | ''
 }
 
 const getProviderName = (provider: OAuthProvider): string => {
@@ -74,7 +76,7 @@ const isProviderConnected = (
  * Widget that prompts users to connect their email/calendar accounts
  */
 export const ConnectIntegrationWidget = memo(
-  ({ provider, service, reason, messageId }: ConnectIntegrationWidgetProps) => {
+  ({ provider, service, reason, messageId, override }: ConnectIntegrationWidgetProps) => {
     const location = useLocation()
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
@@ -174,7 +176,7 @@ export const ConnectIntegrationWidget = memo(
       dispatch({ type: 'SET_DISMISSED', payload: true })
     }
 
-    if (integrationsDoNotAskAgain.value) {
+    if (integrationsDoNotAskAgain.value && override !== 'true') {
       return null
     }
 

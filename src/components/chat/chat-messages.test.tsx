@@ -1,84 +1,24 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import {
+  createMockAutomationRun,
+  createMockChatInstance,
+  createMockChatThread,
+  createMockUseChat,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { ChatMessages } from './chat-messages'
-import { useChatStore } from '@/chats/chat-store'
-import type { ThunderboltUIMessage, ChatThread, AutomationRun } from '@/types'
-import { type Chat } from '@ai-sdk/react'
+import type { ThunderboltUIMessage } from '@/types'
 
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
-): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-  const regenerate = mock(() => Promise.resolve())
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status,
-    regenerate,
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
-}
-
-// Mock useChat hook that reads from chat instance
-const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>, error?: Error) => {
-  return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
-    id: chatInstance.id,
-    status: chatInstance.status,
-    messages: chatInstance.messages,
-    error,
-    isLoading: false,
-    reload: mock(),
-    stop: chatInstance.stop,
-    append: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    sendMessage: chatInstance.sendMessage,
-    regenerate: chatInstance.regenerate,
-    resumeStream: mock(),
-    addToolResult: mock(),
-    clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
-}
-
-const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThread => {
-  return {
-    id: 'thread-1',
-    title: 'Test Thread',
-    isEncrypted: 0,
-    ...overrides,
-  } as ChatThread
-}
-
-const createMockAutomationRun = (overrides?: Partial<AutomationRun>): AutomationRun => {
-  return {
-    prompt: null,
-    wasTriggeredByAutomation: false,
-    isAutomationDeleted: false,
-    ...overrides,
-  }
-}
-
-const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => {
-  return {
-    id: 'msg-1',
-    role: 'user',
-    parts: [{ type: 'text', text: 'Hello' }],
-    ...overrides,
-  }
-}
+const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => ({
+  id: 'msg-1',
+  role: 'user',
+  parts: [{ type: 'text', text: 'Hello' }],
+  ...overrides,
+})
 
 describe('ChatMessages', () => {
   beforeAll(async () => {
@@ -91,12 +31,14 @@ describe('ChatMessages', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
   })
 
   afterEach(async () => {
+    // Cleanup rendered components before resetting store to prevent errors during unmount
+    cleanup()
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
   })
 
@@ -109,7 +51,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -134,7 +76,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance([])
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread({ isEncrypted: 1 }),
         id: 'thread-1',
@@ -164,7 +106,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -206,7 +148,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -246,7 +188,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -274,7 +216,7 @@ describe('ChatMessages', () => {
       const chatError = new Error('Network error')
       const mockUseChat = createMockUseChat(mockChatInstance, chatError)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -300,7 +242,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'ready')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -326,7 +268,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -352,7 +294,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'ready')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -380,7 +322,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -412,7 +354,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages, 'streaming')
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -438,7 +380,7 @@ describe('ChatMessages', () => {
       const mockChatInstance = createMockChatInstance(messages)
       const mockUseChat = createMockUseChat(mockChatInstance)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',

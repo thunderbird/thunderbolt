@@ -31,7 +31,7 @@ export const ReasoningGroup = ({
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
-  const isThinking = (isLastPartInMessage && isStreaming) || currentReasoningPart?.content.state === 'streaming'
+  const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
 
   // Create unique instance key for reasoning display
   const reasoningInstanceKey = currentReasoningPart
@@ -52,14 +52,14 @@ export const ReasoningGroup = ({
       <Expandable
         className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
         icon={
-          isThinking ? (
+          isGroupReasoning ? (
             <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
           ) : (
             <CheckIcon className="h-4 w-4 text-muted-foreground" />
           )
         }
         defaultOpen={false}
-        title={<ReasoningGroupTitle totalDuration={totalDuration} isThinking={isThinking} tools={tools} />}
+        title={<ReasoningGroupTitle totalDuration={totalDuration} isGroupReasoning={isGroupReasoning} tools={tools} />}
       >
         <div
           className="max-h-[200px] overflow-y-auto"
@@ -74,6 +74,7 @@ export const ReasoningGroup = ({
                 part={part}
                 onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
                 reasoningTime={reasoningTime?.[part.id]}
+                isGroupReasoning={isGroupReasoning}
               />
             )
           })}

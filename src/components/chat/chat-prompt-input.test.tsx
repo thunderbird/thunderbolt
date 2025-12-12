@@ -1,102 +1,29 @@
-import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import {
+  createMockChatInstance,
+  createMockChatThread,
+  createMockModel,
+  createMockUseChat,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { ChatThread, Model, ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
+import type { Model } from '@/types'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement } from 'react'
 import { BrowserRouter } from 'react-router'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
-): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-  const regenerate = mock(() => Promise.resolve())
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status,
-    regenerate,
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
-}
-
-// Mock useChat hook
-const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
-  return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
-    id: chatInstance.id,
-    status: chatInstance.status,
-    messages: chatInstance.messages,
-    error: undefined,
-    isLoading: false,
-    reload: mock(),
-    stop: chatInstance.stop,
-    append: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    sendMessage: chatInstance.sendMessage,
-    regenerate: chatInstance.regenerate,
-    resumeStream: mock(),
-    addToolResult: mock(),
-    clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
-}
-
-const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThread => {
-  return {
-    id: 'thread-1',
-    title: 'Test Thread',
-    isEncrypted: 0,
-    ...overrides,
-  } as ChatThread
-}
-
-const createMockModel = (overrides?: Partial<Model>): Model => {
-  return {
-    id: 'model-1',
-    provider: 'thunderbolt',
-    name: 'Test Model',
-    model: 'gpt-oss-120b',
-    isSystem: 0,
-    enabled: 1,
-    isConfidential: 0,
-    contextWindow: 131072,
-    toolUsage: 1,
-    startWithReasoning: 0,
-    deletedAt: null,
-    url: null,
-    defaultHash: null,
-    apiKey: null,
-    ...overrides,
-  } as Model
-}
-
 // Mock useContextTracking hook
-const createMockUseContextTracking = (
-  isOverflowing: boolean = false,
-  isContextKnown: boolean = true,
-  usedTokens: number | null = 1000,
-  maxTokens: number | null = 2000,
-) => {
-  return (_options?: {
-    model?: Model | null
-    chatThreadId?: string
-    currentInput?: string
-    onOverflow?: () => void
-  }) => ({
+const createMockUseContextTracking =
+  (
+    isOverflowing: boolean = false,
+    isContextKnown: boolean = true,
+    usedTokens: number | null = 1000,
+    maxTokens: number | null = 2000,
+  ) =>
+  (_options?: { model?: Model | null; chatThreadId?: string; currentInput?: string; onOverflow?: () => void }) => ({
     usedTokens,
     maxTokens,
     isContextKnown,
@@ -104,11 +31,11 @@ const createMockUseContextTracking = (
     isLoading: false,
     estimateTokensForInput: (_input: string) => 0,
   })
-}
 
 // Mock useSidebar hook
-const createMockUseSidebar = (isMobile: boolean = false, openMobile: boolean = false) => {
-  return () => ({
+const createMockUseSidebar =
+  (isMobile: boolean = false, openMobile: boolean = false) =>
+  () => ({
     isMobile,
     openMobile,
     state: 'expanded' as const,
@@ -121,7 +48,6 @@ const createMockUseSidebar = (isMobile: boolean = false, openMobile: boolean = f
     isDraggingRail: false,
     setIsDraggingRail: mock(),
   })
-}
 
 /**
  * Wrapper that includes Router context for useNavigate
@@ -142,14 +68,14 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
   })
 
   afterEach(async () => {
     // Cleanup rendered components before resetting store to prevent errors during unmount
     cleanup()
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
   })
 
@@ -159,7 +85,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -193,7 +119,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -230,7 +156,7 @@ describe('ChatPromptInput', () => {
       const mockModel = createMockModel()
       const mockUseContextTracking = createMockUseContextTracking(false, true, 1000, 2000)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -266,7 +192,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -315,7 +241,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -359,7 +285,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -392,7 +318,7 @@ describe('ChatPromptInput', () => {
       const mockModel = createMockModel()
       const mockUseContextTracking = createMockUseContextTracking(false, true, 1000, 2000)
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
@@ -425,7 +351,7 @@ describe('ChatPromptInput', () => {
       const mockUseChat = createMockUseChat(mockChatInstance)
       const mockModel = createMockModel()
 
-      useChatStore.getState().hydrate({
+      hydrateStore({
         chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',

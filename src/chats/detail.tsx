@@ -8,16 +8,16 @@ import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-c
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   id: string
-  isNew: boolean
 }>
 
-const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
-  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
+const ChatHydrateHandler = ({ children, id }: ChatHydrateHandlerProps) => {
+  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id })
 
   useHandleIntegrationCompletion({ saveMessages })
 
   useEffect(() => {
     hydrateChatStore()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   if (!isReady) {
@@ -32,16 +32,17 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
 export default function ChatDetailPage() {
   const params = useParams()
 
-  const isNew = useMemo(() => params.chatThreadId === 'new', [params.chatThreadId])
-
-  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [isNew, params.chatThreadId])
+  const id = useMemo(
+    () => (params.chatThreadId === 'new' ? uuidv7() : params.chatThreadId || null),
+    [params.chatThreadId],
+  )
 
   if (!id) {
     return null
   }
 
   return (
-    <ChatHydrateHandler key={id} id={id} isNew={isNew}>
+    <ChatHydrateHandler key={id} id={id}>
       <ChatUI />
     </ChatHydrateHandler>
   )

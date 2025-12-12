@@ -16,13 +16,18 @@ export const Header = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const { models, selectedModel, setSelectedModel, chatThread } = useChatStore(
-    useShallow((state) => ({
-      models: state.models,
-      selectedModel: state.selectedModel,
-      setSelectedModel: state.setSelectedModel,
-      chatThread: state.chatThread,
-    })),
+  const { models, selectedModel, setSelectedModel, chatThread, chatThreadId } = useChatStore(
+    useShallow((state) => {
+      const session = state.sessions.get(state.currentSessionId ?? '')
+
+      return {
+        models: state.models,
+        selectedModel: session?.selectedModel,
+        setSelectedModel: state.setSelectedModel,
+        chatThread: session?.chatThread,
+        chatThreadId: session?.id,
+      }
+    }),
   )
 
   const handleAddModels = () => {
@@ -39,9 +44,9 @@ export const Header = () => {
   const modelSelector = showModelSelector && (
     <ModelSelector
       models={models}
-      selectedModel={selectedModel}
-      chatThread={chatThread}
-      onModelChange={setSelectedModel}
+      selectedModel={selectedModel ?? null}
+      chatThread={chatThread ?? null}
+      onModelChange={(modelId) => chatThreadId && modelId && setSelectedModel(chatThreadId, modelId)}
       onAddModels={handleAddModels}
     />
   )

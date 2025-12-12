@@ -1,11 +1,10 @@
-import { useChatStore } from '@/chats/chat-store'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
-import { useShallow } from 'zustand/react/shallow'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
@@ -41,13 +40,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ) => {
     const navigate = useNavigate()
 
-    const { chatInstance, chatThreadId, selectedModel } = useChatStore(
-      useShallow((state) => ({
-        chatInstance: state.chatInstance!,
-        chatThreadId: state.id!,
-        selectedModel: state.selectedModel!,
-      })),
-    )
+    const { chatInstance, id: chatThreadId, selectedModel } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 

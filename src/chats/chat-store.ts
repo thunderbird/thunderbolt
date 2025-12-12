@@ -2,51 +2,73 @@ import { updateSettings } from '@/dal'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
 import { create } from 'zustand'
+import type { Chat } from '@ai-sdk/react'
+import { useShallow } from 'zustand/react/shallow'
 
-type ChatStoreState = {
-  chatInstance: Chat<ThunderboltUIMessage> | null
+type ChatSession = {
+  chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
-  id: string | null
-  mcpClients: MCPClient[]
-  models: Model[]
-  selectedModel: Model | null
+  id: string
+  selectedModel: Model
   triggerData: AutomationRun | null
 }
 
+type ChatStoreState = {
+  currentSessionId: string | null
+  mcpClients: MCPClient[]
+  models: Model[]
+  sessions: Map<string, ChatSession>
+}
+
 type ChatStoreActions = {
-  hydrate(data: ChatStoreState): void
-  reset(): void
-  setChatThread(chatThread: ChatThread | null): void
-  setSelectedModel(modelId: string | null): void
+  createSession(session: ChatSession): void
+  setCurrentSessionId(id: string): void
+  setMcpClients(mcpClients: MCPClient[]): void
+  setModels(models: Model[]): void
+  setSelectedModel(id: string, modelId: string | null): void
+  updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
 
-const initialState = {
-  chatInstance: null,
-  chatThread: null,
-  id: null,
+const initialState: ChatStoreState = {
+  currentSessionId: null,
   mcpClients: [],
   models: [],
-  selectedModel: null,
-  triggerData: null,
+  sessions: new Map(),
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
   ...initialState,
+  createSession: (session) => {
+    const { sessions } = get()
 
-  hydrate: (data) => {
-    set(data)
+    const nextSessions = new Map(sessions)
+
+    if (nextSessions.has(session.id)) {
+      throw new Error('Session already exists')
+    }
+
+    nextSessions.set(session.id, session)
+
+    set({ sessions: nextSessions })
   },
 
-  setChatThread: (chatThread) => {
-    set({ chatThread })
+  setCurrentSessionId: (id) => {
+    set({ currentSessionId: id })
   },
 
-  setSelectedModel: async (modelId) => {
-    const models = get().models
+  setMcpClients: (mcpClients) => {
+    set({ mcpClients })
+  },
+
+  setModels: (models) => {
+    set({ models })
+  },
+
+  setSelectedModel: async (id, modelId) => {
+    const { models, sessions } = get()
 
     const model = models.find((m) => m.id === modelId)
 
@@ -54,14 +76,54 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('Model not found')
     }
 
-    set({ selectedModel: model })
+    const session = sessions.get(id)
+
+    if (!session) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, selectedModel: model })
+
+    set({ sessions: nextSessions })
 
     updateSettings({ selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
   },
 
-  reset: () => {
-    set(initialState)
+  updateSession: (id, session) => {
+    const { sessions } = get()
+
+    const existingSession = sessions.get(id)
+
+    if (!existingSession) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...existingSession, ...session })
+    set({ sessions: nextSessions })
   },
 }))
+
+/**
+ * Returns the current chat session, throwing if none exists.
+ *
+ * Use this hook in components/hooks that fundamentally require an active session to function
+ * (e.g., chat UI, message handlers). The throw ensures these components never render in an
+ * invalid state.
+ *
+ * For components where a session is optional and they can still function without one
+ * (e.g., Header, ChatListItem, useHandleIntegrationCompletion), access the store directly
+ * with optional chaining: `state.sessions.get(state.currentSessionId ?? '')?.someProperty`
+ */
+export const useCurrentChatSession = () => {
+  const session = useChatStore(useShallow((state) => state.sessions.get(state.currentSessionId ?? '')))
+
+  if (!session) {
+    throw new Error('No chat session found')
+  }
+
+  return session
+}

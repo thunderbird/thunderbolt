@@ -135,7 +135,7 @@ describe('ReasoningGroup', () => {
     })
   })
 
-  describe('isThinking logic', () => {
+  describe('isGroupReasoning logic', () => {
     it('should be thinking when isLastPartInMessage and isStreaming are both true', () => {
       const toolPart = createMockToolPart('search')
       const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]

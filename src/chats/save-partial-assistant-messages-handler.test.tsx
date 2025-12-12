@@ -1,57 +1,11 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { createMockChatInstance, createMockUseChat, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
-import { type Chat } from '@ai-sdk/react'
-import { act, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
-import { useChatStore } from './chat-store'
-
-// Mock Chat instance - minimal implementation for testing
-const createMockChatInstance = (
-  messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
-): Chat<ThunderboltUIMessage> => {
-  const sendMessage = mock((_params: { text: string; metadata?: Record<string, unknown> }) => {
-    // Mock implementation
-  })
-
-  return {
-    id: 'test-chat-id',
-    messages,
-    sendMessage,
-    status,
-    regenerate: mock(),
-    stop: mock(),
-    append: mock(),
-    reload: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    setStatus: mock(),
-  } as unknown as Chat<ThunderboltUIMessage>
-}
-
-// Mock useChat hook that reads from chat instance
-const createMockUseChat = (chatInstance: Chat<ThunderboltUIMessage>) => {
-  return ((_options?: { chat?: Chat<ThunderboltUIMessage> }) => ({
-    id: chatInstance.id,
-    status: chatInstance.status,
-    messages: chatInstance.messages,
-    error: undefined,
-    isLoading: false,
-    reload: mock(),
-    stop: chatInstance.stop,
-    append: mock(),
-    setMessages: mock(),
-    setData: mock(),
-    sendMessage: chatInstance.sendMessage,
-    regenerate: chatInstance.regenerate,
-    resumeStream: mock(),
-    addToolResult: mock(),
-    clearError: mock(),
-  })) as unknown as typeof import('@ai-sdk/react').useChat
-}
 
 describe('SavePartialAssistantMessagesHandler', () => {
   beforeAll(async () => {
@@ -64,12 +18,14 @@ describe('SavePartialAssistantMessagesHandler', () => {
 
   beforeEach(() => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
   })
 
   afterEach(async () => {
+    // Cleanup rendered components before resetting store to prevent errors during unmount
+    cleanup()
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
   })
 
@@ -79,7 +35,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -113,7 +69,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -151,7 +107,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -189,7 +145,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -231,7 +187,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -275,7 +231,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
@@ -326,7 +282,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -360,7 +316,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
@@ -397,7 +353,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockUseChat = createMockUseChat(mockChatInstance)
 
     // Use the real store and hydrate it with test data
-    useChatStore.getState().hydrate({
+    hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',

@@ -8,9 +8,10 @@ type ReasoningItemProps = {
   part: ReasoningGroupItem
   onClick: () => void
   reasoningTime?: number
+  isGroupReasoning: boolean
 }
 
-const getItemData = (part: ReasoningGroupItem) => {
+const getItemData = (part: ReasoningGroupItem, isGroupReasoning: boolean) => {
   switch (part.type) {
     case 'reasoning': {
       const reasoningPart = part.content as ReasoningUIPart
@@ -18,7 +19,7 @@ const getItemData = (part: ReasoningGroupItem) => {
       return {
         Icon: Brain,
         displayName: 'Thinking',
-        isLoading: reasoningPart.state === 'streaming',
+        isLoading: isGroupReasoning && reasoningPart.state === 'streaming',
         duration: (reasoningPart as any).metadata?.duration,
       }
     }
@@ -31,7 +32,7 @@ const getItemData = (part: ReasoningGroupItem) => {
       return {
         Icon: metadata.icon || DotIcon,
         displayName: metadata.displayName,
-        isLoading: toolPart.state !== 'output-available' && toolPart.state !== 'output-error',
+        isLoading: isGroupReasoning && toolPart.state !== 'output-available' && toolPart.state !== 'output-error',
         duration: (toolPart as any).metadata?.duration,
       }
     }
@@ -41,8 +42,8 @@ const getItemData = (part: ReasoningGroupItem) => {
   }
 }
 
-export const ReasoningItem = ({ part, onClick, reasoningTime }: ReasoningItemProps) => {
-  const itemData = getItemData(part)
+export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning }: ReasoningItemProps) => {
+  const itemData = getItemData(part, isGroupReasoning)
 
   if (!itemData) {
     return null

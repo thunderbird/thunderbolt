@@ -45,6 +45,12 @@ export const createMessageMetadata = (modelId: string) => {
         return duration ? { reasoningTime: { [id]: duration } } : { modelId }
       }
 
+      // The AI SDK keeps the reasoning part stream open until the text part stream ends,
+      // even though reasoning part content stops producing output once text part begins.
+      // This means 'reasoning-end' fires late (after text completes), making it
+      // unreliable for timing. We use 'text-start' to capture the actual moment
+      // reasoning finishes and text generation begins.
+      case 'text-start':
       case 'reasoning-end': {
         const id = reasoningStack.pop()
         if (!id) return { modelId }

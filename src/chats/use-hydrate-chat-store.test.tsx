@@ -1,6 +1,7 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
@@ -87,14 +88,12 @@ const createTestThread = async (modelId: string, title: string = 'Test Thread') 
 /**
  * Helper function to create test messages
  */
-const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => {
-  return {
-    id: uuidv7(),
-    role: 'user',
-    parts: [{ type: 'text', text: 'Hello' }],
-    ...overrides,
-  }
-}
+const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): ThunderboltUIMessage => ({
+  id: uuidv7(),
+  role: 'user',
+  parts: [{ type: 'text', text: 'Hello' }],
+  ...overrides,
+})
 
 /**
  * Wrapper that includes Router context for useNavigate and MCPProvider
@@ -119,15 +118,17 @@ describe('useHydrateChatStore', () => {
 
   beforeEach(async () => {
     // Reset store state before each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
     // Create system model (required for getDefaultModelForThread)
     await createSystemModel()
   })
 
   afterEach(async () => {
+    // Cleanup rendered components before resetting store to prevent errors during unmount
+    cleanup()
     // Reset store state after each test
-    useChatStore.getState().reset()
+    resetStore()
     await resetTestDatabase()
   })
 
@@ -136,7 +137,7 @@ describe('useHydrateChatStore', () => {
       const modelId = await createTestModel()
       const threadId = await createTestThread(modelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -147,7 +148,7 @@ describe('useHydrateChatStore', () => {
       const modelId = await createTestModel()
       const threadId = await createTestThread(modelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -166,7 +167,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId, 'My Test Thread')
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -174,20 +175,22 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
 
+      const session = getCurrentSession()
       const storeState = useChatStore.getState()
-      expect(storeState.id).toBe(threadId)
-      expect(storeState.chatThread).not.toBeNull()
-      expect(storeState.chatThread?.id).toBe(threadId)
-      expect(storeState.chatThread?.title).toBe('My Test Thread')
-      expect(storeState.selectedModel).not.toBeNull()
+
+      expect(storeState.currentSessionId).toBe(threadId)
+      expect(session?.chatThread).not.toBeNull()
+      expect(session?.chatThread?.id).toBe(threadId)
+      expect(session?.chatThread?.title).toBe('My Test Thread')
+      expect(session?.selectedModel).not.toBeNull()
       // getDefaultModelForThread returns the system model when no messages exist
-      expect(storeState.selectedModel?.isSystem).toBe(1)
+      expect(session?.selectedModel?.isSystem).toBe(1)
       expect(storeState.models).toBeDefined()
       expect(storeState.models.length).toBeGreaterThan(0)
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.id).toBe(threadId)
+      expect(session?.chatInstance).toBeDefined()
+      expect(session?.chatInstance?.id).toBe(threadId)
       expect(storeState.mcpClients).toBeDefined()
-      expect(storeState.triggerData).toBeDefined()
+      expect(session?.triggerData).toBeDefined()
     })
 
     it('should reset store before hydrating', async () => {
@@ -195,7 +198,7 @@ describe('useHydrateChatStore', () => {
       const threadId1 = await createTestThread(systemModelId, 'Thread 1')
       const threadId2 = await createTestThread(systemModelId, 'Thread 2')
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId1, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId1 }), {
         wrapper: TestWrapper,
       })
 
@@ -205,10 +208,10 @@ describe('useHydrateChatStore', () => {
       })
 
       const firstState = useChatStore.getState()
-      expect(firstState.id).toBe(threadId1)
+      expect(firstState.currentSessionId).toBe(threadId1)
 
       // Second hydration with different thread
-      const { result: result2 } = renderHook(() => useHydrateChatStore({ id: threadId2, isNew: false }), {
+      const { result: result2 } = renderHook(() => useHydrateChatStore({ id: threadId2 }), {
         wrapper: TestWrapper,
       })
 
@@ -217,9 +220,11 @@ describe('useHydrateChatStore', () => {
       })
 
       const secondState = useChatStore.getState()
-      expect(secondState.id).toBe(threadId2)
-      expect(secondState.id).not.toBe(threadId1)
-      expect(secondState.chatThread?.id).toBe(threadId2)
+      expect(secondState.currentSessionId).toBe(threadId2)
+      expect(secondState.currentSessionId).not.toBe(threadId1)
+
+      const session = secondState.sessions.get(threadId2)
+      expect(session?.chatThread?.id).toBe(threadId2)
     })
 
     it('should hydrate store with messages when thread has messages', async () => {
@@ -232,7 +237,7 @@ describe('useHydrateChatStore', () => {
 
       await saveMessagesWithContextUpdate(threadId, messages)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -240,17 +245,17 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
 
-      const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.messages).toBeDefined()
-      expect(storeState.chatInstance?.messages.length).toBe(2)
+      const session = getCurrentSession()
+      expect(session?.chatInstance).toBeDefined()
+      expect(session?.chatInstance?.messages).toBeDefined()
+      expect(session?.chatInstance?.messages.length).toBe(2)
     })
 
     it('should hydrate store with empty messages when thread has no messages', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -258,10 +263,10 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
 
-      const storeState = useChatStore.getState()
-      expect(storeState.chatInstance).toBeDefined()
-      expect(storeState.chatInstance?.messages).toBeDefined()
-      expect(storeState.chatInstance?.messages.length).toBe(0)
+      const session = getCurrentSession()
+      expect(session?.chatInstance).toBeDefined()
+      expect(session?.chatInstance?.messages).toBeDefined()
+      expect(session?.chatInstance?.messages.length).toBe(0)
     })
   })
 
@@ -270,7 +275,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
@@ -279,8 +284,8 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
 
-      const storeStateBefore = useChatStore.getState()
-      expect(storeStateBefore.selectedModel).not.toBeNull()
+      const session = getCurrentSession()
+      expect(session?.selectedModel).not.toBeNull()
 
       // Save messages
       const newMessages: ThunderboltUIMessage[] = [
@@ -296,14 +301,14 @@ describe('useHydrateChatStore', () => {
       expect(result.current.saveMessages).toBeDefined()
     })
 
-    it('should throw error if no model is selected when saving messages', async () => {
+    it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 
-      // Don't hydrate, so selectedModel will be null
+      // Don't hydrate, so no session will exist
       const newMessages: ThunderboltUIMessage[] = [
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'New message' }] }),
       ]
@@ -318,14 +323,14 @@ describe('useHydrateChatStore', () => {
       })
 
       expect(error).not.toBeNull()
-      expect(error instanceof Error && error.message).toBe('No selected model')
+      expect(error instanceof Error && error.message).toBe('No session found')
     })
 
     it('should save messages when model is selected', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
         wrapper: TestWrapper,
       })
 

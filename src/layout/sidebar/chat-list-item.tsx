@@ -18,13 +18,12 @@ export const ChatListItem = ({
   deleteChatDialogRef,
   onChatClick,
 }: ChatListItemProps) => {
-  const { chatInstance, currentSessionId } = useChatStore(
+  const { chatInstance } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(thread.id)
 
       return {
         chatInstance: session?.chatInstance,
-        currentSessionId: state.currentSessionId,
       }
     }),
   )
@@ -40,7 +39,7 @@ export const ChatListItem = ({
           className="cursor-pointer"
           tooltip={thread.title ?? undefined}
         >
-          {status === 'streaming' && thread.id !== currentSessionId ? (
+          {status === 'streaming' ? (
             <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
           ) : (
             <MessageCircle className="size-4 shrink-0" />
@@ -66,9 +65,7 @@ export const ChatListItem = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                {status === 'streaming' && thread.id !== currentSessionId && (
-                  <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
-                )}
+                {status === 'streaming' && <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />}
               </motion.div>
               <motion.div key={`${thread.id}-title`} layout>
                 <span className="truncate flex-1 min-w-0">{thread.title}</span>

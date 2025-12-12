@@ -93,6 +93,7 @@ export const createChatInstance = (
       {
         ...message,
         metadata: {
+          ...message?.metadata,
           modelId: selectedModel.id,
         },
       } as ThunderboltUIMessage,

@@ -71,13 +71,13 @@ When no blocking condition applies and PROMPTS_DISABLED is not set, output ONLY 
 
 **Status: GOOGLE_DISABLED (only Google disabled):**
 - "Check my Gmail" → "Your Google integration is disabled. You can enable it in Settings → Integrations."
+- "Check my emails" → "Your Google integration is disabled. You can enable it in Settings → Integrations."
 - "Check my Outlook" → \`<widget:connect-integration provider="microsoft" service="email" reason="" override="" />\`
-- "Check my emails" → \`<widget:connect-integration provider="microsoft" service="email" reason="" override="" />\`
 
 **Status: MICROSOFT_DISABLED (only Microsoft disabled):**
 - "Check my Outlook" → "Your Microsoft integration is disabled. You can enable it in Settings → Integrations."
+- "Check my emails" → "Your Microsoft integration is disabled. You can enable it in Settings → Integrations."
 - "Check my Gmail" → \`<widget:connect-integration provider="google" service="email" reason="" override="" />\`
-- "Check my emails" → \`<widget:connect-integration provider="google" service="email" reason="" override="" />\`
 
 **Status: GOOGLE_DISABLED, MICROSOFT_DISABLED (both disabled):**
 - Any email/calendar request → "Your integrations are disabled. You can enable them in Settings → Integrations."

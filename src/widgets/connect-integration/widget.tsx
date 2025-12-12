@@ -1,5 +1,3 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   GmailIcon,
   GoogleCalendarIcon,
@@ -8,19 +6,21 @@ import {
   MicrosoftIcon,
   OutlookIcon,
 } from '@/components/provider-icons'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  useConnectIntegrationWidgetState,
+  type OAuthProviderOrEmpty,
+} from '@/hooks/use-connect-integration-widget-state'
+import { useIntegrationStatuses, type IntegrationStatuses } from '@/hooks/use-integration-statuses'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
-import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { type OAuthProvider } from '@/lib/auth'
-import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  type OAuthProviderOrEmpty,
-  useConnectIntegrationWidgetState,
-} from '@/hooks/use-connect-integration-widget-state'
 import { ArrowLeft, Check } from 'lucide-react'
 import { memo, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { connectedStateDisplayDuration, getOAuthWidgetKey, oauthRetryEvent } from './constants'
 
 type ConnectIntegrationWidgetProps = {
   provider: OAuthProviderOrEmpty
@@ -63,13 +63,11 @@ const getDefaultReason = (service: 'email' | 'calendar' | 'both'): string => {
 
 /**
  * Checks if a provider is connected based on integration status.
+ * If the provider key exists in statuses, it's connected.
  */
-const isProviderConnected = (
-  provider: OAuthProvider | null,
-  integrationStatus: { googleConnected: boolean; microsoftConnected: boolean } | null,
-): boolean => {
-  if (!provider || !integrationStatus) return false
-  return provider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
+const isProviderConnected = (provider: OAuthProvider | null, statuses: IntegrationStatuses | null): boolean => {
+  if (!provider || !statuses) return false
+  return provider === 'google' ? !!statuses.google : !!statuses.microsoft
 }
 
 /**
@@ -81,7 +79,7 @@ export const ConnectIntegrationWidget = memo(
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
     const [state, dispatch] = useConnectIntegrationWidgetState(provider)
-    const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
+    const { data: integrationStatuses, isLoading: isLoadingIntegrationStatuses } = useIntegrationStatuses()
     const queryClient = useQueryClient()
     const displayReason = reason === '' ? getDefaultReason(service) : reason
 
@@ -101,7 +99,7 @@ export const ConnectIntegrationWidget = memo(
         }
 
         dispatch({ type: 'CONNECT_SUCCESS', payload: connectedProvider })
-        await queryClient.refetchQueries({ queryKey: ['integrationStatus'] })
+        await queryClient.refetchQueries({ queryKey: ['integrationStatuses', undefined] })
 
         setTimeout(() => {
           dispatch({ type: 'SET_SHOW_CONNECTED_STATE', payload: false })
@@ -192,7 +190,7 @@ export const ConnectIntegrationWidget = memo(
 
     const serviceName = getServiceName(service)
 
-    if (isLoadingIntegrationStatus) {
+    if (isLoadingIntegrationStatuses) {
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
@@ -204,18 +202,14 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    if (integrationStatus && !state.showConnectedState) {
+    if (integrationStatuses && !state.showConnectedState) {
       const providerToCheck = (state.selectedProvider || (provider !== '' ? provider : null)) as OAuthProvider | null
 
-      if (providerToCheck && isProviderConnected(providerToCheck, integrationStatus)) {
+      if (providerToCheck && isProviderConnected(providerToCheck, integrationStatuses)) {
         return null
       }
 
-      if (
-        !providerToCheck &&
-        provider === '' &&
-        (integrationStatus.googleConnected || integrationStatus.microsoftConnected)
-      ) {
+      if (!providerToCheck && provider === '' && (integrationStatuses.google || integrationStatuses.microsoft)) {
         return null
       }
     }
@@ -323,7 +317,7 @@ export const ConnectIntegrationWidget = memo(
       state.isConnected &&
       state.connectedProvider &&
       !state.showConnectedState &&
-      isProviderConnected(state.connectedProvider, integrationStatus)
+      isProviderConnected(state.connectedProvider, integrationStatuses)
     ) {
       return null
     }

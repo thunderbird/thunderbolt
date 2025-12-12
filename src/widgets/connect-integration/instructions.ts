@@ -3,74 +3,46 @@
  */
 export const instructions = `## Connect Integration Widget
 
-### Tools to check
+Use this widget to prompt users to connect email/calendar integrations.
 
-- Email: google_check_inbox, google_search_emails, google_get_email, google_draft_email, microsoft_list_messages
-- Calendar: google_check_calendar
+### When to use
 
-If these tools are available, use them directly. Only show this widget when tools are missing AND user requests email/calendar.
+1. **Check if tools are available first** - If email/calendar tools exist, use them directly
+2. **Only show widget when**: tools are missing AND user requests email/calendar functionality
 
-### BEFORE showing widget, check "Integration status:" in Context
+### Before showing widget, check "Connected integrations:" in Context
 
-Note: Never mention status names (READY, PROMPTS_DISABLED, etc.) to the user. These are internal.
+- **"[provider]: disabled"** → Don't show widget. Tell user: "Your [Provider] integration is disabled. Enable it in Settings → Integrations."
+- **"prompts suppressed"** → Don't show widget immediately. Ask: "I can't access your emails right now. Would you like to connect your email account?" If user agrees, show widget with override="true"
+- **Otherwise** → Show the widget directly (no extra text needed)
 
-**If status is PROMPTS_DISABLED:**
-- DO NOT show the widget immediately
-- DO NOT mention the status name to the user
-- Say something like: "I can't access your emails right now. Would you like to connect your email account?"
-- Only if user agrees, then show widget with override="true"
-
-**If status is GOOGLE_DISABLED or MICROSOFT_DISABLED:**
-- DO NOT show the widget
-- Say: "Your [Google/Microsoft] integration is disabled. Enable it in Settings → Integrations."
-
-**If status is READY:**
-- Show the widget directly (no extra text)
-
-### Widget Syntax
+### Widget syntax
 
 <widget:connect-integration provider="" service="email" reason="" override="" />
 
-Attributes (all required):
-- provider: "google", "microsoft", or ""
-- service: "email", "calendar", or "both"
-- reason: "" or brief explanation
-- override: "" normally, "true" only after user agreed when status was PROMPTS_DISABLED
+- **provider**: "google", "microsoft", or "" (empty = let user choose)
+- **service**: "email", "calendar", or "both"
+- **reason**: "" or brief explanation
+- **override**: "" normally, "true" only after user agreed when prompts were suppressed
 
-### Display Rule
+### Provider selection
 
-When status is READY, output ONLY the widget tag. No text before or after.
-
-### Provider Selection
-
-- "google" → Gmail, Google Calendar, or when user mentions "Google", "Gmail"
-- "microsoft" → Outlook, or when user mentions "Microsoft", "Outlook", "Office 365"
-- "" (empty) → User didn't specify, let widget show both options
-
-### Service Selection
-
-- "email" → Check inbox, search emails, read/send emails
-- "calendar" → View events, check schedule
-- "both" → Only when request explicitly needs BOTH (rare)
+- "google" → Gmail, Google Calendar, mentions of "Google", "Gmail"
+- "microsoft" → Outlook, mentions of "Microsoft", "Outlook", "Office 365"
+- "" → User didn't specify, show both options
 
 ### Examples
 
-**CORRECT - Status is READY, tools missing:**
+**Tools missing, no blockers:**
 - "Summarize my emails" → <widget:connect-integration provider="" service="email" reason="" override="" />
 - "Check my Gmail" → <widget:connect-integration provider="google" service="email" reason="" override="" />
-- "What's on my calendar?" → <widget:connect-integration provider="" service="calendar" reason="" override="" />
 
-**CORRECT - Status is PROMPTS_DISABLED:**
+**Prompts suppressed:**
 - User: "Check my email"
-- You: "I can't access your emails right now. Would you like to connect your email account?"
+- You: "I can't access your emails right now. Would you like to connect?"
 - User: "Yes"
 - You: <widget:connect-integration provider="" service="email" reason="" override="true" />
 
-**CORRECT - Tools available:**
-- "Summarize my emails" + google_check_inbox exists → Use the tool directly, don't show widget
-
-**WRONG:**
-- ❌ "I don't have access to your email" → Instead show the widget
-- ❌ Showing widget when tools are available → Use tools instead
-- ❌ Showing widget for questions like "Can you check email?" → Just explain the feature
+**Tools available:**
+- Use tools directly, don't show widget
 `

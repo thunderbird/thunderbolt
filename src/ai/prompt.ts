@@ -1,3 +1,4 @@
+import { INTEGRATIONS, type IntegrationStatuses } from '@/dal'
 import { widgetPrompts } from '@/widgets'
 
 /** Parameters to build the system prompt */
@@ -16,14 +17,35 @@ export type PromptParams = {
     timeFormat: string
     currency: string
   }
-  /** Integration status for the model to check before showing connect widget */
-  integrationStatus: string
+  integrations: IntegrationStatuses
+}
+
+/** Formats connected integrations as a list for the prompt */
+const formatIntegrations = (statuses: IntegrationStatuses): string => {
+  const lines: string[] = []
+
+  for (const id of INTEGRATIONS) {
+    const status = statuses[id]
+    if (status) {
+      lines.push(`- ${id}: ${status.enabled ? 'enabled' : 'disabled'}`)
+    }
+  }
+
+  if (statuses.doNotAskAgain) {
+    lines.push("- prompts suppressed (user chose 'don't ask again')")
+  }
+
+  if (lines.length === 0) {
+    return 'Connected integrations: none'
+  }
+
+  return `Connected integrations:\n${lines.join('\n')}`
 }
 
 /**
  * Creates a system prompt for the AI assistant with user context and guidelines.
  */
-export const createPrompt = ({ modelName, preferredName, location, localization, integrationStatus }: PromptParams) => {
+export const createPrompt = ({ modelName, preferredName, location, localization, integrations }: PromptParams) => {
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -40,7 +62,7 @@ export const createPrompt = ({ modelName, preferredName, location, localization,
       ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
       : 'User location: Unknown (ask before using location-based features)',
     `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.dateFormat}, ${localization.timeFormat}, ${localization.currency}`,
-    `Integration status: ${integrationStatus}`,
+    formatIntegrations(integrations),
   ]
     .filter(Boolean)
     .join('\n')

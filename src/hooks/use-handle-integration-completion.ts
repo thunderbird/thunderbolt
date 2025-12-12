@@ -1,12 +1,12 @@
-import { oauthRetryEvent, getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
-import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integration-status'
-import { useQueryClient } from '@tanstack/react-query'
-import { v7 as uuidv7 } from 'uuid'
 import { updateMessageCache } from '@/dal/chat-messages'
+import { useIntegrationStatuses, type IntegrationStatuses } from '@/hooks/use-integration-statuses'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import { getOAuthWidgetKey, oauthRetryEvent } from '@/widgets/connect-integration/constants'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { v7 as uuidv7 } from 'uuid'
+import { useShallow } from 'zustand/react/shallow'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
@@ -52,30 +52,30 @@ const createRetryMessage = (originalUserText: string): ThunderboltUIMessage => (
  */
 const waitForProviderConnection = async (
   provider: 'google' | 'microsoft' | null,
-  queryClient: { fetchQuery: <T>(options: { queryKey: string[] }) => Promise<T> },
-  initialStatus: IntegrationStatus | null,
+  queryClient: { fetchQuery: <T>(options: { queryKey: (string | undefined)[] }) => Promise<T> },
+  initialStatus: IntegrationStatuses | null,
   maxAttempts = 20,
-): Promise<IntegrationStatus | null> => {
-  let currentStatus: IntegrationStatus | null = initialStatus
+): Promise<IntegrationStatuses | null> => {
+  let currentStatus: IntegrationStatuses | null = initialStatus
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (!currentStatus) {
-      currentStatus = await queryClient.fetchQuery<IntegrationStatus>({ queryKey: ['integrationStatus'] })
+      currentStatus = await queryClient.fetchQuery<IntegrationStatuses>({
+        queryKey: ['integrationStatuses', undefined],
+      })
     }
 
     const isProviderConnected =
-      provider === 'google'
-        ? currentStatus?.googleConnected
-        : provider === 'microsoft'
-          ? currentStatus?.microsoftConnected
-          : false
+      provider === 'google' ? !!currentStatus?.google : provider === 'microsoft' ? !!currentStatus?.microsoft : false
 
     if (isProviderConnected) {
       return currentStatus
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100))
-    currentStatus = await queryClient.fetchQuery<IntegrationStatus>({ queryKey: ['integrationStatus'] })
+    currentStatus = await queryClient.fetchQuery<IntegrationStatuses>({
+      queryKey: ['integrationStatuses', undefined],
+    })
   }
 
   return null
@@ -131,7 +131,7 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
     })),
   )
 
-  const { data: integrationStatus } = useIntegrationStatus()
+  const { data: integrationStatuses } = useIntegrationStatuses()
   const queryClient = useQueryClient()
 
   // Listen for OAuth completion events and process retries
@@ -145,7 +145,7 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
         | 'microsoft'
         | null
 
-      // Trigger processing immediately (don't wait for integrationStatus to change)
+      // Trigger processing immediately (don't wait for integrationStatuses to change)
       // The processRetry function will poll until status is confirmed
       processRetryForWidget(widgetMessageId, storedProvider)
     }
@@ -154,7 +154,7 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
       if (oauthRetryHandledRef.current.has(widgetMessageId)) return
 
       // Wait for integration status to confirm the connection
-      const confirmedStatus = await waitForProviderConnection(provider, queryClient, integrationStatus)
+      const confirmedStatus = await waitForProviderConnection(provider, queryClient, integrationStatuses)
 
       if (!confirmedStatus) {
         console.warn('Provider not connected after waiting:', provider)
@@ -211,5 +211,5 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
 
     window.addEventListener(oauthRetryEvent, handleOAuthComplete as unknown as (event: Event) => void)
     return () => window.removeEventListener(oauthRetryEvent, handleOAuthComplete as unknown as (event: Event) => void)
-  }, [chatInstance, chatThreadId, integrationStatus, queryClient, saveMessages])
+  }, [chatInstance, chatThreadId, integrationStatuses, queryClient, saveMessages])
 }

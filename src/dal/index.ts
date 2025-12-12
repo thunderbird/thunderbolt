@@ -52,3 +52,7 @@ export {
   runAutomation,
   updateAutomation,
 } from './prompts'
+
+// Integrations
+export { getIntegrationStatuses, INTEGRATIONS } from './integrations'
+export type { IntegrationId, IntegrationStatus, IntegrationStatuses } from './integrations'

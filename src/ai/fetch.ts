@@ -7,7 +7,7 @@ import {
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
-import { getSettings } from '@/dal'
+import { getIntegrationStatuses, getSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import { fetch } from '@/lib/fetch'
@@ -28,10 +28,10 @@ import { v7 as uuidv7 } from 'uuid'
 import {
   convertToModelMessages,
   createUIMessageStream,
-  InvalidToolInputError,
-  NoSuchToolError,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  InvalidToolInputError,
+  NoSuchToolError,
   stepCountIs,
   streamText,
   wrapLanguageModel,
@@ -141,12 +141,9 @@ export const aiFetchStreamingResponse = async ({
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    integrations_do_not_ask_again: false,
-    integrations_google_credentials: '',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_credentials: '',
-    integrations_microsoft_is_enabled: false,
   })
+
+  const integrations = await getIntegrationStatuses()
 
   const model = await db.query.modelsTable.findFirst({
     where: eq(modelsTable.id, modelId),
@@ -171,22 +168,6 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
-  // Compute integration status for the model
-  const getIntegrationStatus = (): string => {
-    // Check for disabled integrations (connected but turned off)
-    if (settings.integrationsGoogleCredentials && !settings.integrationsGoogleIsEnabled) {
-      return 'GOOGLE_DISABLED'
-    }
-    if (settings.integrationsMicrosoftCredentials && !settings.integrationsMicrosoftIsEnabled) {
-      return 'MICROSOFT_DISABLED'
-    }
-    // Check if user chose "Don't ask again"
-    if (settings.integrationsDoNotAskAgain) {
-      return 'PROMPTS_DISABLED'
-    }
-    return 'READY'
-  }
-
   const systemPrompt = createPrompt({
     modelName: model.name,
     preferredName: settings.preferredName,
@@ -202,7 +183,7 @@ export const aiFetchStreamingResponse = async ({
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
-    integrationStatus: getIntegrationStatus(),
+    integrations,
   })
 
   try {

@@ -171,20 +171,23 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
-  // Compute integration status for the model
+  // Compute integration status for the model (can return multiple statuses)
   const getIntegrationStatus = (): string => {
+    const statuses: string[] = []
+
     // Check for disabled integrations (connected but turned off)
     if (settings.integrationsGoogleCredentials && !settings.integrationsGoogleIsEnabled) {
-      return 'GOOGLE_DISABLED'
+      statuses.push('GOOGLE_DISABLED')
     }
     if (settings.integrationsMicrosoftCredentials && !settings.integrationsMicrosoftIsEnabled) {
-      return 'MICROSOFT_DISABLED'
+      statuses.push('MICROSOFT_DISABLED')
     }
     // Check if user chose "Don't ask again"
     if (settings.integrationsDoNotAskAgain) {
-      return 'PROMPTS_DISABLED'
+      statuses.push('PROMPTS_DISABLED')
     }
-    return 'READY'
+
+    return statuses.length > 0 ? statuses.join(', ') : 'READY'
   }
 
   const systemPrompt = createPrompt({

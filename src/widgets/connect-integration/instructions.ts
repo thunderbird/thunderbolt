@@ -12,17 +12,17 @@ If these tools are available, use them directly. Only show this widget when tool
 
 ### BEFORE showing widget, check "Integration status:" in Context
 
-Note: Never mention status names (READY, PROMPTS_DISABLED, etc.) to the user. These are internal.
+Note: Status may contain multiple values (e.g., "GOOGLE_DISABLED, PROMPTS_DISABLED"). Check if it contains each condition.
+Never mention status names to the user. These are internal.
 
-**If status is PROMPTS_DISABLED:**
-- DO NOT show the widget immediately
-- DO NOT mention the status name to the user
-- Say something like: "I can't access your emails right now. Would you like to connect your email account?"
-- Only if user agrees, then show widget with override="true"
-
-**If status is GOOGLE_DISABLED or MICROSOFT_DISABLED:**
+**If status contains GOOGLE_DISABLED or MICROSOFT_DISABLED:**
 - DO NOT show the widget
 - Say: "Your [Google/Microsoft] integration is disabled. Enable it in Settings → Integrations."
+
+**If status contains PROMPTS_DISABLED (and no provider is disabled):**
+- DO NOT show the widget immediately
+- Say something like: "I can't access your emails right now. Would you like to connect your email account?"
+- Only if user agrees, then show widget with override="true"
 
 **If status is READY:**
 - Show the widget directly (no extra text)

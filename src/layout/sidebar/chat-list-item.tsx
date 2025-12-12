@@ -32,7 +32,7 @@ export const ChatListItem = ({
 
   if (isCollapsed) {
     return (
-      <SidebarMenuItem key={thread.id}>
+      <SidebarMenuItem>
         <SidebarMenuButton
           onClick={() => onChatClick(thread.id)}
           isActive={isActive}
@@ -50,27 +50,28 @@ export const ChatListItem = ({
   }
 
   return (
-    <DropdownMenu key={thread.id}>
+    <DropdownMenu>
       <SidebarMenuItem className="group/item">
         <SidebarMenuButton
           onClick={() => onChatClick(thread.id)}
           isActive={isActive}
           className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground flex items-center gap-2"
         >
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <AnimatePresence>
-              <motion.div
-                key={`${thread.id}-loading`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                {status === 'streaming' && <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />}
-              </motion.div>
-              <motion.div key={`${thread.id}-title`} layout>
-                <span className="truncate flex-1 min-w-0">{thread.title}</span>
-              </motion.div>
+              {status === 'streaming' && (
+                <motion.div
+                  key={`${thread.id}-loading`}
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="flex-shrink-0"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </motion.div>
+              )}
             </AnimatePresence>
+            <span className="truncate flex-1 min-w-0">{thread.title}</span>
           </div>
           <DropdownMenuTrigger asChild>
             <MoreHorizontal

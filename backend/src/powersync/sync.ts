@@ -39,116 +39,36 @@ const isAllowedTable = (table: string): table is AllowedTable => {
 }
 
 /**
- * Build the values object for a table insert/update.
- * Maps the client data to the correct column names.
+ * Convert snake_case to camelCase.
+ * Client sends snake_case (SQLite column names), Drizzle uses camelCase.
  */
-const buildValues = (table: AllowedTable, id: string, userId: string, data: Record<string, unknown> = {}) => {
-  const base = { id, userId }
+const snakeToCamel = (str: string): string => str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 
-  switch (table) {
-    case 'settings':
-      return {
-        ...base,
-        value: data.value as string | undefined,
-        updatedAt: data.updated_at as number | undefined,
-        defaultHash: data.default_hash as string | undefined,
-      }
+/**
+ * Convert all keys in an object from snake_case to camelCase.
+ */
+const convertKeysToCamel = (data: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(data).map(([key, value]) => [snakeToCamel(key), value]))
 
-    case 'chat_threads':
-      return {
-        ...base,
-        title: data.title as string | undefined,
-        isEncrypted: data.is_encrypted as number | undefined,
-        triggeredBy: data.triggered_by as string | undefined,
-        wasTriggeredByAutomation: data.was_triggered_by_automation as number | undefined,
-        contextSize: data.context_size as number | undefined,
-      }
-
-    case 'chat_messages':
-      return {
-        ...base,
-        content: (data.content as string) ?? '',
-        role: (data.role as string) ?? 'user',
-        parts: data.parts as string | undefined,
-        chatThreadId: (data.chat_thread_id as string) ?? '',
-        modelId: data.model_id as string | undefined,
-        parentId: data.parent_id as string | undefined,
-        cache: data.cache as string | undefined,
-        metadata: data.metadata as string | undefined,
-      }
-
-    case 'tasks':
-      return {
-        ...base,
-        item: (data.item as string) ?? '',
-        order: data.order as number | undefined,
-        isComplete: data.is_complete as number | undefined,
-        defaultHash: data.default_hash as string | undefined,
-      }
-
-    case 'models':
-      return {
-        ...base,
-        provider: (data.provider as string) ?? 'custom',
-        name: (data.name as string) ?? '',
-        model: (data.model as string) ?? '',
-        url: data.url as string | undefined,
-        apiKey: data.api_key as string | undefined,
-        isSystem: data.is_system as number | undefined,
-        enabled: data.enabled as number | undefined,
-        toolUsage: data.tool_usage as number | undefined,
-        isConfidential: data.is_confidential as number | undefined,
-        startWithReasoning: data.start_with_reasoning as number | undefined,
-        contextWindow: data.context_window as number | undefined,
-        deletedAt: data.deleted_at as number | undefined,
-        defaultHash: data.default_hash as string | undefined,
-        vendor: data.vendor as string | undefined,
-        description: data.description as string | undefined,
-      }
-
-    case 'mcp_servers':
-      return {
-        ...base,
-        name: (data.name as string) ?? '',
-        type: data.type as string | undefined,
-        url: data.url as string | undefined,
-        command: data.command as string | undefined,
-        args: data.args as string | undefined,
-        enabled: data.enabled as number | undefined,
-        createdAt: data.created_at as number | undefined,
-        updatedAt: data.updated_at as number | undefined,
-      }
-
-    case 'prompts':
-      return {
-        ...base,
-        title: data.title as string | undefined,
-        prompt: (data.prompt as string) ?? '',
-        modelId: (data.model_id as string) ?? '',
-        deletedAt: data.deleted_at as number | undefined,
-        defaultHash: data.default_hash as string | undefined,
-      }
-
-    case 'triggers':
-      return {
-        ...base,
-        triggerType: (data.trigger_type as string) ?? 'time',
-        triggerTime: data.trigger_time as string | undefined,
-        promptId: (data.prompt_id as string) ?? '',
-        isEnabled: data.is_enabled as number | undefined,
-      }
-  }
-}
+/**
+ * Build the values object for a table insert.
+ * Converts client snake_case keys to camelCase and adds id/userId.
+ */
+const buildValues = (id: string, userId: string, data: Record<string, unknown> = {}) => ({
+  id,
+  userId,
+  ...convertKeysToCamel(data),
+})
 
 /**
  * Build the set object for a table update (excludes id and userId).
  */
-const buildUpdateSet = (table: AllowedTable, data: Record<string, unknown> = {}) => {
-  const values = buildValues(table, '', '', data)
-  // Remove id and userId from the update set
-  const { id: _id, userId: _userId, ...updateFields } = values as Record<string, unknown>
-  // Filter out undefined values
-  return Object.fromEntries(Object.entries(updateFields).filter(([, v]) => v !== undefined))
+const buildUpdateSet = (data: Record<string, unknown> = {}) => {
+  const converted = convertKeysToCamel(data)
+  // Filter out undefined values and exclude id/userId
+  return Object.fromEntries(
+    Object.entries(converted).filter(([key, v]) => v !== undefined && key !== 'id' && key !== 'userId'),
+  )
 }
 
 /**
@@ -157,7 +77,7 @@ const buildUpdateSet = (table: AllowedTable, data: Record<string, unknown> = {})
  * PowerSync operations:
  * - PUT: Insert or replace (upsert)
  * - PATCH: Update specific fields
- * - DELETE: Set deleted_at timestamp (soft delete)
+ * - DELETE: Soft delete (set deletedAt timestamp)
  */
 export const applyOperation = async (database: unknown, userId: string, operation: CrudOperation): Promise<void> => {
   const { op, table: tableName, id, data } = operation
@@ -171,13 +91,13 @@ export const applyOperation = async (database: unknown, userId: string, operatio
 
   switch (op) {
     case 'PUT': {
-      const values = buildValues(tableName, id, userId, data)
+      const values = buildValues(id, userId, data)
       await db
         .insert(table)
         .values(values as never)
         .onConflictDoUpdate({
           target: table.id,
-          set: buildUpdateSet(tableName, data) as never,
+          set: buildUpdateSet(data) as never,
         })
       break
     }
@@ -186,7 +106,7 @@ export const applyOperation = async (database: unknown, userId: string, operatio
       if (!data || Object.keys(data).length === 0) {
         return
       }
-      const updateSet = buildUpdateSet(tableName, data)
+      const updateSet = buildUpdateSet(data)
       if (Object.keys(updateSet).length > 0) {
         await db
           .update(table)
@@ -197,16 +117,10 @@ export const applyOperation = async (database: unknown, userId: string, operatio
     }
 
     case 'DELETE': {
-      // Soft delete - set deleted_at timestamp
-      // Only applicable for tables that have deletedAt column
-      if (tableName === 'models' || tableName === 'prompts') {
-        await db
-          .update(table)
-          .set({ deletedAt: Math.floor(Date.now() / 1000) } as never)
-          .where(and(eq(table.id, id), eq((table as typeof modelsTable).userId, userId)))
-      }
-      // For other tables, we could either hard delete or ignore
-      // For now, ignoring as per "rows are never deleted" requirement
+      await db
+        .update(table)
+        .set({ deletedAt: Math.floor(Date.now() / 1000) } as never)
+        .where(and(eq(table.id, id), eq((table as typeof settingsTable).userId, userId)))
       break
     }
   }

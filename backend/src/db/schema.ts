@@ -20,6 +20,7 @@ export const settingsTable = pgTable('settings', {
   value: text('value'),
   updatedAt: integer('updated_at'),
   defaultHash: text('default_hash'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -34,6 +35,8 @@ export const chatThreadsTable = pgTable('chat_threads', {
   triggeredBy: text('triggered_by'),
   wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0).notNull(),
   contextSize: integer('context_size'),
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -51,6 +54,8 @@ export const chatMessagesTable = pgTable('chat_messages', {
   parentId: text('parent_id'),
   cache: text('cache'), // JSON stored as text
   metadata: text('metadata'), // JSON stored as text
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -64,6 +69,8 @@ export const tasksTable = pgTable('tasks', {
   order: integer('order').notNull().default(0),
   isComplete: integer('is_complete').notNull().default(0),
   defaultHash: text('default_hash'),
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -84,10 +91,11 @@ export const modelsTable = pgTable('models', {
   isConfidential: integer('is_confidential').default(0).notNull(),
   startWithReasoning: integer('start_with_reasoning').default(0).notNull(),
   contextWindow: integer('context_window'),
-  deletedAt: integer('deleted_at'),
   defaultHash: text('default_hash'),
   vendor: text('vendor'),
   description: text('description'),
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -105,6 +113,7 @@ export const mcpServersTable = pgTable('mcp_servers', {
   enabled: integer('enabled').default(1).notNull(),
   createdAt: integer('created_at'),
   updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -117,8 +126,9 @@ export const promptsTable = pgTable('prompts', {
   title: text('title'),
   prompt: text('prompt').notNull(),
   modelId: text('model_id').notNull(),
-  deletedAt: integer('deleted_at'),
   defaultHash: text('default_hash'),
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })
 
 /**
@@ -132,4 +142,6 @@ export const triggersTable = pgTable('triggers', {
   triggerTime: text('trigger_time'),
   promptId: text('prompt_id').notNull(),
   isEnabled: integer('is_enabled').default(1).notNull(),
+  updatedAt: integer('updated_at'),
+  deletedAt: integer('deleted_at'),
 })

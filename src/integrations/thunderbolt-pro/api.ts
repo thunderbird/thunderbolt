@@ -56,7 +56,7 @@ export const fetchContent = async (
         timeout: requestTimeout,
         json: {
           url: params.url,
-          ...(params.max_length && { max_length: params.max_length }),
+          ...(params.max_length !== undefined && { max_length: params.max_length }),
         },
       })
       .json<{ data: FetchContentData; success: boolean; error?: string }>()

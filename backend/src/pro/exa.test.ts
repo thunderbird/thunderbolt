@@ -45,9 +45,9 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Fetch content service is not configured.')
         }
 
-        const defaultMaxChars = 16000
-        const hardCap = 64000
-        const minChars = 1000
+        const defaultMaxChars = 16_000
+        const hardCap = 64_000
+        const minChars = 1_000
         const requestedMax = body.max_length ?? defaultMaxChars
         const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
@@ -64,20 +64,19 @@ const createTestExaPlugin = (mockExaClient: any) => {
 
         // Use >= as a conservative check: if Exa returns exactly maxCharacters,
         // the original content was likely longer and got truncated by Exa's API
-        const wasTruncated = (result.text?.length ?? 0) >= maxCharacters
-        let text = result.text ?? ''
+        const isTruncated = (result.text?.length ?? 0) >= maxCharacters
 
         // If truncated and not at hard cap, suggest fetching more
-        if (wasTruncated && maxCharacters < hardCap) {
-          const nextSize = Math.min(maxCharacters * 2, hardCap)
-          text += `\n\n[Content truncated. Call fetch_content with max_length=${nextSize} for more.]`
-        }
+        const truncationHint =
+          isTruncated && maxCharacters < hardCap
+            ? `\n\n[Content truncated. Call fetch_content with max_length=${Math.min(maxCharacters * 2, hardCap)} for more.]`
+            : ''
 
         return {
           data: {
             ...result,
-            text,
-            wasTruncated,
+            text: (result.text ?? '') + truncationHint,
+            isTruncated,
           },
           success: true,
         }
@@ -310,14 +309,14 @@ describe('Pro - Exa Plugin', () => {
       expect(data).toEqual({
         data: {
           ...mockContent[0],
-          wasTruncated: false,
+          isTruncated: false,
         },
         success: true,
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
-        text: { maxCharacters: 16000 },
+        text: { maxCharacters: 16_000 },
       })
     })
 
@@ -424,14 +423,14 @@ describe('Pro - Exa Plugin', () => {
         expect(mockGetContents).toHaveBeenCalledWith([url], {
           livecrawlTimeout: 5000,
           extras: { imageLinks: 1 },
-          text: { maxCharacters: 16000 },
+          text: { maxCharacters: 16_000 },
         })
       }
     })
 
-    it('should set wasTruncated to true and append instruction when text reaches max characters limit', async () => {
+    it('should set isTruncated to true and append instruction when text reaches max characters limit', async () => {
       // Create text that is exactly at the limit (16,000 chars)
-      const longText = 'A'.repeat(16000)
+      const longText = 'A'.repeat(16_000)
       const mockContent = [
         {
           url: 'https://example.com/long',
@@ -451,11 +450,11 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.isTruncated).toBe(true)
       expect(data.data.text).toContain('[Content truncated. Call fetch_content with max_length=32000 for more.]')
     })
 
-    it('should set wasTruncated to false when text is under the limit', async () => {
+    it('should set isTruncated to false when text is under the limit', async () => {
       const shortText = 'Short content'
       const mockContent = [
         {
@@ -476,7 +475,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.data.wasTruncated).toBe(false)
+      expect(data.data.isTruncated).toBe(false)
     })
 
     it('should handle content with no text field', async () => {
@@ -498,7 +497,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.data.wasTruncated).toBe(false)
+      expect(data.data.isTruncated).toBe(false)
     })
 
     it('should respect custom max_length parameter', async () => {
@@ -523,7 +522,7 @@ describe('Pro - Exa Plugin', () => {
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
-        text: { maxCharacters: 32000 },
+        text: { maxCharacters: 32_000 },
       })
     })
 
@@ -549,7 +548,7 @@ describe('Pro - Exa Plugin', () => {
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
-        text: { maxCharacters: 64000 },
+        text: { maxCharacters: 64_000 },
       })
     })
 
@@ -575,12 +574,12 @@ describe('Pro - Exa Plugin', () => {
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
-        text: { maxCharacters: 1000 },
+        text: { maxCharacters: 1_000 },
       })
     })
 
     it('should not append instruction when at hard cap', async () => {
-      const longText = 'A'.repeat(64000)
+      const longText = 'A'.repeat(64_000)
       const mockContent = [
         {
           url: 'https://example.com/long',
@@ -600,12 +599,12 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.isTruncated).toBe(true)
       expect(data.data.text).not.toContain('[Content truncated.')
     })
 
     it('should suggest doubling max_length in truncation instruction', async () => {
-      const longText = 'A'.repeat(32000)
+      const longText = 'A'.repeat(32_000)
       const mockContent = [
         {
           url: 'https://example.com/long',
@@ -625,7 +624,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.isTruncated).toBe(true)
       expect(data.data.text).toContain('[Content truncated. Call fetch_content with max_length=64000 for more.]')
     })
   })

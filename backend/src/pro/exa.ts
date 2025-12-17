@@ -53,9 +53,9 @@ export const exaPlugin = new Elysia({ name: 'exa' })
         throw new Error('Fetch content service is not configured.')
       }
 
-      const defaultMaxChars = 16000
-      const hardCap = 64000
-      const minChars = 1000
+      const defaultMaxChars = 16_000
+      const hardCap = 64_000
+      const minChars = 1_000
       const requestedMax = body.max_length ?? defaultMaxChars
       const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
@@ -72,20 +72,19 @@ export const exaPlugin = new Elysia({ name: 'exa' })
 
       // Use >= as a conservative check: if Exa returns exactly maxCharacters,
       // the original content was likely longer and got truncated by Exa's API
-      const wasTruncated = (result.text?.length ?? 0) >= maxCharacters
-      let text = result.text ?? ''
+      const isTruncated = (result.text?.length ?? 0) >= maxCharacters
 
       // If truncated and not at hard cap, suggest fetching more
-      if (wasTruncated && maxCharacters < hardCap) {
-        const nextSize = Math.min(maxCharacters * 2, hardCap)
-        text += `\n\n[Content truncated. Call fetch_content with max_length=${nextSize} for more.]`
-      }
+      const truncationHint =
+        isTruncated && maxCharacters < hardCap
+          ? `\n\n[Content truncated. Call fetch_content with max_length=${Math.min(maxCharacters * 2, hardCap)} for more.]`
+          : ''
 
       return {
         data: {
           ...result,
-          text,
-          wasTruncated,
+          text: (result.text ?? '') + truncationHint,
+          isTruncated,
         },
         success: true,
       }

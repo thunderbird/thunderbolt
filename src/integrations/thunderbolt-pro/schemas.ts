@@ -85,13 +85,13 @@ export type SearchResultData = {
 /**
  * Data type for fetched webpage content.
  * - text: May be truncated to ~16K chars to prevent context overflow
- * - wasTruncated: True if text was truncated
+ * - isTruncated: True if text was truncated
  */
 export type FetchContentData = {
   url: string
   title: string | null
   text: string
-  wasTruncated?: boolean
+  isTruncated?: boolean
   highlights?: string[]
   highlightScores?: number[]
   favicon: string | null

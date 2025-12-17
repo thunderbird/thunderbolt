@@ -56,14 +56,6 @@ export const extractBody = (payload: any, mimeType: string): string => {
 }
 
 /**
- * Truncate text to reasonable length for LLMs
- */
-export const truncateText = (text: string, maxLength = 4000): string => {
-  if (text.length <= maxLength) return text
-  return text.substring(0, maxLength) + '...[truncated]'
-}
-
-/**
  * Build raw email message for drafts
  */
 export const buildRawMessage = (params: DraftEmailParams): string => {

@@ -16,6 +16,12 @@ export const searchSchema = z
 export const fetchContentSchema = z
   .object({
     url: z.string().describe('Webpage URL to fetch content from'),
+    max_length: z
+      .number()
+      .optional()
+      .describe(
+        'Maximum content length in characters (default: 16000, max: 64000). Increase if content was truncated.',
+      ),
   })
   .strict()
 
@@ -79,14 +85,12 @@ export type SearchResultData = {
 /**
  * Data type for fetched webpage content.
  * - text: May be truncated to ~16K chars to prevent context overflow
- * - summary: AI-generated summary of the FULL content (always complete)
- * - wasTruncated: True if text was truncated; model should use summary for full context
+ * - wasTruncated: True if text was truncated
  */
 export type FetchContentData = {
   url: string
   title: string | null
   text: string
-  summary?: string
   wasTruncated?: boolean
   highlights?: string[]
   highlightScores?: number[]

@@ -744,7 +744,7 @@ export const getDriveFileContent = async (
     }
 
     // Truncate if too long for LLM context
-    const wasTruncated = content.length >= llmContentCharLimit
+    const wasTruncated = content.length > llmContentCharLimit
     if (wasTruncated) {
       content = truncateText(content, llmContentCharLimit)
     }

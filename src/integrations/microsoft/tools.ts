@@ -283,7 +283,7 @@ export const getOneDriveFileContent = async (
         .text()
 
       // Truncate if too long for LLM context
-      const wasTruncated = textContent.length >= llmContentCharLimit
+      const wasTruncated = textContent.length > llmContentCharLimit
       if (wasTruncated) {
         textContent = truncateText(textContent, llmContentCharLimit)
       }

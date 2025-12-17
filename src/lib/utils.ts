@@ -246,7 +246,7 @@ export const isLocalhostUrl = (url: string | null): boolean => {
  * Maximum content length for LLM context (16K chars ≈ 4K tokens)
  * Used by fetch_content, Google Drive, and OneDrive file retrieval
  */
-export const llmContentCharLimit = 16000
+export const llmContentCharLimit = 16_000
 
 /**
  * Truncate text to prevent context overflow in LLM requests

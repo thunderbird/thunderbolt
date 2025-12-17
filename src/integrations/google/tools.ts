@@ -226,7 +226,7 @@ export type DriveFileContent = {
   mime_type: string
   content: string | null
   /** When true, content was truncated to prevent context overflow */
-  wasTruncated?: boolean
+  isTruncated?: boolean
   /** When true, text extraction was not possible */
   extraction_failed?: boolean
   /** Category of failure: 'unsupported_type' | 'access_denied' | 'not_found' */
@@ -743,18 +743,13 @@ export const getDriveFileContent = async (
       }
     }
 
-    // Truncate if too long for LLM context
-    const wasTruncated = content.length > llmContentCharLimit
-    if (wasTruncated) {
-      content = truncateText(content, llmContentCharLimit)
-    }
-
+    const isTruncated = content.length > llmContentCharLimit
     return {
       file_id: fileId,
       file_name: fileName,
       mime_type: mimeType,
-      content,
-      wasTruncated,
+      content: isTruncated ? content.substring(0, llmContentCharLimit) + '...[truncated]' : content,
+      isTruncated,
     }
   } catch (error: unknown) {
     const httpError = error as { response?: { status: number } }

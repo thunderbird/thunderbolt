@@ -52,7 +52,7 @@ const createTestExaPlugin = (mockExaClient: any) => {
         const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
         const response = await store.exaClient.getContents([body.url], {
-          livecrawlTimeout: 5000,
+          livecrawlTimeout: 5_000,
           extras: { imageLinks: 1 },
           text: { maxCharacters },
         })
@@ -314,7 +314,7 @@ describe('Pro - Exa Plugin', () => {
         success: true,
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
-        livecrawlTimeout: 5000,
+        livecrawlTimeout: 5_000,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 16_000 },
       })
@@ -421,7 +421,7 @@ describe('Pro - Exa Plugin', () => {
 
         expect(response.status).toBe(200)
         expect(mockGetContents).toHaveBeenCalledWith([url], {
-          livecrawlTimeout: 5000,
+          livecrawlTimeout: 5_000,
           extras: { imageLinks: 1 },
           text: { maxCharacters: 16_000 },
         })
@@ -520,7 +520,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
-        livecrawlTimeout: 5000,
+        livecrawlTimeout: 5_000,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 32_000 },
       })
@@ -546,7 +546,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
-        livecrawlTimeout: 5000,
+        livecrawlTimeout: 5_000,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 64_000 },
       })
@@ -572,7 +572,7 @@ describe('Pro - Exa Plugin', () => {
 
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
-        livecrawlTimeout: 5000,
+        livecrawlTimeout: 5_000,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 1_000 },
       })

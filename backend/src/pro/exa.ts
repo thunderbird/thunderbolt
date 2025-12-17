@@ -60,7 +60,7 @@ export const exaPlugin = new Elysia({ name: 'exa' })
       const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
       const response = await store.exaClient.getContents([body.url], {
-        livecrawlTimeout: 5000,
+        livecrawlTimeout: 5_000,
         extras: { imageLinks: 1 },
         text: { maxCharacters },
       })

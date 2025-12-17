@@ -1,6 +1,7 @@
 // New file with Microsoft Graph tools
 
 import { getSettings, updateSettings } from '@/dal'
+import { llmContentCharLimit, truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import ky, { type KyInstance } from 'ky'
 import { z } from 'zod'
@@ -102,6 +103,7 @@ export type OneDriveFileContent = {
   file_name: string
   mime_type: string
   content: string | null
+  wasTruncated?: boolean
   extraction_failed?: boolean
   failure_reason?: 'unsupported_type' | 'access_denied' | 'not_found'
   file_category?: 'pdf' | 'image' | 'video' | 'audio' | 'binary' | 'office' | 'unknown'
@@ -274,17 +276,24 @@ export const getOneDriveFileContent = async (
 
     // Only support text files for now
     if (mimeType.startsWith('text/')) {
-      const textResponse = await httpClient
+      let textContent = await httpClient
         .get(`https://graph.microsoft.com/v1.0/me/drive/items/${params.file_id}/content`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         .text()
 
+      // Truncate if too long for LLM context
+      const wasTruncated = textContent.length >= llmContentCharLimit
+      if (wasTruncated) {
+        textContent = truncateText(textContent, llmContentCharLimit)
+      }
+
       return {
         file_id: params.file_id,
         file_name: fileName,
         mime_type: mimeType,
-        content: textResponse,
+        content: textContent,
+        wasTruncated,
       }
     }
 

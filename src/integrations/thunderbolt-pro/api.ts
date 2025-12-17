@@ -63,6 +63,7 @@ export const fetchContent = async (
     if (!response.success) {
       throw new Error(response.error || 'Fetch content failed')
     }
+
     return response.data
   } catch (error) {
     console.error('Fetch content error:', error)

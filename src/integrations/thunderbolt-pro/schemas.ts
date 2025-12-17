@@ -77,13 +77,17 @@ export type SearchResultData = {
 }
 
 /**
- * Data type for fetched webpage content
+ * Data type for fetched webpage content.
+ * - text: May be truncated to ~16K chars to prevent context overflow
+ * - summary: AI-generated summary of the FULL content (always complete)
+ * - wasTruncated: True if text was truncated; model should use summary for full context
  */
 export type FetchContentData = {
   url: string
   title: string | null
   text: string
-  summary: string
+  summary?: string
+  wasTruncated?: boolean
   highlights?: string[]
   highlightScores?: number[]
   favicon: string | null

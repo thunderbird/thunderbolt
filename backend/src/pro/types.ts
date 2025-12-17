@@ -42,11 +42,18 @@ export const fetchContentRequestSchema = z.object({
 export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 
 /**
- * FetchContentResponse returns the raw SearchResult from Exa's getContents API.
- * The SearchResult includes properties like url, title, text, favicon, image, author, publishedDate, etc.
+ * FetchContentData extends Exa's SearchResult with additional fields for graceful degradation.
+ * - text: Truncated to maxCharacters (16K) to prevent context overflow
+ * - summary: AI-generated summary of the FULL content (not truncated)
+ * - wasTruncated: Flag indicating if text was truncated
  */
+export type FetchContentData = SearchResult<{ text: { maxCharacters: number } }> & {
+  summary?: string
+  wasTruncated: boolean
+}
+
 export type FetchContentResponse = {
-  data: SearchResult<{ text: { maxCharacters: number } }> | null
+  data: FetchContentData | null
   success: boolean
   error?: string | null
 }

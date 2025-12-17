@@ -45,16 +45,25 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Fetch content service is not configured.')
         }
 
+        const maxCharacters = 16000
+
         const response = await store.exaClient.getContents([body.url], {
-          livecrawlTimeout: 5_000,
+          livecrawlTimeout: 5000,
           extras: { imageLinks: 1 },
-          text: {
-            maxCharacters: 5_000,
-          },
+          text: { maxCharacters },
+          summary: { query: 'Main content and key information' },
         })
 
+        const result = response.results[0]
+        if (!result) {
+          return { data: null, success: true }
+        }
+
         return {
-          data: response.results[0] || null,
+          data: {
+            ...result,
+            wasTruncated: (result.text?.length ?? 0) >= maxCharacters,
+          },
           success: true,
         }
       },
@@ -267,6 +276,7 @@ describe('Pro - Exa Plugin', () => {
           url: 'https://example.com',
           title: 'Test Page',
           text: 'This is the fetched content',
+          summary: 'A summary of the content',
           author: 'Test Author',
         },
       ]
@@ -283,15 +293,17 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data).toEqual({
-        data: mockContent[0],
+        data: {
+          ...mockContent[0],
+          wasTruncated: false,
+        },
         success: true,
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
-        livecrawlTimeout: 5_000,
+        livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
-        text: {
-          maxCharacters: 5_000,
-        },
+        text: { maxCharacters: 16000 },
+        summary: { query: 'Main content and key information' },
       })
     })
 
@@ -396,13 +408,87 @@ describe('Pro - Exa Plugin', () => {
 
         expect(response.status).toBe(200)
         expect(mockGetContents).toHaveBeenCalledWith([url], {
-          livecrawlTimeout: 5_000,
+          livecrawlTimeout: 5000,
           extras: { imageLinks: 1 },
-          text: {
-            maxCharacters: 5_000,
-          },
+          text: { maxCharacters: 16000 },
+          summary: { query: 'Main content and key information' },
         })
       }
+    })
+
+    it('should set wasTruncated to true when text reaches max characters limit', async () => {
+      // Create text that is exactly at the limit (16,000 chars)
+      const longText = 'A'.repeat(16000)
+      const mockContent = [
+        {
+          url: 'https://example.com/long',
+          title: 'Long Page',
+          text: longText,
+          summary: 'Summary of long content',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com/long' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.summary).toBe('Summary of long content')
+    })
+
+    it('should set wasTruncated to false when text is under the limit', async () => {
+      const shortText = 'Short content'
+      const mockContent = [
+        {
+          url: 'https://example.com/short',
+          title: 'Short Page',
+          text: shortText,
+          summary: 'Summary of short content',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com/short' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data.wasTruncated).toBe(false)
+    })
+
+    it('should handle content with no text field', async () => {
+      const mockContent = [
+        {
+          url: 'https://example.com/no-text',
+          title: 'Page Without Text',
+          summary: 'Summary only',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com/no-text' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data.wasTruncated).toBe(false)
     })
   })
 })

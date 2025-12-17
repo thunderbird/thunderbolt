@@ -45,13 +45,16 @@ const createTestExaPlugin = (mockExaClient: any) => {
           throw new Error('Fetch content service is not configured.')
         }
 
-        const maxCharacters = 16000
+        const defaultMaxChars = 16000
+        const hardCap = 64000
+        const minChars = 1000
+        const requestedMax = body.max_length ?? defaultMaxChars
+        const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
         const response = await store.exaClient.getContents([body.url], {
           livecrawlTimeout: 5000,
           extras: { imageLinks: 1 },
           text: { maxCharacters },
-          summary: { query: 'Main content and key information' },
         })
 
         const result = response.results[0]
@@ -59,10 +62,22 @@ const createTestExaPlugin = (mockExaClient: any) => {
           return { data: null, success: true }
         }
 
+        // Use >= as a conservative check: if Exa returns exactly maxCharacters,
+        // the original content was likely longer and got truncated by Exa's API
+        const wasTruncated = (result.text?.length ?? 0) >= maxCharacters
+        let text = result.text ?? ''
+
+        // If truncated and not at hard cap, suggest fetching more
+        if (wasTruncated && maxCharacters < hardCap) {
+          const nextSize = Math.min(maxCharacters * 2, hardCap)
+          text += `\n\n[Content truncated. Call fetch_content with max_length=${nextSize} for more.]`
+        }
+
         return {
           data: {
             ...result,
-            wasTruncated: (result.text?.length ?? 0) >= maxCharacters,
+            text,
+            wasTruncated,
           },
           success: true,
         }
@@ -70,6 +85,7 @@ const createTestExaPlugin = (mockExaClient: any) => {
       {
         body: t.Object({
           url: t.String(),
+          max_length: t.Optional(t.Number()),
         }),
       },
     )
@@ -276,7 +292,6 @@ describe('Pro - Exa Plugin', () => {
           url: 'https://example.com',
           title: 'Test Page',
           text: 'This is the fetched content',
-          summary: 'A summary of the content',
           author: 'Test Author',
         },
       ]
@@ -303,7 +318,6 @@ describe('Pro - Exa Plugin', () => {
         livecrawlTimeout: 5000,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 16000 },
-        summary: { query: 'Main content and key information' },
       })
     })
 
@@ -411,12 +425,11 @@ describe('Pro - Exa Plugin', () => {
           livecrawlTimeout: 5000,
           extras: { imageLinks: 1 },
           text: { maxCharacters: 16000 },
-          summary: { query: 'Main content and key information' },
         })
       }
     })
 
-    it('should set wasTruncated to true when text reaches max characters limit', async () => {
+    it('should set wasTruncated to true and append instruction when text reaches max characters limit', async () => {
       // Create text that is exactly at the limit (16,000 chars)
       const longText = 'A'.repeat(16000)
       const mockContent = [
@@ -424,7 +437,6 @@ describe('Pro - Exa Plugin', () => {
           url: 'https://example.com/long',
           title: 'Long Page',
           text: longText,
-          summary: 'Summary of long content',
         },
       ]
       mockGetContents.mockResolvedValueOnce({ results: mockContent })
@@ -440,7 +452,7 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data.data.wasTruncated).toBe(true)
-      expect(data.data.summary).toBe('Summary of long content')
+      expect(data.data.text).toContain('[Content truncated. Call fetch_content with max_length=32000 for more.]')
     })
 
     it('should set wasTruncated to false when text is under the limit', async () => {
@@ -450,7 +462,6 @@ describe('Pro - Exa Plugin', () => {
           url: 'https://example.com/short',
           title: 'Short Page',
           text: shortText,
-          summary: 'Summary of short content',
         },
       ]
       mockGetContents.mockResolvedValueOnce({ results: mockContent })
@@ -473,7 +484,6 @@ describe('Pro - Exa Plugin', () => {
         {
           url: 'https://example.com/no-text',
           title: 'Page Without Text',
-          summary: 'Summary only',
         },
       ]
       mockGetContents.mockResolvedValueOnce({ results: mockContent })
@@ -489,6 +499,134 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data.data.wasTruncated).toBe(false)
+    })
+
+    it('should respect custom max_length parameter', async () => {
+      const mockContent = [
+        {
+          url: 'https://example.com',
+          title: 'Test Page',
+          text: 'Short content',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com', max_length: 32000 }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
+        livecrawlTimeout: 5000,
+        extras: { imageLinks: 1 },
+        text: { maxCharacters: 32000 },
+      })
+    })
+
+    it('should enforce hard cap of 64000 characters', async () => {
+      const mockContent = [
+        {
+          url: 'https://example.com',
+          title: 'Test Page',
+          text: 'Content',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com', max_length: 100000 }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
+        livecrawlTimeout: 5000,
+        extras: { imageLinks: 1 },
+        text: { maxCharacters: 64000 },
+      })
+    })
+
+    it('should enforce minimum of 1000 characters', async () => {
+      const mockContent = [
+        {
+          url: 'https://example.com',
+          title: 'Test Page',
+          text: 'Content',
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com', max_length: 100 }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
+        livecrawlTimeout: 5000,
+        extras: { imageLinks: 1 },
+        text: { maxCharacters: 1000 },
+      })
+    })
+
+    it('should not append instruction when at hard cap', async () => {
+      const longText = 'A'.repeat(64000)
+      const mockContent = [
+        {
+          url: 'https://example.com/long',
+          title: 'Long Page',
+          text: longText,
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com/long', max_length: 64000 }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.text).not.toContain('[Content truncated.')
+    })
+
+    it('should suggest doubling max_length in truncation instruction', async () => {
+      const longText = 'A'.repeat(32000)
+      const mockContent = [
+        {
+          url: 'https://example.com/long',
+          title: 'Long Page',
+          text: longText,
+        },
+      ]
+      mockGetContents.mockResolvedValueOnce({ results: mockContent })
+
+      const response = await app.handle(
+        new Request('http://localhost/fetch-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://example.com/long', max_length: 32000 }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.data.wasTruncated).toBe(true)
+      expect(data.data.text).toContain('[Content truncated. Call fetch_content with max_length=64000 for more.]')
     })
   })
 })

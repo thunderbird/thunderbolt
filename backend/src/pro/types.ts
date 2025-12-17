@@ -44,11 +44,9 @@ export type FetchContentRequest = z.infer<typeof fetchContentRequestSchema>
 /**
  * FetchContentData extends Exa's SearchResult with additional fields for graceful degradation.
  * - text: Truncated to maxCharacters (16K) to prevent context overflow
- * - summary: AI-generated summary of the FULL content (not truncated)
  * - wasTruncated: Flag indicating if text was truncated
  */
 export type FetchContentData = SearchResult<{ text: { maxCharacters: number } }> & {
-  summary?: string
   wasTruncated: boolean
 }
 

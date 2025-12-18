@@ -96,13 +96,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       const { container } = render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,
@@ -130,13 +128,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,
@@ -167,13 +163,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useContextTracking={mockUseContextTracking}
           useSidebar={mockUseSidebar}
@@ -203,7 +197,6 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
       const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
 
@@ -211,7 +204,6 @@ describe('ChatPromptInput', () => {
         <ChatPromptInput
           ref={ref}
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,
@@ -252,7 +244,6 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
       const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
 
@@ -260,7 +251,6 @@ describe('ChatPromptInput', () => {
         <ChatPromptInput
           ref={ref}
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,
@@ -296,13 +286,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       const { container } = render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,
@@ -329,13 +317,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       const { container } = render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useContextTracking={mockUseContextTracking}
           useSidebar={mockUseSidebar}
@@ -362,13 +348,11 @@ describe('ChatPromptInput', () => {
       })
 
       const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar(false, false)
 
       const { container } = render(
         <ChatPromptInput
           handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useSidebar={mockUseSidebar}
         />,

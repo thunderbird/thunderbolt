@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type RefObject, type WheelEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject, type TouchEvent, type WheelEvent } from 'react'
 
 // Constants for scroll behavior thresholds
 const SCROLL_THRESHOLD = {
   AWAY_FROM_BOTTOM: 100, // Distance in px to consider user has scrolled away
-  BACK_TO_BOTTOM: 10, // Distance in px to consider user is back at bottom
+  BACK_TO_BOTTOM: 50, // Distance in px to consider user is back at bottom
 } as const
 
 // Smooth scroll duration in ms
@@ -12,47 +12,12 @@ const smoothScrollDuration = 200
 // Easing function for smooth scroll (ease-out quad)
 const easeOutQuad = (t: number): number => t * (2 - t)
 
-// Track current animation to cancel if a new one starts
-let currentAnimationFrame: number | null = null
-
-/**
- * Custom smooth scroll using requestAnimationFrame.
- * More reliable on mobile than native behavior: 'smooth'.
- * Cancels any ongoing animation before starting a new one.
- */
-const animateScroll = (element: HTMLElement, targetScrollTop: number, duration: number): void => {
-  // Cancel any ongoing animation
-  if (currentAnimationFrame !== null) {
-    cancelAnimationFrame(currentAnimationFrame)
-  }
-
-  const startScrollTop = element.scrollTop
-  const distance = targetScrollTop - startScrollTop
-  const startTime = performance.now()
-
-  const step = (currentTime: number) => {
-    const elapsed = currentTime - startTime
-    const progress = Math.min(elapsed / duration, 1)
-    const easedProgress = easeOutQuad(progress)
-
-    element.scrollTop = startScrollTop + distance * easedProgress
-
-    if (progress < 1) {
-      currentAnimationFrame = requestAnimationFrame(step)
-    } else {
-      currentAnimationFrame = null
-    }
-  }
-
-  currentAnimationFrame = requestAnimationFrame(step)
-}
-
 interface UseAutoScrollOptions {
   /** Dependencies that should trigger a scroll to bottom */
   dependencies?: unknown[]
   /** Whether to use smooth scrolling */
   smooth?: boolean
-  /** Whether content is currently streaming (enables instant scrolling) */
+  /** Whether content is currently streaming (uses instant scroll to keep up) */
   isStreaming?: boolean
   /** Callback when user manually scrolls */
   onUserScroll?: (isAtBottom: boolean) => void
@@ -77,6 +42,7 @@ interface UseAutoScrollReturn {
   scrollHandlers: {
     onScroll: () => void
     onWheel: (e: WheelEvent) => void
+    onTouchStart: (e: TouchEvent) => void
   }
 }
 
@@ -96,9 +62,8 @@ interface UseAutoScrollReturn {
  * @example
  * ```tsx
  * const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
- *   isStreaming: true,
  *   dependencies: [messages],
- *   rootMargin: '0px 0px -50px 0px'
+ *   isStreaming: true,
  * })
  *
  * return (
@@ -120,10 +85,9 @@ export function useAutoScroll({
   const scrollTargetRef = useRef<HTMLDivElement>(null)
   const [userHasScrolled, setUserHasScrolled] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  // Track the previous scrollTop value to determine scroll direction
-  const prevScrollTopRef = useRef(0)
+  const userHasScrolledRef = useRef(false)
+  const animationFrameRef = useRef<number | null>(null)
 
-  // Utility to calculate distance from bottom
   const getDistanceFromBottom = useCallback(() => {
     if (!scrollContainerRef.current) return 0
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
@@ -136,11 +100,34 @@ export function useAutoScroll({
       if (!container) return
 
       const targetScrollTop = container.scrollHeight - container.clientHeight
+      // Use instant scroll during streaming to keep up with rapid content updates
       const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
 
       if (shouldSmooth) {
-        // Use custom animation for reliable smooth scroll on mobile
-        animateScroll(container, targetScrollTop, smoothScrollDuration)
+        // Cancel any ongoing animation for THIS instance
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current)
+        }
+
+        const startScrollTop = container.scrollTop
+        const distance = targetScrollTop - startScrollTop
+        const startTime = performance.now()
+
+        const step = (currentTime: number) => {
+          const elapsed = currentTime - startTime
+          const progress = Math.min(elapsed / smoothScrollDuration, 1)
+          const easedProgress = easeOutQuad(progress)
+
+          container.scrollTop = startScrollTop + distance * easedProgress
+
+          if (progress < 1) {
+            animationFrameRef.current = requestAnimationFrame(step)
+          } else {
+            animationFrameRef.current = null
+          }
+        }
+
+        animationFrameRef.current = requestAnimationFrame(step)
       } else {
         container.scrollTop = targetScrollTop
       }
@@ -151,35 +138,42 @@ export function useAutoScroll({
   const handleScroll = useCallback(() => {
     if (!scrollContainerRef.current) return
 
-    const { scrollTop } = scrollContainerRef.current
     const distanceFromBottom = getDistanceFromBottom()
 
-    // Determine if the user is scrolling up (intentional) or content is pushing down (automatic)
-    const isScrollingUp = scrollTop < prevScrollTopRef.current
-
-    // If the user scrolled up beyond the threshold, pause auto-scroll
-    if (isScrollingUp && distanceFromBottom > SCROLL_THRESHOLD.AWAY_FROM_BOTTOM) {
+    // Simple logic: far from bottom = paused, close to bottom = resume
+    // Update both ref (immediate) and state (for UI)
+    if (distanceFromBottom > SCROLL_THRESHOLD.AWAY_FROM_BOTTOM) {
+      userHasScrolledRef.current = true
       setUserHasScrolled(true)
-    }
-
-    // If we were previously paused and returned close enough to the bottom, resume auto-scroll
-    if (!isScrollingUp && distanceFromBottom < SCROLL_THRESHOLD.BACK_TO_BOTTOM && userHasScrolled) {
+    } else if (distanceFromBottom < SCROLL_THRESHOLD.BACK_TO_BOTTOM) {
+      userHasScrolledRef.current = false
       setUserHasScrolled(false)
     }
-
-    // Update previous scrollTop for next comparison
-    prevScrollTopRef.current = scrollTop
-  }, [userHasScrolled, getDistanceFromBottom])
+  }, [getDistanceFromBottom])
 
   const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.deltaY < 0) setUserHasScrolled(true)
+    // Scrolling up on desktop
+    if (e.deltaY < 0) {
+      userHasScrolledRef.current = true
+      setUserHasScrolled(true)
+    }
   }, [])
 
+  // On mobile, touchstart fires BEFORE scroll - mark that user is interacting
+  // Only pause if not already at bottom (allows tapping without pausing)
+  const handleTouchStart = useCallback(() => {
+    const distanceFromBottom = getDistanceFromBottom()
+    if (distanceFromBottom > SCROLL_THRESHOLD.BACK_TO_BOTTOM) {
+      userHasScrolledRef.current = true
+      setUserHasScrolled(true)
+    }
+  }, [getDistanceFromBottom])
+
   const resetUserScroll = useCallback(() => {
+    userHasScrolledRef.current = false
     setUserHasScrolled(false)
   }, [])
 
-  // Set up Intersection Observer for accurate bottom detection
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     const scrollTarget = scrollTargetRef.current
@@ -208,11 +202,21 @@ export function useAutoScroll({
 
   // Handle initial mount and dependency-based scrolling
   useEffect(() => {
-    if (!userHasScrolled) {
+    // Check ref for immediate/sync value (avoids stale state on mobile)
+    if (!userHasScrolledRef.current) {
       scrollToBottom()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...dependencies])
+
+  // Cleanup animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [])
 
   return {
     scrollContainerRef,
@@ -221,6 +225,6 @@ export function useAutoScroll({
     isAtBottom,
     scrollToBottom,
     resetUserScroll,
-    scrollHandlers: { onScroll: handleScroll, onWheel: handleWheel },
+    scrollHandlers: { onScroll: handleScroll, onWheel: handleWheel, onTouchStart: handleTouchStart },
   }
 }

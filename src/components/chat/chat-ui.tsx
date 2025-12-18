@@ -9,6 +9,7 @@ import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
+import { ScrollToBottomButton } from './scroll-to-bottom-button'
 
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
@@ -19,7 +20,7 @@ export default function ChatUI() {
 
   const hasMessages = messages.length
 
-  const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
+  const { isAtBottom, resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
     useChatScrollHandler()
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
@@ -44,17 +45,20 @@ export default function ChatUI() {
       >
         <AnimatePresence>
           {hasMessages && (
-            <motion.div
-              ref={scrollContainerRef}
-              {...scrollHandlers}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 p-4 space-y-4 max-w-dvw hide-scrollbar overflow-y-auto"
-            >
-              <ChatMessages />
-              <div ref={scrollTargetRef} />
-            </motion.div>
+            <div className="relative flex-1 overflow-hidden">
+              <motion.div
+                ref={scrollContainerRef}
+                {...scrollHandlers}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="h-full p-4 space-y-4 max-w-dvw overflow-y-auto hide-scrollbar"
+              >
+                <ChatMessages />
+                <div ref={scrollTargetRef} />
+              </motion.div>
+              <ScrollToBottomButton isVisible={!isAtBottom} onClick={() => scrollToBottom()} className="bottom-2" />
+            </div>
           )}
         </AnimatePresence>
 
@@ -100,11 +104,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput
-                handleResetUserScroll={resetUserScroll}
-                handleScrollToBottom={scrollToBottom}
-                ref={chatPromptInputRef}
-              />
+              <ChatPromptInput handleResetUserScroll={resetUserScroll} ref={chatPromptInputRef} />
             </motion.div>
           </motion.div>
         </motion.div>

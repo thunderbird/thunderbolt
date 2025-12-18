@@ -50,7 +50,7 @@ export default function ChatUI() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-1 p-4 space-y-4 max-w-dvw hide-scrollbar"
+              className="flex-1 p-4 space-y-4 max-w-dvw hide-scrollbar overflow-y-auto"
             >
               <ChatMessages />
               <div ref={scrollTargetRef} />

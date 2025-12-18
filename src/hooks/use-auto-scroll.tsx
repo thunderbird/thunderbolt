@@ -6,9 +6,50 @@ const SCROLL_THRESHOLD = {
   BACK_TO_BOTTOM: 10, // Distance in px to consider user is back at bottom
 } as const
 
+// Smooth scroll duration in ms
+const smoothScrollDuration = 200
+
+// Easing function for smooth scroll (ease-out quad)
+const easeOutQuad = (t: number): number => t * (2 - t)
+
+// Track current animation to cancel if a new one starts
+let currentAnimationFrame: number | null = null
+
+/**
+ * Custom smooth scroll using requestAnimationFrame.
+ * More reliable on mobile than native behavior: 'smooth'.
+ * Cancels any ongoing animation before starting a new one.
+ */
+const animateScroll = (element: HTMLElement, targetScrollTop: number, duration: number): void => {
+  // Cancel any ongoing animation
+  if (currentAnimationFrame !== null) {
+    cancelAnimationFrame(currentAnimationFrame)
+  }
+
+  const startScrollTop = element.scrollTop
+  const distance = targetScrollTop - startScrollTop
+  const startTime = performance.now()
+
+  const step = (currentTime: number) => {
+    const elapsed = currentTime - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    const easedProgress = easeOutQuad(progress)
+
+    element.scrollTop = startScrollTop + distance * easedProgress
+
+    if (progress < 1) {
+      currentAnimationFrame = requestAnimationFrame(step)
+    } else {
+      currentAnimationFrame = null
+    }
+  }
+
+  currentAnimationFrame = requestAnimationFrame(step)
+}
+
 interface UseAutoScrollOptions {
   /** Dependencies that should trigger a scroll to bottom */
-  dependencies?: any[]
+  dependencies?: unknown[]
   /** Whether to use smooth scrolling */
   smooth?: boolean
   /** Whether content is currently streaming (enables instant scrolling) */
@@ -91,17 +132,17 @@ export function useAutoScroll({
 
   const scrollToBottom = useCallback(
     (smoothScroll?: boolean) => {
-      const target = scrollTargetRef.current
-      if (!target) return
+      const container = scrollContainerRef.current
+      if (!container) return
 
-      try {
-        target.scrollIntoView({
-          behavior: (smoothScroll ?? (!isStreaming && smooth)) ? 'smooth' : 'auto',
-          block: 'end',
-        })
-      } catch (_) {
-        // Fallback for older browsers
-        scrollContainerRef.current?.scrollTo(0, scrollContainerRef.current.scrollHeight)
+      const targetScrollTop = container.scrollHeight - container.clientHeight
+      const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
+
+      if (shouldSmooth) {
+        // Use custom animation for reliable smooth scroll on mobile
+        animateScroll(container, targetScrollTop, smoothScrollDuration)
+      } else {
+        container.scrollTop = targetScrollTop
       }
     },
     [smooth, isStreaming],

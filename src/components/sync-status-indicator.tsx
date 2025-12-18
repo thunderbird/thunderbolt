@@ -45,6 +45,9 @@ type SyncStatusIndicatorProps = {
 export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, showLabel = false, size = 'md' }) => {
   const { status, isSupported, forceSync } = useSyncService()
 
+  console.log('status', status)
+  console.log('isSupported', isSupported)
+
   // Don't show anything if sync is not supported
   if (!isSupported) {
     return null
@@ -53,7 +56,6 @@ export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, s
   const config = statusConfig[status]
   const Icon = config.icon
   const iconSize = size === 'sm' ? 14 : 16
-
   return (
     <TooltipProvider>
       <Tooltip>

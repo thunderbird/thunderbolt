@@ -7,6 +7,29 @@ import { createAuthClient } from 'better-auth/react'
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 /**
+ * Mock user for sync integration testing
+ * TODO: Remove once real authentication CORS is resolved
+ */
+const MOCK_USER = {
+  id: 'mock-user-00000000-0000-0000-0000-000000000001',
+  email: 'mock-user@thunderbolt.local',
+  name: 'Mock User',
+  emailVerified: true,
+  image: null,
+  createdAt: new Date('2024-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+}
+
+const MOCK_SESSION = {
+  id: 'mock-session-00000000-0000-0000-0000-000000000001',
+  userId: MOCK_USER.id,
+  token: 'mock-token',
+  expiresAt: new Date('2099-12-31T23:59:59.999Z'),
+  createdAt: new Date('2024-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+}
+
+/**
  * Create an auth client instance with the given base URL
  * Includes platform header so backend can use deep links for mobile
  */
@@ -31,6 +54,26 @@ const createAuthClientInstance = (cloudUrl: string) => {
 export type AuthClient = ReturnType<typeof createAuthClientInstance>
 export type Session = AuthClient['$Infer']['Session']
 export type User = Session['user']
+
+/**
+ * Create a mock auth client that returns fake session data
+ * TODO: Remove once real authentication CORS is resolved
+ */
+const createMockAuthClient = () => {
+  const mockSessionData = {
+    data: { user: MOCK_USER, session: MOCK_SESSION },
+    isPending: false,
+    isRefetching: false,
+    error: null,
+    refetch: () => Promise.resolve(),
+  }
+
+  return {
+    useSession: () => mockSessionData,
+    signOut: () => Promise.resolve({ error: null }),
+    // Add other methods as needed for compatibility
+  } as unknown as AuthClient
+}
 
 type AuthContextType = {
   authClient: AuthClient
@@ -58,7 +101,9 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
       return null
     }
 
-    const client = createAuthClientInstance(cloudUrl.value)
+    // TODO: Replace with real auth client once CORS is resolved
+    // const client = createAuthClientInstance(cloudUrl.value)
+    const client = createMockAuthClient()
     return { authClient: client }
   }, [cloudUrl.value, cloudUrl.isLoading, overrideClient])
 

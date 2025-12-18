@@ -1,12 +1,14 @@
+import type { CRSQLiteDatabase } from './crsqlite-database'
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 
-export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite'
+export type DatabaseType = 'crsqlite' | 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite'
 
 export class DatabaseSingleton {
   static #instance: DatabaseSingleton | null = null
   static #initialized = false
 
   #database: DatabaseInterface | null = null
+  #databaseType: DatabaseType | null = null
 
   /**
    * Get the initialized DatabaseSingleton instance.
@@ -23,11 +25,11 @@ export class DatabaseSingleton {
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('wa-sqlite', 'libsql-tauri', or 'bun-sqlite')
+   * @param type - The database type to use ('crsqlite', 'wa-sqlite', 'libsql-tauri', or 'bun-sqlite')
    * @param config - Configuration for the database
    */
   public async initialize({
-    type = 'wa-sqlite',
+    type = 'crsqlite',
     path,
   }: {
     type?: DatabaseType
@@ -45,16 +47,28 @@ export class DatabaseSingleton {
       // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
-    } else {
-      // Default to wa-sqlite for web (best performance with web workers)
+    } else if (type === 'wa-sqlite') {
+      // Legacy wa-sqlite (without CRDT sync support)
       const { WaSQLiteDatabase } = await import('./wa-sqlite-database')
       this.#database = new WaSQLiteDatabase()
+    } else {
+      // Default to crsqlite for web (CRDT-enabled with sync support)
+      const { CRSQLiteDatabase } = await import('./crsqlite-database')
+      this.#database = new CRSQLiteDatabase()
     }
 
     await this.#database.initialize(path)
     DatabaseSingleton.#initialized = true
+    this.#databaseType = type
 
-    const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'wa-sqlite'
+    const dbTypeName =
+      type === 'libsql-tauri'
+        ? 'LibSQL for Tauri'
+        : type === 'bun-sqlite'
+          ? 'Bun SQLite'
+          : type === 'wa-sqlite'
+            ? 'wa-sqlite'
+            : 'cr-sqlite'
     console.info(`Initialized ${dbTypeName} database at ${path}`)
 
     return this.#database.db
@@ -87,6 +101,27 @@ export class DatabaseSingleton {
    */
   public get isInitialized(): boolean {
     return DatabaseSingleton.#initialized && this.#database !== null
+  }
+
+  /**
+   * Check if the database supports sync (is a CRSQLiteDatabase).
+   */
+  public get supportsSyncing(): boolean {
+    return this.#databaseType === 'crsqlite'
+  }
+
+  /**
+   * Get the CRSQLiteDatabase instance for sync operations.
+   * Throws if the database is not a CRSQLiteDatabase.
+   */
+  public get syncableDatabase(): CRSQLiteDatabase {
+    if (!this.#database) {
+      throw new Error('DatabaseSingleton not initialized. Call initialize() first.')
+    }
+    if (this.#databaseType !== 'crsqlite') {
+      throw new Error('Database does not support sync. Use crsqlite database type.')
+    }
+    return this.#database as CRSQLiteDatabase
   }
 
   /**

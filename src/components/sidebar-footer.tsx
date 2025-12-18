@@ -4,6 +4,7 @@ import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, Loader2, LogOut, Sparkles
 import { useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
+import { SyncStatusIndicator } from '@/components/sync-status-indicator'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +97,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                         {displayName && <span className="truncate font-semibold">{displayName}</span>}
                         <span className="truncate text-xs">{displayEmail}</span>
                       </div>
+                      <SyncStatusIndicator size="sm" />
                       <ChevronsUpDown className="ml-auto size-4" />
                     </>
                   )}

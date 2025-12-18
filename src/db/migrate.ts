@@ -5,6 +5,20 @@ import type { AnyDrizzleDatabase } from './database-interface'
 export type ProxyMigrator = (migrationQueries: string[]) => Promise<void>
 
 /**
+ * List of tables to mark as CRRs (Conflict-free Replicated Relations) for cr-sqlite sync
+ */
+const CRR_TABLES = [
+  'settings',
+  'chat_threads',
+  'chat_messages',
+  'tasks',
+  'models',
+  'mcp_servers',
+  'prompts',
+  'triggers',
+] as const
+
+/**
  * Splits a SQL string into separate statements
  * @param sql SQL string that may contain multiple statements
  * @returns Array of SQL statements
@@ -83,4 +97,43 @@ export async function migrate(db: AnyDrizzleDatabase) {
   console.info(`Ran ${migrationsRun} migration${migrationsRun === 1 ? '' : 's'} in ${elapsedMs} ms`)
 
   return Promise.resolve()
+}
+
+/**
+ * Initialize tables as CRRs (Conflict-free Replicated Relations) for cr-sqlite sync.
+ * This should be called after migrations when using cr-sqlite.
+ *
+ * @param db - The database instance
+ * @returns A promise that resolves when CRR initialization is complete
+ */
+export async function initializeCRRs(db: AnyDrizzleDatabase): Promise<void> {
+  const startTime = performance.now()
+  let tablesInitialized = 0
+
+  for (const tableName of CRR_TABLES) {
+    try {
+      // Check if table exists before trying to make it a CRR
+      const tableExists = await db.all(
+        sql.raw(`SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`),
+      )
+
+      if (tableExists.length > 0) {
+        // crsql_as_crr is idempotent - safe to call multiple times
+        await db.run(sql.raw(`SELECT crsql_as_crr('${tableName}')`))
+        tablesInitialized++
+      }
+    } catch (error) {
+      // If cr-sqlite is not loaded, this will fail - that's expected for non-crsqlite databases
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      if (errorMsg.includes('no such function: crsql_as_crr')) {
+        console.warn('CRR initialization skipped - cr-sqlite extension not loaded')
+        return
+      }
+      console.error(`Failed to initialize CRR for table ${tableName}:`, error)
+      throw error
+    }
+  }
+
+  const elapsedMs = Math.round(performance.now() - startTime)
+  console.info(`Initialized ${tablesInitialized} table${tablesInitialized === 1 ? '' : 's'} as CRRs in ${elapsedMs} ms`)
 }

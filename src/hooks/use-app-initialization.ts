@@ -1,7 +1,7 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { migrate } from '@/db/migrate'
+import { initializeCRRs, migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
@@ -88,6 +88,21 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return {
       success: false,
       error: migrationError,
+    }
+  }
+
+  // Step 3.5: Initialize CRRs for cr-sqlite sync support
+  if (DatabaseSingleton.instance.supportsSyncing) {
+    try {
+      await initializeCRRs(db)
+    } catch (error) {
+      console.error('Failed to initialize CRRs:', error)
+      const crrError = createHandleError('CRR_INIT_FAILED', 'Failed to initialize CRRs for sync', error)
+      trackError(crrError, { initialization_step: 'crr_init' })
+      return {
+        success: false,
+        error: crrError,
+      }
     }
   }
 

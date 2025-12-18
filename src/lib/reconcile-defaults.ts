@@ -28,7 +28,11 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const keyValue = (defaultItem as any)[keyField]
     const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
 
-    if (!existing) {
+    // Drizzle sqlite-proxy may return an object with undefined values instead of undefined
+    // when no rows are found. Check the key field for an actual value.
+    const existsInDb = existing && existing[keyField] !== undefined
+
+    if (!existsInDb) {
       // New default - insert with computed hash
       await db.insert(table).values({
         ...defaultItem,
@@ -36,7 +40,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       })
     } else {
       // Exists - check if user modified by comparing hashes
-      const currentHash = hashFn(existing)
+      const currentHash = hashFn(existing!)
       const defaultHashValue = hashFn(defaultItem)
 
       if (!existing.defaultHash) {

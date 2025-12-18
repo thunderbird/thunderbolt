@@ -47,7 +47,9 @@ export const getSettingsRecords = async <T extends SettingSchema>(schema: T): Pr
   )
   return results.reduce(
     (acc, setting) => {
-      if (setting) {
+      // Drizzle sqlite-proxy may return objects with undefined values instead of undefined
+      // Only include settings that have an actual key value
+      if (setting?.key !== undefined) {
         acc[setting.key] = setting
       }
       return acc

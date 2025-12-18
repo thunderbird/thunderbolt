@@ -1,1 +1,0 @@
-ALTER TABLE `models` ADD `supports_parallel_tool_calls` integer DEFAULT 1 NOT NULL;

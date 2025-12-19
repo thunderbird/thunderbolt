@@ -99,9 +99,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3 }}
             className="relative text-muted-foreground leading-relaxed text-sm"
-            ref={(el) => {
-              scrollContainerRef.current = el
-            }}
+            ref={scrollContainerRef}
           >
             <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
             <div className="max-h-[200px] px-4 hide-scrollbar py-3">

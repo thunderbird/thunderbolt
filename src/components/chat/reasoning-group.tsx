@@ -61,12 +61,7 @@ export const ReasoningGroup = ({
         defaultOpen={false}
         title={<ReasoningGroupTitle totalDuration={totalDuration} isGroupReasoning={isGroupReasoning} tools={tools} />}
       >
-        <div
-          className="max-h-[200px] overflow-y-auto"
-          ref={(el) => {
-            scrollContainerRef.current = el
-          }}
-        >
+        <div className="max-h-[200px] overflow-y-auto" ref={scrollContainerRef}>
           {parts.map((part, index) => {
             return (
               <ReasoningItem

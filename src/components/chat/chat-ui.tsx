@@ -1,7 +1,7 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
@@ -20,7 +20,7 @@ export default function ChatUI() {
 
   const hasMessages = messages.length
 
-  const { isAtBottom, resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
+  const { isAtBottom, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom, scrollToBottomAndActivate } =
     useChatScrollHandler()
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
@@ -30,6 +30,20 @@ export default function ChatUI() {
     chatPromptInputRef.current?.setInput(prompt)
     chatPromptInputRef.current?.focus()
   }, [])
+
+  // Scroll to bottom instantly when entering an existing chat
+  // Effect re-runs when scrollToBottom changes (when container becomes available)
+  const hasScrolledInitially = useRef(false)
+  useEffect(() => {
+    if (hasMessages && !hasScrolledInitially.current) {
+      // scrollToBottom returns true if scroll was performed, false if container not ready
+      // Only mark as scrolled when it actually succeeds
+      const scrolled = scrollToBottom(false)
+      if (scrolled) {
+        hasScrolledInitially.current = true
+      }
+    }
+  }, [hasMessages, scrollToBottom])
 
   if (!isReady) {
     return null
@@ -57,7 +71,11 @@ export default function ChatUI() {
                 <ChatMessages />
                 <div ref={scrollTargetRef} />
               </motion.div>
-              <ScrollToBottomButton isVisible={!isAtBottom} onClick={() => scrollToBottom()} className="bottom-2" />
+              <ScrollToBottomButton
+                isVisible={!isAtBottom}
+                onClick={() => scrollToBottomAndActivate(true)}
+                className="bottom-2"
+              />
             </div>
           )}
         </AnimatePresence>
@@ -104,7 +122,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput handleResetUserScroll={resetUserScroll} ref={chatPromptInputRef} />
+              <ChatPromptInput ref={chatPromptInputRef} />
             </motion.div>
           </motion.div>
         </motion.div>

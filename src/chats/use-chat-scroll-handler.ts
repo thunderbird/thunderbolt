@@ -16,27 +16,34 @@ export const useChatScrollHandler = ({
   const { status, messages } = useChat({ chat: chatInstance })
   const isStreaming = status === 'streaming'
 
-  const { scrollContainerRef, scrollTargetRef, scrollToBottom, resetUserScroll, scrollHandlers, userHasScrolled } =
-    useAutoScroll({
-      dependencies: [messages],
-      smooth: true,
-      isStreaming,
-    })
+  const {
+    scrollContainerRef,
+    scrollTargetRef,
+    scrollToBottom: rawScrollToBottom,
+    resetUserScroll,
+    scrollHandlers,
+    isAtBottom,
+  } = useAutoScroll({
+    dependencies: [messages],
+    smooth: true,
+    isStreaming,
+    rootMargin: '0px 0px 20px 0px',
+  })
 
-  const handleScrollToBottom = useCallback(
+  const scrollToBottomAndActivate = useCallback(
     (smooth?: boolean) => {
-      scrollToBottom(smooth)
+      rawScrollToBottom(smooth)
       resetUserScroll()
     },
-    [scrollToBottom, resetUserScroll],
+    [rawScrollToBottom, resetUserScroll],
   )
 
   return {
-    isAtBottom: !userHasScrolled,
-    resetUserScroll,
+    isAtBottom,
     scrollContainerRef,
     scrollHandlers,
     scrollTargetRef,
-    scrollToBottom: handleScrollToBottom,
+    scrollToBottom: rawScrollToBottom,
+    scrollToBottomAndActivate,
   }
 }

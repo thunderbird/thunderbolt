@@ -10,8 +10,11 @@ type MockUseAutoScrollReturn = {
   mockHook: typeof import('@/hooks/use-auto-scroll').useAutoScroll
 }
 
-const createMockUseAutoScroll = (isAtBottom: boolean = true): MockUseAutoScrollReturn => {
-  const scrollToBottom = mock((_smooth?: boolean) => {})
+const createMockUseAutoScroll = (
+  isAtBottom: boolean = true,
+  scrollSucceeds: boolean = true,
+): MockUseAutoScrollReturn => {
+  const scrollToBottom = mock((_smooth?: boolean) => scrollSucceeds)
   const resetUserScroll = mock(() => {})
   const scrollContainerRef = () => {}
   const scrollTargetRef = () => {}
@@ -151,10 +154,10 @@ describe('useChatScrollHandler', () => {
     expect(resetUserScroll).not.toHaveBeenCalled()
   })
 
-  it('should call both scrollToBottom and resetUserScroll when scrollToBottomAndActivate is called', () => {
+  it('should call both scrollToBottom and resetUserScroll when scrollToBottomAndActivate succeeds', () => {
     const mockChatInstance = createMockChatInstance()
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll()
+    const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(true, true)
 
     hydrateStore({
       chatInstance: mockChatInstance,
@@ -176,6 +179,33 @@ describe('useChatScrollHandler', () => {
 
     expect(scrollToBottom).toHaveBeenCalled()
     expect(resetUserScroll).toHaveBeenCalled()
+  })
+
+  it('should not call resetUserScroll when scrollToBottomAndActivate fails (container not ready)', () => {
+    const mockChatInstance = createMockChatInstance()
+    const mockUseChat = createMockUseChat(mockChatInstance)
+    const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(true, false)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    act(() => {
+      result.current.scrollToBottomAndActivate()
+    })
+
+    expect(scrollToBottom).toHaveBeenCalled()
+    expect(resetUserScroll).not.toHaveBeenCalled()
   })
 
   it('should pass smooth parameter to scrollToBottom', () => {

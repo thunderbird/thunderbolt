@@ -32,8 +32,10 @@ export const useChatScrollHandler = ({
 
   const scrollToBottomAndActivate = useCallback(
     (smooth?: boolean) => {
-      rawScrollToBottom(smooth)
-      resetUserScroll()
+      const scrolled = rawScrollToBottom(smooth)
+      if (scrolled) {
+        resetUserScroll()
+      }
     },
     [rawScrollToBottom, resetUserScroll],
   )

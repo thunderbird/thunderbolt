@@ -10,13 +10,12 @@ type MockUseAutoScrollReturn = {
   mockHook: typeof import('@/hooks/use-auto-scroll').useAutoScroll
 }
 
-const createMockUseAutoScroll = (userHasScrolled: boolean = false): MockUseAutoScrollReturn => {
+const createMockUseAutoScroll = (isAtBottom: boolean = true): MockUseAutoScrollReturn => {
   const scrollToBottom = mock((_smooth?: boolean) => {})
   const resetUserScroll = mock(() => {})
-  const scrollContainerRef = { current: null }
-  const scrollTargetRef = { current: null }
+  const scrollContainerRef = () => {}
+  const scrollTargetRef = () => {}
   const scrollHandlers = {
-    onScroll: () => {},
     onWheel: () => {},
     onTouchStart: () => {},
   }
@@ -25,7 +24,6 @@ const createMockUseAutoScroll = (userHasScrolled: boolean = false): MockUseAutoS
     dependencies?: unknown[]
     smooth?: boolean
     isStreaming?: boolean
-    onUserScroll?: (isAtBottom: boolean) => void
     rootMargin?: string
   }) => ({
     scrollContainerRef,
@@ -33,8 +31,7 @@ const createMockUseAutoScroll = (userHasScrolled: boolean = false): MockUseAutoS
     scrollToBottom,
     resetUserScroll,
     scrollHandlers,
-    userHasScrolled,
-    isAtBottom: !userHasScrolled,
+    isAtBottom,
   })) as unknown as typeof import('@/hooks/use-auto-scroll').useAutoScroll
 
   return {
@@ -74,19 +71,19 @@ describe('useChatScrollHandler', () => {
     })
 
     expect(result.current).toHaveProperty('isAtBottom')
-    expect(result.current).toHaveProperty('resetUserScroll')
     expect(result.current).toHaveProperty('scrollContainerRef')
     expect(result.current).toHaveProperty('scrollHandlers')
     expect(result.current).toHaveProperty('scrollTargetRef')
     expect(result.current).toHaveProperty('scrollToBottom')
+    expect(result.current).toHaveProperty('scrollToBottomAndActivate')
     expect(typeof result.current.scrollToBottom).toBe('function')
-    expect(typeof result.current.resetUserScroll).toBe('function')
+    expect(typeof result.current.scrollToBottomAndActivate).toBe('function')
   })
 
-  it('should return isAtBottom as true when user has not scrolled', () => {
+  it('should return isAtBottom as true when at bottom', () => {
     const mockChatInstance = createMockChatInstance()
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const { mockHook } = createMockUseAutoScroll(false) // userHasScrolled = false
+    const { mockHook } = createMockUseAutoScroll(true)
 
     hydrateStore({
       chatInstance: mockChatInstance,
@@ -105,10 +102,10 @@ describe('useChatScrollHandler', () => {
     expect(result.current.isAtBottom).toBe(true)
   })
 
-  it('should return isAtBottom as false when user has scrolled', () => {
+  it('should return isAtBottom as false when not at bottom', () => {
     const mockChatInstance = createMockChatInstance()
     const mockUseChat = createMockUseChat(mockChatInstance)
-    const { mockHook } = createMockUseAutoScroll(true) // userHasScrolled = true
+    const { mockHook } = createMockUseAutoScroll(false)
 
     hydrateStore({
       chatInstance: mockChatInstance,
@@ -127,7 +124,7 @@ describe('useChatScrollHandler', () => {
     expect(result.current.isAtBottom).toBe(false)
   })
 
-  it('should call scrollToBottom and resetUserScroll when scrollToBottom is called', () => {
+  it('should only call scrollToBottom when scrollToBottom is called', () => {
     const mockChatInstance = createMockChatInstance()
     const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll()
@@ -148,6 +145,33 @@ describe('useChatScrollHandler', () => {
 
     act(() => {
       result.current.scrollToBottom()
+    })
+
+    expect(scrollToBottom).toHaveBeenCalled()
+    expect(resetUserScroll).not.toHaveBeenCalled()
+  })
+
+  it('should call both scrollToBottom and resetUserScroll when scrollToBottomAndActivate is called', () => {
+    const mockChatInstance = createMockChatInstance()
+    const mockUseChat = createMockUseChat(mockChatInstance)
+    const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll()
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    act(() => {
+      result.current.scrollToBottomAndActivate()
     })
 
     expect(scrollToBottom).toHaveBeenCalled()
@@ -188,12 +212,11 @@ describe('useChatScrollHandler', () => {
     const mockUseAutoScroll = ((options?: unknown) => {
       capturedOptions.push(options)
       return {
-        scrollContainerRef: { current: null },
-        scrollTargetRef: { current: null },
+        scrollContainerRef: () => {},
+        scrollTargetRef: () => {},
         scrollToBottom: mock(),
         resetUserScroll: mock(),
-        scrollHandlers: { onScroll: () => {}, onWheel: () => {}, onTouchStart: () => {} },
-        userHasScrolled: false,
+        scrollHandlers: { onWheel: () => {}, onTouchStart: () => {} },
         isAtBottom: true,
       }
     }) as unknown as typeof import('@/hooks/use-auto-scroll').useAutoScroll

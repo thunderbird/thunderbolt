@@ -24,23 +24,30 @@ describe('useAutoScroll', () => {
     return div
   }
 
+  const createMockTarget = () => document.createElement('div')
+
+  // Helper to set up refs (callback refs need to be called)
+  const setupRefs = (
+    result: { current: ReturnType<typeof useAutoScroll> },
+    container: HTMLDivElement,
+    target: HTMLDivElement,
+  ) => {
+    act(() => {
+      result.current.scrollContainerRef(container)
+      result.current.scrollTargetRef(target)
+    })
+  }
+
   describe('initialization', () => {
     it('should return all required refs and handlers', () => {
       const { result } = renderHook(() => useAutoScroll())
 
       expect(result.current).toHaveProperty('scrollContainerRef')
       expect(result.current).toHaveProperty('scrollTargetRef')
-      expect(result.current).toHaveProperty('userHasScrolled')
       expect(result.current).toHaveProperty('isAtBottom')
       expect(result.current).toHaveProperty('scrollToBottom')
       expect(result.current).toHaveProperty('resetUserScroll')
       expect(result.current).toHaveProperty('scrollHandlers')
-    })
-
-    it('should initialize with userHasScrolled as false', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      expect(result.current.userHasScrolled).toBe(false)
     })
 
     it('should initialize with isAtBottom as true', () => {
@@ -49,12 +56,18 @@ describe('useAutoScroll', () => {
       expect(result.current.isAtBottom).toBe(true)
     })
 
-    it('should return scroll handlers with onScroll, onWheel, and onTouchStart', () => {
+    it('should return scroll handlers with onWheel and onTouchStart', () => {
       const { result } = renderHook(() => useAutoScroll())
 
-      expect(typeof result.current.scrollHandlers.onScroll).toBe('function')
       expect(typeof result.current.scrollHandlers.onWheel).toBe('function')
       expect(typeof result.current.scrollHandlers.onTouchStart).toBe('function')
+    })
+
+    it('should return callback refs', () => {
+      const { result } = renderHook(() => useAutoScroll())
+
+      expect(typeof result.current.scrollContainerRef).toBe('function')
+      expect(typeof result.current.scrollTargetRef).toBe('function')
     })
   })
 
@@ -63,10 +76,11 @@ describe('useAutoScroll', () => {
       const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
 
       const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
+      const target = createMockTarget()
+      setupRefs(result, container, target)
 
       act(() => {
-        result.current.scrollToBottom(false) // instant scroll
+        result.current.scrollToBottom(false)
       })
 
       expect(container.scrollTop).toBe(500) // scrollHeight - clientHeight
@@ -76,13 +90,13 @@ describe('useAutoScroll', () => {
       const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
 
       const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
+      const target = createMockTarget()
+      setupRefs(result, container, target)
 
       act(() => {
         result.current.scrollToBottom()
       })
 
-      // Instant scroll should set scrollTop immediately
       expect(container.scrollTop).toBe(500)
     })
 
@@ -90,9 +104,9 @@ describe('useAutoScroll', () => {
       const { result } = renderHook(() => useAutoScroll({ smooth: true, isStreaming: false }))
 
       const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
+      const target = createMockTarget()
+      setupRefs(result, container, target)
 
-      // Verify smooth scroll can be called without throwing
       expect(() => {
         act(() => {
           result.current.scrollToBottom()
@@ -101,144 +115,161 @@ describe('useAutoScroll', () => {
     })
   })
 
-  describe('handleScroll', () => {
-    it('should set userHasScrolled to true when scrolled far from bottom', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      const container = createMockContainer(0, 1000, 500) // 500px from bottom (> 100px threshold)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
-
-      act(() => {
-        result.current.scrollHandlers.onScroll()
-      })
-
-      expect(result.current.userHasScrolled).toBe(true)
-    })
-
-    it('should set userHasScrolled to false when scrolled close to bottom', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      // First scroll away
-      const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
-
-      act(() => {
-        result.current.scrollHandlers.onScroll()
-      })
-
-      // Then scroll to bottom (scrollTop = scrollHeight - clientHeight - small offset)
-      Object.defineProperty(container, 'scrollTop', { value: 480, configurable: true }) // 20px from bottom (< 50px threshold)
-
-      act(() => {
-        result.current.scrollHandlers.onScroll()
-      })
-
-      expect(result.current.userHasScrolled).toBe(false)
-    })
-  })
-
   describe('handleWheel', () => {
-    it('should set userHasScrolled to true when scrolling up', () => {
-      const { result } = renderHook(() => useAutoScroll())
+    it('should disable auto-scroll when scrolling up', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
 
       const container = createMockContainer(500, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
+      const target = createMockTarget()
+      setupRefs(result, container, target)
 
-      act(() => {
-        result.current.scrollHandlers.onWheel({ deltaY: -100 } as React.WheelEvent)
-      })
-
-      expect(result.current.userHasScrolled).toBe(true)
-    })
-
-    it('should not change userHasScrolled when scrolling down', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      act(() => {
-        result.current.scrollHandlers.onWheel({ deltaY: 100 } as React.WheelEvent)
-      })
-
-      expect(result.current.userHasScrolled).toBe(false)
-    })
-  })
-
-  describe('handleTouchStart', () => {
-    it('should set userHasScrolled to true when not at bottom', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      const container = createMockContainer(0, 1000, 500) // 500px from bottom
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
-
-      act(() => {
-        result.current.scrollHandlers.onTouchStart({} as React.TouchEvent)
-      })
-
-      expect(result.current.userHasScrolled).toBe(true)
-    })
-
-    it('should not set userHasScrolled when at bottom', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      const container = createMockContainer(500, 1000, 500) // at bottom
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
-
-      act(() => {
-        result.current.scrollHandlers.onTouchStart({} as React.TouchEvent)
-      })
-
-      expect(result.current.userHasScrolled).toBe(false)
-    })
-  })
-
-  describe('resetUserScroll', () => {
-    it('should reset userHasScrolled to false', () => {
-      const { result } = renderHook(() => useAutoScroll())
-
-      // First set userHasScrolled to true
-      const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
-
-      act(() => {
-        result.current.scrollHandlers.onScroll()
-      })
-
-      expect(result.current.userHasScrolled).toBe(true)
-
-      // Then reset
+      // Enable auto-scroll first
       act(() => {
         result.current.resetUserScroll()
       })
 
-      expect(result.current.userHasScrolled).toBe(false)
-    })
-  })
+      // Scroll up (disables auto-scroll)
+      act(() => {
+        result.current.scrollHandlers.onWheel({ deltaY: -100 } as React.WheelEvent)
+      })
 
-  describe('dependency-based scrolling', () => {
-    it('should not scroll when user has scrolled away', () => {
+      const scrollTopBefore = container.scrollTop
+
+      // Change dependencies - should NOT auto-scroll since user scrolled up
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+
+      expect(container.scrollTop).toBe(scrollTopBefore)
+    })
+
+    it('should not disable auto-scroll when scrolling down', () => {
       const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
         initialProps: { deps: ['a'] },
       })
 
       const container = createMockContainer(0, 1000, 500)
-      ;(result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container
+      const target = createMockTarget()
+      setupRefs(result, container, target)
 
-      // User scrolls away
+      // Enable auto-scroll
       act(() => {
-        result.current.scrollHandlers.onScroll()
+        result.current.resetUserScroll()
       })
 
-      expect(result.current.userHasScrolled).toBe(true)
+      // Scroll down (should NOT disable auto-scroll)
+      act(() => {
+        result.current.scrollHandlers.onWheel({ deltaY: 100 } as React.WheelEvent)
+      })
 
-      // Record current scrollTop
-      const scrollTopBefore = container.scrollTop
-
-      // Change dependencies
+      // Change dependencies - should still auto-scroll
       act(() => {
         rerender({ deps: ['b'] })
       })
 
-      // Should not have scrolled (scrollTop unchanged)
+      expect(container.scrollTop).toBe(500)
+    })
+  })
+
+  describe('handleTouchStart', () => {
+    it('should disable auto-scroll on any touch (user wants control)', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const container = createMockContainer(500, 1000, 500)
+      const target = createMockTarget()
+      setupRefs(result, container, target)
+
+      // Enable auto-scroll
+      act(() => {
+        result.current.resetUserScroll()
+      })
+
+      // Touch - should disable auto-scroll immediately (user wants control)
+      act(() => {
+        result.current.scrollHandlers.onTouchStart({} as React.TouchEvent)
+      })
+
+      const scrollTopBefore = container.scrollTop
+
+      // Change dependencies - should NOT auto-scroll since user touched
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+
       expect(container.scrollTop).toBe(scrollTopBefore)
+    })
+  })
+  describe('resetUserScroll', () => {
+    it('should enable auto-scroll when called', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const container = createMockContainer(0, 1000, 500)
+      const target = createMockTarget()
+      setupRefs(result, container, target)
+
+      // Auto-scroll is disabled by default, so changing deps won't scroll
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+      expect(container.scrollTop).toBe(0)
+
+      // Enable auto-scroll
+      act(() => {
+        result.current.resetUserScroll()
+      })
+
+      // Now changing deps should scroll
+      act(() => {
+        rerender({ deps: ['c'] })
+      })
+      expect(container.scrollTop).toBe(500)
+    })
+  })
+
+  describe('dependency-based scrolling', () => {
+    it('should not auto-scroll by default when dependencies change', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const container = createMockContainer(0, 1000, 500)
+      const target = createMockTarget()
+      setupRefs(result, container, target)
+
+      const scrollTopBefore = container.scrollTop
+
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+
+      expect(container.scrollTop).toBe(scrollTopBefore)
+    })
+
+    it('should auto-scroll when enabled and dependencies change', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const container = createMockContainer(0, 1000, 500)
+      const target = createMockTarget()
+      setupRefs(result, container, target)
+
+      // Enable auto-scroll
+      act(() => {
+        result.current.resetUserScroll()
+      })
+
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+
+      expect(container.scrollTop).toBe(500)
     })
   })
 })

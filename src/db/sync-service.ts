@@ -5,6 +5,7 @@
 
 import type { KyInstance } from 'ky'
 import type { CRSQLChange } from './crsqlite-worker'
+import { getLatestMigrationVersion } from './migrate'
 import { DatabaseSingleton } from './singleton'
 
 const SYNC_VERSION_KEY = 'thunderbolt_sync_version'
@@ -41,6 +42,10 @@ type SyncPushResponse = {
 type SyncPullResponse = {
   changes: SerializedChange[]
   serverVersion: string
+  /** If true, the client needs to upgrade to a newer app version */
+  needsUpgrade?: boolean
+  /** The minimum migration version required for sync */
+  requiredVersion?: string
 }
 
 /**
@@ -93,7 +98,7 @@ const deserializeChange = (serialized: SerializedChange): CRSQLChange => ({
   seq: serialized.seq,
 })
 
-export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline'
+export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline' | 'version_mismatch'
 
 export type SyncServiceOptions = {
   httpClient: KyInstance
@@ -102,6 +107,8 @@ export type SyncServiceOptions = {
   onError?: (error: Error) => void
   /** Called when tables have been updated from remote changes */
   onTablesChanged?: (tables: string[]) => void
+  /** Called when a version mismatch is detected (client needs upgrade) */
+  onVersionMismatch?: (requiredVersion: string) => void
 }
 
 export class SyncService {
@@ -112,7 +119,9 @@ export class SyncService {
   private onStatusChange?: (status: SyncStatus) => void
   private onError?: (error: Error) => void
   private onTablesChanged?: (tables: string[]) => void
+  private onVersionMismatch?: (requiredVersion: string) => void
   private isSyncing = false
+  private _requiredVersion: string | null = null
 
   constructor(options: SyncServiceOptions) {
     this.httpClient = options.httpClient
@@ -120,6 +129,14 @@ export class SyncService {
     this.onStatusChange = options.onStatusChange
     this.onError = options.onError
     this.onTablesChanged = options.onTablesChanged
+    this.onVersionMismatch = options.onVersionMismatch
+  }
+
+  /**
+   * Get the required migration version (if version mismatch occurred)
+   */
+  get requiredVersion(): string | null {
+    return this._requiredVersion
   }
 
   /**
@@ -214,6 +231,7 @@ export class SyncService {
 
     const siteId = await this.getSiteId()
     const serializedChanges = changes.map(serializeChange)
+    const migrationVersion = getLatestMigrationVersion()
 
     const response = await this.httpClient
       .post('sync/push', {
@@ -221,6 +239,7 @@ export class SyncService {
           siteId,
           changes: serializedChanges,
           dbVersion: dbVersion.toString(),
+          migrationVersion,
         },
       })
       .json<SyncPushResponse>()
@@ -238,19 +257,32 @@ export class SyncService {
   /**
    * Pull changes from the server
    * @returns The list of tables that were updated, or empty array if no changes
+   * @throws Error with 'VERSION_MISMATCH' if client needs upgrade
    */
   async pullChanges(): Promise<string[]> {
     const serverVersion = this.getServerVersion()
     const siteId = await this.getSiteId()
+    const migrationVersion = getLatestMigrationVersion()
 
     const response = await this.httpClient
       .get('sync/pull', {
         searchParams: {
           since: serverVersion.toString(),
           siteId,
+          migrationVersion,
         },
       })
       .json<SyncPullResponse>()
+
+    // Check if we need to upgrade
+    if (response.needsUpgrade && response.requiredVersion) {
+      this._requiredVersion = response.requiredVersion
+      this.setStatus('version_mismatch')
+      this.onVersionMismatch?.(response.requiredVersion)
+      // Stop the sync service - will need app restart after upgrade
+      this.stop()
+      throw new Error('VERSION_MISMATCH')
+    }
 
     let affectedTables: string[] = []
 
@@ -281,6 +313,11 @@ export class SyncService {
       return // Database doesn't support syncing
     }
 
+    // Don't sync if we're in version mismatch state
+    if (this.status === 'version_mismatch') {
+      return
+    }
+
     this.isSyncing = true
     this.setStatus('syncing')
 
@@ -294,6 +331,12 @@ export class SyncService {
       this.setStatus('idle')
     } catch (error) {
       const errorInstance = error instanceof Error ? error : new Error(String(error))
+
+      // Version mismatch is handled in pullChanges - don't override status
+      if (errorInstance.message === 'VERSION_MISMATCH') {
+        // Status already set to version_mismatch, service already stopped
+        return
+      }
 
       // Check if it's a network error
       if (errorInstance.message.includes('Failed to fetch') || errorInstance.message.includes('NetworkError')) {

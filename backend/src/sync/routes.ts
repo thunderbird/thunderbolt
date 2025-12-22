@@ -21,6 +21,25 @@ const serializedChangeSchema = t.Object({
 })
 
 /**
+ * Compare two migration versions
+ * Migration hashes are in format: 0000_name, 0001_name, etc.
+ * Returns: negative if a < b, 0 if equal, positive if a > b
+ */
+const compareMigrationVersions = (a: string | null, b: string | null): number => {
+  if (!a && !b) return 0
+  if (!a) return -1
+  if (!b) return 1
+
+  // Extract numeric prefix (e.g., "0000" from "0000_nice_mandroid")
+  const getVersionNumber = (version: string): number => {
+    const match = version.match(/^(\d+)/)
+    return match ? parseInt(match[1], 10) : 0
+  }
+
+  return getVersionNumber(a) - getVersionNumber(b)
+}
+
+/**
  * Mock user for sync integration testing
  * TODO: Replace with real authentication once CORS is resolved
  */
@@ -84,20 +103,20 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
       .post(
         '/push',
         async ({ body, request, set }) => {
-          const user = await getAuthenticatedUser(database, auth, request.headers)
-          if (!user) {
+          const authUser = await getAuthenticatedUser(database, auth, request.headers)
+          if (!authUser) {
             set.status = 401
             return { success: false, error: 'Unauthorized' }
           }
 
-          const { siteId, changes } = body
+          const { siteId, changes, migrationVersion } = body
 
           if (changes.length === 0) {
             // No changes to push
             const lastChange = await database
               .select({ id: syncChanges.id })
               .from(syncChanges)
-              .where(eq(syncChanges.userId, user.id))
+              .where(eq(syncChanges.userId, authUser.id))
               .orderBy(syncChanges.id)
               .limit(1)
 
@@ -113,7 +132,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             .insert(syncChanges)
             .values(
               changes.map((change) => ({
-                userId: user.id,
+                userId: authUser.id,
                 siteId,
                 tableName: change.table,
                 pk: change.pk,
@@ -131,24 +150,44 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
           // Get the max server version from inserted changes
           const maxServerVersion = Math.max(...insertedChanges.map((c) => c.id))
 
-          // Update or insert device record
+          // Update or insert device record with migration version
           const existingDevice = await database
             .select({ id: syncDevices.id })
             .from(syncDevices)
-            .where(and(eq(syncDevices.userId, user.id), eq(syncDevices.siteId, siteId)))
+            .where(and(eq(syncDevices.userId, authUser.id), eq(syncDevices.siteId, siteId)))
             .limit(1)
 
           if (existingDevice.length > 0) {
             await database
               .update(syncDevices)
-              .set({ lastSeenAt: new Date() })
+              .set({ lastSeenAt: new Date(), migrationVersion })
               .where(eq(syncDevices.id, existingDevice[0].id))
           } else {
             await database.insert(syncDevices).values({
-              userId: user.id,
+              userId: authUser.id,
               siteId,
+              migrationVersion,
               lastSeenAt: new Date(),
             })
+          }
+
+          // Check if this push has a newer migration version than the user's current sync version
+          // If so, update the user's sync_migration_version (this becomes the new minimum required version)
+          if (migrationVersion) {
+            const currentUser = await database
+              .select({ syncMigrationVersion: user.syncMigrationVersion })
+              .from(user)
+              .where(eq(user.id, authUser.id))
+              .limit(1)
+
+            const currentVersion = currentUser[0]?.syncMigrationVersion ?? null
+
+            if (compareMigrationVersions(migrationVersion, currentVersion) > 0) {
+              await database
+                .update(user)
+                .set({ syncMigrationVersion: migrationVersion })
+                .where(eq(user.id, authUser.id))
+            }
           }
 
           return {
@@ -161,6 +200,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             siteId: t.String(),
             changes: t.Array(serializedChangeSchema),
             dbVersion: t.String(),
+            migrationVersion: t.Optional(t.String()),
           }),
         },
       )
@@ -172,17 +212,36 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
       .get(
         '/pull',
         async ({ query, request, set }) => {
-          const user = await getAuthenticatedUser(database, auth, request.headers)
-          if (!user) {
+          const authUser = await getAuthenticatedUser(database, auth, request.headers)
+          if (!authUser) {
             set.status = 401
             return { changes: [], serverVersion: '0', error: 'Unauthorized' }
           }
 
-          const { since, siteId } = query
+          const { since, siteId, migrationVersion } = query
           const sinceVersion = parseInt(since, 10) || 0
 
+          // Check if client's migration version meets the minimum required version
+          const currentUser = await database
+            .select({ syncMigrationVersion: user.syncMigrationVersion })
+            .from(user)
+            .where(eq(user.id, authUser.id))
+            .limit(1)
+
+          const requiredVersion = currentUser[0]?.syncMigrationVersion ?? null
+
+          // If the client's migration version is older than the required version, block sync
+          if (requiredVersion && compareMigrationVersions(migrationVersion ?? null, requiredVersion) < 0) {
+            return {
+              changes: [],
+              serverVersion: sinceVersion.toString(),
+              needsUpgrade: true,
+              requiredVersion,
+            }
+          }
+
           // Build where conditions
-          const conditions = [eq(syncChanges.userId, user.id), gt(syncChanges.id, sinceVersion)]
+          const conditions = [eq(syncChanges.userId, authUser.id), gt(syncChanges.id, sinceVersion)]
 
           // Exclude changes from the requesting device (they already have those)
           if (siteId) {
@@ -226,23 +285,24 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             seq: change.seq,
           }))
 
-          // Update device last seen
+          // Update device last seen and migration version
           if (siteId) {
             const existingDevice = await database
               .select({ id: syncDevices.id })
               .from(syncDevices)
-              .where(and(eq(syncDevices.userId, user.id), eq(syncDevices.siteId, siteId)))
+              .where(and(eq(syncDevices.userId, authUser.id), eq(syncDevices.siteId, siteId)))
               .limit(1)
 
             if (existingDevice.length > 0) {
               await database
                 .update(syncDevices)
-                .set({ lastSeenAt: new Date() })
+                .set({ lastSeenAt: new Date(), migrationVersion })
                 .where(eq(syncDevices.id, existingDevice[0].id))
             } else {
               await database.insert(syncDevices).values({
-                userId: user.id,
+                userId: authUser.id,
                 siteId,
+                migrationVersion,
                 lastSeenAt: new Date(),
               })
             }
@@ -257,6 +317,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
           query: t.Object({
             since: t.String(),
             siteId: t.Optional(t.String()),
+            migrationVersion: t.Optional(t.String()),
           }),
         },
       )
@@ -266,8 +327,8 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
        * Useful for initial sync setup
        */
       .get('/version', async ({ request, set }) => {
-        const user = await getAuthenticatedUser(auth, request.headers)
-        if (!user) {
+        const authUser = await getAuthenticatedUser(database, auth, request.headers)
+        if (!authUser) {
           set.status = 401
           return { serverVersion: '0', error: 'Unauthorized' }
         }
@@ -275,7 +336,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
         const lastChange = await database
           .select({ id: syncChanges.id })
           .from(syncChanges)
-          .where(eq(syncChanges.userId, user.id))
+          .where(eq(syncChanges.userId, authUser.id))
           .orderBy(syncChanges.id)
           .limit(1)
 

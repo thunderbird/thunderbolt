@@ -5,6 +5,14 @@ import type { AnyDrizzleDatabase } from './database-interface'
 export type ProxyMigrator = (migrationQueries: string[]) => Promise<void>
 
 /**
+ * Get the latest migration version hash
+ * Used for sync version compatibility checking between devices
+ */
+export function getLatestMigrationVersion(): string {
+  return migrations[migrations.length - 1]?.hash ?? '0000_initial'
+}
+
+/**
  * List of tables to mark as CRRs (Conflict-free Replicated Relations) for cr-sqlite sync
  */
 const CRR_TABLES = [

@@ -43,6 +43,7 @@ export const syncDevices = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     siteId: text('site_id').notNull(), // Device site ID
+    migrationVersion: text('migration_version'), // Last migration hash this device synced with
     lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },

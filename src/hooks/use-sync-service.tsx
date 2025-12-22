@@ -38,6 +38,8 @@ export type UseSyncServiceResult = {
   stop: () => void
   /** Last error if status is 'error' */
   lastError: Error | null
+  /** Required migration version if status is 'version_mismatch' */
+  requiredVersion: string | null
 }
 
 /**
@@ -50,6 +52,7 @@ export const useSyncService = (): UseSyncServiceResult => {
   const [status, setStatus] = useState<SyncStatus>('idle')
   const [isRunning, setIsRunning] = useState(false)
   const [lastError, setLastError] = useState<Error | null>(null)
+  const [requiredVersion, setRequiredVersion] = useState<string | null>(null)
 
   const isSupported = DatabaseSingleton.instance.isInitialized && DatabaseSingleton.instance.supportsSyncing
 
@@ -98,6 +101,9 @@ export const useSyncService = (): UseSyncServiceResult => {
         // Invalidate React Query caches for changed tables
         invalidateQueriesForTables(tables)
       },
+      onVersionMismatch: (version) => {
+        setRequiredVersion(version)
+      },
     })
 
     service.start()
@@ -140,5 +146,6 @@ export const useSyncService = (): UseSyncServiceResult => {
     start,
     stop,
     lastError,
+    requiredVersion,
   }
 }

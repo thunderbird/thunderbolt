@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@/db/sync-service'
 import { useSyncService } from '@/hooks/use-sync-service'
 import { cn } from '@/lib/utils'
-import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
 import type { FC } from 'react'
 import { Button } from './ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -27,6 +27,11 @@ const statusConfig: Record<SyncStatus, { icon: typeof Cloud; label: string; colo
     label: 'Offline',
     color: 'text-muted-foreground',
   },
+  version_mismatch: {
+    icon: AlertTriangle,
+    label: 'Update required',
+    color: 'text-amber-500',
+  },
 }
 
 type SyncStatusIndicatorProps = {
@@ -45,9 +50,6 @@ type SyncStatusIndicatorProps = {
 export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, showLabel = false, size = 'md' }) => {
   const { status, isSupported, forceSync } = useSyncService()
 
-  console.log('status', status)
-  console.log('isSupported', isSupported)
-
   // Don't show anything if sync is not supported
   if (!isSupported) {
     return null
@@ -56,6 +58,9 @@ export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, s
   const config = statusConfig[status]
   const Icon = config.icon
   const iconSize = size === 'sm' ? 14 : 16
+  const isVersionMismatch = status === 'version_mismatch'
+  const canSync = status !== 'syncing' && !isVersionMismatch
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -64,8 +69,8 @@ export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, s
             variant="ghost"
             size="sm"
             className={cn('gap-1.5 px-2', className)}
-            onClick={() => forceSync()}
-            disabled={status === 'syncing'}
+            onClick={() => canSync && forceSync()}
+            disabled={!canSync}
           >
             <Icon
               size={iconSize}
@@ -75,13 +80,24 @@ export const SyncStatusIndicator: FC<SyncStatusIndicatorProps> = ({ className, s
             {showLabel && <span className={cn('text-xs', config.color)}>{config.label}</span>}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="flex items-center gap-2">
-          <span>{config.label}</span>
-          {status !== 'syncing' && (
-            <span className="text-muted-foreground text-xs flex items-center gap-1">
-              <RefreshCw size={12} />
-              Click to sync
-            </span>
+        <TooltipContent side="bottom" className="max-w-xs">
+          {isVersionMismatch ? (
+            <div className="flex flex-col gap-1">
+              <span className="font-medium">Sync paused - app update required</span>
+              <span className="text-muted-foreground text-xs">
+                Another device has synced with a newer version. Please update the app to continue syncing.
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span>{config.label}</span>
+              {canSync && (
+                <span className="text-muted-foreground text-xs flex items-center gap-1">
+                  <RefreshCw size={12} />
+                  Click to sync
+                </span>
+              )}
+            </div>
           )}
         </TooltipContent>
       </Tooltip>

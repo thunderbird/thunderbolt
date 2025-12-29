@@ -187,6 +187,10 @@ export const createTracedSSEStream = (
 
 /**
  * Start a LangSmith trace for a chat completion request
+ *
+ * @param messages - Chat messages
+ * @param metadata - Request metadata
+ * @param sourceTags - Optional tags to identify the source (default: ['production', 'chat'])
  */
 export const startChatTrace = async (
   messages: Array<{ role: string; content: unknown }>,
@@ -198,6 +202,7 @@ export const startChatTrace = async (
     userId?: string
     sessionId?: string
   },
+  sourceTags?: string[],
 ): Promise<TraceContext | null> => {
   if (!isLangSmithConfigured()) {
     return null
@@ -215,6 +220,9 @@ export const startChatTrace = async (
 
   // Generate our own run ID since createRun returns void
   const runId = crypto.randomUUID()
+
+  // Default to production tags if not specified
+  const tags = sourceTags ?? ['production', 'chat']
 
   await client.createRun({
     id: runId,
@@ -236,10 +244,13 @@ export const startChatTrace = async (
         session_id: metadata.sessionId,
         model: metadata.model,
         provider: metadata.provider,
+        // Source tagging for trace differentiation
+        source: tags[0], // Primary source: 'production' or 'evaluation'
+        source_tags: tags, // Full tag list for filtering
       },
     },
     project_name: project,
-  })
+  } as Parameters<typeof client.createRun>[0] & { tags?: string[] })
 
   return {
     runId,

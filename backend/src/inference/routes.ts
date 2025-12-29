@@ -32,6 +32,18 @@ export const supportedModels: Record<string, ModelConfig> = {
 }
 
 /**
+ * Parse source tags from X-Evaluation-Source header
+ * Format: comma-separated tags, e.g., "evaluation,behavioral"
+ */
+const parseSourceTags = (header: string | null): string[] | undefined => {
+  if (!header) return undefined
+  return header
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+}
+
+/**
  * Inference API routes
  */
 export const createInferenceRoutes = () => {
@@ -58,14 +70,21 @@ export const createInferenceRoutes = () => {
     try {
       const startTime = Date.now()
 
+      // Check for evaluation source header (used by evaluation framework)
+      const sourceTags = parseSourceTags(ctx.request.headers.get('X-Evaluation-Source'))
+
       // Start LangSmith trace if configured
       const traceContext = isLangSmithConfigured()
-        ? await startChatTrace(body.messages, {
-            model: body.model,
-            provider,
-            hasTools: !!body.tools,
-            temperature: body.temperature,
-          })
+        ? await startChatTrace(
+            body.messages,
+            {
+              model: body.model,
+              provider,
+              hasTools: !!body.tools,
+              temperature: body.temperature,
+            },
+            sourceTags,
+          )
         : null
 
       const completion = await (client as PostHogOpenAI).chat.completions.create({

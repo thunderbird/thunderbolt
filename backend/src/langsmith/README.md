@@ -1,15 +1,24 @@
-# LangSmith Integration for Prompt Evaluation
+# LangSmith Integration for Thunderbolt
 
-This module provides tools for evaluating Thunderbolt's system prompts using LangSmith for observability and experiments.
+This module provides LangSmith-specific integrations for tracing and online evaluation.
 
-## Overview
+> **📦 Evaluation System Moved!**
+>
+> The evaluation framework has been moved to a new, provider-agnostic architecture at:
+>
+> **`src/evaluation/`**
+>
+> See [`src/evaluation/README.md`](../evaluation/README.md) for:
+>
+> - Quick start commands
+> - Adding new evaluators
+> - Adding new providers
+> - Architecture documentation
 
-The evaluation system is split into two complementary experiments:
+## What's Still Here
 
-| Experiment     | Purpose                      | Evaluators   | Cost      | Frequency    |
-| -------------- | ---------------------------- | ------------ | --------- | ------------ |
-| **Behavioral** | Tests HOW the model behaves  | Rule-based   | Free      | Every change |
-| **Quality**    | Tests WHAT the model answers | LLM-as-judge | API costs | Periodic     |
+- **`client.ts`** - LangSmith client configuration
+- **`online-evaluation.ts`** - Automatic sampling of production traffic
 
 ## Quick Start
 
@@ -94,7 +103,11 @@ src/langsmith/
 
 ## Behavioral Evaluation
 
-Tests **how** the model behaves (tool usage, formatting, patterns).
+> **Purpose**: Verify the model follows structural rules and patterns  
+> **Cost**: Free (heuristic evaluators) + 3 LLM judge calls  
+> **Speed**: ~2-5 seconds per test case
+
+Tests **how** the model behaves—not whether the answer is correct, but whether it follows the expected patterns: using tools when it should, searching before answering real-time questions, avoiding unnecessary formatting, responding in the user's language, etc.
 
 ### What it tests (9 evaluators)
 
@@ -165,7 +178,11 @@ Defined in `behavioral-datasets.ts`:
 
 ## Quality Evaluation
 
-Tests **what** the model answers through **full multi-turn conversation execution** with real tool calls.
+> **Purpose**: Verify the model provides correct, helpful, and well-grounded answers  
+> **Cost**: Tool API costs + LLM judge calls (~$0.01-0.08 per test case)  
+> **Speed**: ~5-30 seconds per test case (depends on tool calls)
+
+Tests **what** the model answers through **full multi-turn conversation execution** with real tool calls. Unlike behavioral tests, this actually runs the complete conversation flow: the model receives a query, decides to use tools (or not), executes them, and produces a final answer. LLM-as-judge evaluators then assess whether the answer is correct, complete, and properly grounded in the tool results.
 
 ### Key Features
 

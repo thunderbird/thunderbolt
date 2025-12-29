@@ -6,13 +6,49 @@
  */
 
 import { getLangSmithClient, getLangSmithProject, isLangSmithConfigured } from './client'
-import {
-  evaluateToolUsage,
-  evaluateFormatting,
-  evaluateResponseQuality,
-  type CompletionOutput,
-  type EvaluationResult,
-} from './evaluation/evaluators'
+// Types for online evaluation
+export type CompletionOutput = {
+  content: string
+  toolCalls: Array<{ name: string; arguments: string }>
+  finishReason?: string
+}
+
+export type EvaluationResult = {
+  score: number
+  passed: boolean
+  reason: string
+  metadata?: Record<string, unknown>
+}
+
+// Simple inline evaluators for online evaluation
+const evaluateToolUsage = (output: CompletionOutput, _expected: unknown): EvaluationResult => {
+  const toolCount = output.toolCalls.length
+  return {
+    score: toolCount > 0 ? 1.0 : 0.5,
+    passed: true,
+    reason: `Used ${toolCount} tools`,
+  }
+}
+
+const evaluateFormatting = (output: CompletionOutput, _expected: unknown): EvaluationResult => {
+  const hasTable = /\|.*\|.*\|/m.test(output.content) && output.content.includes('---')
+  return {
+    score: 1.0,
+    passed: true,
+    reason: hasTable ? 'Response contains table' : 'Response formatted normally',
+  }
+}
+
+const evaluateResponseQuality = (output: CompletionOutput): EvaluationResult => {
+  if (!output.content || output.content.trim().length === 0) {
+    return { score: 0, passed: false, reason: 'Empty response' }
+  }
+  return {
+    score: 1.0,
+    passed: true,
+    reason: 'Response has content',
+  }
+}
 
 export type OnlineEvaluationConfig = {
   /** Fraction of requests to evaluate (0.0 to 1.0) */

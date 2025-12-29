@@ -14,13 +14,9 @@
     "format": "prettier --write src",
     "db": "drizzle-kit",
     "db:dev": "pglite-server --db=./.pglite/data",
-    "eval:sync": "bun run --env-file .env src/langsmith/evaluation/sync-dataset.ts",
-    "eval:behavioral": "bun run --env-file .env src/langsmith/evaluation/run-behavioral.ts",
-    "eval:behavioral:verbose": "bun run --env-file .env src/langsmith/evaluation/run-behavioral.ts --verbose",
-    "eval:quality": "bun run --env-file .env src/langsmith/evaluation/run-quality.ts",
-    "eval:quality:verbose": "bun run --env-file .env src/langsmith/evaluation/run-quality.ts --verbose",
-    "eval:quality:production": "bun run --env-file .env src/langsmith/evaluation/run-quality.ts --production",
-    "eval:all": "bun run eval:behavioral && bun run eval:quality"
+    "eval": "bun run --env-file .env src/evaluation/cli/run.ts",
+    "eval:sync": "bun run --env-file .env src/evaluation/cli/sync.ts",
+    "eval:providers": "bun run --env-file .env src/evaluation/cli/run.ts --list-providers"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.14",

@@ -35,6 +35,9 @@ const settingsSchema = z.object({
   langsmithTracingEnabled: z.boolean().default(false),
   langsmithSamplingRate: z.coerce.number().min(0).max(1).default(1.0),
 
+  // Helicone settings (observability)
+  heliconeApiKey: z.string().default(''),
+
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
   corsOriginRegex: z
@@ -76,6 +79,7 @@ const parseSettings = (): Settings => {
     langsmithProject: process.env.LANGSMITH_PROJECT || 'thunderbolt',
     langsmithTracingEnabled: process.env.LANGSMITH_TRACING_ENABLED === 'true',
     langsmithSamplingRate: process.env.LANGSMITH_SAMPLING_RATE || '1.0',
+    heliconeApiKey: process.env.HELICONE_API_KEY || '',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
     corsOriginRegex:
       process.env.CORS_ORIGIN_REGEX ||

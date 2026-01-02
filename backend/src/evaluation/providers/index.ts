@@ -36,4 +36,5 @@ export {
 
 // Individual providers (for direct use if needed)
 export { ConsoleProvider } from './console'
+export { HeliconeProvider } from './helicone'
 export { LangSmithProvider } from './langsmith'

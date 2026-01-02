@@ -24,6 +24,7 @@ export const createMockSettings = (overrides: Partial<Settings> = {}): Settings 
   langsmithProject: 'thunderbolt-test',
   langsmithTracingEnabled: false,
   langsmithSamplingRate: 1.0,
+  heliconeApiKey: '',
   corsOrigins: 'http://localhost:1420',
   corsOriginRegex: '',
   corsAllowCredentials: true,

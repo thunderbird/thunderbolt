@@ -88,6 +88,15 @@ export const registry: ProviderRegistration[] = [
     },
   },
   {
+    name: 'helicone',
+    description: 'Helicone for observability and trace evaluation',
+    requiredEnv: 'HELICONE_API_KEY',
+    create: (opts) => {
+      const { HeliconeProvider } = require('./helicone') as typeof import('./helicone')
+      return new HeliconeProvider(opts)
+    },
+  },
+  {
     name: 'console',
     description: 'Console output only (no external service)',
     create: (opts) => {

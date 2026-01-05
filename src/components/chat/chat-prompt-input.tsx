@@ -1,5 +1,6 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -122,7 +123,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}
-          submitOnEnter={!isStreaming}
+          submitOnEnter={!isStreaming && !isPlatformMobile()}
           className="flex flex-col gap-2 bg-background dark:bg-input/30 border dark:border-input p-3 rounded-2xl w-full"
           footerStartElements={
             isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />

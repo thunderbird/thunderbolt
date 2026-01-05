@@ -22,7 +22,7 @@ export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollTo
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full bg-background shadow-md size-8"
+          className="rounded-full bg-background/80 backdrop-blur-sm shadow-md size-8"
           onClick={onClick}
           aria-label="Scroll to bottom"
         >

@@ -40,7 +40,15 @@ export {
 export { getChatMessages, getLastMessage, saveMessagesWithContextUpdate, updateMessage } from './chat-messages'
 
 // Tasks
-export { createTask, deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
+export {
+  createTask,
+  deleteTask,
+  deleteTasks,
+  getAllTasks,
+  getIncompleteTasks,
+  getIncompleteTasksCount,
+  updateTask,
+} from './tasks'
 
 // MCP Servers
 export { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
@@ -57,4 +65,4 @@ export {
 } from './prompts'
 
 // Triggers
-export { createTrigger, deleteTriggersForPrompt } from './triggers'
+export { createTrigger, deleteTriggersForPrompt, getAllTriggersForPrompt, getAllEnabledTriggers } from './triggers'

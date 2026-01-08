@@ -1,8 +1,5 @@
-import { DatabaseSingleton } from '@/db/singleton'
-import { triggersTable } from '@/db/tables'
 import { useSettings } from '@/hooks/use-settings'
-import { runAutomation } from '@/dal'
-import { eq } from 'drizzle-orm'
+import { getAllEnabledTriggers, runAutomation } from '@/dal'
 import { useEffect, useRef } from 'react'
 
 export const useTriggerScheduler = () => {
@@ -12,8 +9,6 @@ export const useTriggerScheduler = () => {
   const timers = useRef<number[]>([])
 
   useEffect(() => {
-    const db = DatabaseSingleton.instance.db
-
     const plan = async () => {
       if (!isTriggersEnabled.value) {
         return
@@ -22,7 +17,7 @@ export const useTriggerScheduler = () => {
       timers.current.forEach(clearTimeout)
       timers.current = []
 
-      const triggers = await db.select().from(triggersTable).where(eq(triggersTable.isEnabled, 1))
+      const triggers = await getAllEnabledTriggers()
 
       triggers.forEach((t) => {
         if (t.triggerTime) {

@@ -16,6 +16,7 @@ import {
   createAutomation,
   createTrigger,
   deleteTriggersForPrompt,
+  getAllTriggersForPrompt,
   getAvailableModels,
   getSelectedModel,
   updateAutomation,
@@ -112,7 +113,7 @@ export default function AutomationFormModal({
       if (prompt) {
         // Load existing trigger data if editing
         const loadTriggerData = async () => {
-          const existingTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, prompt.id))
+          const existingTriggers = await getAllTriggersForPrompt(prompt.id)
           const trigger = existingTriggers[0] // Assuming one trigger per prompt
 
           const promptText = prompt.prompt
@@ -198,7 +199,7 @@ export default function AutomationFormModal({
       })
 
       // Handle trigger updates when editing
-      const existingTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, prompt.id))
+      const existingTriggers = await getAllTriggersForPrompt(prompt.id)
       const hasNewTriggerData = values.triggerType === 'time' && values.triggerTime
 
       if (hasNewTriggerData) {

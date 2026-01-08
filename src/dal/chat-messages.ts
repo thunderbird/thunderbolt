@@ -105,7 +105,7 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
   const db = DatabaseSingleton.instance.db
 
   // Fetch current message
-  const message = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+  const message = await getMessage(messageId)
 
   if (!message) {
     throw new Error('Message not found')

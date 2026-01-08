@@ -2,7 +2,15 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { createTask, deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
+import {
+  createTask,
+  deleteTask,
+  deleteTasks,
+  getAllTasks,
+  getIncompleteTasks,
+  getIncompleteTasksCount,
+  updateTask,
+} from './tasks'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -17,6 +25,27 @@ describe('Tasks DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('getAllTasks', () => {
+    it('should return all tasks', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId1 = uuidv7()
+      const taskId2 = uuidv7()
+      const taskId3 = uuidv7()
+
+      await db.insert(tasksTable).values([
+        { id: taskId1, item: 'Task 1', order: 1, isComplete: 0 },
+        { id: taskId2, item: 'Task 2', order: 2, isComplete: 0 },
+        { id: taskId3, item: 'Task 3', order: 3, isComplete: 0 },
+      ])
+
+      const tasks = await getAllTasks()
+      expect(tasks).toHaveLength(3)
+      expect(tasks.map((t) => t.id)).toContain(taskId1)
+      expect(tasks.map((t) => t.id)).toContain(taskId2)
+      expect(tasks.map((t) => t.id)).toContain(taskId3)
+    })
   })
 
   describe('getIncompleteTasks', () => {

@@ -16,7 +16,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { deleteAutomation, getAllPrompts, resetAutomationToDefault, runAutomation } from '@/dal'
+import {
+  deleteAutomation,
+  getAllPrompts,
+  getAllTriggersForPrompt,
+  resetAutomationToDefault,
+  runAutomation,
+} from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { triggersTable } from '@/db/tables'
 import { defaultAutomations } from '@/defaults/automations'
@@ -244,7 +250,7 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
   const { data: triggers = [] } = useQuery({
     queryKey: ['triggers', prompt.id],
     queryFn: async (): Promise<Trigger[]> => {
-      return db.select().from(triggersTable).where(eq(triggersTable.promptId, prompt.id))
+      return getAllTriggersForPrompt(prompt.id)
     },
   })
 

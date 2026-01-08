@@ -4,6 +4,14 @@ import { tasksTable } from '../db/tables'
 import type { Task } from '../types'
 
 /**
+ * Gets all tasks
+ */
+export const getAllTasks = async (): Promise<Task[]> => {
+  const db = DatabaseSingleton.instance.db
+  return await db.select().from(tasksTable)
+}
+
+/**
  * Gets all incomplete tasks, optionally filtered by search query
  */
 export const getIncompleteTasks = async (searchQuery?: string): Promise<Task[]> => {

@@ -1,4 +1,4 @@
-import { deleteTasks as deleteTasksDal } from '@/dal'
+import { deleteTasks as deleteTasksDal, getAllTasks } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
@@ -34,8 +34,7 @@ export const getTasks = {
   verb: 'Getting tasks',
   parameters: z.object({}),
   execute: async () => {
-    const db = DatabaseSingleton.instance.db
-    const tasks = await db.select().from(tasksTable)
+    const tasks = await getAllTasks()
     return tasks
   },
 }

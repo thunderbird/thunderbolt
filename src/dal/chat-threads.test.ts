@@ -1,6 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
@@ -569,6 +570,37 @@ describe('Chat Threads DAL', () => {
       const rawMessages = await db.select().from(chatMessagesTable)
       expect(rawMessages).toHaveLength(3)
       expect(rawMessages.every((m) => m.deletedAt !== null)).toBe(true)
+    })
+
+    it('should preserve original deletedAt timestamps for already soft-deleted threads', async () => {
+      const threadId1 = uuidv7()
+      const threadId2 = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      // Create two threads
+      await db.insert(chatThreadsTable).values([
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0 },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0 },
+      ])
+
+      // Soft delete thread 1 with an older timestamp (1 day ago)
+      const originalDeletionTime = Date.now() - 86400000
+      await db
+        .update(chatThreadsTable)
+        .set({ deletedAt: originalDeletionTime })
+        .where(eq(chatThreadsTable.id, threadId1))
+
+      // Now call deleteAllChatThreads - should only update thread 2
+      await deleteAllChatThreads()
+
+      // Thread 1 should still have its original deletion timestamp
+      const rawThreads = await db.select().from(chatThreadsTable)
+      const thread1 = rawThreads.find((t) => t.id === threadId1)
+      const thread2 = rawThreads.find((t) => t.id === threadId2)
+
+      expect(thread1?.deletedAt).toBe(originalDeletionTime)
+      expect(thread2?.deletedAt).not.toBe(originalDeletionTime)
+      expect(thread2?.deletedAt).not.toBeNull()
     })
   })
 

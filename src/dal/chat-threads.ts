@@ -97,22 +97,29 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 
 /**
  * Soft deletes a specific chat thread by ID (sets deletedAt timestamp)
- * Also soft-deletes all associated messages
+ * Also soft-deletes all associated messages that haven't been deleted yet
  */
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const deletedAt = Date.now()
-  await db.update(chatMessagesTable).set({ deletedAt }).where(eq(chatMessagesTable.chatThreadId, id))
-  await db.update(chatThreadsTable).set({ deletedAt }).where(eq(chatThreadsTable.id, id))
+  await db
+    .update(chatMessagesTable)
+    .set({ deletedAt })
+    .where(and(eq(chatMessagesTable.chatThreadId, id), isNull(chatMessagesTable.deletedAt)))
+  await db
+    .update(chatThreadsTable)
+    .set({ deletedAt })
+    .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
 }
 
 /**
  * Soft deletes all chat threads (sets deletedAt timestamp)
  * Also soft-deletes all associated messages
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteAllChatThreads = async (): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const deletedAt = Date.now()
-  await db.update(chatMessagesTable).set({ deletedAt })
-  await db.update(chatThreadsTable).set({ deletedAt })
+  await db.update(chatMessagesTable).set({ deletedAt }).where(isNull(chatMessagesTable.deletedAt))
+  await db.update(chatThreadsTable).set({ deletedAt }).where(isNull(chatThreadsTable.deletedAt))
 }

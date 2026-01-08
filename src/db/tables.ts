@@ -18,6 +18,7 @@ export const chatThreadsTable = sqliteTable('chat_threads', {
   triggeredBy: text('triggered_by').references(() => promptsTable.id, { onDelete: 'set null' }),
   wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0).notNull(),
   contextSize: integer('context_size'),
+  deletedAt: integer('deleted_at'),
 })
 
 export const chatMessagesTable = sqliteTable('chat_messages', {
@@ -32,6 +33,7 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
   parentId: text('parent_id').references((): any => chatMessagesTable.id, { onDelete: 'cascade' }),
   cache: text('cache', { mode: 'json' }).$type<Record<string, WidgetCacheData>>(),
   metadata: text('metadata', { mode: 'json' }).$type<UIMessageMetadata>(),
+  deletedAt: integer('deleted_at'),
 })
 
 export const tasksTable = sqliteTable('tasks', {
@@ -40,6 +42,7 @@ export const tasksTable = sqliteTable('tasks', {
   order: integer('order').notNull().default(0),
   isComplete: integer('is_complete').notNull().default(0),
   defaultHash: text('default_hash'),
+  deletedAt: integer('deleted_at'),
 })
 
 export const modelsTable = sqliteTable('models', {
@@ -76,6 +79,7 @@ export const mcpServersTable = sqliteTable('mcp_servers', {
   enabled: integer('enabled').default(1).notNull(),
   createdAt: integer('created_at').default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+  deletedAt: integer('deleted_at'),
 })
 
 export const promptsTable = sqliteTable('prompts', {
@@ -97,4 +101,5 @@ export const triggersTable = sqliteTable('triggers', {
     .notNull()
     .references(() => promptsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   isEnabled: integer('is_enabled').default(1).notNull(),
+  deletedAt: integer('deleted_at'),
 })

@@ -79,4 +79,9 @@ export const migrations: Migration[] = [
     name: '0013_keen_tattoo.sql',
     sql: 'ALTER TABLE `models` ADD `supports_parallel_tool_calls` integer DEFAULT 1 NOT NULL;',
   },
+  {
+    hash: '0014_amused_rafael_vega',
+    name: '0014_amused_rafael_vega.sql',
+    sql: 'ALTER TABLE `chat_messages` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `chat_threads` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `mcp_servers` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `tasks` ADD `deleted_at` integer;--> statement-breakpoint\nALTER TABLE `triggers` ADD `deleted_at` integer;',
+  },
 ]

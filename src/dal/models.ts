@@ -141,11 +141,37 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 }
 
 /**
+ * Scrubbed data for soft-deleted models.
+ * Clears nullable columns to null, required text to '', required integers to default.
+ * Keeps provider (enum) unchanged.
+ */
+const scrubbedModelData = {
+  name: '',
+  model: '',
+  url: null,
+  apiKey: null,
+  isSystem: null,
+  enabled: 0,
+  toolUsage: 0,
+  isConfidential: 0,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 0,
+  contextWindow: null,
+  defaultHash: null,
+  vendor: null,
+  description: null,
+}
+
+/**
  * Soft deletes a model by ID (sets deletedAt timestamp)
+ * Scrubs all non-enum data for privacy
  */
 export const deleteModel = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, id))
+  await db
+    .update(modelsTable)
+    .set({ ...scrubbedModelData, deletedAt: Date.now() })
+    .where(eq(modelsTable.id, id))
 }
 
 /**

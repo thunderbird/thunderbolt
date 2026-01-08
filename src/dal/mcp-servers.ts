@@ -23,11 +23,30 @@ export const getHttpMcpServers = async (): Promise<McpServer[]> => {
 }
 
 /**
+ * Scrubbed data for soft-deleted MCP servers.
+ * Clears nullable columns to null, required text to '', required integers to default.
+ * Keeps type (enum) unchanged.
+ */
+const scrubbedMcpServerData = {
+  name: '',
+  url: null,
+  command: null,
+  args: null,
+  enabled: 0,
+  createdAt: null,
+  updatedAt: null,
+}
+
+/**
  * Soft deletes an MCP server by ID (sets deletedAt timestamp)
+ * Scrubs all non-enum data for privacy
  */
 export const deleteMcpServer = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.update(mcpServersTable).set({ deletedAt: Date.now() }).where(eq(mcpServersTable.id, id))
+  await db
+    .update(mcpServersTable)
+    .set({ ...scrubbedMcpServerData, deletedAt: Date.now() })
+    .where(eq(mcpServersTable.id, id))
 }
 
 /**

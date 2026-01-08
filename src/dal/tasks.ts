@@ -54,19 +54,38 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
 }
 
 /**
+ * Scrubbed data for soft-deleted tasks.
+ * Clears nullable columns to null, required text to '', required integers to default.
+ */
+const scrubbedTaskData = {
+  item: '',
+  order: 0,
+  isComplete: 0,
+  defaultHash: null,
+}
+
+/**
  * Soft deletes a single task by ID (sets deletedAt timestamp)
+ * Scrubs all data for privacy
  */
 export const deleteTask = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.update(tasksTable).set({ deletedAt: Date.now() }).where(eq(tasksTable.id, id))
+  await db
+    .update(tasksTable)
+    .set({ ...scrubbedTaskData, deletedAt: Date.now() })
+    .where(eq(tasksTable.id, id))
 }
 
 /**
  * Soft deletes multiple tasks by their IDs (sets deletedAt timestamp)
+ * Scrubs all data for privacy
  */
 export const deleteTasks = async (ids: string[]): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.update(tasksTable).set({ deletedAt: Date.now() }).where(inArray(tasksTable.id, ids))
+  await db
+    .update(tasksTable)
+    .set({ ...scrubbedTaskData, deletedAt: Date.now() })
+    .where(inArray(tasksTable.id, ids))
 }
 
 /**

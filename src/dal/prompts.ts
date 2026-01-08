@@ -26,7 +26,7 @@ export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => 
 }
 
 /**
- * Returns information about the automation that triggered a chat thread, if any.
+ * Returns information about the automation that triggered a chat thread, if any (excluding soft-deleted)
  */
 export const getTriggerPromptForThread = async (threadId: string): Promise<AutomationRun | null> => {
   const db = DatabaseSingleton.instance.db
@@ -40,7 +40,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
     })
     .from(chatThreadsTable)
     .leftJoin(promptsTable, eq(chatThreadsTable.triggeredBy, promptsTable.id))
-    .where(eq(chatThreadsTable.id, threadId))
+    .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 
   if (!result) return null

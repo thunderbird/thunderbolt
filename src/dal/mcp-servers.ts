@@ -1,25 +1,25 @@
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { mcpServersTable } from '../db/tables'
 import { type McpServer } from '@/types'
 
 /**
- * Gets all MCP servers from the database
+ * Gets all MCP servers from the database (excluding soft-deleted)
  */
 export const getAllMcpServers = async (): Promise<McpServer[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(mcpServersTable)
+  return await db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
 }
 
 /**
- * Gets all HTTP MCP servers with non-null URLs from the database
+ * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
  */
 export const getHttpMcpServers = async (): Promise<McpServer[]> => {
   const db = DatabaseSingleton.instance.db
   return await db
     .select()
     .from(mcpServersTable)
-    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url)))
+    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
 }
 
 /**

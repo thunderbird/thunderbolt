@@ -1,22 +1,28 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
 import type { Trigger } from '../types'
 
 /**
- * Gets all triggers for a prompt
+ * Gets all triggers for a prompt (excluding soft-deleted)
  */
 export const getAllTriggersForPrompt = async (promptId: string): Promise<Trigger[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+  return await db
+    .select()
+    .from(triggersTable)
+    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
 }
 
 /**
- * Gets all enabled triggers
+ * Gets all enabled triggers (excluding soft-deleted)
  */
 export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(triggersTable).where(eq(triggersTable.isEnabled, 1))
+  return await db
+    .select()
+    .from(triggersTable)
+    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))
 }
 
 /**

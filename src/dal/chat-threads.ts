@@ -1,23 +1,31 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatThreadsTable } from '../db/tables'
 import { type ChatThread } from '@/types'
 import { getModel } from './models'
 
 /**
- * Gets all chat threads ordered by creation date
+ * Gets all chat threads ordered by creation date (excluding soft-deleted)
  */
 export const getAllChatThreads = async (): Promise<ChatThread[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
+  return await db
+    .select()
+    .from(chatThreadsTable)
+    .where(isNull(chatThreadsTable.deletedAt))
+    .orderBy(desc(chatThreadsTable.id))
 }
 
 /**
- * Gets a specific chat thread by ID
+ * Gets a specific chat thread by ID (excluding soft-deleted)
  */
 export const getChatThread = async (id: string): Promise<ChatThread | null> => {
   const db = DatabaseSingleton.instance.db
-  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, id)).get()
+  const thread = await db
+    .select()
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
+    .get()
   return thread ?? null
 }
 
@@ -72,7 +80,7 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
 }
 
 /**
- * Gets the context size for a chat thread
+ * Gets the context size for a chat thread (excluding soft-deleted)
  * @param threadId - The ID of the chat thread
  * @returns The context size in tokens, or null if not found/not known
  */
@@ -81,7 +89,7 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
   const thread = await db
     .select({ contextSize: chatThreadsTable.contextSize })
     .from(chatThreadsTable)
-    .where(eq(chatThreadsTable.id, threadId))
+    .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 
   return thread?.contextSize ?? null

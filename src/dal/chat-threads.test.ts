@@ -316,7 +316,7 @@ describe('Chat Threads DAL', () => {
   })
 
   describe('deleteChatThread', () => {
-    it('should delete a specific chat thread by ID', async () => {
+    it('should soft delete a specific chat thread by ID (set deletedAt)', async () => {
       const threadId = uuidv7()
       const db = DatabaseSingleton.instance.db
 
@@ -326,16 +326,22 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
       })
 
-      const threadsBefore = await db.select().from(chatThreadsTable)
+      const threadsBefore = await getAllChatThreads()
       expect(threadsBefore).toHaveLength(1)
 
       await deleteChatThread(threadId)
 
-      const threadsAfter = await db.select().from(chatThreadsTable)
+      // Should not appear in getAllChatThreads (excludes soft-deleted)
+      const threadsAfter = await getAllChatThreads()
       expect(threadsAfter).toHaveLength(0)
+
+      // But should still exist in database with deletedAt set
+      const rawThreads = await db.select().from(chatThreadsTable)
+      expect(rawThreads).toHaveLength(1)
+      expect(rawThreads[0]?.deletedAt).not.toBeNull()
     })
 
-    it('should only delete the specified thread when multiple exist', async () => {
+    it('should only soft delete the specified thread when multiple exist', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
       const db = DatabaseSingleton.instance.db
@@ -355,20 +361,46 @@ describe('Chat Threads DAL', () => {
 
       await deleteChatThread(threadId1)
 
-      const threads = await db.select().from(chatThreadsTable)
+      // Only one thread should be visible
+      const threads = await getAllChatThreads()
       expect(threads).toHaveLength(1)
       expect(threads[0]?.id).toBe(threadId2)
       expect(threads[0]?.title).toBe('Second Thread')
+
+      // Both should exist in database
+      const rawThreads = await db.select().from(chatThreadsTable)
+      expect(rawThreads).toHaveLength(2)
     })
 
     it('should not throw when deleting non-existent thread', async () => {
       const nonExistentId = uuidv7()
       await expect(deleteChatThread(nonExistentId)).resolves.toBeUndefined()
     })
+
+    it('should not return soft-deleted thread via getChatThread', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      // Thread should be found before deletion
+      const threadBefore = await getChatThread(threadId)
+      expect(threadBefore?.id).toBe(threadId)
+
+      await deleteChatThread(threadId)
+
+      // Thread should not be found after soft deletion
+      const threadAfter = await getChatThread(threadId)
+      expect(threadAfter).toBeNull()
+    })
   })
 
   describe('deleteAllChatThreads', () => {
-    it('should delete all chat threads', async () => {
+    it('should soft delete all chat threads (set deletedAt)', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
       const threadId3 = uuidv7()
@@ -380,18 +412,23 @@ describe('Chat Threads DAL', () => {
         { id: threadId3, title: 'Third Thread', isEncrypted: 0 },
       ])
 
-      const threadsBefore = await db.select().from(chatThreadsTable)
+      const threadsBefore = await getAllChatThreads()
       expect(threadsBefore).toHaveLength(3)
 
       await deleteAllChatThreads()
 
-      const threadsAfter = await db.select().from(chatThreadsTable)
+      // Should not appear in getAllChatThreads
+      const threadsAfter = await getAllChatThreads()
       expect(threadsAfter).toHaveLength(0)
+
+      // But all should still exist in database with deletedAt set
+      const rawThreads = await db.select().from(chatThreadsTable)
+      expect(rawThreads).toHaveLength(3)
+      expect(rawThreads.every((t) => t.deletedAt !== null)).toBe(true)
     })
 
-    it('should not throw when deleting from empty table', async () => {
-      const db = DatabaseSingleton.instance.db
-      const threadsBefore = await db.select().from(chatThreadsTable)
+    it('should not throw when soft deleting from empty table', async () => {
+      const threadsBefore = await getAllChatThreads()
       expect(threadsBefore).toHaveLength(0)
 
       await expect(deleteAllChatThreads()).resolves.toBeUndefined()

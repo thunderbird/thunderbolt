@@ -107,7 +107,7 @@ describe('MCP Servers DAL', () => {
   })
 
   describe('deleteMcpServer', () => {
-    it('should delete an MCP server by id', async () => {
+    it('should soft delete an MCP server by id (set deletedAt)', async () => {
       const db = DatabaseSingleton.instance.db
       const serverId = uuidv7()
 
@@ -125,16 +125,21 @@ describe('MCP Servers DAL', () => {
 
       await deleteMcpServer(serverId)
 
-      // Verify server is deleted
+      // Verify server is soft deleted (not in getAllMcpServers)
       const serversAfter = await getAllMcpServers()
       expect(serversAfter).toHaveLength(0)
+
+      // But should still exist in database with deletedAt set
+      const rawServers = await db.select().from(mcpServersTable)
+      expect(rawServers).toHaveLength(1)
+      expect(rawServers[0]?.deletedAt).not.toBeNull()
     })
 
     it('should not throw when deleting non-existent server', async () => {
       await expect(deleteMcpServer('non-existent-id')).resolves.toBeUndefined()
     })
 
-    it('should only delete the specified server', async () => {
+    it('should only soft delete the specified server', async () => {
       const db = DatabaseSingleton.instance.db
       const serverId1 = uuidv7()
       const serverId2 = uuidv7()
@@ -157,10 +162,37 @@ describe('MCP Servers DAL', () => {
 
       await deleteMcpServer(serverId1)
 
-      // Verify only server 1 is deleted
+      // Verify only server 1 is soft deleted (not visible)
       const servers = await getAllMcpServers()
       expect(servers).toHaveLength(1)
       expect(servers[0]?.id).toBe(serverId2)
+
+      // Both should still exist in database
+      const rawServers = await db.select().from(mcpServersTable)
+      expect(rawServers).toHaveLength(2)
+    })
+
+    it('should not return soft-deleted server via getHttpMcpServers', async () => {
+      const db = DatabaseSingleton.instance.db
+      const serverId = uuidv7()
+
+      await db.insert(mcpServersTable).values({
+        id: serverId,
+        name: 'HTTP Server',
+        type: 'http',
+        url: 'http://example.com',
+        enabled: 1,
+      })
+
+      // Verify server exists in HTTP servers
+      const serversBefore = await getHttpMcpServers()
+      expect(serversBefore).toHaveLength(1)
+
+      await deleteMcpServer(serverId)
+
+      // Verify server is not returned after soft deletion
+      const serversAfter = await getHttpMcpServers()
+      expect(serversAfter).toHaveLength(0)
     })
   })
 

@@ -192,7 +192,7 @@ describe('Triggers DAL', () => {
   })
 
   describe('deleteTriggersForPrompt', () => {
-    it('should delete all triggers for a prompt', async () => {
+    it('should soft delete all triggers for a prompt (set deletedAt)', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId = uuidv7()
@@ -233,18 +233,23 @@ describe('Triggers DAL', () => {
         },
       ])
 
-      // Verify triggers exist
-      const triggersBefore = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      // Verify triggers exist via DAL method
+      const triggersBefore = await getAllTriggersForPrompt(promptId)
       expect(triggersBefore).toHaveLength(2)
 
       await deleteTriggersForPrompt(promptId)
 
-      // Verify triggers are deleted
-      const triggersAfter = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      // Verify triggers are soft deleted (not returned by DAL)
+      const triggersAfter = await getAllTriggersForPrompt(promptId)
       expect(triggersAfter).toHaveLength(0)
+
+      // But should still exist in database with deletedAt set
+      const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      expect(rawTriggers).toHaveLength(2)
+      expect(rawTriggers.every((t) => t.deletedAt !== null)).toBe(true)
     })
 
-    it('should not delete triggers for other prompts', async () => {
+    it('should only soft delete triggers for the specified prompt', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId1 = uuidv7()
@@ -287,13 +292,17 @@ describe('Triggers DAL', () => {
 
       await deleteTriggersForPrompt(promptId1)
 
-      // Verify only triggers for promptId1 are deleted
-      const triggersForPrompt1 = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId1))
-      const triggersForPrompt2 = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId2))
+      // Verify only triggers for promptId1 are soft deleted
+      const triggersForPrompt1 = await getAllTriggersForPrompt(promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(promptId2)
 
       expect(triggersForPrompt1).toHaveLength(0)
       expect(triggersForPrompt2).toHaveLength(1)
       expect(triggersForPrompt2[0]?.id).toBe(triggerId2)
+
+      // Both should still exist in database
+      const rawTriggers = await db.select().from(triggersTable)
+      expect(rawTriggers).toHaveLength(2)
     })
 
     it('should not throw when no triggers exist for prompt', async () => {
@@ -323,6 +332,46 @@ describe('Triggers DAL', () => {
 
       // Should not throw
       await expect(deleteTriggersForPrompt(promptId)).resolves.toBeUndefined()
+    })
+
+    it('should not return soft-deleted triggers via getAllEnabledTriggers', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+      const triggerId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test prompt',
+        modelId: modelId,
+      })
+
+      await db.insert(triggersTable).values({
+        id: triggerId,
+        promptId: promptId,
+        triggerType: 'time',
+        triggerTime: '09:00',
+        isEnabled: 1,
+      })
+
+      // Verify trigger exists in enabled triggers
+      const enabledBefore = await getAllEnabledTriggers()
+      expect(enabledBefore).toHaveLength(1)
+
+      await deleteTriggersForPrompt(promptId)
+
+      // Verify trigger is not returned after soft deletion
+      const enabledAfter = await getAllEnabledTriggers()
+      expect(enabledAfter).toHaveLength(0)
     })
   })
 

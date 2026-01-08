@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { getHttpMcpServers } from '@/dal'
+import { deleteMcpServer, getHttpMcpServers } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -133,9 +133,7 @@ export default function McpServersPage() {
   })
 
   const deleteServerMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await db.delete(mcpServersTable).where(eq(mcpServersTable.id, id))
-    },
+    mutationFn: deleteMcpServer,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
       setDeleteConfirmOpen(null)

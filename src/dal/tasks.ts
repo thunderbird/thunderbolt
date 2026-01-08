@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { tasksTable } from '../db/tables'
 import type { Task } from '../types'
@@ -43,4 +43,20 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }
   await db.update(tasksTable).set(updateFields).where(eq(tasksTable.id, id))
+}
+
+/**
+ * Deletes a single task by ID
+ */
+export const deleteTask = async (id: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(tasksTable).where(eq(tasksTable.id, id))
+}
+
+/**
+ * Deletes multiple tasks by their IDs
+ */
+export const deleteTasks = async (ids: string[]): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(tasksTable).where(inArray(tasksTable.id, ids))
 }

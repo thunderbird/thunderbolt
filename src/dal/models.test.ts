@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
+  deleteModel,
   getAllModels,
   getAvailableModels,
   getDefaultModelForThread,
@@ -403,6 +404,69 @@ describe('Models DAL', () => {
       // Should fall back to system model when the last message's model doesn't exist
       const model = await getDefaultModelForThread(threadId)
       expect(model.id).toBe(systemModelId)
+    })
+  })
+
+  describe('deleteModel', () => {
+    it('should delete a model by id', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Model to delete',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Verify model exists
+      const modelBefore = await getModel(modelId)
+      expect(modelBefore).not.toBe(null)
+
+      await deleteModel(modelId)
+
+      // Verify model is deleted
+      const modelAfter = await getModel(modelId)
+      expect(modelAfter).toBe(null)
+    })
+
+    it('should not throw when deleting non-existent model', async () => {
+      await expect(deleteModel('non-existent-id')).resolves.toBeUndefined()
+    })
+
+    it('should only delete the specified model', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId1 = uuidv7()
+      const modelId2 = uuidv7()
+
+      await db.insert(modelsTable).values([
+        {
+          id: modelId1,
+          provider: 'openai',
+          name: 'Model 1',
+          model: 'gpt-4',
+          isSystem: 0,
+          enabled: 1,
+        },
+        {
+          id: modelId2,
+          provider: 'anthropic',
+          name: 'Model 2',
+          model: 'claude-3',
+          isSystem: 0,
+          enabled: 1,
+        },
+      ])
+
+      await deleteModel(modelId1)
+
+      // Verify only model 1 is deleted
+      const model1 = await getModel(modelId1)
+      const model2 = await getModel(modelId2)
+      expect(model1).toBe(null)
+      expect(model2).not.toBe(null)
     })
   })
 })

@@ -1,6 +1,6 @@
+import { deleteTasks as deleteTasksDal } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
-import { inArray } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
@@ -48,8 +48,7 @@ export const deleteTasks = {
     taskIds: z.array(z.string()).describe("The IDs of the tasks to delete from the user's task (to do) list."),
   }),
   execute: async (params: { taskIds: string[] }) => {
-    const db = DatabaseSingleton.instance.db
-    await db.delete(tasksTable).where(inArray(tasksTable.id, params.taskIds))
+    await deleteTasksDal(params.taskIds)
     return {
       success: true,
     }

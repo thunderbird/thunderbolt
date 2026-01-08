@@ -12,6 +12,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatabaseSingleton } from '@/db/singleton'
 import { promptsTable, triggersTable } from '@/db/tables'
+import { deleteTriggersForPrompt } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { getAvailableModels, getSelectedModel, updateAutomation } from '@/dal'
@@ -219,7 +220,7 @@ export default function AutomationFormModal({
       } else {
         // User selected manual or removed trigger data, delete any existing triggers
         if (existingTriggers.length > 0) {
-          await db.delete(triggersTable).where(eq(triggersTable.promptId, prompt.id))
+          await deleteTriggersForPrompt(prompt.id)
         }
       }
     },

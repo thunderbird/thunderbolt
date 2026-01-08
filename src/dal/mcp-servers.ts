@@ -21,3 +21,11 @@ export const getHttpMcpServers = async (): Promise<McpServer[]> => {
     .from(mcpServersTable)
     .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url)))
 }
+
+/**
+ * Deletes an MCP server by ID
+ */
+export const deleteMcpServer = async (id: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.delete(mcpServersTable).where(eq(mcpServersTable.id, id))
+}

@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
+import { deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { trackEvent } from '@/lib/posthog'
@@ -337,9 +337,7 @@ export default function TasksPage() {
   })
 
   const deleteTaskMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await db.delete(tasksTable).where(eq(tasksTable.id, id))
-    },
+    mutationFn: deleteTask,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },

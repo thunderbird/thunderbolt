@@ -6,6 +6,7 @@ import type { AutomationRun, Prompt } from '../types'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
+import { deleteTriggersForPrompt } from './triggers'
 
 /**
  * Gets all prompts, optionally filtered by search query
@@ -78,10 +79,8 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
  */
 export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  // Import locally to avoid circular dependency
-  const { triggersTable } = await import('../db/tables')
   // Delete triggers first (due to foreign key)
-  await db.delete(triggersTable).where(eq(triggersTable.promptId, id))
+  await deleteTriggersForPrompt(id)
   // Use soft delete - set deletedAt timestamp instead of hard delete
   await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, id))
 }

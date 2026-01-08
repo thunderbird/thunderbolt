@@ -2,7 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount } from './tasks'
+import { deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -211,6 +211,107 @@ describe('Tasks DAL', () => {
 
     it('should not throw when deleting non-existent tasks', async () => {
       await expect(deleteTasks(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+    })
+  })
+
+  describe('updateTask', () => {
+    it('should update a task item', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Original item',
+        isComplete: 0,
+        order: 1,
+      })
+
+      await updateTask(taskId, { item: 'Updated item' })
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks[0]?.item).toBe('Updated item')
+    })
+
+    it('should update task order', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Task',
+        isComplete: 0,
+        order: 1,
+      })
+
+      await updateTask(taskId, { order: 10 })
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks[0]?.order).toBe(10)
+    })
+
+    it('should mark a task as complete', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Task to complete',
+        isComplete: 0,
+        order: 1,
+      })
+
+      // Verify task is incomplete
+      const tasksBefore = await getIncompleteTasks()
+      expect(tasksBefore).toHaveLength(1)
+
+      await updateTask(taskId, { isComplete: 1 })
+
+      // Verify task is no longer in incomplete list
+      const tasksAfter = await getIncompleteTasks()
+      expect(tasksAfter).toHaveLength(0)
+    })
+
+    it('should update multiple fields at once', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Original',
+        isComplete: 0,
+        order: 1,
+      })
+
+      await updateTask(taskId, { item: 'Updated', order: 5 })
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks[0]?.item).toBe('Updated')
+      expect(tasks[0]?.order).toBe(5)
+    })
+
+    it('should not throw when updating non-existent task', async () => {
+      await expect(updateTask('non-existent-id', { item: 'test' })).resolves.toBeUndefined()
+    })
+
+    it('should not update defaultHash field', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Task',
+        isComplete: 0,
+        order: 1,
+        defaultHash: 'original-hash',
+      })
+
+      // Try to update defaultHash (should be ignored)
+      await updateTask(taskId, { item: 'Updated', defaultHash: 'new-hash' } as Parameters<typeof updateTask>[1])
+
+      // Verify defaultHash was not changed
+      const task = await db.select().from(tasksTable).get()
+      expect(task?.defaultHash).toBe('original-hash')
+      expect(task?.item).toBe('Updated')
     })
   })
 })

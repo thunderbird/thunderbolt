@@ -30,7 +30,6 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -345,9 +344,7 @@ export default function TasksPage() {
 
   const updateOrderMutation = useMutation({
     mutationFn: async (updates: { id: string; order: number }[]) => {
-      await Promise.all(
-        updates.map(({ id, order }) => db.update(tasksTable).set({ order }).where(eq(tasksTable.id, id))),
-      )
+      await Promise.all(updates.map(({ id, order }) => updateTask(id, { order })))
     },
     onSuccess: (_, updates) => {
       trackEvent('task_reorder', {
@@ -359,7 +356,7 @@ export default function TasksPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await db.update(tasksTable).set({ isComplete: 1 }).where(eq(tasksTable.id, id))
+      await updateTask(id, { isComplete: 1 })
     },
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })

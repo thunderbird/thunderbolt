@@ -97,6 +97,16 @@ export const getPrompt = async (id: string): Promise<Prompt | null> => {
 }
 
 /**
+ * Creates a new prompt/automation
+ */
+export const createAutomation = async (
+  data: Partial<Prompt> & Pick<Prompt, 'id' | 'prompt' | 'modelId'>,
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(promptsTable).values(data)
+}
+
+/**
  * Runs an automation by creating a new chat thread and seeding it with the prompt
  * @returns The threadId of the newly created chat thread
  */

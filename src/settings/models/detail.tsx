@@ -62,7 +62,6 @@ const formSchema = z
 export default function ModelDetailPage() {
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [showSaved, setShowSaved] = useState(false)
 

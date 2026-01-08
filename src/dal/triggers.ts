@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
+import type { Trigger } from '../types'
 
 /**
  * Deletes all triggers associated with a prompt
@@ -8,4 +9,14 @@ import { triggersTable } from '../db/tables'
 export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.delete(triggersTable).where(eq(triggersTable.promptId, promptId))
+}
+
+/**
+ * Creates a new trigger
+ */
+export const createTrigger = async (
+  data: Partial<Trigger> & Pick<Trigger, 'id' | 'promptId' | 'isEnabled' | 'triggerType' | 'triggerTime'>,
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(triggersTable).values(data)
 }

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { deleteMcpServer, getHttpMcpServers } from '@/dal'
+import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -116,7 +116,7 @@ export default function McpServersPage() {
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await db.insert(mcpServersTable).values({
+      await createMcpServer({
         id: uuidv7(),
         name,
         url,

@@ -3,7 +3,7 @@ import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { deleteTriggersForPrompt } from './triggers'
+import { createTrigger, deleteTriggersForPrompt } from './triggers'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -151,6 +151,103 @@ describe('Triggers DAL', () => {
 
       // Should not throw
       await expect(deleteTriggersForPrompt(promptId)).resolves.toBeUndefined()
+    })
+  })
+
+  describe('createTrigger', () => {
+    it('should create a new trigger', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+      const triggerId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test prompt',
+        modelId: modelId,
+      })
+
+      await createTrigger({
+        id: triggerId,
+        triggerType: 'time',
+        triggerTime: '09:00',
+        promptId: promptId,
+        isEnabled: 1,
+      })
+
+      const triggers = await db.select().from(triggersTable)
+      expect(triggers).toHaveLength(1)
+      expect(triggers[0]?.id).toBe(triggerId)
+      expect(triggers[0]?.triggerTime).toBe('09:00')
+    })
+
+    it('should create multiple triggers for a prompt', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test prompt',
+        modelId: modelId,
+      })
+
+      await createTrigger({ id: uuidv7(), triggerType: 'time', triggerTime: '08:00', promptId: promptId, isEnabled: 1 })
+      await createTrigger({ id: uuidv7(), triggerType: 'time', triggerTime: '18:00', promptId: promptId, isEnabled: 1 })
+
+      const triggers = await db.select().from(triggersTable)
+      expect(triggers).toHaveLength(2)
+    })
+
+    it('should create a disabled trigger', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+      const triggerId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test prompt',
+        modelId: modelId,
+      })
+
+      await createTrigger({
+        id: triggerId,
+        triggerType: 'time',
+        triggerTime: '10:00',
+        promptId: promptId,
+        isEnabled: 0,
+      })
+
+      const trigger = await db.select().from(triggersTable).get()
+      expect(trigger?.isEnabled).toBe(0)
     })
   })
 })

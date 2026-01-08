@@ -60,3 +60,11 @@ export const deleteTasks = async (ids: string[]): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.delete(tasksTable).where(inArray(tasksTable.id, ids))
 }
+
+/**
+ * Creates a new task
+ */
+export const createTask = async (data: Pick<Task, 'id' | 'item' | 'order' | 'isComplete'>): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(tasksTable).values(data)
+}

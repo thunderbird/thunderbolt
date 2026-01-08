@@ -2,7 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
+import { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -161,6 +161,57 @@ describe('MCP Servers DAL', () => {
       const servers = await getAllMcpServers()
       expect(servers).toHaveLength(1)
       expect(servers[0]?.id).toBe(serverId2)
+    })
+  })
+
+  describe('createMcpServer', () => {
+    it('should create a new MCP server', async () => {
+      const serverId = uuidv7()
+
+      await createMcpServer({
+        id: serverId,
+        name: 'New Server',
+        url: 'http://example.com',
+        enabled: 1,
+      })
+
+      const servers = await getAllMcpServers()
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe(serverId)
+      expect(servers[0]?.name).toBe('New Server')
+    })
+
+    it('should create an HTTP server that appears in getHttpMcpServers', async () => {
+      const serverId = uuidv7()
+
+      await createMcpServer({
+        id: serverId,
+        name: 'HTTP Server',
+        type: 'http',
+        url: 'http://example.com',
+        enabled: 1,
+      })
+
+      const httpServers = await getHttpMcpServers()
+      expect(httpServers).toHaveLength(1)
+      expect(httpServers[0]?.id).toBe(serverId)
+    })
+
+    it('should create a stdio server excluded from getHttpMcpServers', async () => {
+      const serverId = uuidv7()
+
+      await createMcpServer({
+        id: serverId,
+        name: 'STDIO Server',
+        type: 'stdio',
+        enabled: 1,
+      })
+
+      const httpServers = await getHttpMcpServers()
+      expect(httpServers).toHaveLength(0)
+
+      const allServers = await getAllMcpServers()
+      expect(allServers).toHaveLength(1)
     })
   })
 })

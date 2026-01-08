@@ -6,7 +6,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
-import { getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
+import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -270,6 +270,55 @@ describe('Prompts DAL', () => {
         expect(automation.defaultHash).toBeDefined()
         expect(currentHash).toBe(automation.defaultHash!)
       }
+    })
+  })
+
+  describe('createAutomation', () => {
+    it('should create a new automation', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await createAutomation({
+        id: promptId,
+        title: 'Test Automation',
+        prompt: 'Test prompt content',
+        modelId: modelId,
+      })
+
+      const prompts = await getAllPrompts()
+      expect(prompts.map((p) => p.id)).toContain(promptId)
+    })
+
+    it('should create multiple automations', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await createAutomation({ id: promptId1, prompt: 'Prompt 1', modelId: modelId })
+      await createAutomation({ id: promptId2, prompt: 'Prompt 2', modelId: modelId })
+
+      const prompts = await getAllPrompts()
+      expect(prompts).toHaveLength(2)
     })
   })
 })

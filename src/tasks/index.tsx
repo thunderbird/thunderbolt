@@ -3,9 +3,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { tasksTable } from '@/db/tables'
+import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -242,7 +240,6 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
 
 // Main Tasks Page Component
 export default function TasksPage() {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   // State
@@ -312,7 +309,7 @@ export default function TasksPage() {
     mutationFn: async (item: string) => {
       const order = tasks.length > 0 ? Math.min(...tasks.map((t) => t.order)) - 100 : 1000
 
-      await db.insert(tasksTable).values({
+      await createTask({
         id: uuidv7(),
         item,
         order,

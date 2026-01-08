@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
+  createModel,
   deleteModel,
   getAllModels,
   getAvailableModels,
@@ -582,6 +583,54 @@ describe('Models DAL', () => {
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
       expect(rawModel?.defaultHash).toBe('original-hash')
       expect(rawModel?.name).toBe('Updated')
+    })
+  })
+
+  describe('createModel', () => {
+    it('should create a new model', async () => {
+      const modelId = uuidv7()
+
+      await createModel({
+        id: modelId,
+        provider: 'openai',
+        name: 'New Model',
+        model: 'gpt-4',
+        enabled: 1,
+      })
+
+      const model = await getModel(modelId)
+      expect(model).not.toBe(null)
+      expect(model?.name).toBe('New Model')
+      expect(model?.provider).toBe('openai')
+    })
+
+    it('should create a disabled model excluded from getAvailableModels', async () => {
+      const modelId = uuidv7()
+
+      await createModel({
+        id: modelId,
+        provider: 'anthropic',
+        name: 'Disabled Model',
+        model: 'claude-3',
+        enabled: 0,
+      })
+
+      const availableModels = await getAvailableModels()
+      expect(availableModels.map((m) => m.id)).not.toContain(modelId)
+
+      const allModels = await getAllModels()
+      expect(allModels.map((m) => m.id)).toContain(modelId)
+    })
+
+    it('should create multiple models', async () => {
+      const modelId1 = uuidv7()
+      const modelId2 = uuidv7()
+
+      await createModel({ id: modelId1, provider: 'openai', name: 'Model 1', model: 'gpt-4', enabled: 1 })
+      await createModel({ id: modelId2, provider: 'anthropic', name: 'Model 2', model: 'claude-3', enabled: 1 })
+
+      const models = await getAllModels()
+      expect(models).toHaveLength(2)
     })
   })
 })

@@ -10,8 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { createModel } from '@/dal'
 import type { Model } from '@/types'
 
 const formSchema = z
@@ -52,13 +51,12 @@ const formSchema = z
 
 export default function NewModelPage() {
   const navigate = useNavigate()
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const createModelMutation = useMutation({
     mutationFn: async (model: Omit<Model, 'id'>) => {
       const id = uuidv7()
-      await db.insert(modelsTable).values({
+      await createModel({
         id,
         ...model,
       })

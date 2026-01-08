@@ -29,3 +29,11 @@ export const deleteMcpServer = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.delete(mcpServersTable).where(eq(mcpServersTable.id, id))
 }
+
+/**
+ * Creates a new MCP server
+ */
+export const createMcpServer = async (data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(mcpServersTable).values(data)
+}

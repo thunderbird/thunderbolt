@@ -11,11 +11,17 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatabaseSingleton } from '@/db/singleton'
-import { promptsTable, triggersTable } from '@/db/tables'
-import { deleteTriggersForPrompt } from '@/dal'
+import { triggersTable } from '@/db/tables'
+import {
+  createAutomation,
+  createTrigger,
+  deleteTriggersForPrompt,
+  getAvailableModels,
+  getSelectedModel,
+  updateAutomation,
+} from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { getAvailableModels, getSelectedModel, updateAutomation } from '@/dal'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -150,7 +156,7 @@ export default function AutomationFormModal({
       const generatedTitle = generateTitle(values.prompt, { words: 4 })
 
       // Create the prompt with model and generated title
-      await db.insert(promptsTable).values({
+      await createAutomation({
         id: promptId,
         title: generatedTitle,
         prompt: values.prompt,
@@ -160,7 +166,7 @@ export default function AutomationFormModal({
 
       // Create trigger if specified and not manual
       if (values.triggerType === 'time' && values.triggerTime) {
-        await db.insert(triggersTable).values({
+        await createTrigger({
           id: uuidv7(),
           triggerType: values.triggerType,
           triggerTime: values.triggerTime,
@@ -209,7 +215,7 @@ export default function AutomationFormModal({
             .where(eq(triggersTable.promptId, prompt.id))
         } else {
           // Create new trigger
-          await db.insert(triggersTable).values({
+          await createTrigger({
             id: uuidv7(),
             triggerType: 'time',
             triggerTime: values.triggerTime!,

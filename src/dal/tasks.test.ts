@@ -2,7 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { tasksTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
+import { createTask, deleteTask, deleteTasks, getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -312,6 +312,47 @@ describe('Tasks DAL', () => {
       const task = await db.select().from(tasksTable).get()
       expect(task?.defaultHash).toBe('original-hash')
       expect(task?.item).toBe('Updated')
+    })
+  })
+
+  describe('createTask', () => {
+    it('should create a new task', async () => {
+      const taskId = uuidv7()
+
+      await createTask({
+        id: taskId,
+        item: 'New task',
+        order: 1,
+        isComplete: 0,
+      })
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]?.id).toBe(taskId)
+      expect(tasks[0]?.item).toBe('New task')
+    })
+
+    it('should create multiple tasks', async () => {
+      await createTask({ id: uuidv7(), item: 'Task 1', order: 1, isComplete: 0 })
+      await createTask({ id: uuidv7(), item: 'Task 2', order: 2, isComplete: 0 })
+
+      const tasks = await getIncompleteTasks()
+      expect(tasks).toHaveLength(2)
+    })
+
+    it('should create a completed task that is excluded from incomplete tasks', async () => {
+      await createTask({
+        id: uuidv7(),
+        item: 'Completed task',
+        order: 1,
+        isComplete: 1,
+      })
+
+      const incompleteTasks = await getIncompleteTasks()
+      expect(incompleteTasks).toHaveLength(0)
+
+      const count = await getIncompleteTasksCount()
+      expect(count).toBe(0)
     })
   })
 })

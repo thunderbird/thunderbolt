@@ -53,11 +53,6 @@ export class DatabaseSingleton {
 
     await this.#database.initialize(path)
 
-    // Override delete method to prevent hard deletes - use soft delete (deletedAt) instead
-    this.#database.db.delete = () => {
-      throw new Error('Hard deletes are not allowed. Use soft delete by setting deletedAt timestamp instead.')
-    }
-
     DatabaseSingleton.#initialized = true
 
     const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'wa-sqlite'

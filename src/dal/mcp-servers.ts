@@ -23,11 +23,11 @@ export const getHttpMcpServers = async (): Promise<McpServer[]> => {
 }
 
 /**
- * Deletes an MCP server by ID
+ * Soft deletes an MCP server by ID (sets deletedAt timestamp)
  */
 export const deleteMcpServer = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(mcpServersTable).where(eq(mcpServersTable.id, id))
+  await db.update(mcpServersTable).set({ deletedAt: Date.now() }).where(eq(mcpServersTable.id, id))
 }
 
 /**

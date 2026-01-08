@@ -141,11 +141,11 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 }
 
 /**
- * Deletes a model by ID
+ * Soft deletes a model by ID (sets deletedAt timestamp)
  */
 export const deleteModel = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(modelsTable).where(eq(modelsTable.id, id))
+  await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, id))
 }
 
 /**

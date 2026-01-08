@@ -88,17 +88,17 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 }
 
 /**
- * Deletes a specific chat thread by ID
+ * Soft deletes a specific chat thread by ID (sets deletedAt timestamp)
  */
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(chatThreadsTable).where(eq(chatThreadsTable.id, id))
+  await db.update(chatThreadsTable).set({ deletedAt: Date.now() }).where(eq(chatThreadsTable.id, id))
 }
 
 /**
- * Deletes all chat threads
+ * Soft deletes all chat threads (sets deletedAt timestamp)
  */
 export const deleteAllChatThreads = async (): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(chatThreadsTable)
+  await db.update(chatThreadsTable).set({ deletedAt: Date.now() })
 }

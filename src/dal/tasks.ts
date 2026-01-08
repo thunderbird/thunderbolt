@@ -54,19 +54,19 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
 }
 
 /**
- * Deletes a single task by ID
+ * Soft deletes a single task by ID (sets deletedAt timestamp)
  */
 export const deleteTask = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(tasksTable).where(eq(tasksTable.id, id))
+  await db.update(tasksTable).set({ deletedAt: Date.now() }).where(eq(tasksTable.id, id))
 }
 
 /**
- * Deletes multiple tasks by their IDs
+ * Soft deletes multiple tasks by their IDs (sets deletedAt timestamp)
  */
 export const deleteTasks = async (ids: string[]): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(tasksTable).where(inArray(tasksTable.id, ids))
+  await db.update(tasksTable).set({ deletedAt: Date.now() }).where(inArray(tasksTable.id, ids))
 }
 
 /**

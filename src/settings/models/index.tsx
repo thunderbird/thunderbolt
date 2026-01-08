@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { createModel as createModelDAL, getAllModels, resetModelToDefault, updateModel } from '@/dal'
+import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
@@ -274,8 +274,7 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Use soft delete - set deletedAt timestamp instead of hard delete
-      await updateModel(id, { deletedAt: Date.now() })
+      await deleteModel(id)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })

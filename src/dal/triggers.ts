@@ -20,11 +20,11 @@ export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
 }
 
 /**
- * Deletes all triggers associated with a prompt
+ * Soft deletes all triggers associated with a prompt (sets deletedAt timestamp)
  */
 export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(triggersTable).where(eq(triggersTable.promptId, promptId))
+  await db.update(triggersTable).set({ deletedAt: Date.now() }).where(eq(triggersTable.promptId, promptId))
 }
 
 /**

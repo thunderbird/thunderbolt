@@ -44,6 +44,7 @@ export function convertUIMessageToDbChatMessage(
     parentId: parentId ?? null,
     cache: null, // Cache is populated lazily by enrichment hooks
     metadata: metadata ?? null,
+    deletedAt: null,
   }
 }
 

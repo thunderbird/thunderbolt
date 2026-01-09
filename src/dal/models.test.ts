@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createModel,
@@ -17,7 +17,7 @@ import {
 import { getAllPrompts, getPrompt } from './prompts'
 import { updateSettings } from './settings'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
-import { getAllEnabledTriggers, getAllTriggersForPrompt } from './triggers'
+import { getAllEnabledTriggers } from './triggers'
 
 beforeAll(async () => {
   await setupTestDatabase()

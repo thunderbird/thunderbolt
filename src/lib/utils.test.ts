@@ -187,10 +187,9 @@ describe('utils', () => {
   })
 
   describe('clearNullableColumns', () => {
-    it('should return null for all nullable columns', () => {
+    it('should set nullable columns to null', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
-        name: text('name').notNull(),
         description: text('description'),
         age: integer('age'),
       })
@@ -200,6 +199,55 @@ describe('utils', () => {
       expect(result).toEqual({
         description: null,
         age: null,
+      })
+    })
+
+    it('should set required text columns to empty string', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name').notNull(),
+        title: text('title').notNull(),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({
+        name: '',
+        title: '',
+      })
+    })
+
+    it('should set required number columns to 0', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        count: integer('count').notNull(),
+        score: integer('score').notNull(),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({
+        count: 0,
+        score: 0,
+      })
+    })
+
+    it('should handle mixed column types correctly', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name').notNull(),
+        description: text('description'),
+        count: integer('count').notNull(),
+        score: integer('score'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({
+        name: '',
+        description: null,
+        count: 0,
+        score: null,
       })
     })
 
@@ -241,31 +289,40 @@ describe('utils', () => {
       expect(result).not.toHaveProperty('deletedAt')
     })
 
-    it('should not include required (notNull) columns', () => {
-      const testTable = sqliteTable('test', {
+    it('should skip foreign key columns', () => {
+      const parentTable = sqliteTable('parent', {
         id: text('id').primaryKey().notNull(),
-        requiredName: text('required_name').notNull(),
-        requiredAge: integer('required_age').notNull(),
-        optionalBio: text('optional_bio'),
       })
 
-      const result = clearNullableColumns(testTable)
+      const childTable = sqliteTable('child', {
+        id: text('id').primaryKey().notNull(),
+        parentId: text('parent_id').references(() => parentTable.id),
+        name: text('name'),
+      })
 
-      expect(result).toEqual({ optionalBio: null })
-      expect(result).not.toHaveProperty('requiredName')
-      expect(result).not.toHaveProperty('requiredAge')
+      const result = clearNullableColumns(childTable)
+
+      expect(result).toEqual({ name: null })
+      expect(result).not.toHaveProperty('parentId')
     })
 
-    it('should return empty object when all columns are required or preserved', () => {
-      const testTable = sqliteTable('test', {
+    it('should skip required foreign key columns', () => {
+      const parentTable = sqliteTable('parent', {
         id: text('id').primaryKey().notNull(),
-        name: text('name').notNull(),
-        age: integer('age').notNull(),
       })
 
-      const result = clearNullableColumns(testTable)
+      const childTable = sqliteTable('child', {
+        id: text('id').primaryKey().notNull(),
+        parentId: text('parent_id')
+          .notNull()
+          .references(() => parentTable.id),
+        name: text('name').notNull(),
+      })
 
-      expect(result).toEqual({})
+      const result = clearNullableColumns(childTable)
+
+      expect(result).toEqual({ name: '' })
+      expect(result).not.toHaveProperty('parentId')
     })
   })
 })

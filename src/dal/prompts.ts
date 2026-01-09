@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import type { AutomationRun, Prompt } from '../types'
-import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
@@ -75,19 +75,25 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
 }
 
 /**
- * Delete an automation (soft delete) and its associated triggers
+ * Soft deletes an automation and its associated triggers (sets deletedAt timestamp)
+ * Scrubs all nullable columns for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   // Delete triggers first (due to foreign key)
   await deleteTriggersForPrompt(id)
-  // Use soft delete - set deletedAt timestamp instead of hard delete
-  await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, id))
+  // Soft delete with data scrubbing
+  await db
+    .update(promptsTable)
+    .set({ ...clearNullableColumns(promptsTable), deletedAt: Date.now() })
+    .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
 }
 
 /**
  * Soft deletes all prompts that reference a model (sets deletedAt timestamp)
  * Also soft-deletes all associated triggers for each prompt
+ * Scrubs all nullable columns for privacy
  * This replaces the cascade behavior that no longer fires with soft deletes
  */
 export const deletePromptsForModel = async (modelId: string): Promise<void> => {
@@ -104,10 +110,10 @@ export const deletePromptsForModel = async (modelId: string): Promise<void> => {
   // Soft-delete all triggers for these prompts in a single query
   await deleteTriggersForPrompts(promptIds)
 
-  // Soft-delete all prompts for this model
+  // Soft-delete all prompts for this model with data scrubbing
   await db
     .update(promptsTable)
-    .set({ deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(promptsTable), deletedAt: Date.now() })
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 }
 

@@ -6,7 +6,7 @@ import type { AutomationRun, Prompt } from '../types'
 import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
-import { deleteTriggersForPrompt } from './triggers'
+import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
 
 /**
  * Gets all prompts, optionally filtered by search query
@@ -83,6 +83,32 @@ export const deleteAutomation = async (id: string): Promise<void> => {
   await deleteTriggersForPrompt(id)
   // Use soft delete - set deletedAt timestamp instead of hard delete
   await db.update(promptsTable).set({ deletedAt: Date.now() }).where(eq(promptsTable.id, id))
+}
+
+/**
+ * Soft deletes all prompts that reference a model (sets deletedAt timestamp)
+ * Also soft-deletes all associated triggers for each prompt
+ * This replaces the cascade behavior that no longer fires with soft deletes
+ */
+export const deletePromptsForModel = async (modelId: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+
+  // Find all prompts for this model that aren't already deleted
+  const prompts = await db
+    .select({ id: promptsTable.id })
+    .from(promptsTable)
+    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
+
+  const promptIds = prompts.map((p) => p.id)
+
+  // Soft-delete all triggers for these prompts in a single query
+  await deleteTriggersForPrompts(promptIds)
+
+  // Soft-delete all prompts for this model
+  await db
+    .update(promptsTable)
+    .set({ deletedAt: Date.now() })
+    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 }
 
 export const getPrompt = async (id: string): Promise<Prompt | null> => {

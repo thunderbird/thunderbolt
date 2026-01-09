@@ -143,10 +143,17 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 
 /**
  * Soft deletes a model by ID (sets deletedAt timestamp)
+ * Also soft-deletes all prompts referencing this model (and their triggers)
  * Scrubs all non-enum data for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteModel = async (id: string): Promise<void> => {
+  // Import locally to avoid circular dependency
+  const { deletePromptsForModel } = await import('./prompts')
+
+  // Soft-delete prompts and their triggers first (replaces onDelete: 'cascade')
+  await deletePromptsForModel(id)
+
   const db = DatabaseSingleton.instance.db
   await db
     .update(modelsTable)

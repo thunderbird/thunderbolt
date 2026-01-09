@@ -3,7 +3,13 @@ import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { createTrigger, deleteTriggersForPrompt, getAllEnabledTriggers, getAllTriggersForPrompt } from './triggers'
+import {
+  createTrigger,
+  deleteTriggersForPrompt,
+  deleteTriggersForPrompts,
+  getAllEnabledTriggers,
+  getAllTriggersForPrompt,
+} from './triggers'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -421,6 +427,120 @@ describe('Triggers DAL', () => {
 
       // Verify original deletedAt is preserved for already-deleted trigger
       const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      const alreadyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId1)
+      const newlyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId2)
+
+      expect(alreadyDeletedTrigger?.deletedAt).toBe(originalDeletedAt)
+      expect(newlyDeletedTrigger?.deletedAt).not.toBe(originalDeletedAt)
+      expect(newlyDeletedTrigger?.deletedAt).not.toBeNull()
+    })
+  })
+
+  describe('deleteTriggersForPrompts', () => {
+    it('should soft delete triggers for multiple prompts in a single query', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+      const promptId3 = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values([
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId3, prompt: 'Prompt 3', modelId: modelId },
+      ])
+
+      await db.insert(triggersTable).values([
+        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
+        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '10:00', isEnabled: 1 },
+        { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '11:00', isEnabled: 1 },
+        { id: uuidv7(), promptId: promptId3, triggerType: 'time', triggerTime: '12:00', isEnabled: 1 },
+      ])
+
+      // Delete triggers for prompts 1 and 2 only
+      await deleteTriggersForPrompts([promptId1, promptId2])
+
+      // Verify triggers for prompts 1 and 2 are soft-deleted
+      const triggersForPrompt1 = await getAllTriggersForPrompt(promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(promptId2)
+      const triggersForPrompt3 = await getAllTriggersForPrompt(promptId3)
+
+      expect(triggersForPrompt1).toHaveLength(0)
+      expect(triggersForPrompt2).toHaveLength(0)
+      expect(triggersForPrompt3).toHaveLength(1) // Prompt 3 triggers should remain
+
+      // All triggers should still exist in database
+      const rawTriggers = await db.select().from(triggersTable)
+      expect(rawTriggers).toHaveLength(4)
+
+      // Three should have deletedAt set
+      const deletedTriggers = rawTriggers.filter((t) => t.deletedAt !== null)
+      expect(deletedTriggers).toHaveLength(3)
+    })
+
+    it('should handle empty array without errors', async () => {
+      await expect(deleteTriggersForPrompts([])).resolves.toBeUndefined()
+    })
+
+    it('should handle non-existent prompt IDs without errors', async () => {
+      await expect(deleteTriggersForPrompts(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+    })
+
+    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+      const triggerId1 = uuidv7()
+      const triggerId2 = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values([
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+      ])
+
+      await db.insert(triggersTable).values([
+        {
+          id: triggerId1,
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          deletedAt: originalDeletedAt, // Already deleted
+        },
+        {
+          id: triggerId2,
+          promptId: promptId2,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          isEnabled: 1,
+          deletedAt: null, // Active
+        },
+      ])
+
+      await deleteTriggersForPrompts([promptId1, promptId2])
+
+      // Verify original deletedAt is preserved for already-deleted trigger
+      const rawTriggers = await db.select().from(triggersTable)
       const alreadyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId1)
       const newlyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId2)
 

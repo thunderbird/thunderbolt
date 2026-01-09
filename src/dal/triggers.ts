@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
 import { clearNullableColumns } from '../lib/utils'
@@ -37,6 +37,21 @@ export const deleteTriggersForPrompt = async (promptId: string): Promise<void> =
     .update(triggersTable)
     .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
     .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
+}
+
+/**
+ * Soft deletes all triggers associated with multiple prompts (sets deletedAt timestamp)
+ * Scrubs all nullable columns for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ */
+export const deleteTriggersForPrompts = async (promptIds: string[]): Promise<void> => {
+  if (promptIds.length === 0) return
+
+  const db = DatabaseSingleton.instance.db
+  await db
+    .update(triggersTable)
+    .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
+    .where(and(inArray(triggersTable.promptId, promptIds), isNull(triggersTable.deletedAt)))
 }
 
 /**

@@ -65,4 +65,10 @@ export {
 } from './prompts'
 
 // Triggers
-export { createTrigger, deleteTriggersForPrompt, getAllTriggersForPrompt, getAllEnabledTriggers } from './triggers'
+export {
+  createTrigger,
+  deleteTriggersForPrompt,
+  deleteTriggersForPrompts,
+  getAllEnabledTriggers,
+  getAllTriggersForPrompt,
+} from './triggers'

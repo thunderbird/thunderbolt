@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import { clearNullableColumns } from '../lib/utils'
 import { type ChatThread } from '@/types'
 import { getModel } from './models'
 
@@ -96,49 +97,27 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 }
 
 /**
- * Scrubbed data for soft-deleted chat messages.
- * Clears nullable columns to null, required text to '', keeps FKs unchanged.
- */
-const scrubbedMessageData = {
-  content: '',
-  parts: null,
-  cache: null,
-  metadata: null,
-}
-
-/**
- * Scrubbed data for soft-deleted chat threads.
- * Clears nullable columns to null, required integers to default, keeps FKs unchanged.
- */
-const scrubbedThreadData = {
-  title: null,
-  isEncrypted: 0,
-  wasTriggeredByAutomation: 0,
-  contextSize: null,
-}
-
-/**
  * Soft deletes a specific chat thread by ID (sets deletedAt timestamp)
  * Also soft-deletes all associated messages that haven't been deleted yet
- * Scrubs all non-FK data for privacy
+ * Scrubs all nullable columns for privacy
  */
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const deletedAt = Date.now()
   await db
     .update(chatMessagesTable)
-    .set({ ...scrubbedMessageData, deletedAt })
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
     .where(and(eq(chatMessagesTable.chatThreadId, id), isNull(chatMessagesTable.deletedAt)))
   await db
     .update(chatThreadsTable)
-    .set({ ...scrubbedThreadData, deletedAt })
+    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
     .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
 }
 
 /**
  * Soft deletes all chat threads (sets deletedAt timestamp)
  * Also soft-deletes all associated messages
- * Scrubs all non-FK data for privacy
+ * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteAllChatThreads = async (): Promise<void> => {
@@ -146,10 +125,10 @@ export const deleteAllChatThreads = async (): Promise<void> => {
   const deletedAt = Date.now()
   await db
     .update(chatMessagesTable)
-    .set({ ...scrubbedMessageData, deletedAt })
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
     .where(isNull(chatMessagesTable.deletedAt))
   await db
     .update(chatThreadsTable)
-    .set({ ...scrubbedThreadData, deletedAt })
+    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
     .where(isNull(chatThreadsTable.deletedAt))
 }

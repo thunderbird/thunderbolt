@@ -1,7 +1,8 @@
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
 
 describe('utils', () => {
   describe('formatNumber', () => {
@@ -182,6 +183,89 @@ describe('utils', () => {
       const hash3 = hashValues([3, 2, 1])
       expect(hash1).toBe(hash2)
       expect(hash1).not.toBe(hash3)
+    })
+  })
+
+  describe('clearNullableColumns', () => {
+    it('should return null for all nullable columns', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name').notNull(),
+        description: text('description'),
+        age: integer('age'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({
+        description: null,
+        age: null,
+      })
+    })
+
+    it('should skip id column even if nullable', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey(),
+        name: text('name'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ name: null })
+      expect(result).not.toHaveProperty('id')
+    })
+
+    it('should skip key column', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        key: text('key'),
+        value: text('value'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ value: null })
+      expect(result).not.toHaveProperty('key')
+    })
+
+    it('should skip deletedAt column', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name'),
+        deletedAt: integer('deleted_at'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ name: null })
+      expect(result).not.toHaveProperty('deletedAt')
+    })
+
+    it('should not include required (notNull) columns', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        requiredName: text('required_name').notNull(),
+        requiredAge: integer('required_age').notNull(),
+        optionalBio: text('optional_bio'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ optionalBio: null })
+      expect(result).not.toHaveProperty('requiredName')
+      expect(result).not.toHaveProperty('requiredAge')
+    })
+
+    it('should return empty object when all columns are required or preserved', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name').notNull(),
+        age: integer('age').notNull(),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({})
     })
   })
 })

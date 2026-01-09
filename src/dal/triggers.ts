@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
+import { clearNullableColumns } from '../lib/utils'
 import type { Trigger } from '../types'
 
 /**
@@ -26,24 +27,14 @@ export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
 }
 
 /**
- * Scrubbed data for soft-deleted triggers.
- * Clears nullable columns to null, required integers to default.
- * Keeps triggerType (enum) and promptId (FK) unchanged.
- */
-const scrubbedTriggerData = {
-  triggerTime: null,
-  isEnabled: 0,
-}
-
-/**
  * Soft deletes all triggers associated with a prompt (sets deletedAt timestamp)
- * Scrubs all non-FK/non-enum data for privacy
+ * Scrubs all nullable columns for privacy
  */
 export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(triggersTable)
-    .set({ ...scrubbedTriggerData, deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
     .where(eq(triggersTable.promptId, promptId))
 }
 

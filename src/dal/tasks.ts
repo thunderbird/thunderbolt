@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { tasksTable } from '../db/tables'
+import { clearNullableColumns } from '../lib/utils'
 import type { Task } from '../types'
 
 /**
@@ -54,17 +55,6 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
 }
 
 /**
- * Scrubbed data for soft-deleted tasks.
- * Clears nullable columns to null, required text to '', required integers to default.
- */
-const scrubbedTaskData = {
-  item: '',
-  order: 0,
-  isComplete: 0,
-  defaultHash: null,
-}
-
-/**
  * Soft deletes a single task by ID (sets deletedAt timestamp)
  * Scrubs all data for privacy
  */
@@ -72,7 +62,7 @@ export const deleteTask = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(tasksTable)
-    .set({ ...scrubbedTaskData, deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(tasksTable), deletedAt: Date.now() })
     .where(eq(tasksTable.id, id))
 }
 
@@ -84,7 +74,7 @@ export const deleteTasks = async (ids: string[]): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(tasksTable)
-    .set({ ...scrubbedTaskData, deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(tasksTable), deletedAt: Date.now() })
     .where(inArray(tasksTable.id, ids))
 }
 

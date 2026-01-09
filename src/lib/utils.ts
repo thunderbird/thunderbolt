@@ -2,6 +2,7 @@ import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
+import type { SQLiteColumn, SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { twMerge } from 'tailwind-merge'
 import {
   type CamelCasedProperties,
@@ -255,4 +256,37 @@ export const llmContentCharLimit = 16_000
 export const truncateText = (text: string, maxLength = 4000): string => {
   if (text.length <= maxLength) return text
   return text.substring(0, maxLength) + '...[truncated]'
+}
+
+/**
+ * Columns that should never be cleared during soft delete
+ */
+const PRESERVE_COLUMNS = new Set(['id', 'key', 'deletedAt'])
+
+/**
+ * Returns an object with all nullable columns set to null for soft-delete.
+ * Use this when soft-deleting a row to clear sensitive data while preserving required fields.
+ *
+ * @param table - Drizzle SQLite table definition
+ * @returns Object with null values for all nullable columns (except id, key, deletedAt)
+ *
+ * @example
+ * await db.update(usersTable)
+ *   .set({ ...clearNullableColumns(usersTable), deletedAt: Date.now() })
+ *   .where(eq(usersTable.id, userId))
+ */
+export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(table: T): Partial<T['$inferInsert']> => {
+  const cleared: Record<string, null> = {}
+
+  const columns = Object.entries(table) as [string, SQLiteColumn][]
+
+  for (const [name, column] of columns) {
+    if (!column?.dataType || PRESERVE_COLUMNS.has(name)) continue
+
+    if (column.notNull !== true) {
+      cleared[name] = null
+    }
+  }
+
+  return cleared as Partial<T['$inferInsert']>
 }

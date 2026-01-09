@@ -220,6 +220,27 @@ describe('Tasks DAL', () => {
       const tasksAfter = await getAllTasks()
       expect(tasksAfter).toHaveLength(0)
     })
+
+    it('should preserve original deletedAt timestamp for already-deleted task', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(tasksTable).values({
+        id: taskId,
+        item: 'Already deleted task',
+        isComplete: 0,
+        order: 1,
+        deletedAt: originalDeletedAt,
+      })
+
+      // Call delete again on already-deleted task
+      await deleteTask(taskId)
+
+      // Verify original deletedAt is preserved
+      const rawTask = await db.select().from(tasksTable).get()
+      expect(rawTask?.deletedAt).toBe(originalDeletedAt)
+    })
   })
 
   describe('deleteTasks', () => {
@@ -275,6 +296,35 @@ describe('Tasks DAL', () => {
 
     it('should not throw when deleting non-existent tasks', async () => {
       await expect(deleteTasks(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+    })
+
+    it('should preserve original deletedAt timestamps for already-deleted tasks', async () => {
+      const db = DatabaseSingleton.instance.db
+      const taskId1 = uuidv7()
+      const taskId2 = uuidv7()
+      const taskId3 = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(tasksTable).values([
+        { id: taskId1, item: 'Already deleted', isComplete: 0, order: 1, deletedAt: originalDeletedAt },
+        { id: taskId2, item: 'Active task', isComplete: 0, order: 2, deletedAt: null },
+        { id: taskId3, item: 'Another active', isComplete: 0, order: 3, deletedAt: null },
+      ])
+
+      // Delete all three tasks (one already deleted, two active)
+      await deleteTasks([taskId1, taskId2, taskId3])
+
+      // Verify original deletedAt is preserved for already-deleted task
+      const rawTasks = await db.select().from(tasksTable)
+      const alreadyDeleted = rawTasks.find((t) => t.id === taskId1)
+      const newlyDeleted1 = rawTasks.find((t) => t.id === taskId2)
+      const newlyDeleted2 = rawTasks.find((t) => t.id === taskId3)
+
+      expect(alreadyDeleted?.deletedAt).toBe(originalDeletedAt)
+      expect(newlyDeleted1?.deletedAt).not.toBe(originalDeletedAt)
+      expect(newlyDeleted1?.deletedAt).not.toBeNull()
+      expect(newlyDeleted2?.deletedAt).not.toBe(originalDeletedAt)
+      expect(newlyDeleted2?.deletedAt).not.toBeNull()
     })
   })
 

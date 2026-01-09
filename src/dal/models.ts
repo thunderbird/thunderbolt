@@ -144,13 +144,14 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 /**
  * Soft deletes a model by ID (sets deletedAt timestamp)
  * Scrubs all non-enum data for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteModel = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(modelsTable)
     .set({ ...clearNullableColumns(modelsTable), deletedAt: Date.now() })
-    .where(eq(modelsTable.id, id))
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 }
 
 /**

@@ -373,6 +373,61 @@ describe('Triggers DAL', () => {
       const enabledAfter = await getAllEnabledTriggers()
       expect(enabledAfter).toHaveLength(0)
     })
+
+    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+      const triggerId1 = uuidv7()
+      const triggerId2 = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test prompt',
+        modelId: modelId,
+      })
+
+      // Create one already-deleted trigger and one active trigger
+      await db.insert(triggersTable).values([
+        {
+          id: triggerId1,
+          promptId: promptId,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          deletedAt: originalDeletedAt, // Already deleted
+        },
+        {
+          id: triggerId2,
+          promptId: promptId,
+          triggerType: 'time',
+          triggerTime: '18:00',
+          isEnabled: 1,
+          deletedAt: null, // Active
+        },
+      ])
+
+      await deleteTriggersForPrompt(promptId)
+
+      // Verify original deletedAt is preserved for already-deleted trigger
+      const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      const alreadyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId1)
+      const newlyDeletedTrigger = rawTriggers.find((t) => t.id === triggerId2)
+
+      expect(alreadyDeletedTrigger?.deletedAt).toBe(originalDeletedAt)
+      expect(newlyDeletedTrigger?.deletedAt).not.toBe(originalDeletedAt)
+      expect(newlyDeletedTrigger?.deletedAt).not.toBeNull()
+    })
   })
 
   describe('createTrigger', () => {

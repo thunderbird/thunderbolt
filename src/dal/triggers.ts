@@ -29,13 +29,14 @@ export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
 /**
  * Soft deletes all triggers associated with a prompt (sets deletedAt timestamp)
  * Scrubs all nullable columns for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(triggersTable)
     .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
-    .where(eq(triggersTable.promptId, promptId))
+    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
 }
 
 /**

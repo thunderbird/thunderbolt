@@ -194,6 +194,28 @@ describe('MCP Servers DAL', () => {
       const serversAfter = await getHttpMcpServers()
       expect(serversAfter).toHaveLength(0)
     })
+
+    it('should preserve original deletedAt timestamp for already-deleted server', async () => {
+      const db = DatabaseSingleton.instance.db
+      const serverId = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(mcpServersTable).values({
+        id: serverId,
+        name: 'Already deleted server',
+        type: 'http',
+        url: 'http://example.com',
+        enabled: 1,
+        deletedAt: originalDeletedAt,
+      })
+
+      // Call delete again on already-deleted server
+      await deleteMcpServer(serverId)
+
+      // Verify original deletedAt is preserved
+      const rawServer = await db.select().from(mcpServersTable).get()
+      expect(rawServer?.deletedAt).toBe(originalDeletedAt)
+    })
   })
 
   describe('createMcpServer', () => {

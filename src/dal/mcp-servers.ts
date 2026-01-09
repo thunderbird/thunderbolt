@@ -26,13 +26,14 @@ export const getHttpMcpServers = async (): Promise<McpServer[]> => {
 /**
  * Soft deletes an MCP server by ID (sets deletedAt timestamp)
  * Scrubs all non-enum data for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteMcpServer = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(mcpServersTable)
     .set({ ...clearNullableColumns(mcpServersTable), deletedAt: Date.now() })
-    .where(eq(mcpServersTable.id, id))
+    .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
 }
 
 /**

@@ -410,7 +410,7 @@ describe('Models DAL', () => {
   })
 
   describe('deleteModel', () => {
-    it('should delete a model by id', async () => {
+    it('should soft delete a model by id (set deletedAt)', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
 
@@ -429,16 +429,21 @@ describe('Models DAL', () => {
 
       await deleteModel(modelId)
 
-      // Verify model is deleted
+      // Verify model is soft deleted (not returned by getModel)
       const modelAfter = await getModel(modelId)
       expect(modelAfter).toBe(null)
+
+      // But should still exist in database with deletedAt set
+      const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
+      expect(rawModel).not.toBeUndefined()
+      expect(rawModel?.deletedAt).not.toBeNull()
     })
 
     it('should not throw when deleting non-existent model', async () => {
       await expect(deleteModel('non-existent-id')).resolves.toBeUndefined()
     })
 
-    it('should only delete the specified model', async () => {
+    it('should only soft delete the specified model', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
@@ -464,11 +469,86 @@ describe('Models DAL', () => {
 
       await deleteModel(modelId1)
 
-      // Verify only model 1 is deleted
+      // Verify only model 1 is soft deleted
       const model1 = await getModel(modelId1)
       const model2 = await getModel(modelId2)
       expect(model1).toBe(null)
       expect(model2).not.toBe(null)
+
+      // Both should still exist in database
+      const rawModels = await db.select().from(modelsTable)
+      expect(rawModels).toHaveLength(2)
+    })
+
+    it('should not return soft-deleted model via getAllModels', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Model to delete',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Verify model exists
+      const modelsBefore = await getAllModels()
+      expect(modelsBefore).toHaveLength(1)
+
+      await deleteModel(modelId)
+
+      // Verify model is not returned by getAllModels
+      const modelsAfter = await getAllModels()
+      expect(modelsAfter).toHaveLength(0)
+    })
+
+    it('should not return soft-deleted model via getAvailableModels', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Model to delete',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Verify model exists
+      const modelsBefore = await getAvailableModels()
+      expect(modelsBefore).toHaveLength(1)
+
+      await deleteModel(modelId)
+
+      // Verify model is not returned by getAvailableModels
+      const modelsAfter = await getAvailableModels()
+      expect(modelsAfter).toHaveLength(0)
+    })
+
+    it('should preserve original deletedAt timestamp for already-deleted model', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const originalDeletedAt = Date.now() - 10000
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Already deleted model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+        deletedAt: originalDeletedAt,
+      })
+
+      // Call delete again on already-deleted model
+      await deleteModel(modelId)
+
+      // Verify original deletedAt is preserved
+      const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
+      expect(rawModel?.deletedAt).toBe(originalDeletedAt)
     })
   })
 

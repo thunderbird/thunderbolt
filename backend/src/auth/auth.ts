@@ -1,7 +1,7 @@
 import type { db as DbType } from '@/db/client'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { emailOTP } from 'better-auth/plugins'
+import { bearer, emailOTP } from 'better-auth/plugins'
 import { Resend } from 'resend'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -34,6 +34,7 @@ export const createAuth = (database: typeof DbType) =>
     }),
     trustedOrigins,
     plugins: [
+      bearer(), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
         otpLength: 6,
         expiresIn: 300, // 5 minutes

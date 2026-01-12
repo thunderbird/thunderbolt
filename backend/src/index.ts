@@ -103,11 +103,12 @@ const startServer = async () => {
   try {
     const app = await createApp()
 
-    const hostname = process.env.HOST
-      ? process.env.HOST
-      : process.env.NODE_ENV === 'production'
-        ? '0.0.0.0'
-        : 'localhost'
+    // const hostname = process.env.HOST
+    //   ? process.env.HOST
+    //   : process.env.NODE_ENV === 'production'
+    //     ? '0.0.0.0'
+    //     : 'localhost'
+    const hostname = '0.0.0.0'
 
     app.listen(
       {

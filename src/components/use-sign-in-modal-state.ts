@@ -1,4 +1,6 @@
 import type { AuthClient } from '@/contexts'
+import { setAuthToken } from '@/lib/auth-token'
+import { isMobile } from '@/lib/platform'
 import { useReducer, type FormEvent } from 'react'
 
 type ModalStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
@@ -109,6 +111,11 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
       if (result.error) {
         dispatch({ type: 'VERIFY_ERROR', payload: result.error.message || 'Invalid code. Please try again.' })
         return
+      }
+
+      // On mobile, store the token for bearer auth (cookies don't persist)
+      if (isMobile() && result.data?.token) {
+        await setAuthToken(result.data.token)
       }
 
       // Sign-in successful - show success state

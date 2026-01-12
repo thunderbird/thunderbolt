@@ -1,31 +1,55 @@
 'use client'
 
 import { useSettings } from '@/hooks/use-settings'
-import { getPlatform } from '@/lib/platform'
+import { getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { getPlatform, isMobile } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
- * Includes platform header so backend can use deep links for mobile
+ *
+ * On mobile (iOS/Android), uses Bearer token auth since cookies don't persist
+ * for the tauri://localhost origin in WKWebView.
  */
 const createAuthClientInstance = (cloudUrl: string) => {
-  // Remove trailing /v1 if present since Better Auth adds /api/auth
-  const baseURL = cloudUrl.replace(/\/v1$/, '')
+  const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
+  const mobile = isMobile()
 
   return createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient()],
-    fetchOptions: {
-      credentials: 'include', // Required for cookies to be sent/received
-      headers: {
-        'X-Client-Platform': platform,
-      },
-    },
+    fetchOptions: buildFetchOptions(platform, mobile),
   })
+}
+
+const buildFetchOptions = (platform: string, mobile: boolean) => {
+  const baseOptions = {
+    credentials: (mobile ? 'omit' : 'include') as RequestCredentials,
+    headers: { 'X-Client-Platform': platform },
+  }
+
+  if (!mobile) {
+    return baseOptions
+  }
+
+  // Mobile: Use bearer token instead of cookies
+  return {
+    ...baseOptions,
+    auth: {
+      type: 'Bearer' as const,
+      token: () => getAuthToken() ?? '',
+    },
+    onSuccess: (ctx: { response: Response }) => {
+      const token = ctx.response.headers.get('set-auth-token')
+      if (token) {
+        setAuthToken(token)
+      }
+    },
+  }
 }
 
 export type AuthClient = ReturnType<typeof createAuthClientInstance>

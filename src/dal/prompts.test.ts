@@ -183,7 +183,7 @@ describe('Prompts DAL', () => {
       expect(result?.prompt?.id).toBe(promptId)
     })
 
-    it('should return automation info with deleted flag when prompt is deleted', async () => {
+    it('should return automation info with deleted flag when triggeredBy is null', async () => {
       const threadId = uuidv7()
       const db = DatabaseSingleton.instance.db
 
@@ -192,7 +192,45 @@ describe('Prompts DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 1,
-        triggeredBy: null, // No prompt exists, simulating deleted prompt
+        triggeredBy: null, // No prompt exists
+      })
+
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.wasTriggeredByAutomation).toBe(true)
+      expect(result?.isAutomationDeleted).toBe(true)
+      expect(result?.prompt).toBe(null)
+    })
+
+    it('should return automation info with deleted flag when prompt is soft-deleted', async () => {
+      const threadId = uuidv7()
+      const promptId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Create prompt and soft-delete it
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test automation prompt',
+        modelId: modelId,
+        deletedAt: Date.now(),
+      })
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 1,
+        triggeredBy: promptId, // References the soft-deleted prompt
       })
 
       const result = await getTriggerPromptForThread(threadId)

@@ -37,6 +37,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
   const db = DatabaseSingleton.instance.db
 
   // Fetch the associated prompt and thread info in a single query via join
+  // Join condition includes soft-delete check so deleted prompts return null
   const result = await db
     .select({
       prompt: promptsTable,
@@ -44,7 +45,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
       triggeredBy: chatThreadsTable.triggeredBy,
     })
     .from(chatThreadsTable)
-    .leftJoin(promptsTable, eq(chatThreadsTable.triggeredBy, promptsTable.id))
+    .leftJoin(promptsTable, and(eq(chatThreadsTable.triggeredBy, promptsTable.id), isNull(promptsTable.deletedAt)))
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 

@@ -103,15 +103,8 @@
     {
       "idx": 14,
       "version": "6",
-      "when": 1767892257771,
-      "tag": "0014_amused_rafael_vega",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
       "when": 1736676000000,
-      "tag": "0015_make_columns_nullable",
+      "tag": "0014_amused_rafael_vega",
       "breakpoints": true
     }
   ]

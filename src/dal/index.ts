@@ -34,6 +34,7 @@ export {
   getChatThread,
   getContextSizeForThread,
   getOrCreateChatThread,
+  isChatThreadDeleted,
 } from './chat-threads'
 
 // Chat Messages

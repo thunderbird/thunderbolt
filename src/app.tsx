@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { Toaster } from 'sonner'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
@@ -133,6 +134,7 @@ export const App = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="ui_theme">
       {renderAppContent()}
+      <Toaster position="top-center" richColors />
     </ThemeProvider>
   )
 }

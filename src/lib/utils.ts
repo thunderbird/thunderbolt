@@ -300,7 +300,5 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
     cleared[name] = null
   }
 
-  console.log('DEBUG: cleared', cleared)
-
   return cleared as Partial<T['$inferInsert']>
 }

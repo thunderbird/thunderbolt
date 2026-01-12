@@ -1,9 +1,23 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns } from '../lib/utils'
 import { type ChatThread } from '@/types'
 import { getModel } from './models'
+
+/**
+ * Checks if a chat thread ID exists as a soft-deleted record.
+ * Used to detect when a user visits a URL for a deleted chat.
+ */
+export const isChatThreadDeleted = async (id: string): Promise<boolean> => {
+  const db = DatabaseSingleton.instance.db
+  const thread = await db
+    .select({ id: chatThreadsTable.id })
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.id, id), isNotNull(chatThreadsTable.deletedAt)))
+    .get()
+  return thread !== undefined
+}
 
 /**
  * Gets all chat threads ordered by creation date (excluding soft-deleted)

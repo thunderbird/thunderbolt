@@ -11,6 +11,7 @@ import {
   getChatThread,
   getContextSizeForThread,
   getOrCreateChatThread,
+  isChatThreadDeleted,
   updateChatThread,
 } from './chat-threads'
 import { getChatMessages } from './chat-messages'
@@ -168,6 +169,57 @@ describe('Chat Threads DAL', () => {
       expect(thread1?.title).toBe('First Thread')
       expect(thread2?.id).toBe(threadId2)
       expect(thread2?.title).toBe('Second Thread')
+    })
+  })
+
+  describe('isChatThreadDeleted', () => {
+    it('should return false for non-existent thread', async () => {
+      const nonExistentId = uuidv7()
+      const isDeleted = await isChatThreadDeleted(nonExistentId)
+      expect(isDeleted).toBe(false)
+    })
+
+    it('should return false for existing non-deleted thread', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Active Thread',
+        isEncrypted: 0,
+      })
+
+      const isDeleted = await isChatThreadDeleted(threadId)
+      expect(isDeleted).toBe(false)
+    })
+
+    it('should return true for soft-deleted thread', async () => {
+      const threadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Deleted Thread',
+        isEncrypted: 0,
+        deletedAt: Date.now(),
+      })
+
+      const isDeleted = await isChatThreadDeleted(threadId)
+      expect(isDeleted).toBe(true)
+    })
+
+    it('should correctly identify deleted vs active threads', async () => {
+      const activeThreadId = uuidv7()
+      const deletedThreadId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values([
+        { id: activeThreadId, title: 'Active', isEncrypted: 0 },
+        { id: deletedThreadId, title: 'Deleted', isEncrypted: 0, deletedAt: Date.now() },
+      ])
+
+      expect(await isChatThreadDeleted(activeThreadId)).toBe(false)
+      expect(await isChatThreadDeleted(deletedThreadId)).toBe(true)
     })
   })
 

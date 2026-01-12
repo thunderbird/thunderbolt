@@ -255,10 +255,9 @@ describe('utils', () => {
       expect(result).not.toHaveProperty('id')
     })
 
-    it('should skip key column', () => {
+    it('should skip primary key column regardless of name (like settings.key)', () => {
       const testTable = sqliteTable('test', {
-        id: text('id').primaryKey().notNull(),
-        key: text('key'),
+        key: text('key').primaryKey(),
         value: text('value'),
       })
 
@@ -266,6 +265,19 @@ describe('utils', () => {
 
       expect(result).toEqual({ value: null })
       expect(result).not.toHaveProperty('key')
+    })
+
+    it('should skip unique columns', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        email: text('email').unique(),
+        name: text('name'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ name: null })
+      expect(result).not.toHaveProperty('email')
     })
 
     it('should skip deletedAt column', () => {

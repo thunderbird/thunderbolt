@@ -259,13 +259,8 @@ export const truncateText = (text: string, maxLength = 4000): string => {
 }
 
 /**
- * Columns that should never be cleared during soft delete
- */
-const PRESERVE_COLUMNS = new Set(['id', 'key', 'deletedAt'])
-
-/**
  * Returns an object with nullable columns set to null for soft-delete data scrubbing.
- * Skips primary keys, foreign keys, and preserved columns (id, key, deletedAt).
+ * Automatically detects and skips primary keys, foreign keys, unique columns, and deletedAt.
  *
  * @param table - Drizzle SQLite table definition
  * @returns Object with nullable columns set to null for data privacy
@@ -279,15 +274,33 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
   const cleared: Record<string, null> = {}
 
   const tableConfig = getTableConfig(table)
+
+  // Get all foreign key column names
   const fkColumnNames = new Set(tableConfig.foreignKeys.flatMap((fk) => fk.reference().columns.map((col) => col.name)))
 
+  // Get all primary key column names from composite primaryKey declarations
+  const pkColumnNames = new Set(tableConfig.primaryKeys.flatMap((pk) => pk.columns.map((col) => col.name)))
+
+  // Get all unique constraint column names from composite unique declarations
+  const uniqueColumnNames = new Set(tableConfig.uniqueConstraints.flatMap((uc) => uc.columns.map((col) => col.name)))
+
   for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
-    if (!column?.dataType || PRESERVE_COLUMNS.has(name)) continue
+    if (!column?.dataType) continue
+    // Skip deletedAt (handled separately by caller with new timestamp)
+    if (name === 'deletedAt') continue
+    // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
+    if (column.primary || pkColumnNames.has(column.name)) continue
+    // Skip foreign key columns (to maintain referential integrity)
     if (fkColumnNames.has(column.name)) continue
+    // Skip unique columns (functional identifiers)
+    if (column.isUnique || uniqueColumnNames.has(column.name)) continue
+    // Skip required (not null) columns
     if (column.notNull) continue
 
     cleared[name] = null
   }
+
+  console.log('DEBUG: cleared', cleared)
 
   return cleared as Partial<T['$inferInsert']>
 }

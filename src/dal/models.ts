@@ -3,6 +3,8 @@ import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable } from '../db/tables'
 import { clearNullableColumns } from '../lib/utils'
 import type { Model, ModelRow } from '../types'
+import { getSettings } from './settings'
+import { getLastMessage } from './chat-messages'
 
 const mapModel = (row: ModelRow): Model => {
   return {
@@ -69,9 +71,6 @@ export const getSystemModel = async (): Promise<Model | null> => {
  * If the selected model is disabled, automatically falls back to system model
  */
 export const getSelectedModel = async (): Promise<Model> => {
-  // Import locally to avoid circular dependency
-  const { getSettings } = await import('./settings')
-
   const settings = await getSettings({ selected_model: String })
   const selectedModelId = settings.selectedModel
 
@@ -98,9 +97,6 @@ export const getSelectedModel = async (): Promise<Model> => {
  * If any fallback model is disabled, continues to the next fallback option.
  */
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
-  // Import locally to avoid circular dependency
-  const { getLastMessage } = await import('./chat-messages')
-
   const lastMessage = await getLastMessage(threadId)
 
   if (lastMessage?.modelId) {

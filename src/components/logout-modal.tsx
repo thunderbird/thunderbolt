@@ -13,6 +13,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { useAuth } from '@/contexts'
+import { clearAuthToken } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { cn } from '@/lib/utils'
 
@@ -101,6 +102,9 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
     } catch (error) {
       console.error('Failed to sign out:', error)
     }
+
+    // Clear local bearer token (mobile auth)
+    await clearAuthToken()
 
     try {
       if (selectedOption === 'delete') {

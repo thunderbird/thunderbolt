@@ -40,7 +40,8 @@ export const loadAuthToken = async (): Promise<void> => {
   cachedToken = settings.authBearerToken
 }
 
-/** Clear the auth token (for sign-out) */
+/** Clear the auth token (for sign-out) - mobile only */
 export const clearAuthToken = async (): Promise<void> => {
+  if (!isMobile()) return
   await setAuthToken(null)
 }

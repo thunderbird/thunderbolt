@@ -264,14 +264,11 @@ export const truncateText = (text: string, maxLength = 4000): string => {
 const PRESERVE_COLUMNS = new Set(['id', 'key', 'deletedAt'])
 
 /**
- * Returns an object with cleared column values for soft-delete data scrubbing.
- * - Nullable columns: set to null
- * - Required text columns (non-FK): set to ''
- * - Required number columns: set to 0
- * - Foreign key columns: preserved (not changed)
+ * Returns an object with nullable columns set to null for soft-delete data scrubbing.
+ * Skips primary keys, foreign keys, and preserved columns (id, key, deletedAt).
  *
  * @param table - Drizzle SQLite table definition
- * @returns Object with scrubbed values for data privacy
+ * @returns Object with nullable columns set to null for data privacy
  *
  * @example
  * await db.update(usersTable)
@@ -279,37 +276,17 @@ const PRESERVE_COLUMNS = new Set(['id', 'key', 'deletedAt'])
  *   .where(eq(usersTable.id, userId))
  */
 export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(table: T): Partial<T['$inferInsert']> => {
-  const cleared: Record<string, null | string | number> = {}
+  const cleared: Record<string, null> = {}
 
-  // Get foreign key column names from table config
   const tableConfig = getTableConfig(table)
-  const fkColumnNames = new Set<string>()
-  for (const fk of tableConfig.foreignKeys) {
-    const ref = fk.reference()
-    for (const col of ref.columns) {
-      fkColumnNames.add(col.name)
-    }
-  }
+  const fkColumnNames = new Set(tableConfig.foreignKeys.flatMap((fk) => fk.reference().columns.map((col) => col.name)))
 
-  const columns = Object.entries(table) as [string, SQLiteColumn][]
-
-  for (const [name, column] of columns) {
+  for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
     if (!column?.dataType || PRESERVE_COLUMNS.has(name)) continue
-
-    // Skip foreign key columns
     if (fkColumnNames.has(column.name)) continue
+    if (column.notNull) continue
 
-    const isNullable = column.notNull !== true
-    const isText = column.dataType === 'string'
-    const isNumber = column.dataType === 'number'
-
-    if (isNullable) {
-      cleared[name] = null
-    } else if (isText) {
-      cleared[name] = ''
-    } else if (isNumber) {
-      cleared[name] = 0
-    }
+    cleared[name] = null
   }
 
   return cleared as Partial<T['$inferInsert']>

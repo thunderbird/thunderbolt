@@ -202,7 +202,7 @@ describe('utils', () => {
       })
     })
 
-    it('should set required text columns to empty string', () => {
+    it('should skip required text columns', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
         name: text('name').notNull(),
@@ -211,13 +211,10 @@ describe('utils', () => {
 
       const result = clearNullableColumns(testTable)
 
-      expect(result).toEqual({
-        name: '',
-        title: '',
-      })
+      expect(result).toEqual({})
     })
 
-    it('should set required number columns to 0', () => {
+    it('should skip required number columns', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
         count: integer('count').notNull(),
@@ -226,13 +223,10 @@ describe('utils', () => {
 
       const result = clearNullableColumns(testTable)
 
-      expect(result).toEqual({
-        count: 0,
-        score: 0,
-      })
+      expect(result).toEqual({})
     })
 
-    it('should handle mixed column types correctly', () => {
+    it('should only set nullable columns to null in mixed types', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
         name: text('name').notNull(),
@@ -244,9 +238,7 @@ describe('utils', () => {
       const result = clearNullableColumns(testTable)
 
       expect(result).toEqual({
-        name: '',
         description: null,
-        count: 0,
         score: null,
       })
     })
@@ -321,7 +313,7 @@ describe('utils', () => {
 
       const result = clearNullableColumns(childTable)
 
-      expect(result).toEqual({ name: '' })
+      expect(result).toEqual({})
       expect(result).not.toHaveProperty('parentId')
     })
   })

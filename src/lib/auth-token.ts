@@ -8,6 +8,7 @@
  * while persisting to settings database for durability across app restarts.
  */
 
+import { deleteSetting, getSettings, updateSettings } from '@/dal/settings'
 import { isMobile } from './platform'
 
 const AUTH_TOKEN_SETTING_KEY = 'auth_bearer_token'
@@ -24,7 +25,6 @@ export const getAuthToken = (): string | null => {
 export const setAuthToken = async (token: string | null): Promise<void> => {
   cachedToken = token
 
-  const { updateSettings, deleteSetting } = await import('@/dal/settings')
   if (token) {
     await updateSettings({ [AUTH_TOKEN_SETTING_KEY]: token })
   } else {
@@ -36,7 +36,6 @@ export const setAuthToken = async (token: string | null): Promise<void> => {
 export const loadAuthToken = async (): Promise<void> => {
   if (!isMobile()) return
 
-  const { getSettings } = await import('@/dal/settings')
   const settings = await getSettings({ [AUTH_TOKEN_SETTING_KEY]: String })
   cachedToken = settings.authBearerToken
 }

@@ -8,6 +8,7 @@
     "opener:default",
     "os:default",
     "deep-link:default",
+    "updater:default",
     "core:event:default",
     "core:window:allow-hide",
     "core:window:allow-show",

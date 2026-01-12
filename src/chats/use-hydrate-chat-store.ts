@@ -16,7 +16,6 @@ import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { toast } from 'sonner'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
 
@@ -81,13 +80,10 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setMcpClients, setModels } = useChatStore.getState()
 
-    // Check if this ID belongs to a deleted chat - redirect to new chat if so
+    // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = await isChatThreadDeleted(id)
     if (isDeleted) {
-      toast.error(`Chat not found`, {
-        position: 'top-center',
-      })
-      navigate('/chats/new', { replace: true })
+      navigate('/not-found', { replace: true })
       return
     }
 

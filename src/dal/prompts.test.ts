@@ -8,6 +8,7 @@ import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { type Prompt } from '@/types'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -222,7 +223,11 @@ describe('Prompts DAL', () => {
         .where(eq(promptsTable.id, defaultAutomation.id))
 
       // Verify it's modified
-      let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      let automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation?.title).toBe('Modified Title')
       expect(automation?.prompt).toBe('Modified content')
 
@@ -230,7 +235,11 @@ describe('Prompts DAL', () => {
       await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
 
       // Verify it's reset
-      automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation?.title).toBe(defaultAutomation.title)
       expect(automation?.prompt).toBe(defaultAutomation.prompt)
       // Hash should be computed from the default
@@ -252,7 +261,11 @@ describe('Prompts DAL', () => {
       await db.update(promptsTable).set({ title: 'Modified' }).where(eq(promptsTable.id, defaultAutomation.id))
 
       // Verify detected as modified
-      let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      let automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation).toBeDefined()
       if (automation) {
         const currentHash = hashPrompt(automation)
@@ -263,7 +276,11 @@ describe('Prompts DAL', () => {
       await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
 
       // Verify no longer detected as modified
-      automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation).toBeDefined()
       if (automation) {
         const currentHash = hashPrompt(automation)

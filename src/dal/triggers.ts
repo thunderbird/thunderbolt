@@ -9,10 +9,10 @@ import type { Trigger } from '../types'
  */
 export const getAllTriggersForPrompt = async (promptId: string): Promise<Trigger[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db
+  return (await db
     .select()
     .from(triggersTable)
-    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
+    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))) as Trigger[]
 }
 
 /**
@@ -20,10 +20,10 @@ export const getAllTriggersForPrompt = async (promptId: string): Promise<Trigger
  */
 export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db
+  return (await db
     .select()
     .from(triggersTable)
-    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))
+    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))) as Trigger[]
 }
 
 /**

@@ -7,9 +7,7 @@ import {
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
-import { getSettings } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { getModel, getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -38,7 +36,6 @@ import {
   type experimental_createMCPClient,
   type ToolSet,
 } from 'ai'
-import { eq } from 'drizzle-orm'
 import { createMessageMetadata } from './message-metadata'
 
 export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
@@ -128,8 +125,6 @@ export const aiFetchStreamingResponse = async ({
 
   await saveMessages({ id, messages })
 
-  const db = DatabaseSingleton.instance.db
-
   // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings({
     preferred_name: '',
@@ -148,9 +143,7 @@ export const aiFetchStreamingResponse = async ({
     integrations_microsoft_is_enabled: false,
   })
 
-  const model = await db.query.modelsTable.findFirst({
-    where: eq(modelsTable.id, modelId),
-  })
+  const model = await getModel(modelId)
 
   if (!model) throw new Error('Model not found')
 

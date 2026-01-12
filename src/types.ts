@@ -30,14 +30,41 @@ export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UIT
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
 
-export type ChatMessage = InferSelectModel<typeof chatMessagesTable>
-export type ChatThread = InferSelectModel<typeof chatThreadsTable>
+/**
+ * Helper type to make specific keys required (non-null).
+ * Used to create application types from row types where certain fields
+ * should be guaranteed to be present for non-deleted records.
+ */
+type WithRequired<T, K extends keyof T> = T & { [P in K]-?: NonNullable<T[P]> }
+
+// Row types - Raw database row types matching the nullable schema
+export type ChatMessageRow = InferSelectModel<typeof chatMessagesTable>
+export type ChatThreadRow = InferSelectModel<typeof chatThreadsTable>
 export type Setting = InferSelectModel<typeof settingsTable>
-export type Model = InferSelectModel<typeof modelsTable>
-export type Task = InferSelectModel<typeof tasksTable>
-export type McpServer = InferSelectModel<typeof mcpServersTable>
-export type Prompt = InferSelectModel<typeof promptsTable>
-export type Trigger = InferSelectModel<typeof triggersTable>
+export type ModelRow = InferSelectModel<typeof modelsTable>
+export type TaskRow = InferSelectModel<typeof tasksTable>
+export type McpServerRow = InferSelectModel<typeof mcpServersTable>
+export type PromptRow = InferSelectModel<typeof promptsTable>
+export type TriggerRow = InferSelectModel<typeof triggersTable>
+
+// Application types - Row types with previously-required fields made non-null
+export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role'>
+export type ChatThread = WithRequired<ChatThreadRow, 'isEncrypted' | 'wasTriggeredByAutomation'>
+export type Model = WithRequired<
+  ModelRow,
+  | 'provider'
+  | 'name'
+  | 'model'
+  | 'enabled'
+  | 'toolUsage'
+  | 'isConfidential'
+  | 'startWithReasoning'
+  | 'supportsParallelToolCalls'
+>
+export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
+export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
+export type Prompt = WithRequired<PromptRow, 'prompt'>
+export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled'>
 
 export type AutomationRun = {
   prompt: Prompt | null

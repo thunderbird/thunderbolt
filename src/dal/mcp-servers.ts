@@ -9,7 +9,7 @@ import { type McpServer } from '@/types'
  */
 export const getAllMcpServers = async (): Promise<McpServer[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
+  return (await db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))) as McpServer[]
 }
 
 /**
@@ -17,10 +17,12 @@ export const getAllMcpServers = async (): Promise<McpServer[]> => {
  */
 export const getHttpMcpServers = async (): Promise<McpServer[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db
+  return (await db
     .select()
     .from(mcpServersTable)
-    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
+    .where(
+      and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)),
+    )) as McpServer[]
 }
 
 /**

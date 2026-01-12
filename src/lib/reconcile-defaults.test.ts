@@ -8,6 +8,7 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { reconcileDefaultsForTable } from './reconcile-defaults'
+import type { Model, Prompt } from '@/types'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -26,7 +27,7 @@ describe('seedModels', () => {
     const db = DatabaseSingleton.instance.db
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
-    const models = await db.select().from(modelsTable)
+    const models = (await db.select().from(modelsTable)) as Model[]
     expect(models.length).toBe(defaultModels.length)
 
     for (const defaultModel of defaultModels) {
@@ -139,7 +140,7 @@ describe('seedPrompts', () => {
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
     await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
-    const prompts = await db.select().from(promptsTable)
+    const prompts = (await db.select().from(promptsTable)) as Prompt[]
     expect(prompts.length).toBe(defaultAutomations.length)
 
     for (const defaultAutomation of defaultAutomations) {

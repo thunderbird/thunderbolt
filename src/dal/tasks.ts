@@ -9,7 +9,7 @@ import type { Task } from '../types'
  */
 export const getAllTasks = async (): Promise<Task[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt))
+  return (await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt))) as Task[]
 }
 
 /**
@@ -17,7 +17,7 @@ export const getAllTasks = async (): Promise<Task[]> => {
  */
 export const getIncompleteTasks = async (searchQuery?: string): Promise<Task[]> => {
   const db = DatabaseSingleton.instance.db
-  const query = db
+  const result = (await db
     .select()
     .from(tasksTable)
     .where(
@@ -26,9 +26,8 @@ export const getIncompleteTasks = async (searchQuery?: string): Promise<Task[]> 
         : and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt)),
     )
     .orderBy(asc(tasksTable.order), desc(tasksTable.id))
-    .limit(50)
+    .limit(50)) as Task[]
 
-  const result = await query
   return result.filter((task) => task.item && task.item.trim() !== '')
 }
 

@@ -2,14 +2,14 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable } from '../db/tables'
 import { clearNullableColumns } from '../lib/utils'
-import type { Model } from '../types'
+import type { Model, ModelRow } from '../types'
 
-const mapModel = (model: Model) => {
+const mapModel = (row: ModelRow): Model => {
   return {
-    ...model,
-    api_key: model.apiKey || undefined,
-    is_system: model.isSystem || undefined,
-  }
+    ...row,
+    api_key: row.apiKey || undefined,
+    is_system: row.isSystem || undefined,
+  } as Model
 }
 
 /**

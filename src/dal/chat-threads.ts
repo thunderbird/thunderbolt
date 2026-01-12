@@ -10,11 +10,11 @@ import { getModel } from './models'
  */
 export const getAllChatThreads = async (): Promise<ChatThread[]> => {
   const db = DatabaseSingleton.instance.db
-  return await db
+  return (await db
     .select()
     .from(chatThreadsTable)
     .where(isNull(chatThreadsTable.deletedAt))
-    .orderBy(desc(chatThreadsTable.id))
+    .orderBy(desc(chatThreadsTable.id))) as ChatThread[]
 }
 
 /**
@@ -27,7 +27,7 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
     .from(chatThreadsTable)
     .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
     .get()
-  return thread ?? null
+  return (thread ?? null) as ChatThread | null
 }
 
 /**

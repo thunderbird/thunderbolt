@@ -14,15 +14,20 @@ import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
 export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => {
   const db = DatabaseSingleton.instance.db
   if (searchQuery) {
-    return db
+    return (await db
       .select()
       .from(promptsTable)
       .where(and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt)))
       .orderBy(asc(promptsTable.id))
-      .limit(50)
+      .limit(50)) as Prompt[]
   }
 
-  return db.select().from(promptsTable).where(isNull(promptsTable.deletedAt)).orderBy(asc(promptsTable.id)).limit(50)
+  return (await db
+    .select()
+    .from(promptsTable)
+    .where(isNull(promptsTable.deletedAt))
+    .orderBy(asc(promptsTable.id))
+    .limit(50)) as Prompt[]
 }
 
 /**
@@ -49,7 +54,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
   const isAutomationDeleted = wasTriggeredByAutomation && !result.prompt
 
   return {
-    prompt: result.prompt,
+    prompt: result.prompt as Prompt | null,
     wasTriggeredByAutomation,
     isAutomationDeleted,
   }
@@ -125,7 +130,7 @@ export const getPrompt = async (id: string): Promise<Prompt | null> => {
     .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
     .get()
 
-  return prompt ?? null
+  return (prompt ?? null) as Prompt | null
 }
 
 /**

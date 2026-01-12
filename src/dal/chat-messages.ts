@@ -10,11 +10,11 @@ import { getChatThread, updateChatThread } from './chat-threads'
  */
 export const getMessage = async (messageId: string): Promise<ChatMessage | undefined> => {
   const db = DatabaseSingleton.instance.db
-  return await db
+  return (await db
     .select()
     .from(chatMessagesTable)
     .where(and(eq(chatMessagesTable.id, messageId), isNull(chatMessagesTable.deletedAt)))
-    .get()
+    .get()) as ChatMessage | undefined
 }
 
 /**
@@ -22,12 +22,11 @@ export const getMessage = async (messageId: string): Promise<ChatMessage | undef
  */
 export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
-  const chatMessages = await db
+  return (await db
     .select()
     .from(chatMessagesTable)
     .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
-    .orderBy(chatMessagesTable.id)
-  return chatMessages
+    .orderBy(chatMessagesTable.id)) as ChatMessage[]
 }
 
 /**
@@ -44,7 +43,7 @@ export const getLastMessage = async (threadId: string): Promise<ChatMessage | nu
     .limit(1)
     .get()
 
-  return lastMessage ?? null
+  return (lastMessage ?? null) as ChatMessage | null
 }
 
 /**

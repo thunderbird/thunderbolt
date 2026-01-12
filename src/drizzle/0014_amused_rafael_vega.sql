@@ -131,4 +131,13 @@ DROP TABLE `triggers`;--> statement-breakpoint
 ALTER TABLE `__new_triggers` RENAME TO `triggers`;--> statement-breakpoint
 CREATE UNIQUE INDEX `triggers_id_unique` ON `triggers` (`id`);--> statement-breakpoint
 
-PRAGMA foreign_keys=ON;
+PRAGMA foreign_keys=ON;--> statement-breakpoint
+
+-- Partial indexes for soft delete queries (only index active records)
+CREATE INDEX `idx_chat_messages_active` ON `chat_messages` (`chat_thread_id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_chat_threads_active` ON `chat_threads` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_tasks_active` ON `tasks` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_models_active` ON `models` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_prompts_active` ON `prompts` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_triggers_active` ON `triggers` (`prompt_id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_mcp_servers_active` ON `mcp_servers` (`id`) WHERE `deleted_at` IS NULL;

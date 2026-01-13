@@ -1,0 +1,1 @@
+ALTER TABLE "sync_devices" ADD CONSTRAINT "sync_devices_user_site_unique" UNIQUE("user_id","site_id");

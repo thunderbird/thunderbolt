@@ -1,3 +1,4 @@
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -28,15 +29,18 @@ describe('LogoutModal', () => {
   let mockOnOpenChange: ReturnType<typeof mock>
   let mockSignOut: ReturnType<typeof mock>
 
-  beforeAll(() => {
+  beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
+    await setupTestDatabase()
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     consoleSpies.restore()
+    await teardownTestDatabase()
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetTestDatabase()
     mockOnOpenChange = mock()
     mockSignOut = mock(() => Promise.resolve())
     mockResetAppDir.mockClear()

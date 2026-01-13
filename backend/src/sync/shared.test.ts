@@ -88,7 +88,7 @@ describe('Sync Shared Utilities', () => {
 
     it('returns set version after update', async () => {
       await ensureMockUserExists(db)
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_test', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_test')
 
       const version = await getRequiredMigrationVersion(db, MOCK_USER.id)
       expect(version).toBe('0002_test')
@@ -107,14 +107,14 @@ describe('Sync Shared Utilities', () => {
     })
 
     it('returns needsUpgrade false when client version meets requirement', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_test', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_test')
 
       const result = await checkMigrationVersionRequirement(db, MOCK_USER.id, '0003_newer')
       expect(result.needsUpgrade).toBe(false)
     })
 
     it('returns needsUpgrade true when client version is older', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0003_newer', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0003_newer')
 
       const result = await checkMigrationVersionRequirement(db, MOCK_USER.id, '0001_old')
       expect(result.needsUpgrade).toBe(true)
@@ -128,23 +128,31 @@ describe('Sync Shared Utilities', () => {
     })
 
     it('updates version when new version is provided', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first')
 
       const version = await getRequiredMigrationVersion(db, MOCK_USER.id)
       expect(version).toBe('0001_first')
     })
 
     it('updates version when new version is newer', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first', null)
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_second', '0001_first')
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first')
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_second')
 
       const version = await getRequiredMigrationVersion(db, MOCK_USER.id)
       expect(version).toBe('0002_second')
     })
 
-    it('does not update when new version is older', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_second', null)
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first', '0002_second')
+    it('does not update when new version is older (atomic compare-and-set)', async () => {
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_second')
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0001_first')
+
+      const version = await getRequiredMigrationVersion(db, MOCK_USER.id)
+      expect(version).toBe('0002_second')
+    })
+
+    it('does nothing when new version is undefined', async () => {
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0002_second')
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, undefined)
 
       const version = await getRequiredMigrationVersion(db, MOCK_USER.id)
       expect(version).toBe('0002_second')

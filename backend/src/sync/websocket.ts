@@ -9,12 +9,10 @@ import { Elysia, t } from 'elysia'
 import {
   type SerializedChange,
   checkMigrationVersionRequirement,
-  compareMigrationVersions,
   ensureMockUserExists,
   fetchChangesSince,
   getLatestServerVersion,
   getMaxServerVersion,
-  getRequiredMigrationVersion,
   insertChanges,
   MOCK_USER,
   serializeChanges,
@@ -216,18 +214,8 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
             return
           }
 
-          // Update migration version if newer
-          if (client.migrationVersion) {
-            const currentRequiredVersion = await getRequiredMigrationVersion(database, client.userId)
-            if (compareMigrationVersions(client.migrationVersion, currentRequiredVersion) > 0) {
-              await updateMigrationVersionIfNewer(
-                database,
-                client.userId,
-                client.migrationVersion,
-                currentRequiredVersion,
-              )
-            }
-          }
+          // Atomically update migration version if this client has a newer version
+          await updateMigrationVersionIfNewer(database, client.userId, client.migrationVersion)
 
           // Insert changes
           const insertedChanges = await insertChanges(database, client.userId, client.siteId, changes)

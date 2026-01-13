@@ -100,7 +100,7 @@ describe('Sync Routes', () => {
 
     it('returns needsUpgrade when client version is outdated', async () => {
       // Set a required migration version
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0005_required', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0005_required')
 
       const response = await app.handle(
         new Request('http://localhost/v1/sync/push', {
@@ -195,7 +195,7 @@ describe('Sync Routes', () => {
     })
 
     it('returns needsUpgrade when client version is outdated', async () => {
-      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0005_required', null)
+      await updateMigrationVersionIfNewer(db, MOCK_USER.id, '0005_required')
 
       const response = await app.handle(new Request('http://localhost/v1/sync/pull?since=0&migrationVersion=0001_old'))
 

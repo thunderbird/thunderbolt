@@ -67,8 +67,8 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             }
           }
 
-          // Update migration version BEFORE inserting changes to prevent race conditions
-          await updateMigrationVersionIfNewer(database, authUser.id, migrationVersion, requiredVersion)
+          // Atomically update migration version BEFORE inserting changes
+          await updateMigrationVersionIfNewer(database, authUser.id, migrationVersion)
 
           // Insert all changes
           const insertedChanges = await insertChanges(database, authUser.id, siteId, changes)

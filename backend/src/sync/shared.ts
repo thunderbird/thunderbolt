@@ -6,7 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { user } from '@/db/auth-schema'
 import type { db as DbType } from '@/db/client'
 import { syncChanges, syncDevices } from '@/db/sync-schema'
-import { and, eq, gt } from 'drizzle-orm'
+import { and, eq, gt, isNull, lt, or } from 'drizzle-orm'
 import { t } from 'elysia'
 
 /**
@@ -141,17 +141,23 @@ export const checkMigrationVersionRequirement = async (
 }
 
 /**
- * Update migration version if the new version is newer
+ * Atomically update migration version if the new version is newer than the current database value.
+ * Uses compare-and-set in the WHERE clause to prevent TOCTOU race conditions.
+ * Since migration versions are zero-padded (e.g., 0001_name, 0002_name),
+ * lexicographic string comparison in SQL works correctly.
  */
 export const updateMigrationVersionIfNewer = async (
   database: typeof DbType,
   userId: string,
   newVersion: string | undefined,
-  currentVersion: string | null,
 ) => {
-  if (newVersion && compareMigrationVersions(newVersion, currentVersion) > 0) {
-    await database.update(user).set({ syncMigrationVersion: newVersion }).where(eq(user.id, userId))
-  }
+  if (!newVersion) return
+
+  // Atomic compare-and-set: only update if new version is actually newer than current DB value
+  await database
+    .update(user)
+    .set({ syncMigrationVersion: newVersion })
+    .where(and(eq(user.id, userId), or(isNull(user.syncMigrationVersion), lt(user.syncMigrationVersion, newVersion))))
 }
 
 /**

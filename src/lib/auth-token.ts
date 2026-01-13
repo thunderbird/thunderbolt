@@ -1,23 +1,22 @@
 /**
- * Auth token storage for mobile platforms (iOS/Android)
+ * Auth token storage for bearer authentication
  *
- * Cookies don't persist for the tauri://localhost origin in WKWebView.
- * This module stores the session token and sends it as Authorization: Bearer header.
+ * Stores the session token in the settings database and sends it via
+ * Authorization: Bearer header. Used universally across all platforms
+ * for consistent authentication behavior.
  *
  * Provides sync access (required by Better Auth's fetchOptions.auth.token)
  * while persisting to settings database for durability across app restarts.
  */
 
 import { deleteSetting, getSettings, updateSettings } from '@/dal/settings'
-import { isMobile } from './platform'
 
 const AUTH_TOKEN_SETTING_KEY = 'auth_bearer_token'
 
 let cachedToken: string | null = null
 
-/** Get the current auth token (sync, for mobile only) */
+/** Get the current auth token (sync) */
 export const getAuthToken = (): string | null => {
-  if (!isMobile()) return null
   return cachedToken
 }
 
@@ -34,14 +33,16 @@ export const setAuthToken = async (token: string | null): Promise<void> => {
 
 /** Load auth token from settings into cache (call on app init) */
 export const loadAuthToken = async (): Promise<void> => {
-  if (!isMobile()) return
-
   const settings = await getSettings({ [AUTH_TOKEN_SETTING_KEY]: String })
   cachedToken = settings.authBearerToken
 }
 
-/** Clear the auth token (for sign-out) - mobile only */
+/** Clear the auth token (for sign-out) */
 export const clearAuthToken = async (): Promise<void> => {
-  if (!isMobile()) return
   await setAuthToken(null)
+}
+
+/** Reset the in-memory cache (for testing only) */
+export const _resetCacheForTesting = (): void => {
+  cachedToken = null
 }

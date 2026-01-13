@@ -6,7 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { user } from '@/db/auth-schema'
 import type { db as DbType } from '@/db/client'
 import { syncChanges, syncDevices } from '@/db/sync-schema'
-import { and, eq, gt, isNull, lt, or } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lt, or } from 'drizzle-orm'
 import { t } from 'elysia'
 
 /**
@@ -198,7 +198,7 @@ export const getLatestServerVersion = async (database: typeof DbType, userId: st
     .select({ id: syncChanges.id })
     .from(syncChanges)
     .where(eq(syncChanges.userId, userId))
-    .orderBy(syncChanges.id)
+    .orderBy(desc(syncChanges.id))
     .limit(1)
 
   return lastChange[0]?.id ?? 0

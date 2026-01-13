@@ -15,6 +15,13 @@
       "when": 1764105849340,
       "tag": "0001_gifted_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768312389891,
+      "tag": "0002_cheerful_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

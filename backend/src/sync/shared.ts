@@ -161,7 +161,7 @@ export const updateMigrationVersionIfNewer = async (
 }
 
 /**
- * Upsert a sync device record
+ * Upsert a sync device record using atomic ON CONFLICT DO UPDATE
  */
 export const upsertSyncDevice = async (
   database: typeof DbType,
@@ -169,25 +169,21 @@ export const upsertSyncDevice = async (
   siteId: string,
   migrationVersion: string | undefined,
 ) => {
-  const existingDevice = await database
-    .select({ id: syncDevices.id })
-    .from(syncDevices)
-    .where(and(eq(syncDevices.userId, userId), eq(syncDevices.siteId, siteId)))
-    .limit(1)
-
-  if (existingDevice.length > 0) {
-    await database
-      .update(syncDevices)
-      .set({ lastSeenAt: new Date(), migrationVersion })
-      .where(eq(syncDevices.id, existingDevice[0].id))
-  } else {
-    await database.insert(syncDevices).values({
+  await database
+    .insert(syncDevices)
+    .values({
       userId,
       siteId,
       migrationVersion,
       lastSeenAt: new Date(),
     })
-  }
+    .onConflictDoUpdate({
+      target: [syncDevices.userId, syncDevices.siteId],
+      set: {
+        lastSeenAt: new Date(),
+        migrationVersion,
+      },
+    })
 }
 
 /**

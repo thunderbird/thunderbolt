@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { bigint, index, integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigint, index, integer, pgTable, serial, text, timestamp, unique } from 'drizzle-orm/pg-core'
 import { user } from '../db/auth-schema'
 
 /**
@@ -47,7 +47,11 @@ export const syncDevices = pgTable(
     lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('sync_devices_user_id_idx').on(table.userId), index('sync_devices_site_id_idx').on(table.siteId)],
+  (table) => [
+    unique('sync_devices_user_site_unique').on(table.userId, table.siteId),
+    index('sync_devices_user_id_idx').on(table.userId),
+    index('sync_devices_site_id_idx').on(table.siteId),
+  ],
 )
 
 export const syncChangesRelations = relations(syncChanges, ({ one }) => ({

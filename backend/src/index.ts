@@ -10,6 +10,8 @@ import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { createSyncRoutes } from '@/sync/routes'
+import { createSyncWebSocketRoutes } from '@/sync/websocket'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -52,7 +54,7 @@ export const createApp = async (deps?: AppDeps) => {
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
   // Create auth plugin with the database instance
-  const { plugin: betterAuthPlugin } = createBetterAuthPlugin(database)
+  const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
 
   return (
     configuredApp
@@ -78,6 +80,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createProToolsRoutes(fetchFn))
       .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
+      .use(createSyncRoutes(database, auth))
+      .use(createSyncWebSocketRoutes(database, auth))
   )
 }
 

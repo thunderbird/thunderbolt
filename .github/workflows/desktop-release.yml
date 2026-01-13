@@ -239,6 +239,14 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
 
+      # Upload to CrabNebula Cloud for auto-updates
+      - name: Upload to CrabNebula Cloud
+        uses: crabnebula-dev/cloud-release@v0
+        with:
+          command: release upload
+          app: thunderbird/thunderbolt
+          api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+
   publish:
     name: Publish Release
     needs: [draft, build]
@@ -274,3 +282,11 @@ jobs:
             ---
 
             **Note:** iOS builds are deployed separately via the iOS Release workflow.
+
+      # Publish release on CrabNebula Cloud for auto-updates
+      - name: Publish to CrabNebula Cloud
+        uses: crabnebula-dev/cloud-release@v0
+        with:
+          command: release publish
+          app: thunderbird/thunderbolt
+          api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

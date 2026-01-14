@@ -222,10 +222,14 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
           await updateMigrationVersionIfNewer(database, client.userId, client.migrationVersion)
 
           if (!changes || changes.length === 0) {
+            // Query the database for the latest server version to avoid returning stale cached values
+            // This matches the HTTP handler behavior and ensures consistency when other clients have pushed changes
+            const serverVersion = await getLatestServerVersion(database, client.userId)
+            client.lastServerVersion = BigInt(serverVersion)
             ws.send(
               JSON.stringify({
                 type: 'push_success',
-                serverVersion: client.lastServerVersion.toString(),
+                serverVersion: serverVersion.toString(),
               } satisfies WSResponse),
             )
             return

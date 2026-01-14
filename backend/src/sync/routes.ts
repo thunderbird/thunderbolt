@@ -59,6 +59,11 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             }
           }
 
+          // Always update migration version and device record, even with empty changes
+          // This ensures the server learns about schema upgrades from clients without local changes
+          await updateMigrationVersionIfNewer(database, authUser.id, migrationVersion)
+          await upsertSyncDevice(database, authUser.id, siteId, migrationVersion)
+
           if (changes.length === 0) {
             const serverVersion = await getLatestServerVersion(database, authUser.id)
             return {
@@ -67,15 +72,9 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
             }
           }
 
-          // Atomically update migration version BEFORE inserting changes
-          await updateMigrationVersionIfNewer(database, authUser.id, migrationVersion)
-
           // Insert all changes
           const insertedChanges = await insertChanges(database, authUser.id, siteId, changes)
           const maxServerVersion = getMaxServerVersion(insertedChanges, 0)
-
-          // Update device record
-          await upsertSyncDevice(database, authUser.id, siteId, migrationVersion)
 
           return {
             success: true,

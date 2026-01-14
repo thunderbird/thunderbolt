@@ -204,6 +204,10 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
           // Handle push changes
           const { changes } = message
 
+          // Always update migration version, even with empty changes
+          // This ensures the server learns about schema upgrades from clients without local changes
+          await updateMigrationVersionIfNewer(database, client.userId, client.migrationVersion)
+
           if (!changes || changes.length === 0) {
             ws.send(
               JSON.stringify({
@@ -213,9 +217,6 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
             )
             return
           }
-
-          // Atomically update migration version if this client has a newer version
-          await updateMigrationVersionIfNewer(database, client.userId, client.migrationVersion)
 
           // Insert changes
           const insertedChanges = await insertChanges(database, client.userId, client.siteId, changes)
@@ -242,7 +243,7 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
 
         if (message.type === 'pull') {
           // Handle pull changes
-          const since = message.since ? parseInt(message.since, 10) : 0
+          const since = parseInt(message.since ?? '', 10) || 0
 
           const changes = await fetchChangesSince(database, client.userId, since)
           const maxServerVersion = getMaxServerVersion(changes, since)

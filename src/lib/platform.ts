@@ -93,23 +93,37 @@ const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
 export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
 
 /**
- * Determines the appropriate database type based on the platform and the
- * capabilities exposed by the backend.
+ * Determines the appropriate database type based on the platform.
  *
- * Note: this is asynchronous because we might need to query the backend once.
+ * We use cr-sqlite (crsqlite) on ALL platforms for consistent multi-device sync:
+ * - cr-sqlite adds CRDT (Conflict-free Replicated Data Types) support to SQLite
+ * - Uses IndexedDB for persistence (via IDBBatchAtomicVFS) on both web and Tauri
+ * - Enables seamless sync between devices without merge conflicts
+ *
+ * Trade-offs of using IndexedDB in Tauri (vs native libsql):
+ * - Storage is in WebView's data directory, not app's data directory
+ * - Users can't easily backup/export the raw .db file
+ * - Slightly harder to debug (can't open DB file directly in SQL tools)
+ *
+ * Benefits:
+ * - Consistent sync support across web browsers and desktop apps
+ * - Same codebase, no platform-specific database logic
+ * - CRDT automatically resolves conflicts when syncing between devices
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
-  if (!isTauri()) return 'wa-sqlite'
-
-  const { libsql } = await getCapabilities()
-  return libsql ? 'libsql-tauri' : 'wa-sqlite'
+  // Always use cr-sqlite for CRDT-based multi-device sync on all platforms
+  return 'crsqlite'
 }
 
 /**
- * Determines the appropriate database path based on platform and OPFS availability
+ * Determines the appropriate database path based on platform and storage availability.
+ *
+ * For cr-sqlite (default): The path is used as the IndexedDB database name.
+ * IndexedDB is available in all modern browsers and Tauri WebViews.
+ *
  * @param databaseType - The type of database being used
  * @param appDataDirPath - The application data directory path
- * @returns The database path to use
+ * @returns The database path/name to use
  */
 export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
   // For native databases (libsql-tauri, bun-sqlite), use file path directly
@@ -117,7 +131,13 @@ export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath
     return `${appDataDirPath}/thunderbolt.db`
   }
 
-  // For wa-sqlite, check OPFS availability
+  // For crsqlite: path is used as IndexedDB database name
+  // IndexedDB is generally always available (browsers + Tauri WebViews)
+  if (databaseType === 'crsqlite') {
+    return `${appDataDirPath}/thunderbolt.db`
+  }
+
+  // For wa-sqlite (legacy): check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
     return `${appDataDirPath}/thunderbolt.db`

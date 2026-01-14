@@ -292,6 +292,9 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
     if (column.primary || pkColumnNames.has(column.name)) continue
     // Skip foreign key columns (to maintain referential integrity)
     if (fkColumnNames.has(column.name)) continue
+    // Skip logical foreign key columns (columns ending in Id that reference other entities)
+    // These are preserved for cr-sqlite CRR compatibility where .references() is not used
+    if (name.endsWith('Id') || column.name.endsWith('_id')) continue
     // Skip unique columns (functional identifiers)
     if (column.isUnique || uniqueColumnNames.has(column.name)) continue
     // Skip required (not null) columns

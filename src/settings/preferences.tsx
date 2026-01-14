@@ -224,7 +224,6 @@ export default function PreferencesSettingsPage() {
   const handleApplyLocalizationSettings = async () => {
     if (!pendingCountryUnits) return
 
-    // Don't use recomputeHash - it causes reconcileDefaults to overwrite on reload
     await Promise.all([
       distanceUnit.setValue(pendingCountryUnits.unit),
       temperatureUnit.setValue(pendingCountryUnits.temperature),

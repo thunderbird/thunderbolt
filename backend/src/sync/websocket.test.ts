@@ -328,6 +328,33 @@ describe('Sync WebSocket', () => {
 
       expect(getConnectedClientsCount()).toBe(initialCount)
     })
+
+    it('does not leak clients when re-authenticating on same connection', async () => {
+      const initialCount = getConnectedClientsCount()
+
+      const ws = createWebSocket()
+      await waitForOpen(ws)
+
+      // Auth multiple times on the same connection
+      ws.send(JSON.stringify({ type: 'auth', siteId: 'site-v1' }))
+      await waitForMessage(ws)
+      expect(getConnectedClientsCount()).toBe(initialCount + 1)
+
+      ws.send(JSON.stringify({ type: 'auth', siteId: 'site-v2' }))
+      await waitForMessage(ws)
+      expect(getConnectedClientsCount()).toBe(initialCount + 1) // Still 1, not 2
+
+      ws.send(JSON.stringify({ type: 'auth', siteId: 'site-v3' }))
+      await waitForMessage(ws)
+      expect(getConnectedClientsCount()).toBe(initialCount + 1) // Still 1, not 3
+
+      ws.close()
+
+      // Wait for close to be processed
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      expect(getConnectedClientsCount()).toBe(initialCount) // Back to initial, no leaks
+    })
   })
 
   describe('Integration', () => {

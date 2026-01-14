@@ -158,6 +158,18 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
           // Get current server version
           const serverVersion = await getLatestServerVersion(database, authUser.id)
 
+          // Remove existing client if re-authenticating to prevent memory leak
+          if (wsData.data.client) {
+            const existingClient = wsData.data.client
+            const userClients = connectedClients.get(existingClient.userId)
+            if (userClients) {
+              userClients.delete(existingClient)
+              if (userClients.size === 0) {
+                connectedClients.delete(existingClient.userId)
+              }
+            }
+          }
+
           // Create client record
           const client: ConnectedClient = {
             ws: ws as unknown as ConnectedClient['ws'],

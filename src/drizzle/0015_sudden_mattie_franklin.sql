@@ -55,4 +55,9 @@ DROP TABLE `triggers`;--> statement-breakpoint
 ALTER TABLE `__new_triggers` RENAME TO `triggers`;--> statement-breakpoint
 DROP INDEX `mcp_servers_id_unique`;--> statement-breakpoint
 DROP INDEX `models_id_unique`;--> statement-breakpoint
-DROP INDEX `tasks_id_unique`;
+DROP INDEX `tasks_id_unique`;--> statement-breakpoint
+-- Recreate partial indexes for soft delete queries that were dropped when tables were recreated
+CREATE INDEX `idx_chat_messages_active` ON `chat_messages` (`chat_thread_id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_chat_threads_active` ON `chat_threads` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_prompts_active` ON `prompts` (`id`) WHERE `deleted_at` IS NULL;--> statement-breakpoint
+CREATE INDEX `idx_triggers_active` ON `triggers` (`prompt_id`) WHERE `deleted_at` IS NULL;

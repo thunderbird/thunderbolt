@@ -102,6 +102,46 @@ describe('Main Routes', () => {
     expect(Array.isArray(data)).toBe(true)
   })
 
+  it('should filter out country-level results without admin1', async () => {
+    // Mock fetch that returns a mix of city and country results
+    const mockFetchWithCountry = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString()
+      if (url.startsWith('https://geocoding-api.open-meteo.com')) {
+        return new Response(
+          JSON.stringify({
+            results: [
+              // Country-level result (no admin1) - should be filtered out
+              { name: 'Canada', country: 'Canada', latitude: 60.1, longitude: -113.6 },
+              // City-level result (has admin1) - should be included
+              { name: 'Canada', admin1: 'Kentucky', country: 'United States', latitude: 37.6, longitude: -82.3 },
+              // Another city with admin1 - should be included
+              { name: 'Cañada', admin1: 'Valencia', country: 'Spain', latitude: 38.7, longitude: -0.8 },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+
+    const testEnv = await createTestDb()
+    const testApp = await createApp({ fetchFn: mockFetchWithCountry as typeof fetch, database: testEnv.db })
+
+    const response = await testApp.handle(new Request('http://localhost/v1/locations?query=Canada'))
+    expect(response.status).toBe(200)
+
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    expect(data).toHaveLength(2)
+    expect(data.every((loc: { region: string }) => loc.region !== '')).toBe(true)
+    expect(data).toEqual([
+      { name: 'Canada', region: 'Kentucky', country: 'United States', lat: 37.6, lon: -82.3 },
+      { name: 'Cañada', region: 'Valencia', country: 'Spain', lat: 38.7, lon: -0.8 },
+    ])
+
+    await testEnv.cleanup()
+  })
+
   describe('Units routes', () => {
     it('should require country parameter for units endpoint', async () => {
       const response = await app.handle(new Request('http://localhost/v1/units'))

@@ -96,19 +96,16 @@ export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
             }>
           }
 
-          // Transform to match the frontend's expected format
-          const results: LocationResult[] = []
-          for (const location of data.results || []) {
-            results.push({
+          // Filter out country-level results (no admin1) - we only support cities
+          return (data.results || [])
+            .filter((location) => location.admin1)
+            .map((location) => ({
               name: location.name || '',
-              region: location.admin1 || '', // State/Province
+              region: location.admin1!,
               country: location.country || '',
               lat: location.latitude || 0,
-              lon: location.longitude || 0, // Frontend expects 'lon' not 'lng'
-            })
-          }
-
-          return results
+              lon: location.longitude || 0,
+            }))
         } catch (error) {
           if (error instanceof Error) {
             throw error // Re-throw with original message and status

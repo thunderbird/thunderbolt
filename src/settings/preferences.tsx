@@ -224,31 +224,21 @@ export default function PreferencesSettingsPage() {
   const handleApplyLocalizationSettings = async () => {
     if (!pendingCountryUnits) return
 
-    // Apply all localization settings with recomputeHash to establish new baselines
+    // Don't use recomputeHash - it causes reconcileDefaults to overwrite on reload
     await Promise.all([
-      distanceUnit.setValue(pendingCountryUnits.unit, { recomputeHash: true }),
-      temperatureUnit.setValue(pendingCountryUnits.temperature, { recomputeHash: true }),
-      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { recomputeHash: true }),
-      timeFormat.setValue(pendingCountryUnits.timeFormat, { recomputeHash: true }),
-      currency.setValue(pendingCountryUnits.currency.code, { recomputeHash: true }),
+      distanceUnit.setValue(pendingCountryUnits.unit),
+      temperatureUnit.setValue(pendingCountryUnits.temperature),
+      dateFormat.setValue(pendingCountryUnits.dateFormatExample),
+      timeFormat.setValue(pendingCountryUnits.timeFormat),
+      currency.setValue(pendingCountryUnits.currency.code),
     ])
 
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
     trackEvent('settings_localization_update')
   }
 
-  const handleDeclineLocalizationSettings = async () => {
+  const handleDeclineLocalizationSettings = () => {
     if (!pendingCountryUnits) return
-
-    // Update hash values to new country defaults without changing actual values
-    await Promise.all([
-      distanceUnit.setValue(pendingCountryUnits.unit, { updateHashOnly: true }),
-      temperatureUnit.setValue(pendingCountryUnits.temperature, { updateHashOnly: true }),
-      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { updateHashOnly: true }),
-      timeFormat.setValue(pendingCountryUnits.timeFormat, { updateHashOnly: true }),
-      currency.setValue(pendingCountryUnits.currency.code, { updateHashOnly: true }),
-    ])
-
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
@@ -290,9 +280,8 @@ export default function PreferencesSettingsPage() {
       const countryUnitsData = await fetchCountryUnits(country)
       if (!countryUnitsData) return
 
-      // Get the value from countryUnitsData using the dataKey
       const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]
-      await hook.setValue(value, { recomputeHash: true })
+      await hook.setValue(value)
     } else {
       // No location set, fall back to system defaults
       await hook.reset()
@@ -787,8 +776,10 @@ export default function PreferencesSettingsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>Keep Current Units</AlertDialogCancel>
-            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Update Units</AlertDialogAction>
+            <AlertDialogCancel>Keep Current Units</AlertDialogCancel>
+            <AlertDialogAction autoFocus onClick={handleApplyLocalizationSettings}>
+              Update Units
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

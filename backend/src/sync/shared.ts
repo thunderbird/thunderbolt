@@ -291,6 +291,18 @@ export const serializeChanges = (changes: RawChange[]): SerializedChange[] => {
 }
 
 /**
+ * Normalize val field in changes to match database storage format.
+ * This ensures consistency between real-time broadcasts and pull responses.
+ * Database stores val as string (via String()), so we apply the same transformation.
+ */
+export const normalizeChangesForBroadcast = (changes: SerializedChange[]): SerializedChange[] => {
+  return changes.map((change) => ({
+    ...change,
+    val: change.val !== null && change.val !== undefined ? String(change.val) : null,
+  }))
+}
+
+/**
  * Get max server version from a list of changes
  */
 export const getMaxServerVersion = (changes: { id: number }[], fallback: number): number => {

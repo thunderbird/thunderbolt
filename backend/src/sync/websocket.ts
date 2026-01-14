@@ -15,6 +15,7 @@ import {
   getMaxServerVersion,
   insertChanges,
   MOCK_USER,
+  normalizeChangesForBroadcast,
   serializeChanges,
   updateMigrationVersionIfNewer,
   upsertSyncDevice,
@@ -244,9 +245,10 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
           )
 
           // Broadcast changes to other connected clients of this user
+          // Normalize changes to match database storage format for consistency
           broadcastToUser(client.userId, client.siteId, {
             type: 'changes',
-            changes,
+            changes: normalizeChangesForBroadcast(changes),
             serverVersion: maxServerVersion.toString(),
           })
 

@@ -11,6 +11,7 @@ import {
   getRequiredMigrationVersion,
   insertChanges,
   MOCK_USER,
+  normalizeChangesForBroadcast,
   serializeChanges,
   updateMigrationVersionIfNewer,
   upsertSyncDevice,
@@ -414,6 +415,129 @@ describe('Sync Shared Utilities', () => {
     it('works with single item', () => {
       const changes = [{ id: 10 }]
       expect(getMaxServerVersion(changes, 0)).toBe(10)
+    })
+  })
+
+  describe('normalizeChangesForBroadcast', () => {
+    it('converts number values to strings', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: 123,
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      const normalized = normalizeChangesForBroadcast(changes)
+
+      expect(normalized[0].val).toBe('123')
+      expect(typeof normalized[0].val).toBe('string')
+    })
+
+    it('converts boolean values to strings', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: true,
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      const normalized = normalizeChangesForBroadcast(changes)
+
+      expect(normalized[0].val).toBe('true')
+    })
+
+    it('preserves null values', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: null,
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      const normalized = normalizeChangesForBroadcast(changes)
+
+      expect(normalized[0].val).toBeNull()
+    })
+
+    it('preserves undefined as null', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: undefined,
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      const normalized = normalizeChangesForBroadcast(changes)
+
+      expect(normalized[0].val).toBeNull()
+    })
+
+    it('keeps string values unchanged', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: 'already a string',
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      const normalized = normalizeChangesForBroadcast(changes)
+
+      expect(normalized[0].val).toBe('already a string')
+    })
+
+    it('does not mutate original array', () => {
+      const changes: SerializedChange[] = [
+        {
+          table: 'test',
+          pk: 'pk1',
+          cid: 'col1',
+          val: 123,
+          col_version: '1',
+          db_version: '1',
+          site_id: 'site-123',
+          cl: 1,
+          seq: 0,
+        },
+      ]
+
+      normalizeChangesForBroadcast(changes)
+
+      expect(changes[0].val).toBe(123)
     })
   })
 })

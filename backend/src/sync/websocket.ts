@@ -16,10 +16,34 @@ import {
   insertChanges,
   MOCK_USER,
   normalizeChangesForBroadcast,
+  serializedChangeSchema,
   serializeChanges,
   updateMigrationVersionIfNewer,
   upsertSyncDevice,
 } from './shared'
+
+/**
+ * WebSocket message schemas for proper validation
+ * These match the HTTP route validation for consistency
+ */
+const authMessageSchema = t.Object({
+  type: t.Literal('auth'),
+  siteId: t.String(),
+  migrationVersion: t.Optional(t.String()),
+})
+
+const pushMessageSchema = t.Object({
+  type: t.Literal('push'),
+  changes: t.Array(serializedChangeSchema),
+  dbVersion: t.String(),
+})
+
+const pullMessageSchema = t.Object({
+  type: t.Literal('pull'),
+  since: t.String(),
+})
+
+const wsMessageSchema = t.Union([authMessageSchema, pushMessageSchema, pullMessageSchema])
 
 /**
  * WebSocket message types
@@ -108,14 +132,7 @@ const broadcastToUser = (userId: string, senderSiteId: string, message: WSRespon
  */
 export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) => {
   return new Elysia({ prefix: '/sync' }).ws('/ws', {
-    body: t.Object({
-      type: t.String(),
-      siteId: t.Optional(t.String()),
-      migrationVersion: t.Optional(t.String()),
-      changes: t.Optional(t.Array(t.Any())),
-      dbVersion: t.Optional(t.String()),
-      since: t.Optional(t.String()),
-    }),
+    body: wsMessageSchema,
 
     open(ws) {
       const wsData = ws as unknown as { data: { authenticated: boolean; client?: ConnectedClient } }
@@ -221,7 +238,7 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
           // This ensures the server learns about schema upgrades from clients without local changes
           await updateMigrationVersionIfNewer(database, client.userId, client.migrationVersion)
 
-          if (!changes || changes.length === 0) {
+          if (changes.length === 0) {
             // Query the database for the latest server version to avoid returning stale cached values
             // This matches the HTTP handler behavior and ensures consistency when other clients have pushed changes
             const serverVersion = await getLatestServerVersion(database, client.userId)
@@ -261,7 +278,7 @@ export const createSyncWebSocketRoutes = (database: typeof DbType, _auth: Auth) 
 
         if (message.type === 'pull') {
           // Handle pull changes
-          const since = parseInt(message.since ?? '', 10) || 0
+          const since = parseInt(message.since, 10) || 0
 
           const changes = await fetchChangesSince(database, client.userId, since)
           const maxServerVersion = getMaxServerVersion(changes, since)

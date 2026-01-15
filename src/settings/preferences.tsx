@@ -768,14 +768,7 @@ export default function PreferencesSettingsPage() {
       <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
 
       <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
-        <AlertDialogContent
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              handleApplyLocalizationSettings()
-            }
-          }}
-        >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Update Defaults?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -784,12 +777,7 @@ export default function PreferencesSettingsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep Current Units</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                handleApplyLocalizationSettings()
-              }}
-            >
+            <AlertDialogAction autoFocus onClick={handleApplyLocalizationSettings}>
               Update Units
             </AlertDialogAction>
           </AlertDialogFooter>

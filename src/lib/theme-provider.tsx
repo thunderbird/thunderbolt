@@ -22,15 +22,18 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
+const isValidTheme = (value: string | null): value is Theme =>
+  value === 'dark' || value === 'light' || value === 'system'
+
 export function ThemeProvider({
   children,
   defaultTheme = 'system',
   storageKey = 'ui-theme',
   ...props
 }: ThemeProviderProps) {
-  const savedTheme = window.localStorage.getItem(storageKey) as Theme | null
+  const savedTheme = window.localStorage.getItem(storageKey)
 
-  const [theme, setTheme] = useState<Theme>(savedTheme ?? defaultTheme)
+  const [theme, setTheme] = useState<Theme>(isValidTheme(savedTheme) ? savedTheme : defaultTheme)
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, theme)

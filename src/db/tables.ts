@@ -25,7 +25,7 @@ export const chatThreadsTable = sqliteTable(
   (table) => [
     index('idx_chat_threads_active')
       .on(table.id)
-      .where(sql`chat_threads.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -48,7 +48,7 @@ export const chatMessagesTable = sqliteTable(
   (table) => [
     index('idx_chat_messages_active')
       .on(table.chatThreadId)
-      .where(sql`chat_messages.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -65,7 +65,7 @@ export const tasksTable = sqliteTable(
   (table) => [
     index('idx_tasks_active')
       .on(table.id)
-      .where(sql`tasks.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -95,7 +95,7 @@ export const modelsTable = sqliteTable(
   (table) => [
     index('idx_models_active')
       .on(table.id)
-      .where(sql`models.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -116,7 +116,7 @@ export const mcpServersTable = sqliteTable(
   (table) => [
     index('idx_mcp_servers_active')
       .on(table.id)
-      .where(sql`mcp_servers.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -135,7 +135,7 @@ export const promptsTable = sqliteTable(
   (table) => [
     index('idx_prompts_active')
       .on(table.id)
-      .where(sql`prompts.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 
@@ -154,6 +154,6 @@ export const triggersTable = sqliteTable(
   (table) => [
     index('idx_triggers_active')
       .on(table.promptId)
-      .where(sql`triggers.${table.deletedAt} IS NULL`),
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e99f0c15-9afa-44a7-b944-917be3049c79",
+  "id": "265569fc-a3ba-464d-bfd0-e93cc0179172",
   "prevId": "c1bfdcbd-4c05-4c32-b18d-af73ed208ce3",
   "tables": {
     "chat_messages": {
@@ -88,7 +88,7 @@
           "name": "idx_chat_messages_active",
           "columns": ["chat_thread_id"],
           "isUnique": false,
-          "where": "chat_messages.\"chat_messages\".\"deleted_at\" IS NULL"
+          "where": "\"chat_messages\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {
@@ -189,7 +189,7 @@
           "name": "idx_chat_threads_active",
           "columns": ["id"],
           "isUnique": false,
-          "where": "chat_threads.\"chat_threads\".\"deleted_at\" IS NULL"
+          "where": "\"chat_threads\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {
@@ -295,7 +295,7 @@
           "name": "idx_mcp_servers_active",
           "columns": ["id"],
           "isUnique": false,
-          "where": "mcp_servers.\"mcp_servers\".\"deleted_at\" IS NULL"
+          "where": "\"mcp_servers\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {},
@@ -442,7 +442,7 @@
           "name": "idx_models_active",
           "columns": ["id"],
           "isUnique": false,
-          "where": "models.\"models\".\"deleted_at\" IS NULL"
+          "where": "\"models\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {},
@@ -506,7 +506,7 @@
           "name": "idx_prompts_active",
           "columns": ["id"],
           "isUnique": false,
-          "where": "prompts.\"prompts\".\"deleted_at\" IS NULL"
+          "where": "\"prompts\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {
@@ -621,7 +621,7 @@
           "name": "idx_tasks_active",
           "columns": ["id"],
           "isUnique": false,
-          "where": "tasks.\"tasks\".\"deleted_at\" IS NULL"
+          "where": "\"tasks\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {},
@@ -686,7 +686,7 @@
           "name": "idx_triggers_active",
           "columns": ["prompt_id"],
           "isUnique": false,
-          "where": "triggers.\"triggers\".\"deleted_at\" IS NULL"
+          "where": "\"triggers\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {

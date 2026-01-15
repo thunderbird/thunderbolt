@@ -89,4 +89,9 @@ export const migrations: Migration[] = [
     name: '0015_grey_salo.sql',
     sql: '-- Custom SQL migration file, put your code below! ---- Drop manually created indexes so Drizzle can manage them from schema\nDROP INDEX IF EXISTS `idx_chat_messages_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_chat_threads_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_tasks_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_models_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_prompts_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_triggers_active`;--> statement-breakpoint\nDROP INDEX IF EXISTS `idx_mcp_servers_active`;',
   },
+  {
+    hash: '0016_chief_hedge_knight',
+    name: '0016_chief_hedge_knight.sql',
+    sql: 'CREATE INDEX `idx_chat_messages_active` ON `chat_messages` (`chat_thread_id`) WHERE chat_messages."chat_messages"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_chat_threads_active` ON `chat_threads` (`id`) WHERE chat_threads."chat_threads"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_mcp_servers_active` ON `mcp_servers` (`id`) WHERE mcp_servers."mcp_servers"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_models_active` ON `models` (`id`) WHERE models."models"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_prompts_active` ON `prompts` (`id`) WHERE prompts."prompts"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_tasks_active` ON `tasks` (`id`) WHERE tasks."tasks"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_triggers_active` ON `triggers` (`prompt_id`) WHERE triggers."triggers"."deleted_at" IS NULL;',
+  },
 ]

@@ -20,305 +20,278 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  debug-secrets:
-    name: Debug Signing Keys
+  draft:
+    name: Create Draft Release
     runs-on: ubuntu-24.04
-    steps:
-      - name: Check signing key secrets
-        run: |
-          echo "=== Checking TAURI_SIGNING_PRIVATE_KEY ==="
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "✅ TAURI_SIGNING_PRIVATE_KEY is set"
-            echo "   Length: ${#TAURI_SIGNING_PRIVATE_KEY} characters"
-            echo "   First 50 chars: ${TAURI_SIGNING_PRIVATE_KEY:0:50}..."
-          else
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY is EMPTY or not set!"
-          fi
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
 
-          echo ""
-          echo "=== Checking TAURI_SIGNING_PRIVATE_KEY_PASSWORD ==="
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
-            echo "✅ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is set"
-            echo "   Length: ${#TAURI_SIGNING_PRIVATE_KEY_PASSWORD} characters"
-          else
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is EMPTY or not set!"
-          fi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Set version
+        id: set-version
+        run: |
+          echo "version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release v${{ inputs.version }}
+          draft: true
+          prerelease: true
+          body: |
+            ## Release Candidate v${{ inputs.version }}
+
+            This is a release candidate. The final release will be created after successful builds.
+
+            ### Downloads
+
+            Binaries will be attached to this release after successful builds.
+
+      # Create CrabNebula Cloud draft release for auto-updates
+      - name: Create CrabNebula Draft Release
+        uses: crabnebula-dev/cloud-release@v0.2.0
+        with:
+          command: release draft thunderbird/thunderbolt ${{ inputs.version }}
+          api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+
+  build:
+    name: Build ${{ matrix.build_name }}
+    needs: draft
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            build_name: 'Linux'
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            build_name: 'macOS (Apple Silicon)'
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            build_name: 'macOS (Intel)'
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build_name: 'Windows (x64)'
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            build_name: 'Windows (ARM64)'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+          rustflags: ''
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-release-${{ inputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ inputs.version }}-
+            ${{ runner.os }}-cargo-release-
+
+      - name: install Linux dependencies
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # Install libfuse2 for running linuxdeploy (which is itself an AppImage)
+          # Ubuntu 24.04 uses libfuse2t64 as a transition package
+          sudo add-apt-repository universe -y
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
+
+      - name: build Tauri app for Linux
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          bun install
+          bun tauri build
         env:
+          RUSTFLAGS: ''
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          NO_STRIP: true
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-  # draft:
-  #   name: Create Draft Release
-  #   runs-on: ubuntu-24.04
-  #   outputs:
-  #     version: ${{ steps.set-version.outputs.version }}
-  #
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: v${{ inputs.version }}
-  #
-  #     - name: Set version
-  #       id: set-version
-  #       run: |
-  #         echo "version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
-  #
-  #     - name: Create GitHub Release
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         tag_name: v${{ inputs.version }}
-  #         name: Release v${{ inputs.version }}
-  #         draft: true
-  #         prerelease: true
-  #         body: |
-  #           ## Release Candidate v${{ inputs.version }}
-  #
-  #           This is a release candidate. The final release will be created after successful builds.
-  #
-  #           ### Downloads
-  #
-  #           Binaries will be attached to this release after successful builds.
-  #
-  #     # Create CrabNebula Cloud draft release for auto-updates
-  #     - name: Create CrabNebula Draft Release
-  #       uses: crabnebula-dev/cloud-release@v0.2.0
-  #       with:
-  #         command: release draft thunderbird/thunderbolt ${{ inputs.version }}
-  #         api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
-  #
-  # build:
-  #   name: Build ${{ matrix.build_name }}
-  #   needs: draft
-  #
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - os: ubuntu-24.04
-  #           target: x86_64-unknown-linux-gnu
-  #           build_name: 'Linux'
-  #         - os: macos-latest
-  #           target: aarch64-apple-darwin
-  #           build_name: 'macOS (Apple Silicon)'
-  #         - os: macos-latest
-  #           target: x86_64-apple-darwin
-  #           build_name: 'macOS (Intel)'
-  #         - os: windows-latest
-  #           target: x86_64-pc-windows-msvc
-  #           build_name: 'Windows (x64)'
-  #         - os: windows-latest
-  #           target: aarch64-pc-windows-msvc
-  #           build_name: 'Windows (ARM64)'
-  #
-  #   runs-on: ${{ matrix.os }}
-  #
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: v${{ inputs.version }}
-  #
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 'lts/*'
-  #
-  #     - uses: oven-sh/setup-bun@v2
-  #
-  #     - name: Install Rust toolchain
-  #       uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         toolchain: stable
-  #         cache: false
-  #         rustflags: ''
-  #
-  #     - name: Cache cargo dependencies
-  #       uses: actions/cache@v3
-  #       with:
-  #         path: |
-  #           ~/.cargo/registry
-  #           ~/.cargo/git
-  #         key: ${{ runner.os }}-cargo-release-${{ inputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-  #         restore-keys: |
-  #           ${{ runner.os }}-cargo-release-${{ inputs.version }}-
-  #           ${{ runner.os }}-cargo-release-
-  #
-  #     - name: install Linux dependencies
-  #       if: matrix.os == 'ubuntu-24.04'
-  #       run: |
-  #         sudo apt-get update
-  #         sudo apt-get install -y \
-  #           webkit2gtk-4.1 \
-  #           libappindicator3-dev \
-  #           librsvg2-dev \
-  #           squashfs-tools
-  #         # Install libfuse2 for running linuxdeploy (which is itself an AppImage)
-  #         # Ubuntu 24.04 uses libfuse2t64 as a transition package
-  #         sudo add-apt-repository universe -y
-  #         sudo apt-get update
-  #         sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
-  #
-  #     - name: build Tauri app for Linux
-  #       if: matrix.os == 'ubuntu-24.04'
-  #       run: |
-  #         bun install
-  #         bun tauri build
-  #       env:
-  #         RUSTFLAGS: ''
-  #         CARGO_INCREMENTAL: 0
-  #         RUSTC_WRAPPER: ''
-  #         NO_STRIP: true
-  #         VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  #
-  #     - name: build Tauri app for Windows (x86_64)
-  #       if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
-  #       run: |
-  #         bun install
-  #         bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
-  #       env:
-  #         RUSTFLAGS: ''
-  #         CARGO_INCREMENTAL: 0
-  #         RUSTC_WRAPPER: ''
-  #         VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  #
-  #     - name: build Tauri app for Windows (ARM64)
-  #       if: matrix.os == 'windows-latest' && matrix.target == 'aarch64-pc-windows-msvc'
-  #       run: |
-  #         # Install ARM64 target
-  #         rustup target add aarch64-pc-windows-msvc
-  #         # Build for ARM64
-  #         bun install
-  #         bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
-  #       env:
-  #         RUSTFLAGS: ''
-  #         CARGO_INCREMENTAL: 0
-  #         RUSTC_WRAPPER: ''
-  #         VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  #
-  #     - name: Build Tauri app for macOS (Silicon)
-  #       if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-  #       run: |
-  #         bun install
-  #         bun tauri build --bundles app,dmg --target aarch64-apple-darwin
-  #       env:
-  #         RUSTFLAGS: ''
-  #         CARGO_INCREMENTAL: 0
-  #         RUSTC_WRAPPER: ''
-  #         VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  #
-  #     - name: Build Tauri app for macOS (Intel)
-  #       if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
-  #       run: |
-  #         # Install x86_64 target with retry logic
-  #         rustup target add x86_64-apple-darwin || rustup target add x86_64-apple-darwin
-  #         # Verify target is installed
-  #         rustup target list --installed | grep x86_64-apple-darwin
-  #         # Clean only the x86_64 target to avoid architecture conflicts
-  #         rm -rf src-tauri/target/x86_64-apple-darwin
-  #         # Build for Intel with proper environment
-  #         bun install
-  #         bun tauri build --bundles app,dmg --target x86_64-apple-darwin
-  #       env:
-  #         # Override the target-cpu=native flag
-  #         RUSTFLAGS: '-C target-cpu=x86-64'
-  #         CARGO_INCREMENTAL: 0
-  #         RUSTC_WRAPPER: ''
-  #         # Set C compiler for cross-compilation
-  #         CC_x86_64_apple_darwin: 'clang -target x86_64-apple-darwin'
-  #         CXX_x86_64_apple_darwin: 'clang++ -target x86_64-apple-darwin'
-  #         AR_x86_64_apple_darwin: 'ar'
-  #         CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: 'clang'
-  #         VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  #
-  #     - name: Upload Linux artifacts to GitHub Release
-  #       if: matrix.os == 'ubuntu-24.04'
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         tag_name: v${{ inputs.version }}
-  #         draft: true
-  #         files: |
-  #           src-tauri/target/release/bundle/deb/*.deb
-  #           src-tauri/target/release/bundle/appimage/*.AppImage
-  #           src-tauri/target/release/bundle/rpm/*.rpm
-  #
-  #     - name: Upload Windows artifacts to GitHub Release
-  #       if: matrix.os == 'windows-latest'
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         tag_name: v${{ inputs.version }}
-  #         draft: true
-  #         files: |
-  #           src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-  #           src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-  #           src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
-  #           src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
-  #
-  #     - name: Upload macOS artifacts to GitHub Release
-  #       if: matrix.os == 'macos-latest'
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         tag_name: v${{ inputs.version }}
-  #         draft: true
-  #         files: |
-  #           src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-  #           src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-  #           src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-  #           src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-  #
-  #     # Upload to CrabNebula Cloud for auto-updates
-  #     - name: Upload to CrabNebula Cloud
-  #       uses: crabnebula-dev/cloud-release@v0.2.0
-  #       with:
-  #         command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
-  #         api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
-  #
-  # publish:
-  #   name: Publish Release
-  #   needs: [draft, build]
-  #   runs-on: ubuntu-24.04
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: v${{ inputs.version }}
-  #         fetch-depth: 0
-  #
-  #     - name: Publish GitHub Release
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         tag_name: v${{ inputs.version }}
-  #         draft: false
-  #         prerelease: false
-  #         name: Release v${{ inputs.version }}
-  #         body: |
-  #           ## Release v${{ inputs.version }}
-  #
-  #           ### Downloads
-  #
-  #           Download the appropriate installer for your platform below.
-  #
-  #           - **Windows**: `.msi` or `.exe` installer
-  #           - **macOS**: `.dmg` installer (Intel and Apple Silicon)
-  #           - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
-  #
-  #           ### Release Notes
-  #
-  #           _Add your release notes here_
-  #
-  #           ---
-  #
-  #           **Note:** iOS builds are deployed separately via the iOS Release workflow.
-  #
-  #     # Publish release on CrabNebula Cloud for auto-updates
-  #     - name: Publish to CrabNebula Cloud
-  #       uses: crabnebula-dev/cloud-release@v0.2.0
-  #       with:
-  #         command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
-  #         api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+      - name: build Tauri app for Windows (x86_64)
+        if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
+        run: |
+          bun install
+          bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
+        env:
+          RUSTFLAGS: ''
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: build Tauri app for Windows (ARM64)
+        if: matrix.os == 'windows-latest' && matrix.target == 'aarch64-pc-windows-msvc'
+        run: |
+          # Install ARM64 target
+          rustup target add aarch64-pc-windows-msvc
+          # Build for ARM64
+          bun install
+          bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
+        env:
+          RUSTFLAGS: ''
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Build Tauri app for macOS (Silicon)
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        run: |
+          bun install
+          bun tauri build --bundles app,dmg --target aarch64-apple-darwin
+        env:
+          RUSTFLAGS: ''
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Build Tauri app for macOS (Intel)
+        if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
+        run: |
+          # Install x86_64 target with retry logic
+          rustup target add x86_64-apple-darwin || rustup target add x86_64-apple-darwin
+          # Verify target is installed
+          rustup target list --installed | grep x86_64-apple-darwin
+          # Clean only the x86_64 target to avoid architecture conflicts
+          rm -rf src-tauri/target/x86_64-apple-darwin
+          # Build for Intel with proper environment
+          bun install
+          bun tauri build --bundles app,dmg --target x86_64-apple-darwin
+        env:
+          # Override the target-cpu=native flag
+          RUSTFLAGS: '-C target-cpu=x86-64'
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          # Set C compiler for cross-compilation
+          CC_x86_64_apple_darwin: 'clang -target x86_64-apple-darwin'
+          CXX_x86_64_apple_darwin: 'clang++ -target x86_64-apple-darwin'
+          AR_x86_64_apple_darwin: 'ar'
+          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: 'clang'
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Linux artifacts to GitHub Release
+        if: matrix.os == 'ubuntu-24.04'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          draft: true
+          files: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/rpm/*.rpm
+
+      - name: Upload Windows artifacts to GitHub Release
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          draft: true
+          files: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
+
+      - name: Upload macOS artifacts to GitHub Release
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          draft: true
+          files: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+
+      # Upload to CrabNebula Cloud for auto-updates
+      - name: Upload to CrabNebula Cloud
+        uses: crabnebula-dev/cloud-release@v0.2.0
+        with:
+          command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
+          api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+
+  publish:
+    name: Publish Release
+    needs: [draft, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          draft: false
+          prerelease: false
+          name: Release v${{ inputs.version }}
+          body: |
+            ## Release v${{ inputs.version }}
+
+            ### Downloads
+
+            Download the appropriate installer for your platform below.
+
+            - **Windows**: `.msi` or `.exe` installer
+            - **macOS**: `.dmg` installer (Intel and Apple Silicon)
+            - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
+
+            ### Release Notes
+
+            _Add your release notes here_
+
+            ---
+
+            **Note:** iOS builds are deployed separately via the iOS Release workflow.
+
+      # Publish release on CrabNebula Cloud for auto-updates
+      - name: Publish to CrabNebula Cloud
+        uses: crabnebula-dev/cloud-release@v0.2.0
+        with:
+          command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
+          api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

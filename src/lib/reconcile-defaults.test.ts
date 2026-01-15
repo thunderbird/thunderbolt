@@ -308,4 +308,79 @@ describe('reconcileDefaultsForTable', () => {
     // Value should be preserved
     expect(setting?.value).toBe('some_value')
   })
+
+  test('preserves user values set via recomputeHash when code default is null', async () => {
+    const db = DatabaseSingleton.instance.db
+
+    // Simulate the recomputeHash scenario:
+    // User accepts localization settings (e.g., distance_unit = "metric")
+    // Both value AND defaultHash are set to match (this is what recomputeHash does)
+    const userSetValue = 'metric'
+    const userSetting = {
+      key: 'distance_unit',
+      value: userSetValue,
+      updatedAt: null,
+      defaultHash: null,
+    }
+
+    await db.insert(settingsTable).values({
+      ...userSetting,
+      // This simulates recomputeHash: true - hash matches the user's value
+      defaultHash: hashSetting(userSetting),
+    })
+
+    // Verify the hash matches (as recomputeHash would set it)
+    const beforeReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+    expect(beforeReconcile?.value).toBe(userSetValue)
+    expect(beforeReconcile?.defaultHash).toBe(hashSetting(userSetting))
+
+    // Code default has null value (like localization settings)
+    const nullDefault = {
+      key: 'distance_unit',
+      value: null,
+      updatedAt: null,
+      defaultHash: null,
+    }
+
+    // Run reconcile - this previously would overwrite user's "metric" with null
+    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, 'key')
+
+    // User's value should be PRESERVED, not overwritten with null
+    const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'distance_unit')).get()
+    expect(afterReconcile?.value).toBe(userSetValue)
+    // Hash should remain unchanged
+    expect(afterReconcile?.defaultHash).toBe(hashSetting(userSetting))
+  })
+
+  test('still updates when both existing and default values are null', async () => {
+    const db = DatabaseSingleton.instance.db
+
+    // Setting with null value and matching hash
+    const nullSetting = {
+      key: 'optional_setting',
+      value: null,
+      updatedAt: null,
+      defaultHash: null,
+    }
+
+    await db.insert(settingsTable).values({
+      ...nullSetting,
+      defaultHash: hashSetting(nullSetting),
+    })
+
+    // Code default also has null value
+    const nullDefault = {
+      key: 'optional_setting',
+      value: null,
+      updatedAt: null,
+      defaultHash: null,
+    }
+
+    // Run reconcile - should proceed (this is a no-op anyway)
+    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, 'key')
+
+    // Value should still be null (no change, but update was allowed)
+    const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'optional_setting')).get()
+    expect(afterReconcile?.value).toBeNull()
+  })
 })

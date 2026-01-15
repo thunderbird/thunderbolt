@@ -1,4 +1,5 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { normalizeRow } from '@/db/normalize'
 import { createSetting } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
@@ -26,13 +27,10 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 ) => {
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
-    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+    const rawResult = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+    const existing = normalizeRow(rawResult)
 
-    // Drizzle sqlite-proxy may return an object with undefined values instead of undefined
-    // when no rows are found. Check the key field for an actual value.
-    const existsInDb = existing && existing[keyField] !== undefined
-
-    if (!existsInDb) {
+    if (!existing) {
       // New default - insert with computed hash
       await db.insert(table).values({
         ...defaultItem,
@@ -40,7 +38,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       })
     } else {
       // Exists - check if user modified by comparing hashes
-      const currentHash = hashFn(existing!)
+      const currentHash = hashFn(existing)
       const defaultHashValue = hashFn(defaultItem)
 
       if (!existing.defaultHash) {

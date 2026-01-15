@@ -7,16 +7,8 @@ import { drizzle } from 'drizzle-orm/sqlite-proxy'
 import type { CRSQLChange } from './crsqlite-worker'
 import { CRSQLiteWorkerClient } from './crsqlite-worker-client'
 import type { DatabaseInterface } from './database-interface'
+import { isEmptyRow } from './normalize'
 import * as schema from './schema'
-
-/**
- * Checks if an object is empty (has no own properties or all properties are undefined)
- */
-const isEmptyObject = (obj: unknown): boolean => {
-  if (!obj || typeof obj !== 'object') return false
-  const keys = Object.keys(obj)
-  return keys.length === 0 || keys.every((key) => (obj as Record<string, unknown>)[key] === undefined)
-}
 
 export class CRSQLiteDatabase implements DatabaseInterface {
   private _db: ReturnType<typeof drizzle<typeof schema>> | null = null
@@ -74,7 +66,7 @@ export class CRSQLiteDatabase implements DatabaseInterface {
       if (method === 'get') {
         // For .get(), return the single row or undefined
         // Worker returns a single row array like [1, 'Alice'] or undefined
-        if (!rows || isEmptyObject(rows)) {
+        if (isEmptyRow(rows)) {
           return { rows: undefined as unknown as unknown[] }
         }
         // Return the row directly (already in array format from worker)

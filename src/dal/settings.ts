@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import { normalizeRow } from '../db/normalize'
 import { DatabaseSingleton } from '../db/singleton'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
@@ -43,19 +44,16 @@ export const getSettingsRecords = async <T extends SettingSchema>(schema: T): Pr
   const keys = Object.keys(schema)
   const db = DatabaseSingleton.instance.db
   const results = await Promise.all(
-    keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
+    keys.map(async (key) =>
+      normalizeRow(await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
+    ),
   )
-  return results.reduce(
-    (acc, setting) => {
-      // Drizzle sqlite-proxy may return objects with undefined values instead of undefined
-      // Only include settings that have an actual key value
-      if (setting?.key !== undefined) {
-        acc[setting.key] = setting
-      }
-      return acc
-    },
-    {} as Record<string, Setting>,
-  )
+  return results.reduce<Record<string, Setting>>((acc, setting) => {
+    if (setting) {
+      acc[setting.key] = setting
+    }
+    return acc
+  }, {})
 }
 
 /**

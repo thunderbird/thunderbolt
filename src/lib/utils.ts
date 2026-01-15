@@ -275,9 +275,6 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
 
   const tableConfig = getTableConfig(table)
 
-  // Get all foreign key column names
-  const fkColumnNames = new Set(tableConfig.foreignKeys.flatMap((fk) => fk.reference().columns.map((col) => col.name)))
-
   // Get all primary key column names from composite primaryKey declarations
   const pkColumnNames = new Set(tableConfig.primaryKeys.flatMap((pk) => pk.columns.map((col) => col.name)))
 
@@ -290,11 +287,6 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
     if (name === 'deletedAt') continue
     // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
     if (column.primary || pkColumnNames.has(column.name)) continue
-    // Skip foreign key columns (to maintain referential integrity)
-    if (fkColumnNames.has(column.name)) continue
-    // Skip logical foreign key columns (columns ending in Id that reference other entities)
-    // These are preserved for cr-sqlite CRR compatibility where .references() is not used
-    if (name.endsWith('Id') || column.name.endsWith('_id')) continue
     // Skip unique columns (functional identifiers)
     if (column.isUnique || uniqueColumnNames.has(column.name)) continue
     // Skip required (not null) columns

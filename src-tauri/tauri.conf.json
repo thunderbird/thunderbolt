@@ -59,7 +59,7 @@
       "endpoints": [
         "https://cdn.crabnebula.app/update/thunderbird/thunderbolt/{{target}}-{{arch}}/{{current_version}}"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5MzNBQjY0Q0I2OUIzRDMKUldUVHMybkxaS3N6dVVqZ2g4Yzl6VE9OU3UvempVNEw1eUQzaTBFcTlReDJ6TzZmZ1JteE84ZGQK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDN0YxQTRGM0Y1QkZCNEYKUldSUCsxcy9UeHAvZkZHOWVQMzhGaWxFakFhT3JoUUFXUnJUbG9HNWRMYkoxM2NIanZENnlrd3YK"
     }
   }
 }

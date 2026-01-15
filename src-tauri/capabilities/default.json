@@ -25,6 +25,7 @@
     "core:webview:allow-webview-close",
     "core:window:allow-destroy",
     "process:allow-exit",
+    "process:allow-restart",
     "m3:default",
     {
       "identifier": "http:default",

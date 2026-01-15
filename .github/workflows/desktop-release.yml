@@ -147,7 +147,7 @@ jobs:
         if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
         run: |
           bun install
-          bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
+          bun tauri build --target x86_64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -163,7 +163,7 @@ jobs:
           rustup target add aarch64-pc-windows-msvc
           # Build for ARM64
           bun install
-          bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
+          bun tauri build --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -176,7 +176,7 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install
-          bun tauri build --bundles app,dmg --target aarch64-apple-darwin
+          bun tauri build --target aarch64-apple-darwin
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -196,7 +196,7 @@ jobs:
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
           bun install
-          bun tauri build --bundles app,dmg --target x86_64-apple-darwin
+          bun tauri build --target x86_64-apple-darwin
         env:
           # Override the target-cpu=native flag
           RUSTFLAGS: '-C target-cpu=x86-64'
@@ -220,6 +220,8 @@ jobs:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
+            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
             src-tauri/target/release/bundle/rpm/*.rpm
 
       - name: Upload Windows artifacts to GitHub Release
@@ -230,9 +232,17 @@ jobs:
           draft: true
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip.sig
             src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi.zip
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig
             src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip.sig
 
       - name: Upload macOS artifacts to GitHub Release
         if: matrix.os == 'macos-latest'
@@ -243,8 +253,10 @@ jobs:
           files: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
       # Upload to CrabNebula Cloud for auto-updates
       - name: Upload to CrabNebula Cloud

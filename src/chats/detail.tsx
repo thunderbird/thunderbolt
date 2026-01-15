@@ -8,10 +8,11 @@ import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-c
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   id: string
+  isNew: boolean
 }>
 
-const ChatHydrateHandler = ({ children, id }: ChatHydrateHandlerProps) => {
-  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id })
+const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
+  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
 
   useHandleIntegrationCompletion({ saveMessages })
 
@@ -32,17 +33,16 @@ const ChatHydrateHandler = ({ children, id }: ChatHydrateHandlerProps) => {
 export default function ChatDetailPage() {
   const params = useParams()
 
-  const id = useMemo(
-    () => (params.chatThreadId === 'new' ? uuidv7() : params.chatThreadId || null),
-    [params.chatThreadId],
-  )
+  const isNew = params.chatThreadId === 'new'
+
+  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [params.chatThreadId])
 
   if (!id) {
     return null
   }
 
   return (
-    <ChatHydrateHandler key={id} id={id}>
+    <ChatHydrateHandler key={id} id={id} isNew={isNew}>
       <ChatUI />
     </ChatHydrateHandler>
   )

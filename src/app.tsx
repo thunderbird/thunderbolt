@@ -92,7 +92,7 @@ function AppRoutes(_: { initData: InitData }) {
 
       {/* 404 catch-all */}
       <Route path="/not-found" element={<NotFound />} />
-      <Route path="*" element={<NotFound />} />
+      <Route path="*" element={<Navigate to="/not-found" replace />} />
     </Routes>
   )
 }

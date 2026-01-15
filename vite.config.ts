@@ -2,12 +2,34 @@
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import { bundleMigrations } from './src/db/bundle-migrations'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Copies the cr-sqlite wasm file to the public directory.
+ * This is needed because cr-sqlite loads the wasm file at runtime.
+ */
+const copyCrsqliteWasm = () => {
+  const src = path.resolve(dirname, 'node_modules/@vlcn.io/crsqlite-wasm/dist/crsqlite.wasm')
+  const destDir = path.resolve(dirname, 'public')
+  const dest = path.resolve(destDir, 'crsqlite.wasm')
+
+  if (!existsSync(src)) {
+    throw new Error('crsqlite.wasm source not found')
+  }
+
+  if (!existsSync(destDir)) {
+    mkdirSync(destDir, { recursive: true })
+  }
+
+  copyFileSync(src, dest)
+  console.info('Copied crsqlite.wasm to public/')
+}
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 const host = process.env.TAURI_DEV_HOST
@@ -30,11 +52,21 @@ export default defineConfig({
   plugins: [
     {
       name: 'bundle-migrations',
-      async buildStart() {
+      buildStart() {
         bundleMigrations({
           migrationsDir: path.resolve(__dirname, 'src/drizzle'),
           outputFile: path.resolve(__dirname, 'src/drizzle/_migrations.ts'),
         })
+      },
+    },
+    {
+      name: 'copy-crsqlite-wasm',
+      buildStart() {
+        copyCrsqliteWasm()
+      },
+      configureServer() {
+        // Also copy during dev server startup
+        copyCrsqliteWasm()
       },
     },
     tailwindcss(),

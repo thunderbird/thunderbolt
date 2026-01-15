@@ -13,6 +13,9 @@ dist-ssr
 dist-isolation
 *.local
 
+# Build artifacts copied during vite build
+public/crsqlite.wasm
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

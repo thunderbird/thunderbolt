@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import type { SerializedChange } from './sync-service'
+import { type SerializedChange } from './sync-utils'
 
 /**
  * Creates a valid SerializedChange for testing

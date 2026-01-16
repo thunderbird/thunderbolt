@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq, inArray } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createTrigger,

@@ -36,7 +36,7 @@ const MOCK_SESSION = {
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-const createAuthClientInstance = (cloudUrl: string) => {
+const _createAuthClientInstance = (cloudUrl: string) => {
   const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
@@ -63,7 +63,7 @@ const buildFetchOptions = (platform: string) => ({
   },
 })
 
-export type AuthClient = ReturnType<typeof createAuthClientInstance>
+export type AuthClient = ReturnType<typeof _createAuthClientInstance>
 export type Session = AuthClient['$Infer']['Session']
 export type User = Session['user']
 
@@ -114,7 +114,7 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
     }
 
     // TODO: Replace with real auth client once CORS is resolved
-    // const client = createAuthClientInstance(cloudUrl.value)
+    // const client = _createAuthClientInstance(cloudUrl.value)
     const client = createMockAuthClient()
     return { authClient: client }
   }, [cloudUrl.value, cloudUrl.isLoading, overrideClient])

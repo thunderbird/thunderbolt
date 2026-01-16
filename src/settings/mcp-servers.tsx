@@ -152,7 +152,7 @@ export default function McpServersPage() {
 
       // Import the MCP SDK components
       const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      const { experimental_createMCPClient } = await import('ai')
+      const { experimental_createMCPClient } = await import('@ai-sdk/mcp')
 
       // Create a real MCP client using the same method as the provider
       console.log('Creating MCP client...')

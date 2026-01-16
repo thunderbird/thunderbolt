@@ -32,6 +32,7 @@ import {
   stepCountIs,
   streamText,
   wrapLanguageModel,
+  type Tool,
   type ToolSet,
 } from 'ai'
 import { type MCPClient } from '@ai-sdk/mcp'
@@ -148,7 +149,7 @@ export const aiFetchStreamingResponse = async ({
 
   const supportsTools = model.toolUsage !== 0
 
-  let toolset: ToolSet = {}
+  let toolset: Record<string, Tool> = {}
   if (supportsTools) {
     // Use provided httpClient for tests, otherwise use plain ky for external APIs
     const toolsHttpClient = httpClient || ky
@@ -234,7 +235,7 @@ export const aiFetchStreamingResponse = async ({
         model: wrappedModel,
         system: systemPrompt,
         messages: inputMessages,
-        tools: supportsTools ? toolset : undefined,
+        tools: supportsTools ? (toolset as ToolSet) : undefined,
         stopWhen: stepCountIs(maxSteps),
         providerOptions,
 

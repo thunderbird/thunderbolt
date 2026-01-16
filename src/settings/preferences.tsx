@@ -237,18 +237,7 @@ export default function PreferencesSettingsPage() {
     trackEvent('settings_localization_update')
   }
 
-  const handleDeclineLocalizationSettings = async () => {
-    if (!pendingCountryUnits) return
-
-    // Update hash values to new country defaults without changing actual values
-    await Promise.all([
-      distanceUnit.setValue(pendingCountryUnits.unit, { updateHashOnly: true }),
-      temperatureUnit.setValue(pendingCountryUnits.temperature, { updateHashOnly: true }),
-      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { updateHashOnly: true }),
-      timeFormat.setValue(pendingCountryUnits.timeFormat, { updateHashOnly: true }),
-      currency.setValue(pendingCountryUnits.currency.code, { updateHashOnly: true }),
-    ])
-
+  const handleDeclineLocalizationSettings = () => {
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
@@ -787,8 +776,10 @@ export default function PreferencesSettingsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeclineLocalizationSettings}>Keep Current Units</AlertDialogCancel>
-            <AlertDialogAction onClick={handleApplyLocalizationSettings}>Update Units</AlertDialogAction>
+            <AlertDialogCancel>Keep Current Units</AlertDialogCancel>
+            <AlertDialogAction autoFocus onClick={handleApplyLocalizationSettings}>
+              Update Units
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

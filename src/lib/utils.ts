@@ -15,6 +15,26 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Encode Uint8Array to base64 string
+ */
+export const encodeBase64 = (data: Uint8Array): string => {
+  const bytes = Array.from(data)
+  return btoa(String.fromCharCode(...bytes))
+}
+
+/**
+ * Decode base64 string to Uint8Array
+ */
+export const decodeBase64 = (base64: string): Uint8Array => {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
 export function uuidv7ToDate(uuid: string) {
   return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
 }

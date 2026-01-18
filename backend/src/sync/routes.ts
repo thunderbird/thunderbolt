@@ -3,7 +3,8 @@ import { user } from '@/db/auth-schema'
 import type { db as DbType } from '@/db/client'
 import { and, eq, gt } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-import { syncChanges, syncDevices } from './schema'
+import { syncChanges } from './schema'
+import { compareMigrationVersions, getRequiredMigrationVersion, upsertDevice } from './utils'
 
 /**
  * Serialized change format for network transport
@@ -19,25 +20,6 @@ const serializedChangeSchema = t.Object({
   cl: t.Number(),
   seq: t.Number(),
 })
-
-/**
- * Compare two migration versions
- * Migration hashes are in format: 0000_name, 0001_name, etc.
- * Returns: negative if a < b, 0 if equal, positive if a > b
- */
-const compareMigrationVersions = (a: string | null, b: string | null): number => {
-  if (!a && !b) return 0
-  if (!a) return -1
-  if (!b) return 1
-
-  // Extract numeric prefix (e.g., "0000" from "0000_nice_mandroid")
-  const getVersionNumber = (version: string): number => {
-    const match = version.match(/^(\d+)/)
-    return match ? parseInt(match[1], 10) : 0
-  }
-
-  return getVersionNumber(a) - getVersionNumber(b)
-}
 
 /**
  * Helper to get authenticated user from request
@@ -82,13 +64,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
 
           // Check if client's migration version meets the minimum required version
           // This prevents outdated clients from pushing changes and advancing their serverVersion pointer
-          const currentUser = await database
-            .select({ syncMigrationVersion: user.syncMigrationVersion })
-            .from(user)
-            .where(eq(user.id, authUser.id))
-            .limit(1)
-
-          const requiredVersion = currentUser[0]?.syncMigrationVersion ?? null
+          const requiredVersion = await getRequiredMigrationVersion(database, authUser.id)
 
           // If the client's migration version is older than the required version, block push
           if (requiredVersion && compareMigrationVersions(migrationVersion ?? null, requiredVersion) < 0) {
@@ -152,25 +128,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
           const maxServerVersion = Math.max(...insertedChanges.map((c) => c.id))
 
           // Update or insert device record with migration version
-          const existingDevice = await database
-            .select({ id: syncDevices.id })
-            .from(syncDevices)
-            .where(and(eq(syncDevices.userId, authUser.id), eq(syncDevices.siteId, siteId)))
-            .limit(1)
-
-          if (existingDevice.length > 0) {
-            await database
-              .update(syncDevices)
-              .set({ lastSeenAt: new Date(), migrationVersion })
-              .where(eq(syncDevices.id, existingDevice[0].id))
-          } else {
-            await database.insert(syncDevices).values({
-              userId: authUser.id,
-              siteId,
-              migrationVersion,
-              lastSeenAt: new Date(),
-            })
-          }
+          await upsertDevice(database, authUser.id, siteId, migrationVersion)
 
           return {
             success: true,
@@ -204,13 +162,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
           const sinceVersion = parseInt(since, 10) || 0
 
           // Check if client's migration version meets the minimum required version
-          const currentUser = await database
-            .select({ syncMigrationVersion: user.syncMigrationVersion })
-            .from(user)
-            .where(eq(user.id, authUser.id))
-            .limit(1)
-
-          const requiredVersion = currentUser[0]?.syncMigrationVersion ?? null
+          const requiredVersion = await getRequiredMigrationVersion(database, authUser.id)
 
           // If the client's migration version is older than the required version, block sync
           if (requiredVersion && compareMigrationVersions(migrationVersion ?? null, requiredVersion) < 0) {
@@ -269,25 +221,7 @@ export const createSyncRoutes = (database: typeof DbType, auth: Auth) => {
 
           // Update device last seen and migration version
           if (siteId) {
-            const existingDevice = await database
-              .select({ id: syncDevices.id })
-              .from(syncDevices)
-              .where(and(eq(syncDevices.userId, authUser.id), eq(syncDevices.siteId, siteId)))
-              .limit(1)
-
-            if (existingDevice.length > 0) {
-              await database
-                .update(syncDevices)
-                .set({ lastSeenAt: new Date(), migrationVersion })
-                .where(eq(syncDevices.id, existingDevice[0].id))
-            } else {
-              await database.insert(syncDevices).values({
-                userId: authUser.id,
-                siteId,
-                migrationVersion,
-                lastSeenAt: new Date(),
-              })
-            }
+            await upsertDevice(database, authUser.id, siteId, migrationVersion)
           }
 
           return {

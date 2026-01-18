@@ -1,7 +1,8 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { getSiteId, performInitialSync, type SerializedChange } from '@/db/initial-sync'
+import { getSiteId, performInitialSync } from '@/db/initial-sync'
+import { serializeChange, type SerializedChange } from '@/db/sync-utils'
 import { initializeCRRs, migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
 import { isSyncEnabled } from '@/hooks/use-sync-enabled'
@@ -91,17 +92,7 @@ async function captureLocalChanges(): Promise<SerializedChange[]> {
 
     if (changes.length > 0) {
       console.warn(`[Sync] Captured ${changes.length} local changes before migration`)
-      return changes.map((c) => ({
-        table: c.table,
-        pk: btoa(String.fromCharCode(...c.pk)),
-        cid: c.cid,
-        val: c.val,
-        col_version: c.col_version.toString(),
-        db_version: c.db_version.toString(),
-        site_id: btoa(String.fromCharCode(...c.site_id)),
-        cl: c.cl,
-        seq: c.seq,
-      }))
+      return changes.map(serializeChange)
     }
   } catch {
     // If this fails (e.g., fresh install, no tables yet), just continue

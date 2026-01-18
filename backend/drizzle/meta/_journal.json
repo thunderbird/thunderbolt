@@ -15,6 +15,13 @@
       "when": 1764105849340,
       "tag": "0001_gifted_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768750464492,
+      "tag": "0002_tough_mentor",
+      "breakpoints": true
     }
   ]
 }

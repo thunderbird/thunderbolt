@@ -13,10 +13,10 @@ import {
   preparePush,
   type PullResponse,
   type PushResponse,
-} from './sync-core'
+} from './core'
 
 // Re-export for external consumers
-export { getSiteId, type SerializedChange } from './sync-utils'
+export { getSiteId, type SerializedChange } from './utils'
 
 /**
  * Push local changes to the server via HTTP

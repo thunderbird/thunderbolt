@@ -4,8 +4,8 @@
  */
 
 import { decodeBase64, encodeBase64 } from '@/lib/utils'
-import type { CRSQLChange } from './crsqlite-worker'
-import { DatabaseSingleton } from './singleton'
+import type { CRSQLChange } from '@/db/crsqlite-worker'
+import { DatabaseSingleton } from '@/db/singleton'
 
 // ============================================================================
 // Storage Keys

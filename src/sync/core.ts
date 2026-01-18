@@ -3,9 +3,9 @@
  * Changes are made in one place and reflected in both transport layers
  */
 
-import type { CRSQLChange } from './crsqlite-worker'
-import { getLatestMigrationVersion } from './migrate'
-import { DatabaseSingleton } from './singleton'
+import type { CRSQLChange } from '@/db/crsqlite-worker'
+import { getLatestMigrationVersion } from '@/db/migrate'
+import { DatabaseSingleton } from '@/db/singleton'
 import {
   deserializeChange,
   getLastSyncedVersion,
@@ -15,10 +15,10 @@ import {
   type SerializedChange,
   setLastSyncedVersion,
   setServerVersion,
-} from './sync-utils'
+} from './utils'
 
 // Re-export types for consumers
-export type { SerializedChange } from './sync-utils'
+export type { SerializedChange } from './utils'
 
 // ============================================================================
 // Push Logic

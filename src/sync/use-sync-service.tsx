@@ -5,7 +5,7 @@
 import { useChatStore } from '@/chats/chat-store'
 import { useSaveMessages } from '@/chats/use-save-messages'
 import { useAuth } from '@/contexts/auth-context'
-import { getSyncService, initSyncService, type SyncStatus } from '@/db/sync-service'
+import { getSyncService, initSyncService, type SyncStatus } from '@/sync/service'
 import { DatabaseSingleton } from '@/db/singleton'
 import { useSettings } from '@/hooks/use-settings'
 import { useSyncEnabled } from '@/hooks/use-sync-enabled'

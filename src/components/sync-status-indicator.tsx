@@ -1,6 +1,5 @@
 import { useAuth } from '@/contexts/auth-context'
-import type { SyncStatus } from '@/db/sync-service'
-import { useSyncService } from '@/hooks/use-sync-service'
+import { useSyncService, type SyncStatus } from '@/sync'
 import { cn } from '@/lib/utils'
 import { AlertTriangle, Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
 import type { FC } from 'react'

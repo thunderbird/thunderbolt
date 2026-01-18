@@ -4,8 +4,8 @@
  */
 
 import { getAuthToken } from '@/lib/auth-token'
-import { getLatestMigrationVersion } from './migrate'
-import { DatabaseSingleton } from './singleton'
+import { getLatestMigrationVersion } from '@/db/migrate'
+import { DatabaseSingleton } from '@/db/singleton'
 import {
   applyPullChanges,
   extractChatThreadIds,
@@ -14,11 +14,11 @@ import {
   type PullResponse,
   type PushResponse,
   type SerializedChange,
-} from './sync-core'
-import { getServerVersion, getSiteId, setServerVersion } from './sync-utils'
+} from './core'
+import { getServerVersion, getSiteId, setServerVersion } from './utils'
 
 // Re-export for external consumers
-export type { SerializedChange } from './sync-core'
+export type { SerializedChange } from './core'
 
 /**
  * WebSocket message types

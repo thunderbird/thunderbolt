@@ -22,12 +22,12 @@ export const NavigationMenu = ({
       <SidebarMenuItem>
         <SidebarMenuButton
           onClick={onCreateNewChat}
-          tooltip="New Chat (TEST UPDATE)"
+          tooltip="New Chat"
           className="cursor-pointer"
           isActive={currentPath === '/chats/new'}
         >
           <MessageCirclePlus className="size-4" />
-          <span>New Chat</span>
+          <span>New Chat (TEST UPDATE)</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
       {showTasks && (

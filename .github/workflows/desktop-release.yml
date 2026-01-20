@@ -67,22 +67,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TODO: Re-enable all platforms after testing
-          # - os: ubuntu-24.04
-          #   target: x86_64-unknown-linux-gnu
-          #   build_name: 'Linux'
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            build_name: 'Linux'
           - os: macos-latest
             target: aarch64-apple-darwin
             build_name: 'macOS (Apple Silicon)'
-          # - os: macos-latest
-          #   target: x86_64-apple-darwin
-          #   build_name: 'macOS (Intel)'
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          #   build_name: 'Windows (x64)'
-          # - os: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   build_name: 'Windows (ARM64)'
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            build_name: 'macOS (Intel)'
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build_name: 'Windows (x64)'
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            build_name: 'Windows (ARM64)'
 
     runs-on: ${{ matrix.os }}
 
@@ -173,32 +172,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Verify Tauri Configuration (Silicon)
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        run: |
-          echo "=== Tauri Config Check ==="
-          cat src-tauri/tauri.conf.json | grep -A 5 "createUpdaterArtifacts" || echo "createUpdaterArtifacts not found"
-          echo "=== Signing Key Check ==="
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "✓ TAURI_SIGNING_PRIVATE_KEY is set"
-            echo "Key length: ${#TAURI_SIGNING_PRIVATE_KEY} characters"
-          else
-            echo "✗ TAURI_SIGNING_PRIVATE_KEY is NOT set"
-          fi
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
-            echo "✓ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is set (length: ${#TAURI_SIGNING_PRIVATE_KEY_PASSWORD})"
-          else
-            echo "ℹ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty (no password)"
-          fi
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
       - name: Build Tauri app for macOS (Silicon)
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install
-          bun tauri build --target aarch64-apple-darwin --verbose
+          bun tauri build --target aarch64-apple-darwin
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -206,13 +184,6 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: List generated bundles (Silicon)
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        run: |
-          echo "=== Checking for updater artifacts ==="
-          ls -la src-tauri/target/aarch64-apple-darwin/release/bundle/macos/ || true
-          find src-tauri/target/aarch64-apple-darwin -name "*.tar.gz*" || true
 
       - name: Build Tauri app for macOS (Intel)
         if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
@@ -225,7 +196,7 @@ jobs:
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
           bun install
-          bun tauri build --target x86_64-apple-darwin --verbose
+          bun tauri build --target x86_64-apple-darwin
         env:
           # Override the target-cpu=native flag
           RUSTFLAGS: '-C target-cpu=x86-64'
@@ -239,13 +210,6 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: List generated bundles (Intel)
-        if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
-        run: |
-          echo "=== Checking for updater artifacts ==="
-          ls -la src-tauri/target/x86_64-apple-darwin/release/bundle/macos/ || true
-          find src-tauri/target/x86_64-apple-darwin -name "*.tar.gz*" || true
 
       - name: Upload Linux artifacts to GitHub Release
         if: matrix.os == 'ubuntu-24.04'

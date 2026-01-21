@@ -91,7 +91,7 @@ export const sendSignInEmail = async ({
   verifyUrl,
   isProduction,
 }: SendSignInEmailParams): Promise<void> => {
-  console.info(`📧 Sending sign-in email to ${email}`)
+  console.info('📧 Sending sign-in email')
 
   if (!resend) {
     if (isProduction) {

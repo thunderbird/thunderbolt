@@ -127,9 +127,10 @@ export class DatabaseSingleton {
   /**
    * Reset the singleton instance (useful for testing)
    */
-  public static reset(): void {
+  public static async reset(): Promise<void> {
     if (this.#instance && this.#instance.#database && this.#instance.#database.close) {
-      this.#instance.#database.close()
+      // Must await for PowerSync to properly call disconnectAndClear()
+      await this.#instance.#database.close()
     }
     if (this.#instance) {
       this.#instance.#database = null

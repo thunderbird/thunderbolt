@@ -1,0 +1,291 @@
+import { waitlist } from '@/db/schema'
+import { createApp } from '@/index'
+import { createTestDb } from '@/test-utils/db'
+import { eq } from 'drizzle-orm'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+
+describe('Waitlist API', () => {
+  let app: Awaited<ReturnType<typeof createApp>>
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    app = await createApp({ database: db })
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  describe('POST /v1/waitlist/join', () => {
+    it('should add email to waitlist with pending status', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify in database
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('pending')
+      expect(entries[0].deletedAt).toBeNull()
+    })
+
+    it('should normalize email to lowercase', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'TEST@EXAMPLE.COM' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+
+      // Verify email was lowercased in database
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
+      expect(entries).toHaveLength(1)
+    })
+
+    it('should return success for duplicate email without creating new entry', async () => {
+      // First submission
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'duplicate@example.com' }),
+        }),
+      )
+
+      // Second submission with same email
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'duplicate@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify only one entry exists
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'duplicate@example.com'))
+      expect(entries).toHaveLength(1)
+    })
+
+    it('should return success for duplicate email with different case', async () => {
+      // First submission
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'case@example.com' }),
+        }),
+      )
+
+      // Second submission with different case
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'CASE@EXAMPLE.COM' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify only one entry exists
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'case@example.com'))
+      expect(entries).toHaveLength(1)
+    })
+
+    it('should reject invalid email format', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'not-an-email' }),
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should reject missing email', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      expect(response.status).toBe(422)
+    })
+
+    it('should reactivate soft-deleted entry when joining again', async () => {
+      // Add email to waitlist
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'softdelete@example.com' }),
+        }),
+      )
+
+      // Soft delete the entry
+      await db.update(waitlist).set({ deletedAt: new Date() }).where(eq(waitlist.email, 'softdelete@example.com'))
+
+      // Verify entry is soft-deleted
+      const beforeRejoin = await db.select().from(waitlist).where(eq(waitlist.email, 'softdelete@example.com'))
+      expect(beforeRejoin).toHaveLength(1)
+      expect(beforeRejoin[0].deletedAt).not.toBeNull()
+
+      // Try to join again
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'softdelete@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+
+      // Verify entry was reactivated (not duplicated)
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'softdelete@example.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].deletedAt).toBeNull()
+      expect(entries[0].status).toBe('pending')
+    })
+  })
+
+  describe('POST /v1/waitlist/status', () => {
+    it('should return onWaitlist: false for email not on waitlist', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'unknown@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ onWaitlist: false })
+    })
+
+    it('should return pending status for email on waitlist', async () => {
+      // Add email to waitlist
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'pending@example.com' }),
+        }),
+      )
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'pending@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ onWaitlist: true, status: 'pending' })
+    })
+
+    it('should return approved status for approved email', async () => {
+      // Add email to waitlist
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'approved@example.com' }),
+        }),
+      )
+
+      // Approve the email
+      await db.update(waitlist).set({ status: 'approved' }).where(eq(waitlist.email, 'approved@example.com'))
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'approved@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ onWaitlist: true, status: 'approved' })
+    })
+
+    it('should normalize email to lowercase', async () => {
+      // Add email to waitlist with lowercase
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'casetest@example.com' }),
+        }),
+      )
+
+      // Check status with uppercase
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'CASETEST@EXAMPLE.COM' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ onWaitlist: true, status: 'pending' })
+    })
+
+    it('should return onWaitlist: false for soft-deleted entry', async () => {
+      // Add email to waitlist
+      await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'deleted@example.com' }),
+        }),
+      )
+
+      // Soft delete the entry
+      await db.update(waitlist).set({ deletedAt: new Date() }).where(eq(waitlist.email, 'deleted@example.com'))
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'deleted@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ onWaitlist: false })
+    })
+  })
+})

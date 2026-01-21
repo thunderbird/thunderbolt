@@ -5,14 +5,9 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { and, eq, isNull } from 'drizzle-orm'
-import { Resend } from 'resend'
+import { resend } from '@/lib/resend'
+import { sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
-
-if (!resend) {
-  console.warn('⚠️ RESEND_API_KEY is not set - auth emails will not be sent')
-}
 
 /**
  * Trusted origins for CORS and email link validation
@@ -50,11 +45,13 @@ export const createAuth = (database: typeof DbType) =>
             return
           }
 
+          const normalizedEmail = email.toLowerCase().trim()
+
           // Check if user already has an account (existing users bypass waitlist)
           const existingUser = await database
             .select({ id: user.id })
             .from(user)
-            .where(eq(user.email, email.toLowerCase()))
+            .where(eq(user.email, normalizedEmail))
             .limit(1)
 
           // If user doesn't exist, check waitlist status
@@ -62,13 +59,23 @@ export const createAuth = (database: typeof DbType) =>
             const waitlistEntry = await database
               .select({ status: waitlist.status })
               .from(waitlist)
-              .where(and(eq(waitlist.email, email.toLowerCase()), isNull(waitlist.deletedAt)))
+              .where(and(eq(waitlist.email, normalizedEmail), isNull(waitlist.deletedAt)))
               .limit(1)
 
             // If not on waitlist or not approved, don't send OTP
-            // Return silently to not reveal waitlist status
             if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
-              console.info(`🚫 Blocked sign-in attempt for non-approved email: ${email}`)
+              console.info('🚫 Blocked sign-in attempt for non-approved email')
+
+              // If on waitlist but not approved, send a "not ready yet" email
+              if (waitlistEntry.length > 0) {
+                sendWaitlistNotReadyEmail({
+                  email: normalizedEmail,
+                  isProduction: process.env.NODE_ENV === 'production',
+                }).catch((error) => {
+                  console.error('Failed to send waitlist not-ready email:', error)
+                })
+              }
+
               return
             }
           }

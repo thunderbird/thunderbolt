@@ -38,8 +38,6 @@ import {
 import { type MCPClient } from '@ai-sdk/mcp'
 import { createMessageMetadata } from './message-metadata'
 
-// export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
-
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
   // compatibility: 'compatible',

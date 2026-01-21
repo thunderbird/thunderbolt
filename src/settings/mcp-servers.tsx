@@ -25,6 +25,8 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { createMCPClient } from '@ai-sdk/mcp'
 
 interface ServerTools {
   [serverId: string]: string[]
@@ -150,13 +152,9 @@ export default function McpServersPage() {
     try {
       console.log('Testing connection to:', newServerUrl)
 
-      // Import the MCP SDK components
-      const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      const { experimental_createMCPClient } = await import('@ai-sdk/mcp')
-
       // Create a real MCP client using the same method as the provider
       console.log('Creating MCP client...')
-      const mcpClient = await experimental_createMCPClient({
+      const mcpClient = await createMCPClient({
         transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
           requestInit: {
             headers: {

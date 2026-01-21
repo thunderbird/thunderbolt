@@ -27,7 +27,7 @@ export const NavigationMenu = ({
           isActive={currentPath === '/chats/new'}
         >
           <MessageCirclePlus className="size-4" />
-          <span>New Chat (TEST UPDATE)</span>
+          <span>New Chat</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
       {showTasks && (

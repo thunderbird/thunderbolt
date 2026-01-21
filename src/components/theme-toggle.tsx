@@ -13,6 +13,7 @@ export function ThemeToggle() {
       variant="outline"
       value={theme}
       onValueChange={(value) => {
+        if (!value) return
         setTheme(value as 'light' | 'dark' | 'system')
         trackEvent('settings_theme_set', { theme: value })
       }}

@@ -137,7 +137,7 @@ describe('useHydrateChatStore', () => {
       const modelId = await createTestModel()
       const threadId = await createTestThread(modelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -148,7 +148,7 @@ describe('useHydrateChatStore', () => {
       const modelId = await createTestModel()
       const threadId = await createTestThread(modelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -167,7 +167,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId, 'My Test Thread')
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -198,7 +198,7 @@ describe('useHydrateChatStore', () => {
       const threadId1 = await createTestThread(systemModelId, 'Thread 1')
       const threadId2 = await createTestThread(systemModelId, 'Thread 2')
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId1 }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId1, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -211,7 +211,7 @@ describe('useHydrateChatStore', () => {
       expect(firstState.currentSessionId).toBe(threadId1)
 
       // Second hydration with different thread
-      const { result: result2 } = renderHook(() => useHydrateChatStore({ id: threadId2 }), {
+      const { result: result2 } = renderHook(() => useHydrateChatStore({ id: threadId2, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -237,7 +237,7 @@ describe('useHydrateChatStore', () => {
 
       await saveMessagesWithContextUpdate(threadId, messages)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -255,7 +255,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -275,7 +275,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -304,7 +304,7 @@ describe('useHydrateChatStore', () => {
     it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 
@@ -330,7 +330,7 @@ describe('useHydrateChatStore', () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
 
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId }), {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
 

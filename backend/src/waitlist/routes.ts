@@ -72,11 +72,32 @@ export const createWaitlistRoutes = (database: typeof db) => {
             .where(eq(waitlist.id, existingDeleted[0].id))
         } else {
           // Add new entry to waitlist
-          await database.insert(waitlist).values({
-            id: crypto.randomUUID(),
-            email,
-            status: 'pending',
-          })
+          try {
+            await database.insert(waitlist).values({
+              id: crypto.randomUUID(),
+              email,
+              status: 'pending',
+            })
+          } catch (error) {
+            // Handle race condition: concurrent request already inserted this email
+            // PostgreSQL unique constraint violation code is '23505'
+            const isUniqueViolation =
+              error instanceof Error && 'code' in error && (error as Error & { code: string }).code === '23505'
+
+            if (isUniqueViolation) {
+              // Another request already inserted - send reminder instead
+              sendWaitlistReminderEmail({
+                email,
+                isProduction: process.env.NODE_ENV === 'production',
+              }).catch((err) => {
+                console.error('Failed to send waitlist reminder email:', err)
+              })
+
+              return { success: true }
+            }
+
+            throw error
+          }
         }
 
         // Send confirmation email (fire and forget - don't block response)

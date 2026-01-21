@@ -21,9 +21,7 @@ export const UpdateNotification = () => {
   // Only show on desktop platforms
   if (!isDesktop()) return null
 
-  // Don't show if dismissed or no update available
-  if (dismissed || status === 'idle' || status === 'checking') return null
-
+  const isVisible = !dismissed && status !== 'idle' && status !== 'checking'
   const config = statusConfig[status]
   const Icon = config.icon
 
@@ -43,58 +41,61 @@ export const UpdateNotification = () => {
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        className="fixed top-4 right-4 z-50 max-w-sm"
-      >
-        <div className="bg-card border border-border rounded-lg shadow-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <Icon
-                className={`size-5 ${status === 'downloading' ? 'animate-spin' : ''} ${
-                  status === 'error' ? 'text-destructive' : 'text-primary'
-                }`}
-              />
-            </div>
+      {isVisible && (
+        <motion.div
+          key="update-notification"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="fixed bottom-4 left-4 z-50 max-w-sm"
+        >
+          <div className="bg-card border border-border rounded-lg shadow-lg p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <Icon
+                  className={`size-5 ${status === 'downloading' ? 'animate-spin' : ''} ${
+                    status === 'error' ? 'text-destructive' : 'text-primary'
+                  }`}
+                />
+              </div>
 
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">{config.message}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">{config.message}</p>
 
-              {status === 'available' && update && (
-                <p className="text-xs text-muted-foreground mt-1">Version {update.version}</p>
-              )}
+                {status === 'available' && update && (
+                  <p className="text-xs text-muted-foreground mt-1">Version {update.version}</p>
+                )}
 
-              {status === 'error' && error && <p className="text-xs text-destructive mt-1">{error}</p>}
+                {status === 'error' && error && <p className="text-xs text-destructive mt-1">{error}</p>}
 
-              {config.showActions && (
-                <div className="flex gap-2 mt-3">
-                  <Button size="sm" onClick={handlePrimaryAction}>
-                    {status === 'available' && 'Download'}
-                    {status === 'ready' && 'Restart Now'}
-                    {status === 'error' && 'Retry'}
-                  </Button>
-
-                  {status !== 'error' && (
-                    <Button size="sm" variant="ghost" onClick={handleDismiss}>
-                      Later
+                {config.showActions && (
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" onClick={handlePrimaryAction}>
+                      {status === 'available' && 'Download'}
+                      {status === 'ready' && 'Restart Now'}
+                      {status === 'error' && 'Retry'}
                     </Button>
-                  )}
-                </div>
-              )}
-            </div>
 
-            <button
-              onClick={handleDismiss}
-              className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Dismiss"
-            >
-              <X className="size-4" />
-            </button>
+                    {status !== 'error' && (
+                      <Button size="sm" variant="ghost" onClick={handleDismiss}>
+                        Later
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleDismiss}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dismiss"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   )
 }

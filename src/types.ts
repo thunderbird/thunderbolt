@@ -51,7 +51,7 @@ export type PromptRow = InferSelectModel<typeof promptsTable>
 export type TriggerRow = InferSelectModel<typeof triggersTable>
 
 // Application types - Row types with previously-required fields made non-null
-export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role'>
+export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
 export type ChatThread = WithRequired<ChatThreadRow, 'isEncrypted' | 'wasTriggeredByAutomation'>
 export type Model = WithRequired<
   ModelRow,
@@ -67,8 +67,8 @@ export type Model = WithRequired<
 export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
-export type Prompt = WithRequired<PromptRow, 'prompt'>
-export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled'>
+export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
+export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 
 export type AutomationRun = {
   prompt: Prompt | null

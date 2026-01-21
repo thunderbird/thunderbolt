@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
@@ -77,20 +77,29 @@ export const saveMessagesWithContextUpdate = async (
     return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
   })
 
-  // Insert messages
-  await db
-    .insert(chatMessagesTable)
-    .values(dbChatMessages)
-    .onConflictDoUpdate({
-      target: chatMessagesTable.id,
-      set: {
-        content: sql`excluded.content`,
-        parts: sql`excluded.parts`,
-        role: sql`excluded.role`,
-        parentId: sql`excluded.parent_id`,
-        metadata: sql`excluded.metadata`,
-      },
-    })
+  // Insert or update messages (check-then-insert/update pattern for PowerSync compatibility)
+  for (const msg of dbChatMessages) {
+    const existing = await db
+      .select({ id: chatMessagesTable.id })
+      .from(chatMessagesTable)
+      .where(eq(chatMessagesTable.id, msg.id))
+      .get()
+
+    if (existing) {
+      await db
+        .update(chatMessagesTable)
+        .set({
+          content: msg.content,
+          parts: msg.parts,
+          role: msg.role,
+          parentId: msg.parentId,
+          metadata: msg.metadata,
+        })
+        .where(eq(chatMessagesTable.id, msg.id))
+    } else {
+      await db.insert(chatMessagesTable).values(msg)
+    }
+  }
 
   // Update context size if available in latest message
   const latestMessage = messages[messages.length - 1]

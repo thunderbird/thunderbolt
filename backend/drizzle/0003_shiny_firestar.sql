@@ -1,0 +1,1 @@
+ALTER TABLE "settings" RENAME COLUMN "key" TO "id";

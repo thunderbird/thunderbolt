@@ -97,7 +97,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite'],
+    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
   worker: {
     format: 'es',

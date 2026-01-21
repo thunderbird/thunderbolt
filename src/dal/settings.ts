@@ -227,7 +227,14 @@ export const hasSetting = async (key: string): Promise<boolean> => {
  */
 export const createSetting = async (key: string, value: string | null): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(settingsTable).values({ key, value }).onConflictDoNothing()
+  const existing = await db
+    .select({ key: settingsTable.key })
+    .from(settingsTable)
+    .where(eq(settingsTable.key, key))
+    .get()
+  if (!existing) {
+    await db.insert(settingsTable).values({ key, value })
+  }
 }
 
 /**
@@ -285,18 +292,24 @@ export const updateSettings = async (
     return
   }
 
-  // Single batch upsert for value updates
-  const values = entries.map(([key, value]) => prepareSettingRow(key, value, options.recomputeHash ?? false))
+  // Check-then-insert/update pattern for PowerSync compatibility
+  for (const [key, value] of entries) {
+    const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
+    const existing = await db
+      .select({ key: settingsTable.key })
+      .from(settingsTable)
+      .where(eq(settingsTable.key, key))
+      .get()
 
-  await db
-    .insert(settingsTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: settingsTable.key,
-      set: options.recomputeHash
-        ? { value: sql`excluded.value`, defaultHash: sql`excluded.default_hash` }
-        : { value: sql`excluded.value` },
-    })
+    if (existing) {
+      const updateData = options.recomputeHash
+        ? { value: row.value, defaultHash: row.defaultHash }
+        : { value: row.value }
+      await db.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
+    } else {
+      await db.insert(settingsTable).values(row)
+    }
+  }
 }
 
 /**

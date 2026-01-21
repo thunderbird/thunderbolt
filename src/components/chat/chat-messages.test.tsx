@@ -121,6 +121,7 @@ describe('ChatMessages', () => {
             prompt: 'Automation prompt',
             deletedAt: null,
             defaultHash: null,
+            userId: null,
             modelId: 'model-1',
           },
         }),

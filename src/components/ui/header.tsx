@@ -6,6 +6,7 @@ import { ModelSelector } from './model-selector'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
+import { PowerSyncStatus } from '@/components/powersync-status'
 
 /**
  * Reusable page header component with sidebar trigger and model selector
@@ -66,7 +67,8 @@ export const Header = () => {
 
         <div className="flex items-center justify-center flex-1">{modelSelector}</div>
 
-        <div className="flex items-center w-7 justify-end">
+        <div className="flex items-center gap-1 justify-end">
+          <PowerSyncStatus />
           {showNewChatButton && (
             <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={handleNewChat}>
               <MessageCirclePlus className="h-5 w-5" />
@@ -78,8 +80,11 @@ export const Header = () => {
     )
   }
 
-  // Desktop: Left-aligned
+  // Desktop: Left-aligned with PowerSync status on the right
   return (
-    <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">{modelSelector}</header>
+    <header className="flex h-12 w-full items-center justify-between px-2 flex-shrink-0 border-b border-border">
+      <div className="flex items-center">{modelSelector}</div>
+      <PowerSyncStatus />
+    </header>
   )
 }

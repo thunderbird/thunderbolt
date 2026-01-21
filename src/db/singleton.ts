@@ -1,6 +1,6 @@
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 
-export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite'
+export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite' | 'powersync'
 
 export class DatabaseSingleton {
   static #instance: DatabaseSingleton | null = null
@@ -45,6 +45,10 @@ export class DatabaseSingleton {
       // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
+    } else if (type === 'powersync') {
+      // Lazy load PowerSync for multi-device sync
+      const { PowerSyncDatabaseImpl } = await import('./powersync')
+      this.#database = new PowerSyncDatabaseImpl()
     } else {
       // Default to wa-sqlite for web (best performance with web workers)
       const { WaSQLiteDatabase } = await import('./wa-sqlite-database')
@@ -55,8 +59,19 @@ export class DatabaseSingleton {
 
     DatabaseSingleton.#initialized = true
 
-    const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'wa-sqlite'
-    console.info(`Initialized ${dbTypeName} database at ${path}`)
+    const getDbTypeName = (): string => {
+      switch (type) {
+        case 'libsql-tauri':
+          return 'LibSQL for Tauri'
+        case 'bun-sqlite':
+          return 'Bun SQLite'
+        case 'powersync':
+          return 'PowerSync'
+        default:
+          return 'wa-sqlite'
+      }
+    }
+    console.info(`Initialized ${getDbTypeName()} database at ${path}`)
 
     return this.#database.db
   }
@@ -96,6 +111,16 @@ export class DatabaseSingleton {
   public async close(): Promise<void> {
     if (this.#database?.close) {
       await this.#database.close()
+    }
+  }
+
+  /**
+   * Wait for initial sync to complete (PowerSync only).
+   * For other database types, this resolves immediately.
+   */
+  public async waitForInitialSync(): Promise<void> {
+    if (this.#database?.waitForInitialSync) {
+      await this.#database.waitForInitialSync()
     }
   }
 

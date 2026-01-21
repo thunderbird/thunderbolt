@@ -93,13 +93,24 @@ const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
 export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
 
 /**
+ * Check if PowerSync is enabled via environment variable.
+ * Set VITE_POWERSYNC_URL to enable PowerSync for multi-device sync.
+ */
+const isPowerSyncEnabled = (): boolean => {
+  return Boolean(import.meta.env.VITE_POWERSYNC_URL)
+}
+
+/**
  * Determines the appropriate database type based on the platform and the
  * capabilities exposed by the backend.
  *
  * Note: this is asynchronous because we might need to query the backend once.
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
-  if (!isTauri()) return 'wa-sqlite'
+  // For web, use PowerSync if configured
+  if (!isTauri()) {
+    return isPowerSyncEnabled() ? 'powersync' : 'wa-sqlite'
+  }
 
   const { libsql } = await getCapabilities()
   return libsql ? 'libsql-tauri' : 'wa-sqlite'
@@ -117,10 +128,12 @@ export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath
     return `${appDataDirPath}/thunderbolt.db`
   }
 
-  // For wa-sqlite, check OPFS availability
+  // For wa-sqlite and powersync, check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    return `${appDataDirPath}/thunderbolt.db`
+    // Use different filename for PowerSync to avoid conflicts during migration
+    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
+    return `${appDataDirPath}/${filename}`
   }
 
   console.warn('OPFS not available (likely private browsing), using in-memory database')

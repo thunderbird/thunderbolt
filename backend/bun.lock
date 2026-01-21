@@ -1,12 +1,12 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "thunderbolt-backend-elysia",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.14",
         "@elysiajs/cors": "^1.4.0",
+        "@elysiajs/jwt": "^1.4.0",
         "@elysiajs/opentelemetry": "^1.4.0",
         "@elysiajs/static": "^1.4.0",
         "@elysiajs/swagger": "^1.3.1",
@@ -73,6 +73,8 @@
     "@electric-sql/pglite-socket": ["@electric-sql/pglite-socket@0.0.19", "", { "peerDependencies": { "@electric-sql/pglite": "0.3.14" }, "bin": { "pglite-server": "dist/scripts/server.js" } }, "sha512-9Uq0aXJyfeQMQCk9OiX3dfjdKCKurjGPkhHemDo+sA5QeYPuH48Bxfue4sfA+dBXZGe9cUCjwrnZ351E3wPPIA=="],
 
     "@elysiajs/cors": ["@elysiajs/cors@1.4.0", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-pb0SCzBfFbFSYA/U40HHO7R+YrcXBJXOWgL20eSViK33ol1e20ru2/KUaZYo5IMUn63yaTJI/bQERuQ+77ND8g=="],
+
+    "@elysiajs/jwt": ["@elysiajs/jwt@1.4.0", "", { "dependencies": { "jose": "^6.0.11" }, "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-Z0PvZhQxdDeKZ8HslXzDoXXD83NKExNPmoiAPki3nI2Xvh5wtUrBH+zWOD17yP14IbRo8fxGj3L25MRCAPsgPA=="],
 
     "@elysiajs/opentelemetry": ["@elysiajs/opentelemetry@1.4.0", "", { "dependencies": { "@opentelemetry/api": "^1.9.0", "@opentelemetry/instrumentation": "^0.200.0", "@opentelemetry/sdk-node": "^0.200.0" }, "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-snW/u/mLXU1OR86XgDW+CvsZEL1sFLeatWqxu2Knxk/0c9mxQsWYfDJP7hpP+iOL2Ryp9z9q1uRwgc6Rxze6eA=="],
 

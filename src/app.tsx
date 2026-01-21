@@ -31,6 +31,7 @@ import { UpdateNotification } from './components/update-notification'
 import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { usePowerSyncInvalidation } from './hooks/use-powersync-invalidation'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
@@ -47,6 +48,7 @@ function AppContent({ initData }: { initData: InitData }) {
   useTriggerScheduler()
   useKeyboardInset()
   useSafeAreaInset()
+  usePowerSyncInvalidation() // Watch all tables for changes and invalidate React Query cache
 
   return (
     <BrowserRouter>

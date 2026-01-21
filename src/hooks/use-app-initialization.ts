@@ -23,14 +23,19 @@ const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
 }
 
-const initializeDatabase = async (appDirPath: string): Promise<AnyDrizzleDatabase> => {
+const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleDatabase; skipMigrations: boolean }> => {
   const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(databaseType, appDirPath)
 
-  return await DatabaseSingleton.instance.initialize({
+  const db = await DatabaseSingleton.instance.initialize({
     type: databaseType,
     path: dbPath,
   })
+
+  // PowerSync manages schema via views, skip Drizzle migrations
+  const skipMigrations = databaseType === 'powersync'
+
+  return { db, skipMigrations }
 }
 
 const runDatabaseMigrations = async (db: AnyDrizzleDatabase): Promise<void> => {
@@ -67,8 +72,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
+  let skipMigrations = false
   try {
-    db = await initializeDatabase(appDirPath)
+    const result = await initializeDatabase(appDirPath)
+    db = result.db
+    skipMigrations = result.skipMigrations
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
@@ -79,17 +87,28 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 3: Database migrations
-  try {
-    await runDatabaseMigrations(db)
-  } catch (error) {
-    console.error('Failed to run database migrations:', error)
-    const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
-    trackError(migrationError, { initialization_step: 'database_migration' })
-    return {
-      success: false,
-      error: migrationError,
+  // Step 3: Database migrations (skip for PowerSync - it manages schema via views)
+  if (!skipMigrations) {
+    try {
+      await runDatabaseMigrations(db)
+    } catch (error) {
+      console.error('Failed to run database migrations:', error)
+      const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
+      trackError(migrationError, { initialization_step: 'database_migration' })
+      return {
+        success: false,
+        error: migrationError,
+      }
     }
+  }
+
+  // Step 3.5: Wait for PowerSync initial sync before reconciling defaults
+  // This ensures synced data from the cloud is available before we check for missing defaults
+  try {
+    await DatabaseSingleton.instance.waitForInitialSync()
+  } catch (error) {
+    // Non-critical - log and continue
+    console.warn('Failed to wait for initial sync:', error)
   }
 
   // Step 4: Reconcile defaults

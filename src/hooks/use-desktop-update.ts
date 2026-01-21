@@ -52,13 +52,20 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     setStatus('downloading')
     setDownloadProgress(0)
 
+    let contentLength = 0
+    let bytesDownloaded = 0
+
     try {
       await update.downloadAndInstall((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
-          setDownloadProgress(0)
+          contentLength = event.data.contentLength
+          bytesDownloaded = 0
         } else if (event.event === 'Progress') {
-          const progress = event.data.chunkLength
-          setDownloadProgress((prev) => Math.min(prev + progress, 100))
+          bytesDownloaded += event.data.chunkLength
+          if (contentLength > 0) {
+            const percentage = Math.round((bytesDownloaded / contentLength) * 100)
+            setDownloadProgress(Math.min(percentage, 100))
+          }
         } else if (event.event === 'Finished') {
           setDownloadProgress(100)
         }

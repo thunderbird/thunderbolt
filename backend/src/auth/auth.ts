@@ -5,7 +5,6 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { and, eq, isNull } from 'drizzle-orm'
-import { resend } from '@/lib/resend'
 import { sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -84,7 +83,6 @@ export const createAuth = (database: typeof DbType) =>
           const verifyUrl = buildVerifyUrl(origin, email, otp, ctx?.request)
 
           await sendSignInEmail({
-            resend,
             email,
             otp,
             verifyUrl,

@@ -1,3 +1,5 @@
+import { resend, shouldSkipEmail } from '@/lib/resend'
+
 /** Deep link base URL for mobile apps (iOS/Android) */
 const DEEP_LINK_HOST = 'https://thunderbolt.io'
 
@@ -60,21 +62,7 @@ export const buildVerifyUrl = (origin: string, email: string, otp: string, reque
   return `${baseUrl}/auth/verify?${params.toString()}`
 }
 
-type ResendClient = {
-  emails: {
-    send: (params: {
-      from: string
-      to: string
-      template: {
-        id: string
-        variables: Record<string, string>
-      }
-    }) => Promise<{ data?: { id: string } | null; error?: { message: string } | null }>
-  }
-}
-
 type SendSignInEmailParams = {
-  resend: ResendClient | null
   email: string
   otp: string
   verifyUrl: string
@@ -85,7 +73,6 @@ type SendSignInEmailParams = {
  * Send sign-in email with both OTP code and a clickable link
  */
 export const sendSignInEmail = async ({
-  resend,
   email,
   otp,
   verifyUrl,
@@ -93,17 +80,13 @@ export const sendSignInEmail = async ({
 }: SendSignInEmailParams): Promise<void> => {
   console.info('📧 Sending sign-in email')
 
-  if (!resend) {
-    if (isProduction) {
-      console.error('❌ Cannot send email: RESEND_API_KEY is not configured')
-      throw new Error('Email service not configured')
-    }
+  if (shouldSkipEmail(isProduction)) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
     return
   }
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await resend!.emails.send({
     from: 'hello@auth.thunderbolt.io',
     to: email,
     template: {

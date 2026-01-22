@@ -15,9 +15,5 @@ export const waitlist = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [
-    index('waitlist_email_idx').on(table.email),
-    index('waitlist_status_idx').on(table.status),
-    index('waitlist_batch_id_idx').on(table.batchId),
-  ],
+  (table) => [index('waitlist_status_idx').on(table.status), index('waitlist_batch_id_idx').on(table.batchId)],
 )

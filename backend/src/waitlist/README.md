@@ -38,7 +38,7 @@ Adds an email to the waitlist.
 | `createdAt` | timestamp | Auto-generated                         |
 | `updatedAt` | timestamp | Auto-updated                           |
 
-**Indexes:** `email`, `status`, `batch_id`
+**Indexes:** `email` (via unique constraint), `status`, `batch_id`
 
 ## Auth Integration
 

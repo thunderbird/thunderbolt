@@ -460,21 +460,6 @@
         }
       },
       "indexes": {
-        "waitlist_email_idx": {
-          "name": "waitlist_email_idx",
-          "columns": [
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "waitlist_status_idx": {
           "name": "waitlist_status_idx",
           "columns": [

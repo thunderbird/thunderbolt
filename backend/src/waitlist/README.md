@@ -22,11 +22,9 @@ Adds an email to the waitlist.
 
 **Behavior:**
 
-- Normalizes email to lowercase
-- If email already exists (active): sends a reminder email, returns success (prevents email enumeration)
-- If email was soft-deleted: reactivates the entry with `pending` status
-- If new email: creates entry with `pending` status, sends confirmation email
-- Emails are sent asynchronously (fire-and-forget) to avoid blocking the response
+- Normalizes email (lowercase + trim)
+- If email already exists: sends a reminder email, returns success (prevents email enumeration)
+- If new email: creates entry with `pending` status, sends joined waitlist email
 
 ### POST `/v1/waitlist/status`
 
@@ -52,8 +50,7 @@ Checks if an email is on the waitlist and its status.
 
 **Behavior:**
 
-- Normalizes email to lowercase
-- Only returns active entries (excludes soft-deleted)
+- Normalizes email (lowercase + trim)
 
 ## Database Schema
 
@@ -65,7 +62,6 @@ Checks if an email is on the waitlist and its status.
 | `batchId`   | text      | Optional, for bulk approval operations |
 | `createdAt` | timestamp | Auto-generated                         |
 | `updatedAt` | timestamp | Auto-updated                           |
-| `deletedAt` | timestamp | Soft delete marker                     |
 
 **Indexes:** `email`, `status`, `batch_id`
 
@@ -76,22 +72,23 @@ The waitlist integrates with Better Auth's email OTP flow in `backend/src/auth/a
 1. When a user requests an OTP, the system first checks if they're an existing user
 2. Existing users bypass the waitlist check (they were approved previously)
 3. New users must have an `approved` status on the waitlist to receive an OTP
-4. Non-approved users are silently blocked (no OTP sent) to prevent email enumeration
+4. Users on waitlist but not approved receive a "not ready yet" email instead of the OTP
+5. Users not on the waitlist receive no email (prevents email enumeration)
 
 ## Email Templates
 
-Two email types are sent via Resend:
+Three email types are sent via Resend:
 
-1. **Confirmation email** (`sendWaitlistConfirmationEmail`): Sent when a user joins the waitlist
+1. **Joined waitlist email** (`sendJoinedWaitlistEmail`): Sent when a user joins the waitlist
 2. **Reminder email** (`sendWaitlistReminderEmail`): Sent when a user tries to join again but is already on the list
+3. **Not ready email** (`sendWaitlistNotReadyEmail`): Sent when a pending user tries to sign in before being approved
 
 In development mode (no `RESEND_API_KEY`), emails are logged to console instead of being sent.
 
 ## Security Considerations
 
-- **No email enumeration**: All join requests return `{ success: true }` regardless of whether the email exists
-- **Silent blocking**: Non-approved users don't receive OTPs but see the standard "check your email" message
-- **Soft deletes**: Users can be removed from the waitlist without losing history (per CLAUDE.md guidelines)
+- **No email enumeration on join**: All join requests return `{ success: true }` regardless of whether the email exists
+- **No email enumeration on sign-in**: Users not on the waitlist receive no email, so attackers can't determine if an email is registered
 
 ## Testing
 
@@ -106,6 +103,5 @@ Tests cover:
 - Basic join functionality
 - Email normalization
 - Duplicate handling
-- Soft delete reactivation
 - Status checking
 - Input validation (422 for invalid emails)

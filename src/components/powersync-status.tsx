@@ -1,3 +1,4 @@
+import { useAuth } from '@/contexts/auth-context'
 import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled } from '@/db/powersync'
 import { DatabaseSingleton } from '@/db/singleton'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
@@ -10,9 +11,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 /**
  * PowerSync status indicator that shows sync state in the header.
  * Only renders when PowerSync is configured.
- * Includes a switch to enable/disable sync.
+ * Includes a switch to enable/disable sync (only for authenticated users).
  */
 export const PowerSyncStatus = () => {
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const isAuthenticated = !!session?.user
+
   const { connectionStatus, isUploading, isDownloading, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled)
 
@@ -95,7 +100,9 @@ export const PowerSyncStatus = () => {
             <div className="text-sm">
               <div className="font-medium">Multi-device Sync</div>
               <div className="text-muted-foreground text-xs">
-                {syncEnabled ? (
+                {!isAuthenticated ? (
+                  'Sign in to enable sync'
+                ) : syncEnabled ? (
                   <>{!isConnected && connectionStatus !== 'connecting' && 'Changes will sync when back online'}</>
                 ) : (
                   'Enable to sync data across devices'
@@ -105,7 +112,7 @@ export const PowerSyncStatus = () => {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} />
+      <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} disabled={!isAuthenticated} />
     </div>
   )
 }

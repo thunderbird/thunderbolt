@@ -1,3 +1,4 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { db } from '@/db/client'
 import { jwt } from '@elysiajs/jwt'
@@ -108,8 +109,9 @@ const applyOperation = async (op: PowerSyncOperation): Promise<void> => {
 
 /**
  * PowerSync API routes for JWT token generation and data sync.
+ * All routes require authentication.
  */
-export const createPowerSyncRoutes = () => {
+export const createPowerSyncRoutes = (auth: Auth) => {
   const settings = getSettings()
 
   return new Elysia({ prefix: '/powersync' })
@@ -122,18 +124,33 @@ export const createPowerSyncRoutes = () => {
         kid: settings.powersyncJwtKid,
       }),
     )
-    .get('/token', async ({ powersyncJwt, set }) => {
+    .derive(async ({ request, set }) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+
+      if (!session) {
+        set.status = 401
+        return { user: null }
+      }
+
+      return { user: session.user }
+    })
+    .onBeforeHandle(({ user, set }) => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+    })
+    .get('/token', async ({ powersyncJwt, set, user }) => {
       // Check if PowerSync is configured
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
         set.status = 503
         return { error: 'PowerSync is not configured' }
       }
 
-      // Generate JWT token for PowerSync
-      // For now, use a static user_id - will add auth later
+      // Generate JWT token for PowerSync with the authenticated user's ID
       const token = await powersyncJwt.sign({
-        sub: 'anonymous',
-        user_id: 'anonymous',
+        sub: user!.id,
+        user_id: user!.id,
       })
 
       const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()

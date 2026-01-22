@@ -1,3 +1,4 @@
+import { getAuthToken } from '@/lib/auth-token'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 
 type TokenResponse = {
@@ -7,20 +8,36 @@ type TokenResponse = {
 }
 
 /**
+ * Build headers with Authorization Bearer token if available.
+ */
+const buildHeaders = (additionalHeaders?: Record<string, string>): Record<string, string> => {
+  const headers: Record<string, string> = { ...additionalHeaders }
+  const token = getAuthToken()
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  return headers
+}
+
+/**
  * PowerSync connector that handles authentication and data upload.
- * - fetchCredentials: Gets JWT tokens from the backend
- * - uploadData: Sends local changes to the backend for persistence
+ * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
+ * - uploadData: Sends local changes to the backend for persistence (requires auth)
  */
 export class ThunderboltConnector implements PowerSyncBackendConnector {
   constructor(private backendUrl: string) {}
 
   /**
    * Fetch credentials (JWT token) from the backend.
-   * Returns null if unable to get credentials (e.g., PowerSync not configured).
+   * Returns null if unable to get credentials (e.g., not authenticated or PowerSync not configured).
    */
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     try {
-      const response = await fetch(`${this.backendUrl}/powersync/token`)
+      const response = await fetch(`${this.backendUrl}/powersync/token`, {
+        headers: buildHeaders(),
+      })
 
       if (!response.ok) {
         console.error('Failed to fetch PowerSync credentials:', response.status)
@@ -66,9 +83,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       // Send to backend
       const response = await fetch(`${this.backendUrl}/powersync/upload`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ operations }),
       })
 

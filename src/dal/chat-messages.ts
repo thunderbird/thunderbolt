@@ -77,15 +77,14 @@ export const saveMessagesWithContextUpdate = async (
     return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
   })
 
-  // Insert or update messages (check-then-insert/update pattern for PowerSync compatibility)
+  // Insert-first pattern for PowerSync compatibility.
+  // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
+  // Try insert first, then update on unique constraint violation to avoid race conditions
+  // when multiple components save messages simultaneously.
   for (const msg of dbChatMessages) {
-    const existing = await db
-      .select({ id: chatMessagesTable.id })
-      .from(chatMessagesTable)
-      .where(eq(chatMessagesTable.id, msg.id))
-      .get()
-
-    if (existing) {
+    try {
+      await db.insert(chatMessagesTable).values(msg)
+    } catch {
       await db
         .update(chatMessagesTable)
         .set({
@@ -96,8 +95,6 @@ export const saveMessagesWithContextUpdate = async (
           metadata: msg.metadata,
         })
         .where(eq(chatMessagesTable.id, msg.id))
-    } else {
-      await db.insert(chatMessagesTable).values(msg)
     }
   }
 

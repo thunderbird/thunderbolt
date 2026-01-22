@@ -292,22 +292,21 @@ export const updateSettings = async (
     return
   }
 
-  // Check-then-insert/update pattern for PowerSync compatibility
+  // Insert-first pattern for PowerSync compatibility.
+  // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
+  // Try insert first, then update on unique constraint violation to avoid race conditions
+  // when multiple components call updateSettings simultaneously.
   for (const [key, value] of entries) {
     const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
-    const existing = await db
-      .select({ key: settingsTable.key })
-      .from(settingsTable)
-      .where(eq(settingsTable.key, key))
-      .get()
 
-    if (existing) {
+    try {
+      await db.insert(settingsTable).values(row)
+    } catch {
       const updateData = options.recomputeHash
         ? { value: row.value, defaultHash: row.defaultHash }
         : { value: row.value }
+
       await db.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
-    } else {
-      await db.insert(settingsTable).values(row)
     }
   }
 }

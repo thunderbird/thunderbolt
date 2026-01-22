@@ -1,8 +1,8 @@
 import type { db } from '@/db/client'
 import { waitlist } from '@/db/schema'
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-import { sendWaitlistConfirmationEmail, sendWaitlistReminderEmail } from './utils'
+import { sendJoinedWaitlistEmail, sendWaitlistReminderEmail } from './utils'
 
 export const createWaitlistRoutes = (database: typeof db) => {
   return new Elysia({ prefix: '/waitlist' })
@@ -14,7 +14,7 @@ export const createWaitlistRoutes = (database: typeof db) => {
         const entry = await database
           .select({ status: waitlist.status })
           .from(waitlist)
-          .where(and(eq(waitlist.email, email), isNull(waitlist.deletedAt)))
+          .where(eq(waitlist.email, email))
           .limit(1)
 
         if (entry.length === 0) {
@@ -34,79 +34,56 @@ export const createWaitlistRoutes = (database: typeof db) => {
       async ({ body }) => {
         const email = body.email.toLowerCase().trim()
 
-        // Check if email already exists (active entry)
-        const existingActive = await database
+        // Check if email already exists
+        const existing = await database
           .select({ id: waitlist.id })
           .from(waitlist)
-          .where(and(eq(waitlist.email, email), isNull(waitlist.deletedAt)))
+          .where(eq(waitlist.email, email))
           .limit(1)
 
-        // If active entry exists, send reminder email (no email enumeration in UI)
-        if (existingActive.length > 0) {
-          sendWaitlistReminderEmail({
-            email,
-            isProduction: process.env.NODE_ENV === 'production',
-          }).catch((error) => {
+        // If entry exists, send reminder email (prevents email enumeration)
+        if (existing.length > 0) {
+          try {
+            await sendWaitlistReminderEmail({ email })
+          } catch (error) {
             console.error('Failed to send waitlist reminder email:', error)
-          })
+          }
 
           return { success: true }
         }
 
-        // Check if email was soft-deleted (can be reactivated)
-        const existingDeleted = await database
-          .select({ id: waitlist.id })
-          .from(waitlist)
-          .where(and(eq(waitlist.email, email), isNotNull(waitlist.deletedAt)))
-          .limit(1)
+        // Add new entry to waitlist
+        try {
+          await database.insert(waitlist).values({
+            id: crypto.randomUUID(),
+            email,
+            status: 'pending',
+          })
+        } catch (error) {
+          // Handle race condition: concurrent request already inserted this email
+          // PostgreSQL unique constraint violation code is '23505'
+          const isUniqueViolation =
+            error instanceof Error && 'code' in error && (error as Error & { code: string }).code === '23505'
 
-        if (existingDeleted.length > 0) {
-          // Reactivate soft-deleted entry
-          await database
-            .update(waitlist)
-            .set({
-              deletedAt: null,
-              status: 'pending',
-              updatedAt: new Date(),
-            })
-            .where(eq(waitlist.id, existingDeleted[0].id))
-        } else {
-          // Add new entry to waitlist
-          try {
-            await database.insert(waitlist).values({
-              id: crypto.randomUUID(),
-              email,
-              status: 'pending',
-            })
-          } catch (error) {
-            // Handle race condition: concurrent request already inserted this email
-            // PostgreSQL unique constraint violation code is '23505'
-            const isUniqueViolation =
-              error instanceof Error && 'code' in error && (error as Error & { code: string }).code === '23505'
-
-            if (isUniqueViolation) {
-              // Another request already inserted - send reminder instead
-              sendWaitlistReminderEmail({
-                email,
-                isProduction: process.env.NODE_ENV === 'production',
-              }).catch((err) => {
-                console.error('Failed to send waitlist reminder email:', err)
-              })
-
-              return { success: true }
+          if (isUniqueViolation) {
+            // Another request already inserted - send reminder instead
+            try {
+              await sendWaitlistReminderEmail({ email })
+            } catch (err) {
+              console.error('Failed to send waitlist reminder email:', err)
             }
 
-            throw error
+            return { success: true }
           }
+
+          throw error
         }
 
-        // Send confirmation email (fire and forget - don't block response)
-        sendWaitlistConfirmationEmail({
-          email,
-          isProduction: process.env.NODE_ENV === 'production',
-        }).catch((error) => {
+        try {
+          await sendJoinedWaitlistEmail({ email })
+        } catch (error) {
           console.error('Failed to send waitlist confirmation email:', error)
-        })
+        }
 
         return { success: true }
       },

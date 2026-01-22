@@ -14,7 +14,6 @@ export const waitlist = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    deletedAt: timestamp('deleted_at'),
   },
   (table) => [
     index('waitlist_email_idx').on(table.email),

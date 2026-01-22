@@ -4,7 +4,7 @@ import { waitlist } from '@/db/schema'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -58,7 +58,7 @@ export const createAuth = (database: typeof DbType) =>
             const waitlistEntry = await database
               .select({ status: waitlist.status })
               .from(waitlist)
-              .where(and(eq(waitlist.email, normalizedEmail), isNull(waitlist.deletedAt)))
+              .where(eq(waitlist.email, normalizedEmail))
               .limit(1)
 
             // If not on waitlist or not approved, don't send OTP
@@ -67,12 +67,11 @@ export const createAuth = (database: typeof DbType) =>
 
               // If on waitlist but not approved, send a "not ready yet" email
               if (waitlistEntry.length > 0) {
-                sendWaitlistNotReadyEmail({
-                  email: normalizedEmail,
-                  isProduction: process.env.NODE_ENV === 'production',
-                }).catch((error) => {
+                try {
+                  await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                } catch (error) {
                   console.error('Failed to send waitlist not-ready email:', error)
-                })
+                }
               }
 
               return
@@ -82,12 +81,7 @@ export const createAuth = (database: typeof DbType) =>
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
           const verifyUrl = buildVerifyUrl(origin, email, otp, ctx?.request)
 
-          await sendSignInEmail({
-            email,
-            otp,
-            verifyUrl,
-            isProduction: process.env.NODE_ENV === 'production',
-          })
+          await sendSignInEmail({ email, otp, verifyUrl })
         },
       }),
     ],

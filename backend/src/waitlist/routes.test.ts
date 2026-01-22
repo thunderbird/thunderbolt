@@ -38,7 +38,6 @@ describe('Waitlist API', () => {
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
       expect(entries).toHaveLength(1)
       expect(entries[0].status).toBe('pending')
-      expect(entries[0].deletedAt).toBeNull()
     })
 
     it('should normalize email to lowercase', async () => {
@@ -136,42 +135,6 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(422)
     })
-
-    it('should reactivate soft-deleted entry when joining again', async () => {
-      // Add email to waitlist
-      await app.handle(
-        new Request('http://localhost/v1/waitlist/join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'softdelete@example.com' }),
-        }),
-      )
-
-      // Soft delete the entry
-      await db.update(waitlist).set({ deletedAt: new Date() }).where(eq(waitlist.email, 'softdelete@example.com'))
-
-      // Verify entry is soft-deleted
-      const beforeRejoin = await db.select().from(waitlist).where(eq(waitlist.email, 'softdelete@example.com'))
-      expect(beforeRejoin).toHaveLength(1)
-      expect(beforeRejoin[0].deletedAt).not.toBeNull()
-
-      // Try to join again
-      const response = await app.handle(
-        new Request('http://localhost/v1/waitlist/join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'softdelete@example.com' }),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-
-      // Verify entry was reactivated (not duplicated)
-      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'softdelete@example.com'))
-      expect(entries).toHaveLength(1)
-      expect(entries[0].deletedAt).toBeNull()
-      expect(entries[0].status).toBe('pending')
-    })
   })
 
   describe('POST /v1/waitlist/status', () => {
@@ -260,32 +223,6 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       expect(result).toEqual({ onWaitlist: true, status: 'pending' })
-    })
-
-    it('should return onWaitlist: false for soft-deleted entry', async () => {
-      // Add email to waitlist
-      await app.handle(
-        new Request('http://localhost/v1/waitlist/join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'deleted@example.com' }),
-        }),
-      )
-
-      // Soft delete the entry
-      await db.update(waitlist).set({ deletedAt: new Date() }).where(eq(waitlist.email, 'deleted@example.com'))
-
-      const response = await app.handle(
-        new Request('http://localhost/v1/waitlist/status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'deleted@example.com' }),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      const result = await response.json()
-      expect(result).toEqual({ onWaitlist: false })
     })
   })
 })

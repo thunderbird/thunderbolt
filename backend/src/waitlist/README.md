@@ -25,32 +25,7 @@ Adds an email to the waitlist.
 - Normalizes email (lowercase + trim)
 - If email already exists: sends a reminder email, returns success (prevents email enumeration)
 - If new email: creates entry with `pending` status, sends joined waitlist email
-
-### POST `/v1/waitlist/status`
-
-Checks if an email is on the waitlist and its status.
-
-**Request:**
-
-```json
-{ "email": "user@example.com" }
-```
-
-**Response (not on waitlist):**
-
-```json
-{ "onWaitlist": false }
-```
-
-**Response (on waitlist):**
-
-```json
-{ "onWaitlist": true, "status": "pending" | "approved" }
-```
-
-**Behavior:**
-
-- Normalizes email (lowercase + trim)
+- Handles race conditions: if concurrent requests insert the same email, the second one sends a reminder instead of failing
 
 ## Database Schema
 
@@ -79,11 +54,13 @@ The waitlist integrates with Better Auth's email OTP flow in `backend/src/auth/a
 
 Three email types are sent via Resend:
 
-1. **Joined waitlist email** (`sendJoinedWaitlistEmail`): Sent when a user joins the waitlist
-2. **Reminder email** (`sendWaitlistReminderEmail`): Sent when a user tries to join again but is already on the list
-3. **Not ready email** (`sendWaitlistNotReadyEmail`): Sent when a pending user tries to sign in before being approved
+| Function                    | Template ID          | When sent                                           |
+| --------------------------- | -------------------- | --------------------------------------------------- |
+| `sendJoinedWaitlistEmail`   | `waitlist-joined`    | User joins the waitlist                             |
+| `sendWaitlistReminderEmail` | `waitlist-reminder`  | User tries to join again but is already on the list |
+| `sendWaitlistNotReadyEmail` | `waitlist-not-ready` | Pending user tries to sign in before being approved |
 
-In development mode (no `RESEND_API_KEY`), emails are logged to console instead of being sent.
+In development mode (no `RESEND_API_KEY`) or test mode (`NODE_ENV=test`), emails are logged to console instead of being sent.
 
 ## Security Considerations
 
@@ -103,5 +80,4 @@ Tests cover:
 - Basic join functionality
 - Email normalization
 - Duplicate handling
-- Status checking
 - Input validation (422 for invalid emails)

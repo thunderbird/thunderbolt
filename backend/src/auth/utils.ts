@@ -1,4 +1,4 @@
-import { resend, shouldSkipEmail } from '@/lib/resend'
+import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 
 /** Deep link base URL for mobile apps (iOS/Android) */
 const DEEP_LINK_HOST = 'https://thunderbolt.io'
@@ -66,42 +66,28 @@ type SendSignInEmailParams = {
   email: string
   otp: string
   verifyUrl: string
-  isProduction: boolean
 }
 
 /**
  * Send sign-in email with both OTP code and a clickable link
  */
-export const sendSignInEmail = async ({
-  email,
-  otp,
-  verifyUrl,
-  isProduction,
-}: SendSignInEmailParams): Promise<void> => {
+export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
   console.info('📧 Sending sign-in email')
 
-  if (shouldSkipEmail(isProduction)) {
+  if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
     return
   }
 
-  const { data, error } = await resend!.emails.send({
-    from: 'hello@auth.thunderbolt.io',
+  const data = await sendEmail({
     to: email,
-    template: {
-      id: 'magic-link',
-      variables: {
-        otp_code: otp,
-        magic_link: verifyUrl,
-      },
+    templateId: 'magic-link',
+    variables: {
+      otp_code: otp,
+      magic_link: verifyUrl,
     },
   })
-
-  if (error) {
-    console.error('❌ Failed to send sign-in email:', error)
-    throw new Error(`Failed to send email: ${error.message}`)
-  }
 
   console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)
 }

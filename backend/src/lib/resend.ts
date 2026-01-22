@@ -1,10 +1,13 @@
 import { Resend } from 'resend'
 
+/** Default sender address for all outgoing emails */
+const EMAIL_FROM = 'hello@auth.thunderbolt.io'
+
 /**
  * Shared Resend client instance for sending emails
  * Created once at module load to avoid multiple instances
  */
-export const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 if (!resend) {
   console.warn('⚠️ RESEND_API_KEY is not set - emails will not be sent')
@@ -15,7 +18,8 @@ if (!resend) {
  * Throws an error if in production but resend is not configured
  * @returns true if email should be skipped, false if it should be sent
  */
-export const shouldSkipEmail = (isProduction: boolean): boolean => {
+export const shouldSkipEmail = (): boolean => {
+  const isProduction = process.env.NODE_ENV === 'production'
   if (!resend || process.env.NODE_ENV === 'test') {
     if (isProduction && !resend) {
       throw new Error('Email service not configured')
@@ -23,4 +27,37 @@ export const shouldSkipEmail = (isProduction: boolean): boolean => {
     return true
   }
   return false
+}
+
+type SendEmailParams = {
+  to: string
+  from?: string
+  templateId: string
+  variables?: Record<string, string>
+}
+
+/**
+ * Send an email using Resend templates
+ * Uses the default sender address unless overridden
+ * @throws Error if resend client is not configured (should call shouldSkipEmail first)
+ */
+export const sendEmail = async ({ to, from = EMAIL_FROM, templateId, variables = {} }: SendEmailParams) => {
+  if (!resend) {
+    throw new Error('Email service not configured')
+  }
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to,
+    template: {
+      id: templateId,
+      variables,
+    },
+  })
+
+  if (error) {
+    throw new Error(`Failed to send email: ${error.message}`)
+  }
+
+  return data
 }

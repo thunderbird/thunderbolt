@@ -56,7 +56,7 @@ Three email types are sent via Resend:
 
 | Function                    | Template ID          | When sent                                           |
 | --------------------------- | -------------------- | --------------------------------------------------- |
-| `sendJoinedWaitlistEmail`   | `waitlist-joined`    | User joins the waitlist                             |
+| `sendWaitlistJoinedEmail`   | `waitlist-joined`    | User joins the waitlist                             |
 | `sendWaitlistReminderEmail` | `waitlist-reminder`  | User tries to join again but is already on the list |
 | `sendWaitlistNotReadyEmail` | `waitlist-not-ready` | Pending user tries to sign in before being approved |
 

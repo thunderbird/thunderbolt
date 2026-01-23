@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
 /** Default sender address for all outgoing emails */
-const EMAIL_FROM = 'hello@auth.thunderbolt.io'
+const emailFrom = 'hello@auth.thunderbolt.io'
 
 /**
  * Shared Resend client instance for sending emails
@@ -29,7 +29,7 @@ export const shouldSkipEmail = (): boolean => {
   return false
 }
 
-type SendEmailParams = {
+export type SendEmailParams = {
   to: string
   from?: string
   templateId: string
@@ -41,7 +41,7 @@ type SendEmailParams = {
  * Uses the default sender address unless overridden
  * @throws Error if resend client is not configured (should call shouldSkipEmail first)
  */
-export const sendEmail = async ({ to, from = EMAIL_FROM, templateId, variables = {} }: SendEmailParams) => {
+export const sendEmail = async ({ to, from = emailFrom, templateId, variables = {} }: SendEmailParams) => {
   if (!resend) {
     throw new Error('Email service not configured')
   }

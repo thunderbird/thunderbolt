@@ -72,8 +72,6 @@ type SendSignInEmailParams = {
  * Send sign-in email with both OTP code and a clickable link
  */
 export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
-  console.info('📧 Sending sign-in email')
-
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)

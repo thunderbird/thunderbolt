@@ -8,7 +8,7 @@ type SendWaitlistEmailParams = {
  * Send email when user joins the waitlist
  * Uses a simple template saying "Thanks for signing up! We'll let you know when it's ready."
  */
-export const sendJoinedWaitlistEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
+export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending joined waitlist email')
 
   if (shouldSkipEmail()) {

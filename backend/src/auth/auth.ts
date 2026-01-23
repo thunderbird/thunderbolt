@@ -67,11 +67,7 @@ export const createAuth = (database: typeof DbType) =>
 
               // If on waitlist but not approved, send a "not ready yet" email
               if (waitlistEntry.length > 0) {
-                try {
-                  await sendWaitlistNotReadyEmail({ email: normalizedEmail })
-                } catch (error) {
-                  console.error('Failed to send waitlist not-ready email:', error)
-                }
+                await sendWaitlistNotReadyEmail({ email: normalizedEmail })
               }
 
               return

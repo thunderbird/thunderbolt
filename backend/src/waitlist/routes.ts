@@ -2,7 +2,7 @@ import type { db } from '@/db/client'
 import { waitlist } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-import { sendJoinedWaitlistEmail, sendWaitlistReminderEmail } from './utils'
+import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
 
 export const createWaitlistRoutes = (database: typeof db) =>
   new Elysia({ prefix: '/waitlist' }).post(
@@ -56,7 +56,7 @@ export const createWaitlistRoutes = (database: typeof db) =>
       }
 
       try {
-        await sendJoinedWaitlistEmail({ email })
+        await sendWaitlistJoinedEmail({ email })
       } catch (error) {
         console.error('Failed to send waitlist confirmation email:', error)
       }

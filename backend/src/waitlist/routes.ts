@@ -20,7 +20,14 @@ export const createWaitlistRoutes = (database: typeof db) =>
 
       // If entry exists, send reminder email (prevents email enumeration)
       if (existing.length > 0) {
-        await sendWaitlistReminderEmail({ email })
+        try {
+          await sendWaitlistReminderEmail({ email })
+        } catch (error) {
+          console.error('Failed to send waitlist reminder email', {
+            error: error instanceof Error ? error.message : String(error),
+            email,
+          })
+        }
         return { success: true }
       }
 
@@ -31,7 +38,14 @@ export const createWaitlistRoutes = (database: typeof db) =>
         status: 'pending',
       })
 
-      await sendWaitlistJoinedEmail({ email })
+      try {
+        await sendWaitlistJoinedEmail({ email })
+      } catch (error) {
+        console.error('Failed to send waitlist joined email', {
+          error: error instanceof Error ? error.message : String(error),
+          email,
+        })
+      }
       return { success: true }
     },
     {

@@ -35,6 +35,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
 import { usePostHog } from 'posthog-js/react'
+import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 
 type PreferencesState = {
   isResetting: boolean
@@ -98,6 +99,9 @@ export default function PreferencesSettingsPage() {
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
 
+  // Local state for sync enabled (PowerSync)
+  const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
+
   // Use our useSettings hook for all settings
   const {
     preferredName,
@@ -145,6 +149,17 @@ export default function PreferencesSettingsPage() {
   useEffect(() => {
     setNameInput(preferredName.value || '')
   }, [preferredName.value])
+
+  // Listen for external sync enabled changes
+  useEffect(() => {
+    const handleSyncEnabledChange = (event: Event) => {
+      const customEvent = event as CustomEvent<boolean>
+      setSyncEnabledState(customEvent.detail)
+    }
+
+    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+  }, [])
 
   // Auto-populate localization settings from country data if not set
   useEffect(() => {
@@ -289,6 +304,11 @@ export default function PreferencesSettingsPage() {
     }
 
     trackEvent('settings_localization_reset')
+  }
+
+  const handleSyncToggle = async (enabled: boolean) => {
+    await setSyncEnabled(enabled)
+    trackEvent(enabled ? 'settings_sync_enabled' : 'settings_sync_disabled')
   }
 
   return (
@@ -728,6 +748,27 @@ export default function PreferencesSettingsPage() {
       </SectionCard>
 
       <div className="h-6" />
+
+      {isPowerSyncAvailable() && (
+        <>
+          <SectionCard title="Sync">
+            <div className="flex-row flex items-center gap-4">
+              <div>
+                <div className="mb-2">
+                  <label className="text-sm font-medium">Cloud Sync</label>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Enable cloud synchronization to keep your data synced across devices. Your data is encrypted and
+                  securely stored.
+                </p>
+              </div>
+              <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
+            </div>
+          </SectionCard>
+
+          <div className="h-6" />
+        </>
+      )}
 
       <SectionCard title="Local Database">
         <div className="flex flex-col gap-2">

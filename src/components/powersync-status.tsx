@@ -1,16 +1,14 @@
 import { useAuth } from '@/contexts/auth-context'
-import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { isPowerSyncAvailable, isSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Switch } from './ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 /**
  * PowerSync status indicator that shows sync state in the header.
  * Only renders when PowerSync is configured.
- * Includes a switch to enable/disable sync (only for authenticated users).
  */
 export const PowerSyncStatus = () => {
   const authClient = useAuth()
@@ -76,42 +74,35 @@ export const PowerSyncStatus = () => {
     return <Cloud className="h-4 w-4 text-green-500" />
   }
 
-  const handleToggleSync = async (enabled: boolean) => {
-    await setSyncEnabled(enabled)
-  }
-
   return (
-    <div className="flex items-center gap-2">
-      <TooltipProvider>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <div
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors',
-                'hover:bg-accent cursor-default select-none',
+    <TooltipProvider>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors',
+              'hover:bg-accent cursor-default select-none',
+            )}
+          >
+            {getIcon()}
+            <span className="text-xs text-muted-foreground hidden sm:inline">{getStatusText()}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end">
+          <div className="text-sm">
+            <div className="font-medium">Multi-device Sync</div>
+            <div className="text-muted-foreground text-xs">
+              {!isAuthenticated ? (
+                'Sign in to enable sync'
+              ) : syncEnabled ? (
+                <>{!isConnected && connectionStatus !== 'connecting' && 'Changes will sync when back online'}</>
+              ) : (
+                'Enable to sync data across devices'
               )}
-            >
-              {getIcon()}
-              <span className="text-xs text-muted-foreground hidden sm:inline">{getStatusText()}</span>
             </div>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="end">
-            <div className="text-sm">
-              <div className="font-medium">Multi-device Sync</div>
-              <div className="text-muted-foreground text-xs">
-                {!isAuthenticated ? (
-                  'Sign in to enable sync'
-                ) : syncEnabled ? (
-                  <>{!isConnected && connectionStatus !== 'connecting' && 'Changes will sync when back online'}</>
-                ) : (
-                  'Enable to sync data across devices'
-                )}
-              </div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} disabled={!isAuthenticated} />
-    </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

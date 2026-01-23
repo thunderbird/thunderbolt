@@ -85,9 +85,9 @@ export const createAuth = (database: typeof DbType) =>
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          const verifyUrl = buildVerifyUrl(origin, email, otp, ctx?.request)
+          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request)
 
-          await sendSignInEmail({ email, otp, verifyUrl })
+          await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
     ],

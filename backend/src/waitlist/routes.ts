@@ -19,12 +19,7 @@ export const createWaitlistRoutes = (database: typeof db) =>
 
       // If entry exists, send reminder email (prevents email enumeration)
       if (existing.length > 0) {
-        try {
-          await sendWaitlistReminderEmail({ email })
-        } catch (error) {
-          console.error('Failed to send waitlist reminder email:', error)
-        }
-
+        await sendWaitlistReminderEmail({ email })
         return { success: true }
       }
 
@@ -43,24 +38,14 @@ export const createWaitlistRoutes = (database: typeof db) =>
 
         if (isUniqueViolation) {
           // Another request already inserted - send reminder instead
-          try {
-            await sendWaitlistReminderEmail({ email })
-          } catch (err) {
-            console.error('Failed to send waitlist reminder email:', err)
-          }
-
+          await sendWaitlistReminderEmail({ email })
           return { success: true }
         }
 
         throw error
       }
 
-      try {
-        await sendWaitlistJoinedEmail({ email })
-      } catch (error) {
-        console.error('Failed to send waitlist confirmation email:', error)
-      }
-
+      await sendWaitlistJoinedEmail({ email })
       return { success: true }
     },
     {

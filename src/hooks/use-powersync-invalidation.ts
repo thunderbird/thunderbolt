@@ -6,16 +6,17 @@ import { useEffect } from 'react'
 /**
  * Map of table names to their React Query keys that should be invalidated.
  * When a table changes (local write or sync), all associated query keys are invalidated.
+ * Using prefix keys (e.g., ['settings']) will invalidate all queries starting with that prefix.
  */
 const TABLE_TO_QUERY_KEYS: Record<string, string[][]> = {
   settings: [['settings']],
-  chat_threads: [['threads'], ['thread']],
+  chat_threads: [['chatThreads']],
   chat_messages: [['messages'], ['messageCache']],
   tasks: [['tasks']],
   models: [['models']],
   mcp_servers: [['mcp-servers']],
-  prompts: [['prompts'], ['automations']],
-  triggers: [['triggers'], ['automations']],
+  prompts: [['prompts']],
+  triggers: [['triggers']],
 }
 
 /**

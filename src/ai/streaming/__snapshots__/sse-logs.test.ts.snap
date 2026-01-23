@@ -127,6 +127,56 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 1`
 }"
 `;
 
+exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 2`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
+      "state": "done"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 2`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
+      "state": "done"
+    }
+  ]
+}"
+`;
+
 exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5." 2`] = `
 "{
   "id": "<DYNAMIC_ID>",
@@ -158,31 +208,6 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call t
 }"
 `;
 
-exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 2`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "reasoning",
-      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
-      "state": "done"
-    }
-  ]
-}"
-`;
-
 exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 2`] = `
 "{
   "id": "<DYNAMIC_ID>",
@@ -199,31 +224,6 @@ exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 2`] = `
       "toolCallId": "<DYNAMIC_ID>",
       "state": "input-available",
       "input": {}
-    }
-  ]
-}"
-`;
-
-exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 2`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "reasoning",
-      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
-      "state": "done"
     }
   ]
 }"
@@ -248,6 +248,56 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 2`
     {
       "type": "text",
       "text": "\\n\\n☀️ Good morning! To help you kick off your day, could you share your current location? This way I can check the weather or tailor other updates for you.  \\n\\nAlso, would you like me to:  \\n- Review your **task list** 📝  \\n- Add new tasks for today?  \\n- Share morning news highlights?  \\n\\nJust let me know how I can assist! 😊",
+      "state": "done"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 3`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
+      "state": "done"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 3`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
       "state": "done"
     }
   ]
@@ -285,7 +335,7 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call t
 }"
 `;
 
-exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 3`] = `
+exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 3`] = `
 "{
   "id": "<DYNAMIC_ID>",
   "metadata": {
@@ -297,14 +347,10 @@ exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 3`] 
       "type": "step-start"
     },
     {
-      "type": "reasoning",
-      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
-      "state": "done"
+      "type": "tool-getTasks",
+      "toolCallId": "<DYNAMIC_ID>",
+      "state": "input-available",
+      "input": {}
     }
   ]
 }"
@@ -335,52 +381,6 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 3`
 }"
 `;
 
-exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 3`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "tool-getTasks",
-      "toolCallId": "<DYNAMIC_ID>",
-      "state": "input-available",
-      "input": {}
-    }
-  ]
-}"
-`;
-
-exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 3`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "reasoning",
-      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
-      "state": "done"
-    }
-  ]
-}"
-`;
-
 exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 4`] = `
 "{
   "id": "<DYNAMIC_ID>",
@@ -401,6 +401,62 @@ exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags a
       "type": "text",
       "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
       "state": "done"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 4`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
+      "state": "done"
+    }
+  ]
+}"
+`;
+
+exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5." 4`] = `
+"{
+  "id": "<DYNAMIC_ID>",
+  "metadata": {
+    "modelId": "simulator"
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n",
+      "state": "done"
+    },
+    {
+      "type": "tool-getTasks",
+      "toolCallId": "<DYNAMIC_ID>",
+      "state": "input-available",
+      "input": {}
     }
   ]
 }"
@@ -452,7 +508,7 @@ exports[`SSE -> UIMessage: 005-start-with-reasoning - No opening <think> tag. 4`
 }"
 `;
 
-exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call tags - currently these are NOT filtered out in Vercel AI SDK v5." 4`] = `
+exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 5`] = `
 "{
   "id": "<DYNAMIC_ID>",
   "metadata": {
@@ -465,25 +521,19 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call t
     },
     {
       "type": "reasoning",
-      "text": "\\nOkay, the user is asking, \\"What are my current tasks?\\" Let me check the available tools. There's a function called getTasks that retrieves the user's task list. It doesn't require any parameters. Since the user wants to know their current tasks, I should call this function. I don't need any additional information from the user to proceed. Let me make sure there's no missing data. The function should return the tasks, so I'll trigger that call.\\n",
+      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
       "state": "done"
     },
     {
       "type": "text",
-      "text": "\\n\\n<tool_call>\\n{\\"name\\": \\"getTasks\\", \\"arguments\\": {}.\\n</think>\\n\\n",
+      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
       "state": "done"
-    },
-    {
-      "type": "tool-getTasks",
-      "toolCallId": "<DYNAMIC_ID>",
-      "state": "input-available",
-      "input": {}
     }
   ]
 }"
 `;
 
-exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 4`] = `
+exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 5`] = `
 "{
   "id": "<DYNAMIC_ID>",
   "metadata": {
@@ -539,31 +589,6 @@ exports[`SSE -> UIMessage: 003-malformed-tool-call-think - Malformed tool-call t
 }"
 `;
 
-exports[`SSE -> UIMessage: 002-reasoning-property - \`reasoning\` property. 5`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "reasoning",
-      "text": "\\nOkay, the user said \\"hi\\". I need to respond appropriately. Since they didn't ask a question or request anything specific, I should greet them back and offer assistance. Let me check if there's any tool I need to use here. They didn't mention anything that requires a tool, so a simple response should suffice. I'll make sure to keep it friendly and open-ended.\\n\\nMaybe add an emoji to keep it approachable. Let me structure it with a subheader and some bullet points for clarity. Wait, the user might be looking for help with something, so I should prompt them to ask questions. Also, remember to ask for their location if they need location-based help. But since they haven't asked for anything like that yet, maybe just a general offer to assist. Alright, let's put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "Hello! 👋 How can I assist you today? Whether you have questions, need help with planning, or just want to chat, I'm here for you! Let me know how I can be helpful. 🌟  \\n\\n**Need help with:**  \\n- Finding information?  \\n- Scheduling or reminders?  \\n- General advice or ideas?  \\n\\nJust ask! 😊",
-      "state": "done"
-    }
-  ]
-}"
-`;
-
 exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 5`] = `
 "{
   "id": "<DYNAMIC_ID>",
@@ -580,31 +605,6 @@ exports[`SSE -> UIMessage: 004-tool-call - Typical tool-call. 5`] = `
       "toolCallId": "<DYNAMIC_ID>",
       "state": "input-available",
       "input": {}
-    }
-  ]
-}"
-`;
-
-exports[`SSE -> UIMessage: 001-think-tags - Typical response with <think> tags and text response. 5`] = `
-"{
-  "id": "<DYNAMIC_ID>",
-  "metadata": {
-    "modelId": "simulator"
-  },
-  "role": "assistant",
-  "parts": [
-    {
-      "type": "step-start"
-    },
-    {
-      "type": "reasoning",
-      "text": "\\nOkay, the user is asking for the weather forecast this week. Let me check what I need to do.\\n\\nFirst, I remember that the user hasn't provided their location yet. The instructions say I should ask for the location before using any location-based tools. Since the weather forecast depends on the location, I can't proceed without that information. \\n\\nI should respond by asking them where they are located. That way, once they provide the city or area, I can use the appropriate tool to get the forecast. I need to make sure I don't mention any tools by name, just ask for the location. \\n\\nAlso, I need to follow the format: use Markdown, subheaders, bullet points, and emojis if appropriate. Let me structure the response politely and clearly. Make sure to explain why I need the location so they understand it's necessary for the forecast. \\n\\nDouble-checking the guidelines: don't invent info, be honest if I can't help without the location. Yep, that's covered. Alright, time to put it all together.\\n",
-      "state": "done"
-    },
-    {
-      "type": "text",
-      "text": "\\n\\n🌤️ **Weekly Weather Forecast Request**  \\n\\nTo provide you with the most accurate forecast, I need to know your **location** (e.g., city or region). Weather varies by area, and real-time data requires this detail to proceed.  \\n\\nCould you share where you're located? Once I have that, I’ll fetch the latest forecast for you! 🌍✨",
-      "state": "done"
     }
   ]
 }"

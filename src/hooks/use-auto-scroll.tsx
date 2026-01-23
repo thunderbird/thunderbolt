@@ -1,155 +1,123 @@
-import { useCallback, useEffect, useRef, useState, type RefObject, type WheelEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefCallback, type TouchEvent, type WheelEvent } from 'react'
 
-// Constants for scroll behavior thresholds
-const SCROLL_THRESHOLD = {
-  AWAY_FROM_BOTTOM: 100, // Distance in px to consider user has scrolled away
-  BACK_TO_BOTTOM: 10, // Distance in px to consider user is back at bottom
-} as const
+const smoothScrollDuration = 300
 
-interface UseAutoScrollOptions {
-  /** Dependencies that should trigger a scroll to bottom */
-  dependencies?: any[]
-  /** Whether to use smooth scrolling */
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+
+type UseAutoScrollOptions = {
+  dependencies?: unknown[]
   smooth?: boolean
-  /** Whether content is currently streaming (enables instant scrolling) */
   isStreaming?: boolean
-  /** Callback when user manually scrolls */
-  onUserScroll?: (isAtBottom: boolean) => void
-  /** Root margin for intersection observer (default: '0px') */
   rootMargin?: string
 }
 
-interface UseAutoScrollReturn {
-  /** Ref to attach to the scrollable container */
-  scrollContainerRef: RefObject<HTMLDivElement | null>
-  /** Ref to attach to the element at the bottom */
-  scrollTargetRef: RefObject<HTMLDivElement | null>
-  /** Whether the user has manually scrolled away from bottom */
-  userHasScrolled: boolean
-  /** Whether the scroll position is at the bottom */
+type UseAutoScrollReturn = {
+  scrollContainerRef: RefCallback<HTMLDivElement>
+  scrollTargetRef: RefCallback<HTMLDivElement>
   isAtBottom: boolean
-  /** Manually scroll to bottom */
-  scrollToBottom: (smooth?: boolean) => void
-  /** Reset the user scroll state */
+  /** Scrolls to bottom. Returns true if scroll was performed, false if container not ready. */
+  scrollToBottom: (smooth?: boolean) => boolean
   resetUserScroll: () => void
-  /** Event handlers to attach to the scrollable container */
   scrollHandlers: {
-    onScroll: () => void
     onWheel: (e: WheelEvent) => void
+    onTouchStart: (e: TouchEvent) => void
   }
 }
 
 /**
- * useAutoScroll - A React hook for managing auto-scroll behavior in chat-like interfaces
- *
- * Features:
- * - Automatically scrolls to bottom when new content is added
- * - Detects user scroll intent and pauses auto-scroll
- * - Re-engages auto-scroll when user returns to bottom
- * - Optimized for streaming content with instant scrolling option
- * - Uses Intersection Observer for performance
- *
- * @param options Configuration options for the hook
- * @returns Refs and handlers to implement auto-scroll behavior
- *
- * @example
- * ```tsx
- * const { scrollContainerRef, scrollTargetRef, scrollHandlers } = useAutoScroll({
- *   isStreaming: true,
- *   dependencies: [messages],
- *   rootMargin: '0px 0px -50px 0px'
- * })
- *
- * return (
- *   <div ref={scrollContainerRef} {...scrollHandlers}>
- *     {content}
- *     <div ref={scrollTargetRef} />
- *   </div>
- * )
- * ```
+ * Manages auto-scroll behavior for chat-like interfaces.
+ * Uses IntersectionObserver for bottom detection and handles user scroll intent.
  */
-export function useAutoScroll({
+export const useAutoScroll = ({
   dependencies = [],
   smooth = true,
   isStreaming = false,
-  onUserScroll,
   rootMargin = '0px',
-}: UseAutoScrollOptions = {}): UseAutoScrollReturn {
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const scrollTargetRef = useRef<HTMLDivElement>(null)
-  const [userHasScrolled, setUserHasScrolled] = useState(false)
+}: UseAutoScrollOptions = {}): UseAutoScrollReturn => {
+  // Use state for DOM elements to trigger re-renders when they're attached
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
+  const [scrollTarget, setScrollTarget] = useState<HTMLDivElement | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  // Track the previous scrollTop value to determine scroll direction
-  const prevScrollTopRef = useRef(0)
+  // Ref for sync access in effects - auto-scroll disabled by default
+  const userHasScrolledRef = useRef(true)
+  const animationFrameRef = useRef<number | null>(null)
 
-  // Utility to calculate distance from bottom
-  const getDistanceFromBottom = useCallback(() => {
-    if (!scrollContainerRef.current) return 0
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
-    return scrollHeight - scrollTop - clientHeight
-  }, [])
+  // Callback refs that trigger state updates
+  const scrollContainerRef = useCallback((el: HTMLDivElement | null) => setScrollContainer(el), [])
+  const scrollTargetRef = useCallback((el: HTMLDivElement | null) => setScrollTarget(el), [])
 
   const scrollToBottom = useCallback(
-    (smoothScroll?: boolean) => {
-      const target = scrollTargetRef.current
-      if (!target) return
+    (smoothScroll?: boolean): boolean => {
+      if (!scrollContainer) return false
 
-      try {
-        target.scrollIntoView({
-          behavior: (smoothScroll ?? (!isStreaming && smooth)) ? 'smooth' : 'auto',
-          block: 'end',
-        })
-      } catch (_) {
-        // Fallback for older browsers
-        scrollContainerRef.current?.scrollTo(0, scrollContainerRef.current.scrollHeight)
+      const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
+      const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
+
+      if (shouldSmooth) {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current)
+        }
+
+        const startScrollTop = scrollContainer.scrollTop
+        const distance = targetScrollTop - startScrollTop
+        const startTime = performance.now()
+
+        const step = (currentTime: number) => {
+          const elapsed = currentTime - startTime
+          const progress = Math.min(elapsed / smoothScrollDuration, 1)
+          const easedProgress = easeOutCubic(progress)
+
+          scrollContainer.scrollTop = startScrollTop + distance * easedProgress
+
+          if (progress < 1) {
+            animationFrameRef.current = requestAnimationFrame(step)
+          } else {
+            animationFrameRef.current = null
+          }
+        }
+
+        animationFrameRef.current = requestAnimationFrame(step)
+      } else {
+        scrollContainer.scrollTop = targetScrollTop
       }
+
+      return true
     },
-    [smooth, isStreaming],
+    [scrollContainer, smooth, isStreaming],
   )
 
-  const handleScroll = useCallback(() => {
-    if (!scrollContainerRef.current) return
-
-    const { scrollTop } = scrollContainerRef.current
-    const distanceFromBottom = getDistanceFromBottom()
-
-    // Determine if the user is scrolling up (intentional) or content is pushing down (automatic)
-    const isScrollingUp = scrollTop < prevScrollTopRef.current
-
-    // If the user scrolled up beyond the threshold, pause auto-scroll
-    if (isScrollingUp && distanceFromBottom > SCROLL_THRESHOLD.AWAY_FROM_BOTTOM) {
-      setUserHasScrolled(true)
-    }
-
-    // If we were previously paused and returned close enough to the bottom, resume auto-scroll
-    if (!isScrollingUp && distanceFromBottom < SCROLL_THRESHOLD.BACK_TO_BOTTOM && userHasScrolled) {
-      setUserHasScrolled(false)
-    }
-
-    // Update previous scrollTop for next comparison
-    prevScrollTopRef.current = scrollTop
-  }, [userHasScrolled, getDistanceFromBottom])
-
   const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.deltaY < 0) setUserHasScrolled(true)
+    if (e.deltaY < 0) {
+      userHasScrolledRef.current = true
+    }
+  }, [])
+
+  // Any touch interaction disables auto-scroll - user wants control
+  const handleTouchStart = useCallback(() => {
+    userHasScrolledRef.current = true
   }, [])
 
   const resetUserScroll = useCallback(() => {
-    setUserHasScrolled(false)
+    userHasScrolledRef.current = false
   }, [])
 
-  // Set up Intersection Observer for accurate bottom detection
+  // IntersectionObserver for bottom detection - runs when elements are available
   useEffect(() => {
-    const scrollContainer = scrollContainerRef.current
-    const scrollTarget = scrollTargetRef.current
-
     if (!scrollTarget || !scrollContainer) return
+
+    let isFirstObservation = true
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         const atBottom = entry.isIntersecting
         setIsAtBottom(atBottom)
-        onUserScroll?.(atBottom)
+
+        // Enable auto-scroll when user scrolls to bottom (not on initial setup)
+        if (atBottom && !isFirstObservation) {
+          userHasScrolledRef.current = false
+        }
+
+        isFirstObservation = false
       },
       {
         root: scrollContainer,
@@ -160,26 +128,32 @@ export function useAutoScroll({
 
     observer.observe(scrollTarget)
 
-    return () => {
-      observer.disconnect()
-    }
-  }, [rootMargin, onUserScroll])
+    return () => observer.disconnect()
+  }, [scrollContainer, scrollTarget, rootMargin, ...dependencies])
 
-  // Handle initial mount and dependency-based scrolling
+  // Scroll when dependencies change (if auto-scroll is enabled)
   useEffect(() => {
-    if (!userHasScrolled) {
+    if (!userHasScrolledRef.current && scrollContainer) {
       scrollToBottom()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...dependencies])
+  }, [scrollContainer, ...dependencies])
+
+  // Cleanup animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [])
 
   return {
     scrollContainerRef,
     scrollTargetRef,
-    userHasScrolled,
     isAtBottom,
     scrollToBottom,
     resetUserScroll,
-    scrollHandlers: { onScroll: handleScroll, onWheel: handleWheel },
+    scrollHandlers: { onWheel: handleWheel, onTouchStart: handleTouchStart },
   }
 }

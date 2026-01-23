@@ -1,6 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
@@ -20,9 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { getModel, updateModel } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { deleteModel, getModel, updateModel } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -65,7 +62,6 @@ const formSchema = z
 export default function ModelDetailPage() {
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [showSaved, setShowSaved] = useState(false)
 
@@ -88,10 +84,7 @@ export default function ModelDetailPage() {
   })
 
   const deleteModelMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await db.delete(modelsTable).where(eq(modelsTable.id, id))
-      return true
-    },
+    mutationFn: deleteModel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })
       setShowDeleteDialog(false)

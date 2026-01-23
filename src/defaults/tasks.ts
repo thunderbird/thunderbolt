@@ -20,6 +20,7 @@ export const defaultTaskConnectEmail: Task = {
   order: 100,
   isComplete: 0,
   defaultHash: null,
+  deletedAt: null,
 }
 
 export const defaultTaskSetPreferences: Task = {
@@ -28,6 +29,7 @@ export const defaultTaskSetPreferences: Task = {
   order: 200,
   isComplete: 0,
   defaultHash: null,
+  deletedAt: null,
 }
 
 export const defaultTaskExplorePro: Task = {
@@ -36,6 +38,7 @@ export const defaultTaskExplorePro: Task = {
   order: 300,
   isComplete: 0,
   defaultHash: null,
+  deletedAt: null,
 }
 
 /**

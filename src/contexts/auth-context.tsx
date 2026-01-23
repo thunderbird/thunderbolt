@@ -1,6 +1,7 @@
 'use client'
 
 import { useSettings } from '@/hooks/use-settings'
+import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
@@ -8,25 +9,36 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
- * Includes platform header so backend can use deep links for mobile
+ *
+ * Uses Bearer token authentication for all platforms, storing tokens
+ * in the settings database for persistence across app restarts.
  */
 const createAuthClientInstance = (cloudUrl: string) => {
-  // Remove trailing /v1 if present since Better Auth adds /api/auth
-  const baseURL = cloudUrl.replace(/\/v1$/, '')
+  const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
   return createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient()],
-    fetchOptions: {
-      credentials: 'include', // Required for cookies to be sent/received
-      headers: {
-        'X-Client-Platform': platform,
-      },
-    },
+    fetchOptions: buildFetchOptions(platform),
   })
 }
+
+const buildFetchOptions = (platform: string) => ({
+  credentials: 'omit' as RequestCredentials,
+  headers: { 'X-Client-Platform': platform },
+  auth: {
+    type: 'Bearer' as const,
+    token: () => getAuthToken() ?? '',
+  },
+  onSuccess: (ctx: { response: Response }) => {
+    const token = ctx.response.headers.get('set-auth-token')
+    if (token) {
+      setAuthToken(token)
+    }
+  },
+})
 
 export type AuthClient = ReturnType<typeof createAuthClientInstance>
 export type Session = AuthClient['$Infer']['Session']

@@ -19,9 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { getAllModels, resetModelToDefault } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
@@ -30,7 +28,6 @@ import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { generateText } from 'ai'
-import { eq } from 'drizzle-orm'
 import ky from 'ky'
 import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
@@ -208,7 +205,6 @@ const formSchema = z
   )
 
 export default function ModelsPage() {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const {
@@ -249,11 +245,7 @@ export default function ModelsPage() {
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await db
-        .update(modelsTable)
-        .set({ enabled: enabled ? 1 : 0 })
-        .where(eq(modelsTable.id, id))
-      // Don't touch defaultHash - it stores the original default's hash
+      await updateModel(id, { enabled: enabled ? 1 : 0 })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })
@@ -262,7 +254,7 @@ export default function ModelsPage() {
 
   const addModelMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
-      await db.insert(modelsTable).values({
+      await createModelDAL({
         id: uuidv7(),
         ...values,
         apiKey: values.apiKey || null,
@@ -282,8 +274,7 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Use soft delete - set deletedAt timestamp instead of hard delete
-      await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, id))
+      await deleteModel(id)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })

@@ -1,5 +1,7 @@
 // Models
 export {
+  createModel,
+  deleteModel,
   getAllModels,
   getAvailableModels,
   getDefaultModelForThread,
@@ -32,19 +34,29 @@ export {
   getChatThread,
   getContextSizeForThread,
   getOrCreateChatThread,
+  isChatThreadDeleted,
 } from './chat-threads'
 
 // Chat Messages
 export { getChatMessages, getLastMessage, saveMessagesWithContextUpdate, updateMessage } from './chat-messages'
 
 // Tasks
-export { getIncompleteTasks, getIncompleteTasksCount, updateTask } from './tasks'
+export {
+  createTask,
+  deleteTask,
+  deleteTasks,
+  getAllTasks,
+  getIncompleteTasks,
+  getIncompleteTasksCount,
+  updateTask,
+} from './tasks'
 
 // MCP Servers
-export { getAllMcpServers, getHttpMcpServers } from './mcp-servers'
+export { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
 
 // Prompts
 export {
+  createAutomation,
   deleteAutomation,
   getAllPrompts,
   getTriggerPromptForThread,
@@ -52,3 +64,12 @@ export {
   runAutomation,
   updateAutomation,
 } from './prompts'
+
+// Triggers
+export {
+  createTrigger,
+  deleteTriggersForPrompt,
+  deleteTriggersForPrompts,
+  getAllEnabledTriggers,
+  getAllTriggersForPrompt,
+} from './triggers'

@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
@@ -6,38 +6,44 @@ import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
- * Gets a single chat message by ID
+ * Gets a single chat message by ID (excluding soft-deleted)
  */
 export const getMessage = async (messageId: string): Promise<ChatMessage | undefined> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+  return (await db
+    .select()
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.id, messageId), isNull(chatMessagesTable.deletedAt)))
+    .get()) as ChatMessage | undefined
 }
 
 /**
- * Gets all chat messages for a specific thread
+ * Gets all chat messages for a specific thread (excluding soft-deleted)
  */
 export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> => {
   const db = DatabaseSingleton.instance.db
-  const chatMessages = await db
+  return (await db
     .select()
     .from(chatMessagesTable)
-    .where(eq(chatMessagesTable.chatThreadId, threadId))
-    .orderBy(chatMessagesTable.id)
-  return chatMessages
+    .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
+    .orderBy(chatMessagesTable.id)) as ChatMessage[]
 }
 
+/**
+ * Gets the last message in a thread (excluding soft-deleted)
+ */
 export const getLastMessage = async (threadId: string): Promise<ChatMessage | null> => {
   const db = DatabaseSingleton.instance.db
 
   const lastMessage = await db
     .select()
     .from(chatMessagesTable)
-    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)
     .get()
 
-  return lastMessage ?? null
+  return (lastMessage ?? null) as ChatMessage | null
 }
 
 /**
@@ -105,7 +111,7 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
   const db = DatabaseSingleton.instance.db
 
   // Fetch current message
-  const message = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+  const message = await getMessage(messageId)
 
   if (!message) {
     throw new Error('Message not found')

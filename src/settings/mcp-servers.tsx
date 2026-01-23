@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { getHttpMcpServers } from '@/dal'
+import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -25,6 +25,8 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { createMCPClient } from '@ai-sdk/mcp'
 
 interface ServerTools {
   [serverId: string]: string[]
@@ -116,7 +118,7 @@ export default function McpServersPage() {
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await db.insert(mcpServersTable).values({
+      await createMcpServer({
         id: uuidv7(),
         name,
         url,
@@ -133,9 +135,7 @@ export default function McpServersPage() {
   })
 
   const deleteServerMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await db.delete(mcpServersTable).where(eq(mcpServersTable.id, id))
-    },
+    mutationFn: deleteMcpServer,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
       setDeleteConfirmOpen(null)
@@ -152,13 +152,9 @@ export default function McpServersPage() {
     try {
       console.log('Testing connection to:', newServerUrl)
 
-      // Import the MCP SDK components
-      const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      const { experimental_createMCPClient } = await import('ai')
-
       // Create a real MCP client using the same method as the provider
       console.log('Creating MCP client...')
-      const mcpClient = await experimental_createMCPClient({
+      const mcpClient = await createMCPClient({
         transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
           requestInit: {
             headers: {

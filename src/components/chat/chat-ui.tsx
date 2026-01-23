@@ -1,7 +1,7 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
@@ -9,6 +9,7 @@ import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
+import { ScrollToBottomButton } from './scroll-to-bottom-button'
 
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
@@ -19,7 +20,7 @@ export default function ChatUI() {
 
   const hasMessages = messages.length
 
-  const { resetUserScroll, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom } =
+  const { isAtBottom, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom, scrollToBottomAndActivate } =
     useChatScrollHandler()
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
@@ -29,6 +30,20 @@ export default function ChatUI() {
     chatPromptInputRef.current?.setInput(prompt)
     chatPromptInputRef.current?.focus()
   }, [])
+
+  // Scroll to bottom instantly when entering an existing chat
+  // Effect re-runs when scrollToBottom changes (when container becomes available)
+  const hasScrolledInitially = useRef(false)
+  useEffect(() => {
+    if (hasMessages && !hasScrolledInitially.current) {
+      // scrollToBottom returns true if scroll was performed, false if container not ready
+      // Only mark as scrolled when it actually succeeds
+      const scrolled = scrollToBottom(false)
+      if (scrolled) {
+        hasScrolledInitially.current = true
+      }
+    }
+  }, [hasMessages, scrollToBottom])
 
   if (!isReady) {
     return null
@@ -44,17 +59,24 @@ export default function ChatUI() {
       >
         <AnimatePresence>
           {hasMessages && (
-            <motion.div
-              ref={scrollContainerRef}
-              {...scrollHandlers}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 p-4 space-y-4 max-w-dvw hide-scrollbar"
-            >
-              <ChatMessages />
-              <div ref={scrollTargetRef} />
-            </motion.div>
+            <div className="relative flex-1 overflow-hidden">
+              <motion.div
+                ref={scrollContainerRef}
+                {...scrollHandlers}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="h-full p-4 space-y-4 max-w-dvw overflow-y-auto hide-scrollbar"
+              >
+                <ChatMessages />
+                <div ref={scrollTargetRef} />
+              </motion.div>
+              <ScrollToBottomButton
+                isVisible={!isAtBottom}
+                onClick={() => scrollToBottomAndActivate(true)}
+                className="bottom-2"
+              />
+            </div>
           )}
         </AnimatePresence>
 
@@ -100,11 +122,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput
-                handleResetUserScroll={resetUserScroll}
-                handleScrollToBottom={scrollToBottom}
-                ref={chatPromptInputRef}
-              />
+              <ChatPromptInput ref={chatPromptInputRef} />
             </motion.div>
           </motion.div>
         </motion.div>

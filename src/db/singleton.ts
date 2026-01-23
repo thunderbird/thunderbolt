@@ -52,6 +52,7 @@ export class DatabaseSingleton {
     }
 
     await this.#database.initialize(path)
+
     DatabaseSingleton.#initialized = true
 
     const dbTypeName = type === 'libsql-tauri' ? 'LibSQL for Tauri' : type === 'bun-sqlite' ? 'Bun SQLite' : 'wa-sqlite'

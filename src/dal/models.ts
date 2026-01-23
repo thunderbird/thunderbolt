@@ -1,14 +1,17 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable } from '../db/tables'
-import type { Model } from '../types'
+import { clearNullableColumns } from '../lib/utils'
+import type { Model, ModelRow } from '../types'
+import { getSettings } from './settings'
+import { getLastMessage } from './chat-messages'
 
-const mapModel = (model: Model) => {
+const mapModel = (row: ModelRow): Model => {
   return {
-    ...model,
-    api_key: model.apiKey || undefined,
-    is_system: model.isSystem || undefined,
-  }
+    ...row,
+    api_key: row.apiKey || undefined,
+    is_system: row.isSystem || undefined,
+  } as Model
 }
 
 /**
@@ -68,9 +71,6 @@ export const getSystemModel = async (): Promise<Model | null> => {
  * If the selected model is disabled, automatically falls back to system model
  */
 export const getSelectedModel = async (): Promise<Model> => {
-  // Import locally to avoid circular dependency
-  const { getSettings } = await import('./settings')
-
   const settings = await getSettings({ selected_model: String })
   const selectedModelId = settings.selectedModel
 
@@ -97,9 +97,6 @@ export const getSelectedModel = async (): Promise<Model> => {
  * If any fallback model is disabled, continues to the next fallback option.
  */
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
-  // Import locally to avoid circular dependency
-  const { getLastMessage } = await import('./chat-messages')
-
   const lastMessage = await getLastMessage(threadId)
 
   if (lastMessage?.modelId) {
@@ -138,4 +135,34 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...defaultFields } = defaultModel
   await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+}
+
+/**
+ * Soft deletes a model by ID (sets deletedAt timestamp)
+ * Also soft-deletes all prompts referencing this model (and their triggers)
+ * Scrubs all non-enum data for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ */
+export const deleteModel = async (id: string): Promise<void> => {
+  // Import locally to avoid circular dependency
+  const { deletePromptsForModel } = await import('./prompts')
+
+  // Soft-delete prompts and their triggers first (replaces onDelete: 'cascade')
+  await deletePromptsForModel(id)
+
+  const db = DatabaseSingleton.instance.db
+  await db
+    .update(modelsTable)
+    .set({ ...clearNullableColumns(modelsTable), deletedAt: Date.now() })
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+}
+
+/**
+ * Creates a new model
+ */
+export const createModel = async (
+  data: Partial<Model> & Pick<Model, 'id' | 'provider' | 'name' | 'model'>,
+): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  await db.insert(modelsTable).values(data)
 }

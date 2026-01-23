@@ -1,9 +1,9 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { experimental_createMCPClient } from 'ai'
+import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
 
-type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
+type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
 interface MCPServerConnection {
   id: string
@@ -55,7 +55,7 @@ export function MCPProvider({ children }: { children: ReactNode }) {
       ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
       : new StreamableHTTPClientTransport(urlObj, transportOptions)
 
-    const mcpClient = await experimental_createMCPClient({
+    const mcpClient = await createMCPClient({
       transport,
     })
     return mcpClient

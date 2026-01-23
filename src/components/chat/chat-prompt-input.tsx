@@ -1,5 +1,6 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -16,8 +17,6 @@ export type ChatPromptInputRef = {
 }
 
 type ChatPromptInputProps = {
-  handleResetUserScroll(): void
-  handleScrollToBottom(): void
   useNavigate?: typeof useNavigate_default
   useChat?: typeof useChat_default
   useContextTracking?: typeof useContextTracking_default
@@ -28,8 +27,6 @@ type ChatPromptInputProps = {
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
   (
     {
-      handleResetUserScroll,
-      handleScrollToBottom,
       useNavigate = useNavigate_default,
       useChat = useChat_default,
       useContextTracking = useContextTracking_default,
@@ -72,12 +69,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         setInput('')
 
         await sendMessage({ text: textToSend })
-
-        // Reset user scroll state and scroll to bottom when submitting a new message
-        handleResetUserScroll()
-        requestAnimationFrame(() => {
-          handleScrollToBottom()
-        })
       } catch (error) {
         console.error('Error submitting message:', error)
       }
@@ -122,7 +113,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}
-          submitOnEnter={!isStreaming}
+          submitOnEnter={!isStreaming && !isPlatformMobile()}
           className="flex flex-col gap-2 bg-background dark:bg-input/30 border dark:border-input p-3 rounded-2xl w-full"
           footerStartElements={
             isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />

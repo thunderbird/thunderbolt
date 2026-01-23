@@ -5,6 +5,7 @@ import {
   getDefaultModelForThread,
   getSettings,
   getTriggerPromptForThread,
+  isChatThreadDeleted,
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -20,9 +21,10 @@ import { createChatInstance } from './chat-instance'
 
 type UseHydrateChatStoreParams = {
   id: string
+  isNew: boolean
 }
 
-export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
@@ -79,6 +81,13 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setMcpClients, setModels } = useChatStore.getState()
 
+    // Check if this ID belongs to a deleted chat - redirect to 404 if so
+    const isDeleted = await isChatThreadDeleted(id)
+    if (isDeleted) {
+      navigate('/not-found', { replace: true })
+      return
+    }
+
     // If the session already exists, set the current session id and update the mcp clients and models
     if (sessions.has(id)) {
       setCurrentSessionId(id)
@@ -104,6 +113,12 @@ export const useHydrateChatStore = ({ id }: UseHydrateChatStoreParams) => {
       getTriggerPromptForThread(id),
       getEnabledClients(),
     ])
+
+    // If chat doesn't exist and this isn't a new chat, redirect to 404
+    if (!chatThread && !isNew) {
+      navigate('/not-found', { replace: true })
+      return
+    }
 
     const chatInstance = createChatInstance(
       id,

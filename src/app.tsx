@@ -23,6 +23,7 @@ import TasksPage from '@/tasks'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
+import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { UpdateNotification } from './components/update-notification'
 import { ContentViewProvider } from './content-view/context'
@@ -90,6 +91,10 @@ function AppRoutes(_: { initData: InitData }) {
 
       {/* OAuth callback route */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
+
+      {/* 404 catch-all */}
+      <Route path="/not-found" element={<NotFound />} />
+      <Route path="*" element={<Navigate to="/not-found" replace />} />
     </Routes>
   )
 }

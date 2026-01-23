@@ -1,5 +1,5 @@
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
-import { useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
@@ -13,67 +13,39 @@ export const useChatScrollHandler = ({
   useChat = useChat_default,
 }: UseChatScrollHandlerProps = {}) => {
   const { chatInstance } = useCurrentChatSession()
-
   const { status, messages } = useChat({ chat: chatInstance })
-
-  const hasMessages = messages.length
-
   const isStreaming = status === 'streaming'
 
   const {
     scrollContainerRef,
     scrollTargetRef,
-    scrollToBottom,
+    scrollToBottom: rawScrollToBottom,
     resetUserScroll,
     scrollHandlers,
-    userHasScrolled,
     isAtBottom,
   } = useAutoScroll({
-    dependencies: [],
+    dependencies: [messages],
     smooth: true,
     isStreaming,
-    rootMargin: '0px 0px -50px 0px', // 50px threshold from bottom
+    rootMargin: '0px 0px 20px 0px',
   })
 
-  const previousMessageCountRef = useRef(messages.length)
-
-  useEffect(() => {
-    const currentMessageCount = messages.length
-    const previousMessageCount = previousMessageCountRef.current
-
-    // Scroll to bottom when a new message is added
-    if (currentMessageCount > previousMessageCount) {
-      requestAnimationFrame(() => {
-        scrollToBottom()
-        resetUserScroll() // Reset user scroll when new message starts
-      })
-    } else if (isStreaming && !userHasScrolled) {
-      // Continue scrolling during streaming as long as the user hasn't manually scrolled away
-      requestAnimationFrame(() => {
-        scrollToBottom()
-      })
-    }
-
-    previousMessageCountRef.current = currentMessageCount
-  }, [scrollToBottom, resetUserScroll, userHasScrolled, isAtBottom, messages, isStreaming])
-
-  useEffect(() => {
-    if (!hasMessages) return
-
-    let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => {
-        scrollToBottom(false)
-      })
-    })
-
-    return () => cancelAnimationFrame(frame)
-  }, [hasMessages, scrollToBottom])
+  const scrollToBottomAndActivate = useCallback(
+    (smooth?: boolean) => {
+      const scrolled = rawScrollToBottom(smooth)
+      if (scrolled) {
+        resetUserScroll()
+      }
+    },
+    [rawScrollToBottom, resetUserScroll],
+  )
 
   return {
-    resetUserScroll,
+    isAtBottom,
     scrollContainerRef,
     scrollHandlers,
     scrollTargetRef,
-    scrollToBottom,
+    scrollToBottom: rawScrollToBottom,
+    scrollToBottomAndActivate,
   }
 }

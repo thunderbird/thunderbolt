@@ -1,24 +1,47 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
-import { chatThreadsTable } from '../db/tables'
+import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import { clearNullableColumns } from '../lib/utils'
 import { type ChatThread } from '@/types'
 import { getModel } from './models'
 
 /**
- * Gets all chat threads ordered by creation date
+ * Checks if a chat thread ID exists as a soft-deleted record.
+ * Used to detect when a user visits a URL for a deleted chat.
  */
-export const getAllChatThreads = async (): Promise<ChatThread[]> => {
+export const isChatThreadDeleted = async (id: string): Promise<boolean> => {
   const db = DatabaseSingleton.instance.db
-  return await db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
+  const thread = await db
+    .select({ id: chatThreadsTable.id })
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.id, id), isNotNull(chatThreadsTable.deletedAt)))
+    .get()
+  return thread !== undefined
 }
 
 /**
- * Gets a specific chat thread by ID
+ * Gets all chat threads ordered by creation date (excluding soft-deleted)
+ */
+export const getAllChatThreads = async (): Promise<ChatThread[]> => {
+  const db = DatabaseSingleton.instance.db
+  return (await db
+    .select()
+    .from(chatThreadsTable)
+    .where(isNull(chatThreadsTable.deletedAt))
+    .orderBy(desc(chatThreadsTable.id))) as ChatThread[]
+}
+
+/**
+ * Gets a specific chat thread by ID (excluding soft-deleted)
  */
 export const getChatThread = async (id: string): Promise<ChatThread | null> => {
   const db = DatabaseSingleton.instance.db
-  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, id)).get()
-  return thread ?? null
+  const thread = await db
+    .select()
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
+    .get()
+  return (thread ?? null) as ChatThread | null
 }
 
 /**
@@ -72,7 +95,7 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
 }
 
 /**
- * Gets the context size for a chat thread
+ * Gets the context size for a chat thread (excluding soft-deleted)
  * @param threadId - The ID of the chat thread
  * @returns The context size in tokens, or null if not found/not known
  */
@@ -81,24 +104,45 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
   const thread = await db
     .select({ contextSize: chatThreadsTable.contextSize })
     .from(chatThreadsTable)
-    .where(eq(chatThreadsTable.id, threadId))
+    .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 
   return thread?.contextSize ?? null
 }
 
 /**
- * Deletes a specific chat thread by ID
+ * Soft deletes a specific chat thread by ID (sets deletedAt timestamp)
+ * Also soft-deletes all associated messages that haven't been deleted yet
+ * Scrubs all nullable columns for privacy
  */
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(chatThreadsTable).where(eq(chatThreadsTable.id, id))
+  const deletedAt = Date.now()
+  await db
+    .update(chatMessagesTable)
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+    .where(and(eq(chatMessagesTable.chatThreadId, id), isNull(chatMessagesTable.deletedAt)))
+  await db
+    .update(chatThreadsTable)
+    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
+    .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
 }
 
 /**
- * Deletes all chat threads
+ * Soft deletes all chat threads (sets deletedAt timestamp)
+ * Also soft-deletes all associated messages
+ * Scrubs all nullable columns for privacy
+ * Only updates records that haven't been deleted yet to preserve original deletion timestamps
  */
 export const deleteAllChatThreads = async (): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.delete(chatThreadsTable)
+  const deletedAt = Date.now()
+  await db
+    .update(chatMessagesTable)
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+    .where(isNull(chatMessagesTable.deletedAt))
+  await db
+    .update(chatThreadsTable)
+    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
+    .where(isNull(chatThreadsTable.deletedAt))
 }

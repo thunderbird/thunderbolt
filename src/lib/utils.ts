@@ -2,6 +2,7 @@ import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
 import dayjs from 'dayjs'
+import { getTableConfig, type SQLiteColumn, type SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { twMerge } from 'tailwind-merge'
 import {
   type CamelCasedProperties,
@@ -44,6 +45,7 @@ export function convertUIMessageToDbChatMessage(
     parentId: parentId ?? null,
     cache: null, // Cache is populated lazily by enrichment hooks
     metadata: metadata ?? null,
+    deletedAt: null,
   }
 }
 
@@ -254,4 +256,49 @@ export const llmContentCharLimit = 16_000
 export const truncateText = (text: string, maxLength = 4000): string => {
   if (text.length <= maxLength) return text
   return text.substring(0, maxLength) + '...[truncated]'
+}
+
+/**
+ * Returns an object with nullable columns set to null for soft-delete data scrubbing.
+ * Automatically detects and skips primary keys, foreign keys, unique columns, and deletedAt.
+ *
+ * @param table - Drizzle SQLite table definition
+ * @returns Object with nullable columns set to null for data privacy
+ *
+ * @example
+ * await db.update(usersTable)
+ *   .set({ ...clearNullableColumns(usersTable), deletedAt: Date.now() })
+ *   .where(eq(usersTable.id, userId))
+ */
+export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(table: T): Partial<T['$inferInsert']> => {
+  const cleared: Record<string, null> = {}
+
+  const tableConfig = getTableConfig(table)
+
+  // Get all foreign key column names
+  const fkColumnNames = new Set(tableConfig.foreignKeys.flatMap((fk) => fk.reference().columns.map((col) => col.name)))
+
+  // Get all primary key column names from composite primaryKey declarations
+  const pkColumnNames = new Set(tableConfig.primaryKeys.flatMap((pk) => pk.columns.map((col) => col.name)))
+
+  // Get all unique constraint column names from composite unique declarations
+  const uniqueColumnNames = new Set(tableConfig.uniqueConstraints.flatMap((uc) => uc.columns.map((col) => col.name)))
+
+  for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
+    if (!column?.dataType) continue
+    // Skip deletedAt (handled separately by caller with new timestamp)
+    if (name === 'deletedAt') continue
+    // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
+    if (column.primary || pkColumnNames.has(column.name)) continue
+    // Skip foreign key columns (to maintain referential integrity)
+    if (fkColumnNames.has(column.name)) continue
+    // Skip unique columns (functional identifiers)
+    if (column.isUnique || uniqueColumnNames.has(column.name)) continue
+    // Skip required (not null) columns
+    if (column.notNull) continue
+
+    cleared[name] = null
+  }
+
+  return cleared as Partial<T['$inferInsert']>
 }

@@ -6,8 +6,9 @@ import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
-import { getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
+import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { type Prompt } from '@/types'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -182,7 +183,7 @@ describe('Prompts DAL', () => {
       expect(result?.prompt?.id).toBe(promptId)
     })
 
-    it('should return automation info with deleted flag when prompt is deleted', async () => {
+    it('should return automation info with deleted flag when triggeredBy is null', async () => {
       const threadId = uuidv7()
       const db = DatabaseSingleton.instance.db
 
@@ -191,7 +192,45 @@ describe('Prompts DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 1,
-        triggeredBy: null, // No prompt exists, simulating deleted prompt
+        triggeredBy: null, // No prompt exists
+      })
+
+      const result = await getTriggerPromptForThread(threadId)
+      expect(result).not.toBe(null)
+      expect(result?.wasTriggeredByAutomation).toBe(true)
+      expect(result?.isAutomationDeleted).toBe(true)
+      expect(result?.prompt).toBe(null)
+    })
+
+    it('should return automation info with deleted flag when prompt is soft-deleted', async () => {
+      const threadId = uuidv7()
+      const promptId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      const modelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      // Create prompt and soft-delete it
+      await db.insert(promptsTable).values({
+        id: promptId,
+        prompt: 'Test automation prompt',
+        modelId: modelId,
+        deletedAt: Date.now(),
+      })
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+        wasTriggeredByAutomation: 1,
+        triggeredBy: promptId, // References the soft-deleted prompt
       })
 
       const result = await getTriggerPromptForThread(threadId)
@@ -222,7 +261,11 @@ describe('Prompts DAL', () => {
         .where(eq(promptsTable.id, defaultAutomation.id))
 
       // Verify it's modified
-      let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      let automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation?.title).toBe('Modified Title')
       expect(automation?.prompt).toBe('Modified content')
 
@@ -230,7 +273,11 @@ describe('Prompts DAL', () => {
       await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
 
       // Verify it's reset
-      automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation?.title).toBe(defaultAutomation.title)
       expect(automation?.prompt).toBe(defaultAutomation.prompt)
       // Hash should be computed from the default
@@ -252,7 +299,11 @@ describe('Prompts DAL', () => {
       await db.update(promptsTable).set({ title: 'Modified' }).where(eq(promptsTable.id, defaultAutomation.id))
 
       // Verify detected as modified
-      let automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      let automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation).toBeDefined()
       if (automation) {
         const currentHash = hashPrompt(automation)
@@ -263,13 +314,66 @@ describe('Prompts DAL', () => {
       await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
 
       // Verify no longer detected as modified
-      automation = await db.select().from(promptsTable).where(eq(promptsTable.id, defaultAutomation.id)).get()
+      automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
       expect(automation).toBeDefined()
       if (automation) {
         const currentHash = hashPrompt(automation)
         expect(automation.defaultHash).toBeDefined()
         expect(currentHash).toBe(automation.defaultHash!)
       }
+    })
+  })
+
+  describe('createAutomation', () => {
+    it('should create a new automation', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await createAutomation({
+        id: promptId,
+        title: 'Test Automation',
+        prompt: 'Test prompt content',
+        modelId: modelId,
+      })
+
+      const prompts = await getAllPrompts()
+      expect(prompts.map((p) => p.id)).toContain(promptId)
+    })
+
+    it('should create multiple automations', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+      const promptId1 = uuidv7()
+      const promptId2 = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await createAutomation({ id: promptId1, prompt: 'Prompt 1', modelId: modelId })
+      await createAutomation({ id: promptId2, prompt: 'Prompt 2', modelId: modelId })
+
+      const prompts = await getAllPrompts()
+      expect(prompts).toHaveLength(2)
     })
   })
 })

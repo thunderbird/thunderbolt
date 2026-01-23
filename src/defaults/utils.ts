@@ -1,12 +1,7 @@
-import type { modelsTable, promptsTable, settingsTable } from '@/db/tables'
-import type { InferSelectModel } from 'drizzle-orm'
 import { hashPrompt } from './automations'
 import { hashModel } from './models'
 import { hashSetting } from './settings'
-
-type Model = InferSelectModel<typeof modelsTable>
-type Prompt = InferSelectModel<typeof promptsTable>
-type Setting = InferSelectModel<typeof settingsTable>
+import type { Model, Prompt, Setting } from '@/types'
 
 /**
  * Check if a model has been modified from its default

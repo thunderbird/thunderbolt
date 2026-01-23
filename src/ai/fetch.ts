@@ -7,16 +7,13 @@ import {
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
-import { getSettings } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { getModel, getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { LanguageModelV2 } from '@ai-sdk/provider'
 import ky, { type KyInstance } from 'ky'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -35,13 +32,11 @@ import {
   stepCountIs,
   streamText,
   wrapLanguageModel,
-  type experimental_createMCPClient,
+  type Tool,
   type ToolSet,
 } from 'ai'
-import { eq } from 'drizzle-orm'
+import { type MCPClient } from '@ai-sdk/mcp'
 import { createMessageMetadata } from './message-metadata'
-
-export type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>
 
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -58,7 +53,7 @@ type AiFetchStreamingResponseOptions = {
   httpClient?: KyInstance
 }
 
-export const createModel = async (modelConfig: Model): Promise<LanguageModelV2> => {
+export const createModel = async (modelConfig: Model) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
@@ -128,8 +123,6 @@ export const aiFetchStreamingResponse = async ({
 
   await saveMessages({ id, messages })
 
-  const db = DatabaseSingleton.instance.db
-
   // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings({
     preferred_name: '',
@@ -148,15 +141,13 @@ export const aiFetchStreamingResponse = async ({
     integrations_microsoft_is_enabled: false,
   })
 
-  const model = await db.query.modelsTable.findFirst({
-    where: eq(modelsTable.id, modelId),
-  })
+  const model = await getModel(modelId)
 
   if (!model) throw new Error('Model not found')
 
   const supportsTools = model.toolUsage !== 0
 
-  let toolset: ToolSet = {}
+  let toolset: Record<string, Tool> = {}
   if (supportsTools) {
     // Use provided httpClient for tests, otherwise use plain ky for external APIs
     const toolsHttpClient = httpClient || ky
@@ -236,13 +227,13 @@ export const aiFetchStreamingResponse = async ({
     /**
      * Run a single streamText attempt and return the result along with metadata
      */
-    const runStreamText = (inputMessages: ReturnType<typeof convertToModelMessages>) => {
+    const runStreamText = (inputMessages: Awaited<ReturnType<typeof convertToModelMessages>>) => {
       return streamText({
         temperature: 0.2,
         model: wrappedModel,
         system: systemPrompt,
         messages: inputMessages,
-        tools: supportsTools ? toolset : undefined,
+        tools: supportsTools ? (toolset as ToolSet) : undefined,
         stopWhen: stepCountIs(maxSteps),
         providerOptions,
 
@@ -319,7 +310,7 @@ export const aiFetchStreamingResponse = async ({
     const stream = createUIMessageStream({
       generateId: uuidv7,
       execute: async ({ writer }) => {
-        let currentMessages = convertToModelMessages(messages)
+        let currentMessages = await convertToModelMessages(messages)
         let attemptNumber = 1
         let isRetry = false
 

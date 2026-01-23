@@ -32,6 +32,7 @@ Just ask! 😊"
     "providerMetadata": {
       "local-test": {},
     },
+    "rawFinishReason": "stop",
     "request": {
       "body": {
         "messages": [
@@ -84,8 +85,23 @@ Just ask! 😊"
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
+      "cachedInputTokens": 0,
+      "inputTokenDetails": {
+        "cacheReadTokens": 0,
+        "noCacheTokens": 311,
+      },
       "inputTokens": 311,
+      "outputTokenDetails": {
+        "reasoningTokens": 0,
+        "textTokens": 248,
+      },
       "outputTokens": 248,
+      "raw": {
+        "completion_tokens": 248,
+        "prompt_tokens": 311,
+        "total_tokens": 559,
+      },
+      "reasoningTokens": 0,
       "totalTokens": 559,
     },
     "warnings": [],
@@ -125,6 +141,7 @@ Just ask! 😊"
     "providerMetadata": {
       "local-test": {},
     },
+    "rawFinishReason": "stop",
     "request": {
       "body": {
         "messages": [
@@ -177,8 +194,23 @@ Just ask! 😊"
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
+      "cachedInputTokens": 0,
+      "inputTokenDetails": {
+        "cacheReadTokens": 0,
+        "noCacheTokens": 311,
+      },
       "inputTokens": 311,
+      "outputTokenDetails": {
+        "reasoningTokens": 0,
+        "textTokens": 248,
+      },
       "outputTokens": 248,
+      "raw": {
+        "completion_tokens": 248,
+        "prompt_tokens": 311,
+        "total_tokens": 559,
+      },
+      "reasoningTokens": 0,
       "totalTokens": 559,
     },
     "warnings": [],
@@ -218,6 +250,7 @@ Just ask! 😊"
     "providerMetadata": {
       "local-test": {},
     },
+    "rawFinishReason": "stop",
     "request": {
       "body": {
         "messages": [
@@ -270,8 +303,23 @@ Just ask! 😊"
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
+      "cachedInputTokens": 0,
+      "inputTokenDetails": {
+        "cacheReadTokens": 0,
+        "noCacheTokens": 311,
+      },
       "inputTokens": 311,
+      "outputTokenDetails": {
+        "reasoningTokens": 0,
+        "textTokens": 248,
+      },
       "outputTokens": 248,
+      "raw": {
+        "completion_tokens": 248,
+        "prompt_tokens": 311,
+        "total_tokens": 559,
+      },
+      "reasoningTokens": 0,
       "totalTokens": 559,
     },
     "warnings": [],
@@ -311,6 +359,7 @@ Just ask! 😊"
     "providerMetadata": {
       "local-test": {},
     },
+    "rawFinishReason": "stop",
     "request": {
       "body": {
         "messages": [
@@ -363,8 +412,23 @@ Just ask! 😊"
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
+      "cachedInputTokens": 0,
+      "inputTokenDetails": {
+        "cacheReadTokens": 0,
+        "noCacheTokens": 311,
+      },
       "inputTokens": 311,
+      "outputTokenDetails": {
+        "reasoningTokens": 0,
+        "textTokens": 248,
+      },
       "outputTokens": 248,
+      "raw": {
+        "completion_tokens": 248,
+        "prompt_tokens": 311,
+        "total_tokens": 559,
+      },
+      "reasoningTokens": 0,
       "totalTokens": 559,
     },
     "warnings": [],
@@ -404,6 +468,7 @@ Just ask! 😊"
     "providerMetadata": {
       "local-test": {},
     },
+    "rawFinishReason": "stop",
     "request": {
       "body": {
         "messages": [
@@ -456,8 +521,23 @@ Just ask! 😊"
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
     "usage": {
+      "cachedInputTokens": 0,
+      "inputTokenDetails": {
+        "cacheReadTokens": 0,
+        "noCacheTokens": 311,
+      },
       "inputTokens": 311,
+      "outputTokenDetails": {
+        "reasoningTokens": 0,
+        "textTokens": 248,
+      },
       "outputTokens": 248,
+      "raw": {
+        "completion_tokens": 248,
+        "prompt_tokens": 311,
+        "total_tokens": 559,
+      },
+      "reasoningTokens": 0,
       "totalTokens": 559,
     },
     "warnings": [],

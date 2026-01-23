@@ -3,9 +3,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
-import { tasksTable } from '@/db/tables'
+import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -30,7 +28,6 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { eq } from 'drizzle-orm'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -243,7 +240,6 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
 
 // Main Tasks Page Component
 export default function TasksPage() {
-  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   // State
@@ -313,7 +309,7 @@ export default function TasksPage() {
     mutationFn: async (item: string) => {
       const order = tasks.length > 0 ? Math.min(...tasks.map((t) => t.order)) - 100 : 1000
 
-      await db.insert(tasksTable).values({
+      await createTask({
         id: uuidv7(),
         item,
         order,
@@ -337,9 +333,7 @@ export default function TasksPage() {
   })
 
   const deleteTaskMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await db.delete(tasksTable).where(eq(tasksTable.id, id))
-    },
+    mutationFn: deleteTask,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
@@ -347,9 +341,7 @@ export default function TasksPage() {
 
   const updateOrderMutation = useMutation({
     mutationFn: async (updates: { id: string; order: number }[]) => {
-      await Promise.all(
-        updates.map(({ id, order }) => db.update(tasksTable).set({ order }).where(eq(tasksTable.id, id))),
-      )
+      await Promise.all(updates.map(({ id, order }) => updateTask(id, { order })))
     },
     onSuccess: (_, updates) => {
       trackEvent('task_reorder', {
@@ -361,7 +353,7 @@ export default function TasksPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await db.update(tasksTable).set({ isComplete: 1 }).where(eq(tasksTable.id, id))
+      await updateTask(id, { isComplete: 1 })
     },
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })

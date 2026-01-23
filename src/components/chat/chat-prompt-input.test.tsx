@@ -95,19 +95,11 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
-      const { container } = render(
-        <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useSidebar={mockUseSidebar} />, {
+        wrapper: TestWrapper,
+      })
 
       expect(container).toBeInTheDocument()
     })
@@ -129,19 +121,9 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
-      render(
-        <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      render(<ChatPromptInput useChat={mockUseChat} useSidebar={mockUseSidebar} />, { wrapper: TestWrapper })
 
       // Verify textarea is rendered
       const textarea = screen.getByPlaceholderText('Ask me anything...')
@@ -166,14 +148,10 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       render(
         <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useContextTracking={mockUseContextTracking}
           useSidebar={mockUseSidebar}
@@ -202,21 +180,10 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
       const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
 
-      render(
-        <ChatPromptInput
-          ref={ref}
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useSidebar={mockUseSidebar} />, { wrapper: TestWrapper })
 
       expect(ref.current).not.toBeNull()
       expect(typeof ref.current?.focus).toBe('function')
@@ -251,21 +218,10 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
       const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
 
-      render(
-        <ChatPromptInput
-          ref={ref}
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useSidebar={mockUseSidebar} />, { wrapper: TestWrapper })
 
       expect(ref.current).not.toBeNull()
       expect(typeof ref.current?.setInput).toBe('function')
@@ -295,19 +251,11 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
-      const { container } = render(
-        <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useSidebar={mockUseSidebar} />, {
+        wrapper: TestWrapper,
+      })
 
       expect(container).toBeInTheDocument()
     })
@@ -328,14 +276,10 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar()
 
       const { container } = render(
         <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
           useChat={mockUseChat}
           useContextTracking={mockUseContextTracking}
           useSidebar={mockUseSidebar}
@@ -361,19 +305,11 @@ describe('ChatPromptInput', () => {
         triggerData: null,
       })
 
-      const handleResetUserScroll = mock()
-      const handleScrollToBottom = mock()
       const mockUseSidebar = createMockUseSidebar(false, false)
 
-      const { container } = render(
-        <ChatPromptInput
-          handleResetUserScroll={handleResetUserScroll}
-          handleScrollToBottom={handleScrollToBottom}
-          useChat={mockUseChat}
-          useSidebar={mockUseSidebar}
-        />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useSidebar={mockUseSidebar} />, {
+        wrapper: TestWrapper,
+      })
 
       expect(container).toBeInTheDocument()
     })

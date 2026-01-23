@@ -31,7 +31,7 @@ export const hashModel = (model: Model): string => {
  */
 export const defaultModelGptOss120b: Model = {
   id: 'd045a4c0-3f93-4f30-a608-24e07856e11d',
-  name: 'gpt-oss',
+  name: 'GPT OSS',
   provider: 'thunderbolt',
   model: 'gpt-oss-120b',
   isSystem: 1,
@@ -51,7 +51,7 @@ export const defaultModelGptOss120b: Model = {
 
 export const defaultModelMistralLarge3Instruct: Model = {
   id: '019af08a-f7b4-7ebf-ae40-d558193977d8',
-  name: 'mistral-large-3',
+  name: 'Mistral Large 3',
   provider: 'thunderbolt',
   model: 'mistral-large-3',
   isSystem: 1,
@@ -71,7 +71,7 @@ export const defaultModelMistralLarge3Instruct: Model = {
 
 export const defaultModelMistralMedium31: Model = {
   id: '019af08a-9836-783d-ab56-39b9fec48af1',
-  name: 'mistral-medium-3.1',
+  name: 'Mistral Medium 3.1',
   provider: 'thunderbolt',
   model: 'mistral-medium-3.1',
   isSystem: 1,
@@ -91,7 +91,7 @@ export const defaultModelMistralMedium31: Model = {
 
 export const defaultModelSonnet45: Model = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'sonnet-4.5',
+  name: 'Sonnet 4.5',
   provider: 'thunderbolt',
   model: 'sonnet-4.5',
   isSystem: 1,

@@ -1,15 +1,54 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useReducer, useEffect, useCallback } from 'react'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
-export type DesktopUpdateState = {
+export type UpdateState = {
   status: UpdateStatus
   update: Update | null
   error: string | null
   downloadProgress: number
+}
+
+export type UpdateAction =
+  | { type: 'CHECK_START' }
+  | { type: 'CHECK_SUCCESS'; update: Update | null }
+  | { type: 'DOWNLOAD_START' }
+  | { type: 'DOWNLOAD_PROGRESS'; progress: number }
+  | { type: 'DOWNLOAD_SUCCESS' }
+  | { type: 'ERROR'; error: string }
+
+export const initialUpdateState: UpdateState = {
+  status: 'idle',
+  update: null,
+  error: null,
+  downloadProgress: 0,
+}
+
+export const updateReducer = (state: UpdateState, action: UpdateAction): UpdateState => {
+  switch (action.type) {
+    case 'CHECK_START':
+      return { ...state, status: 'checking', error: null }
+    case 'CHECK_SUCCESS':
+      return {
+        ...state,
+        status: action.update ? 'available' : 'idle',
+        update: action.update,
+      }
+    case 'DOWNLOAD_START':
+      return { ...state, status: 'downloading', downloadProgress: 0 }
+    case 'DOWNLOAD_PROGRESS':
+      return { ...state, downloadProgress: action.progress }
+    case 'DOWNLOAD_SUCCESS':
+      return { ...state, status: 'ready', downloadProgress: 100 }
+    case 'ERROR':
+      return { ...state, status: 'error', error: action.error }
+  }
+}
+
+export type DesktopUpdateState = UpdateState & {
   checkForUpdates: () => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
@@ -20,43 +59,32 @@ export type DesktopUpdateState = {
  * Only active on desktop platforms (macOS, Windows, Linux).
  */
 export const useDesktopUpdate = (): DesktopUpdateState => {
-  const [status, setStatus] = useState<UpdateStatus>('idle')
-  const [update, setUpdate] = useState<Update | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [state, dispatch] = useReducer(updateReducer, initialUpdateState)
 
   const checkForUpdates = useCallback(async () => {
     if (!isDesktop()) return
 
-    setStatus('checking')
-    setError(null)
+    dispatch({ type: 'CHECK_START' })
 
     try {
       const availableUpdate = await check()
-
-      if (availableUpdate) {
-        setUpdate(availableUpdate)
-      }
-
-      setStatus(availableUpdate ? 'available' : 'idle')
+      dispatch({ type: 'CHECK_SUCCESS', update: availableUpdate })
     } catch (err) {
       console.error('Failed to check for updates:', err)
-      setError(err instanceof Error ? err.message : 'Failed to check for updates')
-      setStatus('error')
+      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to check for updates' })
     }
   }, [])
 
   const downloadAndInstall = useCallback(async () => {
-    if (!update) return
+    if (!state.update) return
 
-    setStatus('downloading')
-    setDownloadProgress(0)
+    dispatch({ type: 'DOWNLOAD_START' })
 
     let contentLength = 0
     let bytesDownloaded = 0
 
     try {
-      await update.downloadAndInstall((event) => {
+      await state.update.downloadAndInstall((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
           contentLength = event.data.contentLength
           bytesDownloaded = 0
@@ -64,28 +92,26 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
           bytesDownloaded += event.data.chunkLength
           if (contentLength > 0) {
             const percentage = Math.round((bytesDownloaded / contentLength) * 100)
-            setDownloadProgress(Math.min(percentage, 100))
+            dispatch({ type: 'DOWNLOAD_PROGRESS', progress: Math.min(percentage, 100) })
           }
         } else if (event.event === 'Finished') {
-          setDownloadProgress(100)
+          dispatch({ type: 'DOWNLOAD_PROGRESS', progress: 100 })
         }
       })
 
-      setStatus('ready')
+      dispatch({ type: 'DOWNLOAD_SUCCESS' })
     } catch (err) {
       console.error('Failed to download update:', err)
-      setError(err instanceof Error ? err.message : 'Failed to download update')
-      setStatus('error')
+      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to download update' })
     }
-  }, [update])
+  }, [state.update])
 
   const restartApp = useCallback(async () => {
     try {
       await relaunch()
     } catch (err) {
       console.error('Failed to restart app:', err)
-      setError(err instanceof Error ? err.message : 'Failed to restart app')
-      setStatus('error')
+      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to restart app' })
     }
   }, [])
 
@@ -102,10 +128,7 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   }, [checkForUpdates])
 
   return {
-    status,
-    update,
-    error,
-    downloadProgress,
+    ...state,
     checkForUpdates,
     downloadAndInstall,
     restartApp,

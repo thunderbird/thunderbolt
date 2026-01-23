@@ -47,7 +47,7 @@ export const UpdateNotification = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
-          className="fixed bottom-4 left-4 z-50 max-w-sm"
+          className="fixed bottom-4 right-4 z-50 max-w-sm"
         >
           <div className="bg-card border border-border rounded-lg shadow-lg p-4">
             <div className="flex items-start gap-3">
@@ -87,7 +87,7 @@ export const UpdateNotification = () => {
 
               <button
                 onClick={handleDismiss}
-                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 aria-label="Dismiss"
               >
                 <X className="size-4" />

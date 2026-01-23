@@ -25,7 +25,6 @@ Adds an email to the waitlist.
 - Normalizes email (lowercase + trim)
 - If email already exists: sends a reminder email, returns success (prevents email enumeration)
 - If new email: creates entry with `pending` status, sends joined waitlist email
-- Handles race conditions: if concurrent requests insert the same email, the second one sends a reminder instead of failing
 
 ## Database Schema
 

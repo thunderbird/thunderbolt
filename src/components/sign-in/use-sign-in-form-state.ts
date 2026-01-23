@@ -1,4 +1,6 @@
 import type { AuthClient } from '@/contexts'
+import { isPowerSyncAvailable, setSyncEnabled } from '@/db/powersync'
+import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -72,8 +74,29 @@ type UseSignInFormStateOptions = {
 }
 
 /**
- * State hook for the sign-in form.
- * Separates computation/logic from display for easier testing and reuse.
+ * Enable sync after sign-in for both new and returning users.
+ * Sync is enabled by default for all users.
+ * For returning users, clears pending CRUD operations to avoid conflicts with cloud data.
+ */
+const enableSyncAfterSignIn = async (isNewUser: boolean): Promise<void> => {
+  try {
+    const database = DatabaseSingleton.instance.database
+
+    // For returning users only: clear pending CRUD operations to avoid conflicts with cloud data
+    if (!isNewUser && 'clearPendingCrudOperations' in database) {
+      await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
+    }
+
+    // Enable sync preference and connect (for both new and returning users)
+    await setSyncEnabled(true)
+  } catch (error) {
+    console.error('Failed to enable sync after sign-in:', error)
+  }
+}
+
+/**
+ * State hook for SignInModal
+ * Separates computation/logic from display for easier testing
  */
 export const useSignInFormState = ({
   authClient,
@@ -142,6 +165,12 @@ export const useSignInFormState = ({
       // Store the token for bearer auth
       if (result.data?.token) {
         await setAuthToken(result.data.token)
+      }
+
+      // Enable sync for all users (new and returning)
+      const isNewUser = (result.data as { isNewUser?: boolean })?.isNewUser ?? false
+      if (isPowerSyncAvailable()) {
+        await enableSyncAfterSignIn(isNewUser)
       }
 
       // Sign-in successful - show success state

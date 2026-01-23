@@ -1,10 +1,9 @@
 import { useAuth } from '@/contexts/auth-context'
-import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled } from '@/db/powersync'
-import { DatabaseSingleton } from '@/db/singleton'
+import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Switch } from './ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
@@ -20,6 +19,17 @@ export const PowerSyncStatus = () => {
 
   const { connectionStatus, isUploading, isDownloading, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled)
+
+  // Listen for external sync enabled changes (e.g., from sign-in flow)
+  useEffect(() => {
+    const handleSyncEnabledChange = (event: Event) => {
+      const customEvent = event as CustomEvent<boolean>
+      setSyncEnabledState(customEvent.detail)
+    }
+
+    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+  }, [])
 
   // Don't render if PowerSync URL is not configured
   if (!isPowerSyncAvailable()) {
@@ -67,18 +77,7 @@ export const PowerSyncStatus = () => {
   }
 
   const handleToggleSync = async (enabled: boolean) => {
-    setSyncEnabled(enabled)
-    setSyncEnabledState(enabled)
-
-    // Get the PowerSync database instance and connect/disconnect
-    const database = DatabaseSingleton.instance.database
-    if ('connectToSync' in database && 'disconnectFromSync' in database) {
-      if (enabled) {
-        await (database as { connectToSync: () => Promise<void> }).connectToSync()
-      } else {
-        await (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync()
-      }
-    }
+    await setSyncEnabled(enabled)
   }
 
   return (

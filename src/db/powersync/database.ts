@@ -1,6 +1,7 @@
 import { PowerSyncDatabase } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
+import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 
@@ -12,6 +13,9 @@ const INITIAL_SYNC_TIMEOUT_MS = 10_000
 
 /** LocalStorage key for sync enabled flag */
 const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
+
+/** Custom event name for sync enabled changes */
+export const SYNC_ENABLED_CHANGE_EVENT = 'powersync_sync_enabled_change'
 
 /**
  * Check if PowerSync URL is configured (available for syncing)
@@ -29,11 +33,28 @@ export const isSyncEnabled = (): boolean => {
 }
 
 /**
- * Set sync enabled preference
+ * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
  */
-export const setSyncEnabled = (enabled: boolean): void => {
+export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
   if (typeof localStorage === 'undefined') return
+
+  // Update localStorage and dispatch event
   localStorage.setItem(SYNC_ENABLED_KEY, String(enabled))
+  window.dispatchEvent(new CustomEvent(SYNC_ENABLED_CHANGE_EVENT, { detail: enabled }))
+
+  // Connect or disconnect from PowerSync Cloud
+  try {
+    const database = DatabaseSingleton.instance.database
+    if ('connectToSync' in database && 'disconnectFromSync' in database) {
+      if (enabled) {
+        await (database as { connectToSync: () => Promise<void> }).connectToSync()
+      } else {
+        await (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync()
+      }
+    }
+  } catch (error) {
+    console.error('Failed to connect/disconnect from PowerSync:', error)
+  }
 }
 
 /**
@@ -130,6 +151,22 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       this._isConnected = false
     } catch (error) {
       console.warn('Failed to disconnect from PowerSync Cloud:', error)
+    }
+  }
+
+  /**
+   * Clear pending CRUD operations from PowerSync queue.
+   * Useful for returning users to avoid conflicts with cloud data.
+   */
+  async clearPendingCrudOperations(): Promise<void> {
+    if (!this.powerSync) {
+      return
+    }
+
+    try {
+      await this.powerSync.execute('DELETE FROM ps_crud')
+    } catch (error) {
+      console.warn('Failed to clear pending CRUD operations:', error)
     }
   }
 

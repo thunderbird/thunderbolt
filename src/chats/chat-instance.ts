@@ -25,6 +25,7 @@ export const createChatInstance = (
         init,
         saveMessages,
         modelId: session.selectedModel.id,
+        modeSystemPrompt: session.selectedMode.systemPrompt ?? undefined,
         mcpClients,
       })
     },

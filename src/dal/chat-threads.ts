@@ -64,7 +64,7 @@ export const createChatThread = async (
 
 export const updateChatThread = async (
   id: string,
-  data: Partial<Pick<ChatThread, 'contextSize' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
+  data: Partial<Pick<ChatThread, 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))

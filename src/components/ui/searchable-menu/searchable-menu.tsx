@@ -112,6 +112,7 @@ export const SearchableMenu = <T,>({
   onOpenChange: controlledOnOpenChange,
   contentClassName,
   align = 'start',
+  side,
   maxHeight = 300,
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
@@ -188,6 +189,7 @@ export const SearchableMenu = <T,>({
 
       <PopoverContent
         align={isMobile ? 'center' : align}
+        side={side}
         className={cn('p-0 rounded-lg duration-100', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}

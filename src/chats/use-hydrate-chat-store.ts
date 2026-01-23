@@ -1,8 +1,10 @@
 import {
+  getAllModes,
   getAvailableModels,
   getChatMessages,
   getChatThread,
   getDefaultModelForThread,
+  getSelectedMode,
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
@@ -79,7 +81,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
-    const { createSession, sessions, setCurrentSessionId, setMcpClients, setModels } = useChatStore.getState()
+    const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = await isChatThreadDeleted(id)
@@ -92,9 +94,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [models, mcpClients] = await Promise.all([getAvailableModels(), getEnabledClients()])
+      const [modes, models, mcpClients] = await Promise.all([getAllModes(), getAvailableModels(), getEnabledClients()])
 
       setMcpClients(mcpClients)
+      setModes(modes)
       setModels(models)
 
       setIsReady(true)
@@ -105,14 +108,17 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // If the session does not exist, create it below
     const settings = await getSettings({ selected_model: String })
 
-    const [defaultModel, chatThread, initialMessages, models, triggerData, mcpClients] = await Promise.all([
-      getDefaultModelForThread(id, settings.selectedModel ?? undefined),
-      getChatThread(id),
-      getChatMessages(id),
-      getAvailableModels(),
-      getTriggerPromptForThread(id),
-      getEnabledClients(),
-    ])
+    const [defaultModel, selectedMode, chatThread, initialMessages, modes, models, triggerData, mcpClients] =
+      await Promise.all([
+        getDefaultModelForThread(id, settings.selectedModel ?? undefined),
+        getSelectedMode(),
+        getChatThread(id),
+        getChatMessages(id),
+        getAllModes(),
+        getAvailableModels(),
+        getTriggerPromptForThread(id),
+        getEnabledClients(),
+      ])
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
@@ -130,6 +136,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       chatInstance,
       chatThread,
       id,
+      selectedMode,
       selectedModel: defaultModel,
       triggerData,
     })
@@ -137,6 +144,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setCurrentSessionId(id)
 
     setMcpClients(mcpClients)
+    setModes(modes)
     setModels(models)
 
     setIsReady(true)

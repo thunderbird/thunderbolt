@@ -35,6 +35,7 @@ export {
   getContextSizeForThread,
   getOrCreateChatThread,
   isChatThreadDeleted,
+  updateChatThread,
 } from './chat-threads'
 
 // Chat Messages
@@ -73,3 +74,6 @@ export {
   getAllEnabledTriggers,
   getAllTriggersForPrompt,
 } from './triggers'
+
+// Modes
+export { createMode, getAllModes, getDefaultMode, getMode, getSelectedMode, updateMode } from './modes'

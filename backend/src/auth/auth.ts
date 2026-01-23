@@ -1,6 +1,7 @@
 import type { db as DbType } from '@/db/client'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
+import { normalizeEmail } from '@/lib/email'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
@@ -30,6 +31,15 @@ export const createAuth = (database: typeof DbType) =>
       provider: 'pg',
     }),
     trustedOrigins,
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (userData) => ({
+            data: { ...userData, email: normalizeEmail(userData.email) },
+          }),
+        },
+      },
+    },
     plugins: [
       bearer(), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
@@ -44,7 +54,7 @@ export const createAuth = (database: typeof DbType) =>
             return
           }
 
-          const normalizedEmail = email.toLowerCase().trim()
+          const normalizedEmail = normalizeEmail(email)
 
           // Check if user already has an account (existing users bypass waitlist)
           const existingUser = await database

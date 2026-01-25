@@ -87,48 +87,51 @@ export const createAuth = (database: typeof DbType) =>
 
           const normalizedEmail = normalizeEmail(email)
 
+          // TODO: waitlist is temporary disabled for powerSync validation
+          // uncomment this before merging into main branch
+
           // Check if user already has an account (existing users bypass waitlist)
-          const existingUser = await database
-            .select({ id: user.id })
-            .from(user)
-            .where(eq(user.email, normalizedEmail))
-            .limit(1)
+          // const existingUser = await database
+          //   .select({ id: user.id })
+          //   .from(user)
+          //   .where(eq(user.email, normalizedEmail))
+          //   .limit(1)
 
-          // If user doesn't exist, check waitlist status
-          if (existingUser.length === 0) {
-            const waitlistEntry = await database
-              .select({ status: waitlist.status })
-              .from(waitlist)
-              .where(eq(waitlist.email, normalizedEmail))
-              .limit(1)
+          // // If user doesn't exist, check waitlist status
+          // if (existingUser.length === 0) {
+          //   const waitlistEntry = await database
+          //     .select({ status: waitlist.status })
+          //     .from(waitlist)
+          //     .where(eq(waitlist.email, normalizedEmail))
+          //     .limit(1)
 
-            // For non-approved users, send appropriate email but don't reveal status
-            // (they'll see the OTP screen but won't receive the actual code)
-            if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
-              console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
+          //   // For non-approved users, send appropriate email but don't reveal status
+          //   // (they'll see the OTP screen but won't receive the actual code)
+          //   if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
+          //     console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
 
-              if (waitlistEntry.length === 0) {
-                // Add to waitlist if not already there (helpful UX)
-                // Use onConflictDoNothing to handle rare race condition gracefully
-                await database
-                  .insert(waitlist)
-                  .values({
-                    id: crypto.randomUUID(),
-                    email: normalizedEmail,
-                    status: 'pending',
-                  })
-                  .onConflictDoNothing()
-                await sendWaitlistJoinedEmail({ email: normalizedEmail })
-              } else {
-                // On waitlist but not approved — send a "not ready yet" email
-                await sendWaitlistNotReadyEmail({ email: normalizedEmail })
-              }
+          //     if (waitlistEntry.length === 0) {
+          //       // Add to waitlist if not already there (helpful UX)
+          //       // Use onConflictDoNothing to handle rare race condition gracefully
+          //       await database
+          //         .insert(waitlist)
+          //         .values({
+          //           id: crypto.randomUUID(),
+          //           email: normalizedEmail,
+          //           status: 'pending',
+          //         })
+          //         .onConflictDoNothing()
+          //       await sendWaitlistJoinedEmail({ email: normalizedEmail })
+          //     } else {
+          //       // On waitlist but not approved — send a "not ready yet" email
+          //       await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+          //     }
 
-              // Return without sending OTP - user will see OTP screen but won't have the code
-              // This prevents revealing whether an email is on the waitlist or not
-              return
-            }
-          }
+          //     // Return without sending OTP - user will see OTP screen but won't have the code
+          //     // This prevents revealing whether an email is on the waitlist or not
+          //     return
+          //   }
+          // }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
           const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request)

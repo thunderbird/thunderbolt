@@ -93,27 +93,19 @@ const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
 export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
 
 /**
- * Check if PowerSync is enabled via environment variable.
- * Set VITE_POWERSYNC_URL to enable PowerSync for multi-device sync.
- */
-const isPowerSyncEnabled = (): boolean => {
-  return Boolean(import.meta.env.VITE_POWERSYNC_URL)
-}
-
-/**
  * Determines the appropriate database type based on the platform and the
  * capabilities exposed by the backend.
  *
  * Note: this is asynchronous because we might need to query the backend once.
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
-  // For web, use PowerSync if configured
-  if (!isTauri()) {
-    return isPowerSyncEnabled() ? 'powersync' : 'wa-sqlite'
-  }
+  return 'powersync'
+  // For web, use PowerSync as default
+  // if (!isTauri()) {
+  // }
 
-  const { libsql } = await getCapabilities()
-  return libsql ? 'libsql-tauri' : 'wa-sqlite'
+  // const { libsql } = await getCapabilities()
+  // return libsql ? 'libsql-tauri' : 'wa-sqlite'
 }
 
 /**

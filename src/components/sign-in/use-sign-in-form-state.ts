@@ -1,5 +1,5 @@
 import type { AuthClient } from '@/contexts'
-import { isPowerSyncAvailable, setSyncEnabled } from '@/db/powersync'
+import { setSyncEnabled } from '@/db/powersync'
 import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
@@ -169,9 +169,7 @@ export const useSignInFormState = ({
 
       // Enable sync for all users (new and returning)
       const isNewUser = (result.data as { isNewUser?: boolean })?.isNewUser ?? false
-      if (isPowerSyncAvailable()) {
-        await enableSyncAfterSignIn(isNewUser)
-      }
+      await enableSyncAfterSignIn(isNewUser)
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })

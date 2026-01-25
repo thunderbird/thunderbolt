@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/auth-context'
-import { isPowerSyncAvailable, isSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { isSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
@@ -28,11 +28,6 @@ export const PowerSyncStatus = () => {
     window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
     return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
   }, [])
-
-  // Don't render if PowerSync URL is not configured
-  if (!isPowerSyncAvailable()) {
-    return null
-  }
 
   const isSyncing = isUploading || isDownloading
   const isConnected = connectionStatus === 'connected'

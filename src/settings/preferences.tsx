@@ -35,7 +35,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
 import { usePostHog } from 'posthog-js/react'
-import { isPowerSyncAvailable, isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 
 type PreferencesState = {
   isResetting: boolean
@@ -749,26 +749,22 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      {isPowerSyncAvailable() && (
-        <>
-          <SectionCard title="Sync">
-            <div className="flex-row flex items-center gap-4">
-              <div>
-                <div className="mb-2">
-                  <label className="text-sm font-medium">Cloud Sync</label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Enable cloud synchronization to keep your data synced across devices. Your data is encrypted and
-                  securely stored.
-                </p>
-              </div>
-              <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
+      <SectionCard title="Sync">
+        <div className="flex-row flex items-center gap-4">
+          <div>
+            <div className="mb-2">
+              <label className="text-sm font-medium">Cloud Sync</label>
             </div>
-          </SectionCard>
+            <p className="text-sm text-muted-foreground">
+              Enable cloud synchronization to keep your data synced across devices. Your data is encrypted and securely
+              stored.
+            </p>
+          </div>
+          <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
+        </div>
+      </SectionCard>
 
-          <div className="h-6" />
-        </>
-      )}
+      <div className="h-6" />
 
       <SectionCard title="Local Database">
         <div className="flex flex-col gap-2">

@@ -5,7 +5,6 @@ import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 
-const POWERSYNC_URL = import.meta.env.VITE_POWERSYNC_URL as string
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000/v1'
 
 /** Maximum time to wait for initial sync (10 seconds) */
@@ -16,13 +15,6 @@ const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
 
 /** Custom event name for sync enabled changes */
 export const SYNC_ENABLED_CHANGE_EVENT = 'powersync_sync_enabled_change'
-
-/**
- * Check if PowerSync URL is configured (available for syncing)
- */
-export const isPowerSyncAvailable = (): boolean => {
-  return Boolean(POWERSYNC_URL)
-}
 
 /**
  * Check if sync is enabled by user preference
@@ -110,8 +102,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // Create connector for authentication
     this.connector = new ThunderboltConnector(BACKEND_URL)
 
-    // Connect to PowerSync Cloud if URL is configured AND sync is enabled
-    if (POWERSYNC_URL && isSyncEnabled()) {
+    // Connect to PowerSync Cloud if sync is enabled
+    if (isSyncEnabled()) {
       await this.connectToSync()
     }
   }
@@ -121,7 +113,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Call this when user enables sync.
    */
   async connectToSync(): Promise<void> {
-    if (!this.powerSync || !this.connector || !POWERSYNC_URL) {
+    if (!this.powerSync || !this.connector) {
       return
     }
 

@@ -69,7 +69,7 @@ CREATE TABLE "prompts" (
 );
 --> statement-breakpoint
 CREATE TABLE "settings" (
-	"key" text PRIMARY KEY NOT NULL,
+	"id" text PRIMARY KEY NOT NULL,
 	"value" text,
 	"updated_at" integer DEFAULT extract(epoch from now())::integer,
 	"default_hash" text,

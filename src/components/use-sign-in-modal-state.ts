@@ -66,17 +66,29 @@ type UseSignInModalStateOptions = {
 }
 
 /**
+ * Validates email format using a practical regex pattern.
+ * Checks for: local-part@domain.tld structure with basic character validation.
+ */
+const isValidEmailFormat = (email: string): boolean => {
+  const emailRegex =
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+  return emailRegex.test(email)
+}
+
+/**
  * State hook for SignInModal
  * Separates computation/logic from display for easier testing
  */
 export const useSignInModalState = ({ authClient, onClose }: UseSignInModalStateOptions) => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  const isValidEmail = isValidEmailFormat(state.email.trim())
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
     const trimmedEmail = state.email.trim()
-    if (!trimmedEmail) return
+    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) return
 
     dispatch({ type: 'START_SENDING' })
 
@@ -162,6 +174,7 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
 
   return {
     state,
+    isValidEmail,
     actions: {
       handleSubmit,
       handleOtpComplete,

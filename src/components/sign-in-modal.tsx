@@ -35,7 +35,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const emailInputRef = useRef<HTMLInputElement>(null)
   const { isMobile } = useIsMobile()
 
-  const { state, actions } = useSignInModalState({
+  const { state, isValidEmail, actions } = useSignInModalState({
     authClient,
     onClose: () => onOpenChange(false),
   })
@@ -242,7 +242,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
         </ResponsiveModalContent>
 
         <ResponsiveModalFooter>
-          <Button type="submit" className="w-full" disabled={state.status === 'sending' || !state.email.trim()}>
+          <Button type="submit" className="w-full" disabled={state.status === 'sending' || !isValidEmail}>
             {state.status === 'sending' ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

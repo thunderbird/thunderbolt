@@ -154,6 +154,26 @@ describe('SignInModal', () => {
 
       expect(button).toBeDisabled()
     })
+
+    it('disables submit button when email format is invalid', () => {
+      renderModal()
+      const input = screen.getByPlaceholderText('Email address')
+      const button = screen.getByRole('button', { name: 'Send Magic Link' })
+
+      fireEvent.change(input, { target: { value: 'not-an-email' } })
+
+      expect(button).toBeDisabled()
+    })
+
+    it('enables submit button when email format is valid', () => {
+      renderModal()
+      const input = screen.getByPlaceholderText('Email address')
+      const button = screen.getByRole('button', { name: 'Send Magic Link' })
+
+      fireEvent.change(input, { target: { value: 'valid@email.com' } })
+
+      expect(button).not.toBeDisabled()
+    })
   })
 
   describe('form submission', () => {
@@ -243,7 +263,7 @@ describe('SignInModal', () => {
       renderModal()
 
       const input = screen.getByPlaceholderText('Email address')
-      fireEvent.change(input, { target: { value: 'invalid' } })
+      fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
       await act(async () => {

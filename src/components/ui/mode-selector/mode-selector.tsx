@@ -75,6 +75,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange }: ModeSelector
       value={selectedMode?.id}
       onValueChange={onModeChange}
       searchable={false}
+      blurBackdrop
       side="top"
       align="start"
       trigger={renderTrigger}

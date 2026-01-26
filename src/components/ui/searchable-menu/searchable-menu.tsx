@@ -190,7 +190,8 @@ export const SearchableMenu = <T,>({
       <PopoverContent
         align={isMobile ? 'center' : align}
         side={side}
-        className={cn('p-0 rounded-lg duration-100', contentClassName)}
+        collisionPadding={16}
+        className={cn('p-0 rounded-lg duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

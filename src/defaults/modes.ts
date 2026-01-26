@@ -20,7 +20,7 @@ export const defaultModeChat: Mode = {
 
 Avoid tables except for numeric/tabular data. Use short paragraphs, sparingly use bullet points.
 
-Tool efficiency: Target 3-5 tool calls. Stop once you have good-enough results.`,
+Tool efficiency: Prefer efficient solutions—fetch once, extract what you need, move on. Target 3-5 tool calls. Stop once you have good-enough results.`,
   isDefault: 1,
   order: 0,
   deletedAt: null,

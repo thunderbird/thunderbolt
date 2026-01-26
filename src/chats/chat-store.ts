@@ -76,7 +76,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ models })
   },
 
-  setSelectedMode: async (id, modeId) => {
+  setSelectedMode: (id, modeId) => {
     const { modes, sessions } = get()
 
     const mode = modes.find((m) => m.id === modeId)

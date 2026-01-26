@@ -65,19 +65,3 @@ export const getMode = async (id: string): Promise<Mode | null> => {
 
   return mode ? mapMode(mode) : null
 }
-
-/**
- * Creates a new mode
- */
-export const createMode = async (data: Partial<Mode> & Pick<Mode, 'id' | 'name' | 'label' | 'icon'>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  await db.insert(modesTable).values(data)
-}
-
-/**
- * Updates a mode
- */
-export const updateMode = async (id: string, updates: Partial<Mode>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  await db.update(modesTable).set(updates).where(eq(modesTable.id, id))
-}

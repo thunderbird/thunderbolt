@@ -153,7 +153,7 @@ export const createMockChatInstanceWithValidation = (
 /**
  * Default mode used when selectedMode is null but a session needs to be created
  */
-const DEFAULT_TEST_MODE: Mode = {
+const defaultTestMode: Mode = {
   id: 'mode-chat',
   name: 'chat',
   label: 'Chat',
@@ -166,7 +166,7 @@ const DEFAULT_TEST_MODE: Mode = {
 /**
  * Default model used when selectedModel is null but a session needs to be created
  */
-const DEFAULT_TEST_MODEL: Model = {
+const defaultTestModel: Model = {
   id: 'default-model',
   provider: 'openai',
   name: 'Default Model',
@@ -213,8 +213,8 @@ export const hydrateStore = (state: {
       chatInstance: state.chatInstance,
       chatThread: state.chatThread,
       id: state.id,
-      selectedMode: state.selectedMode ?? DEFAULT_TEST_MODE,
-      selectedModel: state.selectedModel ?? DEFAULT_TEST_MODEL,
+      selectedMode: state.selectedMode ?? defaultTestMode,
+      selectedModel: state.selectedModel ?? defaultTestModel,
       triggerData: state.triggerData,
     }
 

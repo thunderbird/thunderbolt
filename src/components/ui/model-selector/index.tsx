@@ -1,2 +1,1 @@
-export { ModelSelector } from './model-selector'
-export type { ModelSelectorProps } from './types'
+export { ModelSelector, type ModelSelectorProps } from './model-selector'

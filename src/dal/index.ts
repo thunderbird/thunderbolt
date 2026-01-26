@@ -76,4 +76,4 @@ export {
 } from './triggers'
 
 // Modes
-export { createMode, getAllModes, getDefaultMode, getMode, getSelectedMode, updateMode } from './modes'
+export { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'

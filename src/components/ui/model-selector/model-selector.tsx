@@ -1,10 +1,18 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ChevronDown, Lock, Plus } from 'lucide-react'
 import { useMemo } from 'react'
-import type { ModelSelectorProps } from './types'
+
+export type ModelSelectorProps = {
+  models: Model[]
+  selectedModel: Model | null
+  chatThread: ChatThread | null
+  onModelChange: (modelId: string) => void
+  onAddModels?: () => void
+}
 
 type ModelItemData = {
   model: Model

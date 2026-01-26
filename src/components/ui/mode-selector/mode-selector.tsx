@@ -3,16 +3,21 @@ import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageSquare, Microscope } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
-import type { ModeSelectorProps } from './types'
 
-const ICON_MAP: Record<string, ReactNode> = {
+export type ModeSelectorProps = {
+  modes: Mode[]
+  selectedMode: Mode | null
+  onModeChange: (modeId: string) => void
+}
+
+const iconMap: Record<string, ReactNode> = {
   'message-square': <MessageSquare className="size-4" />,
   globe: <Globe className="size-4" />,
   microscope: <Microscope className="size-4" />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return ICON_MAP[iconName] ?? <MessageSquare className="size-4" />
+  return iconMap[iconName] ?? <MessageSquare className="size-4" />
 }
 
 type ModeItemData = {

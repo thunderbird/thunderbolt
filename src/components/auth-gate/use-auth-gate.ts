@@ -1,8 +1,8 @@
 import { useAuth } from '@/contexts'
 
-type AuthRequirement = 'authenticated' | 'unauthenticated'
+export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
-type AuthGateState = { status: 'loading' } | { status: 'allowed' } | { status: 'redirect' }
+export type AuthGateState = { status: 'loading' } | { status: 'allowed' } | { status: 'redirect' }
 
 /**
  * Hook that determines route access based on authentication state.

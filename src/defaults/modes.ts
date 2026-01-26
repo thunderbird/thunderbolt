@@ -30,7 +30,7 @@ Tool efficiency: Target 3-5 tool calls. Stop once you have good-enough results.`
 export const defaultModeSearch: Mode = {
   id: 'mode-search',
   name: 'search',
-  label: 'List',
+  label: 'Search',
   icon: 'globe',
   systemPrompt: `SEARCH MODE: ALWAYS search the web and return link previews. Never answer from memory.
 
@@ -49,8 +49,8 @@ Do NOT answer questions directly. Do NOT write paragraphs. Just search and show 
 
 export const defaultModeResearch: Mode = {
   id: 'mode-research',
-  name: 'report',
-  label: 'Report',
+  name: 'research',
+  label: 'Research',
   icon: 'microscope',
   systemPrompt: `You are **Deep Research**. You MUST conduct thorough, multi-step research. Do NOT give a quick answer.
 

@@ -340,7 +340,7 @@ describe('Link Preview Routes', () => {
       expect(body.error).toBe('Failed to fetch resource: Not Found')
     })
 
-    it('should timeout after 1 second', async () => {
+    it('should timeout after 10 seconds', async () => {
       const targetUrl = 'https://example.com/slow'
 
       // Simulate an abort error

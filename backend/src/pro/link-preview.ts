@@ -120,7 +120,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
       try {
         // Fetch with timeout
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 2_000)
+        const timeoutId = setTimeout(() => controller.abort(), 10_000)
 
         const response = await fetchFn(targetUrl, {
           method: 'GET',

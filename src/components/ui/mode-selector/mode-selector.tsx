@@ -21,8 +21,8 @@ type ModeItemData = {
 
 const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] => [
   {
-    id: 'response-mode',
-    label: 'Response Mode',
+    id: 'mode',
+    label: 'Mode',
     items: modes.map((mode) => ({
       id: mode.id,
       label: mode.label,
@@ -58,7 +58,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange }: ModeSelector
         )}
       >
         {item.icon}
-        <span className="flex-1">{item.label}</span>
+        <span>{item.label}</span>
         {isDefault && <span className="text-muted-foreground text-sm">Default</span>}
       </div>
     )

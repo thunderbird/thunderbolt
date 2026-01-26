@@ -62,6 +62,7 @@ export const getSystemModel = async (): Promise<Model | null> => {
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
+    .orderBy(modelsTable.name)
     .get()
   return systemModel ? mapModel(systemModel) : null
 }

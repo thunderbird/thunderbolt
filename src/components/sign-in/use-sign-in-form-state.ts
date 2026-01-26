@@ -1,5 +1,6 @@
 import type { AuthClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
+import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
 type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
@@ -67,16 +68,6 @@ type UseSignInFormStateOptions = {
 }
 
 /**
- * Validates email format using a practical regex pattern.
- * Checks for: local-part@domain.tld structure with basic character validation.
- */
-const isValidEmailFormat = (email: string): boolean => {
-  const emailRegex =
-    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
-  return emailRegex.test(email)
-}
-
-/**
  * State hook for the sign-in form.
  * Separates computation/logic from display for easier testing and reuse.
  */
@@ -93,19 +84,21 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
 
     dispatch({ type: 'START_SENDING' })
 
-    // Send OTP via emailOtp plugin
-    // This stores the OTP in the database and sends an email with both OTP and magic link
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email: trimmedEmail,
-      type: 'sign-in',
-    })
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: trimmedEmail,
+        type: 'sign-in',
+      })
 
-    if (error) {
-      dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
-      return
+      if (error) {
+        dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
+        return
+      }
+
+      dispatch({ type: 'SEND_SUCCESS' })
+    } catch {
+      dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
     }
-
-    dispatch({ type: 'SEND_SUCCESS' })
   }
 
   const handleOtpComplete = async (value: string) => {
@@ -133,8 +126,7 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })
       onSuccess?.()
-    } catch (err) {
-      console.error('OTP verification error:', err)
+    } catch {
       dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
     }
   }
@@ -157,19 +149,24 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
     // Clear any previous error
     dispatch({ type: 'SET_ERROR', payload: '' })
 
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email: trimmedEmail,
-      type: 'sign-in',
-    })
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: trimmedEmail,
+        type: 'sign-in',
+      })
 
-    if (error) {
-      dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
+      if (error) {
+        dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
+        return false
+      }
+
+      // Clear OTP input for fresh entry
+      dispatch({ type: 'SET_OTP', payload: '' })
+      return true
+    } catch {
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to resend verification code. Please check your connection.' })
       return false
     }
-
-    // Clear OTP input for fresh entry
-    dispatch({ type: 'SET_OTP', payload: '' })
-    return true
   }
 
   return {

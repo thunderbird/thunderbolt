@@ -1,5 +1,6 @@
 import type { AuthClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
+import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
 type ModalStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
@@ -66,16 +67,6 @@ type UseSignInModalStateOptions = {
 }
 
 /**
- * Validates email format using a practical regex pattern.
- * Checks for: local-part@domain.tld structure with basic character validation.
- */
-const isValidEmailFormat = (email: string): boolean => {
-  const emailRegex =
-    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
-  return emailRegex.test(email)
-}
-
-/**
  * State hook for SignInModal
  * Separates computation/logic from display for easier testing
  */
@@ -92,8 +83,6 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
 
     dispatch({ type: 'START_SENDING' })
 
-    // Send OTP via emailOtp plugin
-    // This stores the OTP in the database and sends an email with both OTP and magic link
     const { error } = await authClient.emailOtp.sendVerificationOtp({
       email: trimmedEmail,
       type: 'sign-in',

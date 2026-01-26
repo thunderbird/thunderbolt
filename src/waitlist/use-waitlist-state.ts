@@ -1,4 +1,5 @@
 import { useHttpClient } from '@/contexts'
+import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
 type WaitlistStatus = 'idle' | 'joining' | 'success' | 'error'
@@ -40,16 +41,6 @@ const reducer = (state: State, action: Action): State => {
 }
 
 /**
- * Validates email format using a practical regex pattern.
- * Checks for: local-part@domain.tld structure with basic character validation.
- */
-const isValidEmailFormat = (email: string): boolean => {
-  const emailRegex =
-    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
-  return emailRegex.test(email)
-}
-
-/**
  * State hook for the waitlist join flow.
  * Manages email input and submission to the waitlist API.
  */
@@ -67,16 +58,14 @@ export const useWaitlistState = () => {
 
     dispatch({ type: 'START_JOINING' })
 
-    const response = await httpClient.post('waitlist/join', {
-      json: { email: trimmedEmail },
-    })
-
-    if (!response.ok) {
+    try {
+      await httpClient.post('waitlist/join', {
+        json: { email: trimmedEmail },
+      })
+      dispatch({ type: 'JOIN_SUCCESS' })
+    } catch {
       dispatch({ type: 'JOIN_ERROR', payload: 'Failed to join waitlist. Please try again.' })
-      return
     }
-
-    dispatch({ type: 'JOIN_SUCCESS' })
   }
 
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })

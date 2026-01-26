@@ -22,7 +22,7 @@ type ModeItemData = {
 const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] => [
   {
     id: 'mode',
-    label: 'Mode',
+    label: '',
     items: modes.map((mode) => ({
       id: mode.id,
       label: mode.label,

@@ -58,7 +58,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSect
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>
+      {group.label && <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>}
       <div className="flex flex-col">
         {group.items.map((item) => (
           <ItemButton

@@ -23,7 +23,7 @@ type SignInFormProps = {
    */
   onSuccess?: () => void
   /**
-   * Called when the back button is clicked (only for OTP step in modal variant)
+   * Called when the user navigates back from OTP to email step
    */
   onGoBack?: () => void
   /**
@@ -41,7 +41,7 @@ type SignInFormProps = {
  * - sent/verifying: OTP verification
  * - success: Welcome message
  */
-export const SignInForm = ({ variant, onCancel, onSuccess, renderBackButton }: SignInFormProps) => {
+export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackButton }: SignInFormProps) => {
   const authClient = useAuth()
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
@@ -54,6 +54,11 @@ export const SignInForm = ({ variant, onCancel, onSuccess, renderBackButton }: S
     onSuccess,
     onCancel,
   })
+
+  const handleGoBack = () => {
+    actions.goBack()
+    onGoBack?.()
+  }
 
   const handleOpenAutoFocus = () => {
     // Only autofocus on desktop - mobile keyboards are disruptive
@@ -72,13 +77,13 @@ export const SignInForm = ({ variant, onCancel, onSuccess, renderBackButton }: S
     return (
       <div className="relative w-full">
         {/* Back button for modal - rendered in header */}
-        {variant === 'modal' && renderBackButton?.(actions.goBack)}
+        {variant === 'modal' && renderBackButton?.(handleGoBack)}
 
         {/* Default back button for modal if no render function provided */}
         {variant === 'modal' && !renderBackButton && (
           <button
             type="button"
-            onClick={actions.goBack}
+            onClick={handleGoBack}
             className="absolute -top-8 left-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
             aria-label="Go back"
           >
@@ -95,7 +100,7 @@ export const SignInForm = ({ variant, onCancel, onSuccess, renderBackButton }: S
           onOtpChange={actions.setOtp}
           onOtpComplete={actions.handleOtpComplete}
           onResend={actions.handleResend}
-          onGoBack={actions.goBack}
+          onGoBack={handleGoBack}
           onCancel={() => onCancel?.()}
           variant={variant}
         />

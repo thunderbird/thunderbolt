@@ -10,6 +10,7 @@ import {
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { useChatStore } from '@/chats/chat-store'
 import { ChatMessages } from './chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 
@@ -211,7 +212,7 @@ describe('ChatMessages', () => {
   })
 
   describe('error handling', () => {
-    it('should show error message when chatError exists', () => {
+    it('should show retrying banner while retries are in progress', () => {
       const mockChatInstance = createMockChatInstance([])
       const chatError = new Error('Network error')
       const mockUseChat = createMockUseChat(mockChatInstance, chatError)
@@ -228,8 +229,31 @@ describe('ChatMessages', () => {
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
 
-      // ErrorMessage should be rendered with the error message
-      expect(screen.getByText('Network error')).toBeInTheDocument()
+      expect(screen.getByText('Hm, something went wrong. Retrying...')).toBeInTheDocument()
+      expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+    })
+
+    it('should show error message with retry button when retries are exhausted', () => {
+      const mockChatInstance = createMockChatInstance([])
+      const chatError = new Error('Network error')
+      const mockUseChat = createMockUseChat(mockChatInstance, chatError)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      useChatStore.getState().updateSession('thread-1', { retriesExhausted: true })
+
+      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
+
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
+      expect(screen.getByText('Retry')).toBeInTheDocument()
     })
 
     it('should show error message when last message is assistant with no parts and not streaming', () => {
@@ -252,9 +276,10 @@ describe('ChatMessages', () => {
         triggerData: null,
       })
 
+      useChatStore.getState().updateSession('thread-1', { retriesExhausted: true })
+
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
 
-      // ErrorMessage should be rendered with default error message
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
     })
 

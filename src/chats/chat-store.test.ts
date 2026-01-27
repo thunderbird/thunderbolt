@@ -111,6 +111,7 @@ describe('chat-store', () => {
               chatThread: null,
               id: 'test-id',
               selectedMode: null as unknown as Mode,
+              retriesExhausted: false,
               selectedModel: null as unknown as Model,
               triggerData: null,
             },

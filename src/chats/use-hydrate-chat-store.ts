@@ -136,6 +136,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       chatInstance,
       chatThread,
       id,
+      retriesExhausted: false,
       selectedMode,
       selectedModel: defaultModel,
       triggerData,

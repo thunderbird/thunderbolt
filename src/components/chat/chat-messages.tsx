@@ -12,22 +12,28 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, id: chatThreadId, triggerData } = useCurrentChatSession()
+  const { chatInstance, chatThread, id: chatThreadId, triggerData, retriesExhausted } = useCurrentChatSession()
 
-  const { error: chatError, status, messages } = useChat({ chat: chatInstance })
+  const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
 
-  const error = useMemo(() => {
-    if (chatError) {
-      return chatError.message
-    }
+  const hasError = useMemo(() => {
+    if (chatError) return true
 
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming) {
-      return 'Something went wrong. Please try again.'
-    }
+    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming) return true
+
+    return false
   }, [chatError, messages, isStreaming])
+
+  // Find the last assistant message index so we can hide it during errors
+  const lastAssistantIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return i
+    }
+    return -1
+  }, [messages])
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
@@ -63,6 +69,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         }
 
         if (message.role === 'assistant') {
+          // Skip the last assistant message when there's an error — it's the broken
+          // response that regenerate() will remove. This prevents layout shift when
+          // the retry fires and the message disappears.
+          if (hasError && i === lastAssistantIndex) return null
+
           return (
             <AssistantMessage
               key={message.id}
@@ -78,7 +89,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
       })}
 
       {/* Show error message if there's an error */}
-      {!!error && <ErrorMessage message={error} />}
+      {hasError && <ErrorMessage retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />}
     </div>
   )
 }

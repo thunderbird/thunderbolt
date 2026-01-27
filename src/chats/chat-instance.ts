@@ -6,6 +6,8 @@ import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
 
+const MAX_RETRIES = 3
+
 export const createChatInstance = (
   id: string,
   messages: ThunderboltUIMessage[],
@@ -34,6 +36,8 @@ export const createChatInstance = (
     },
   )
 
+  let retryCount = 0
+
   const instance = new Chat<ThunderboltUIMessage>({
     id,
     messages,
@@ -41,24 +45,44 @@ export const createChatInstance = (
     generateId: uuidv7,
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
-    onFinish: async ({ message }) => {
-      const { sessions } = useChatStore.getState()
+    onFinish: async ({ message, isError, isAbort }) => {
+      if (!isError && !isAbort) {
+        retryCount = 0
+        useChatStore.getState().updateSession(id, { retriesExhausted: false })
 
-      const session = sessions.get(id)
+        const { sessions } = useChatStore.getState()
 
-      if (!session) throw new Error('No session found')
+        const session = sessions.get(id)
 
-      await saveMessages({ id, messages: [message] })
+        if (!session) throw new Error('No session found')
 
-      trackEvent('chat_receive_reply', {
-        model: session.selectedModel,
-        length: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
-        reply_number: instance.messages.length + 1,
-      })
+        await saveMessages({ id, messages: [message] })
+
+        trackEvent('chat_receive_reply', {
+          model: session.selectedModel,
+          length: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
+          reply_number: instance.messages.length + 1,
+        })
+
+        return
+      }
+
+      if (isAbort) return
+
+      if (retryCount < MAX_RETRIES) {
+        retryCount++
+        console.info(`Auto-retrying (${retryCount}/${MAX_RETRIES})...`)
+        setTimeout(() => {
+          instance.regenerate().catch((err) => {
+            console.error('Auto-retry failed:', err)
+          })
+        }, 2000 * retryCount)
+      } else {
+        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+      }
     },
     onError: (error) => {
       console.error('Chat error:', error)
-      // The error will be available in chatHelpers.error for the UI to display
     },
   })
 

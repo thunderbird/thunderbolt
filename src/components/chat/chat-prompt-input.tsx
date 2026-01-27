@@ -4,6 +4,8 @@ import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { useOnlineStatus } from '@/hooks/use-online-status'
+import { WifiOff } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -36,6 +38,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     },
     ref,
   ) => {
+    const isOnline = useOnlineStatus()
     const navigate = useNavigate()
     const modes = useChatStore((state) => state.modes)
     const setSelectedMode = useChatStore((state) => state.setSelectedMode)
@@ -68,7 +71,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       try {
         // Prevent submitting while streaming or if input is empty
         const textToSend = input.trim()
-        if (isStreaming || !textToSend) return
+        if (isStreaming || !isOnline || !textToSend) return
 
         if (isOverflowing) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
@@ -119,6 +122,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     return (
       <>
+        {!isOnline && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500/80 text-sm">
+            <WifiOff className="size-3.5 shrink-0" />
+            You&apos;re offline. Check your connection to continue.
+          </div>
+        )}
         <PromptInput
           ref={formRef}
           value={input}
@@ -128,6 +137,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           onSubmit={handleSubmit}
           isLoading={isStreaming}
           isStreaming={isStreaming}
+          isOffline={!isOnline}
           onStop={stop}
           autoFocus={!isMobile}
           submitOnEnter={!isStreaming && !isPlatformMobile()}

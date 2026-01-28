@@ -106,12 +106,13 @@ export const SignInForm = ({
   // Assigned during render so the ref always holds the latest closure.
   if (goBackRef) goBackRef.current = handleGoBack
 
-  const handleOpenAutoFocus = () => {
+  // Auto-focus email input on desktop when component mounts
+  useEffect(() => {
     // Only autofocus on desktop - mobile keyboards are disruptive
-    if (!isMobile) {
-      emailInputRef.current?.focus()
+    if (!isMobile && emailInputRef.current) {
+      emailInputRef.current.focus()
     }
-  }
+  }, [isMobile])
 
   // Success state
   if (state.status === 'success') {
@@ -155,7 +156,7 @@ export const SignInForm = ({
 
   // Initial email entry state
   return (
-    <div className="h-full w-full" ref={() => handleOpenAutoFocus()}>
+    <div className="h-full w-full">
       <SignInEmailStep
         email={state.email}
         status={state.status}

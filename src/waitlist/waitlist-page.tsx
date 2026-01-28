@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 import { useEffect } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -15,6 +15,8 @@ import { WaitlistHeader } from './waitlist-header'
  */
 export const WaitlistPage = () => {
   const navigate = useNavigate()
+  const location = useLocation()
+  const locationState = location.state as { email?: string; showSuccess?: boolean } | null
   const { state, isValidEmail, actions } = useWaitlistState()
 
   // Redirect approved users to sign-in
@@ -27,8 +29,12 @@ export const WaitlistPage = () => {
   // Approved users are being redirected to sign-in — render nothing to avoid a flash
   if (state.status === 'approved') return null
 
-  // Success state - user has joined the waitlist
-  if (state.status === 'success') {
+  // Redirected from sign-in page (non-eligible user) — show success screen with their email
+  const showSuccessEmail = locationState?.showSuccess && locationState.email ? locationState.email : null
+
+  // Success state - user has joined the waitlist (or was redirected from sign-in)
+  if (state.status === 'success' || showSuccessEmail) {
+    const displayEmail = showSuccessEmail ?? state.email
     return (
       <WaitlistCard>
         <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
@@ -40,7 +46,7 @@ export const WaitlistPage = () => {
             <p className="text-[28px] font-medium leading-normal text-white">email when the</p>
             <p className="text-[28px] font-medium leading-normal text-white">app is ready!</p>
             <p className="mt-4 text-base font-normal leading-6 text-[#98a2b3]">
-              {state.email}
+              {displayEmail}
               <br />
               has joined the list!
             </p>

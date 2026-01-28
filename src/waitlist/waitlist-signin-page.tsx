@@ -29,6 +29,11 @@ export const WaitlistSignInPage = () => {
     }
   }
 
+  /** Redirect non-approved users to waitlist success page */
+  const handleNotApproved = (email: string) => {
+    navigate('/waitlist', { state: { email, showSuccess: true } })
+  }
+
   return (
     <WaitlistCard>
       {/* Back arrow */}
@@ -55,6 +60,7 @@ export const WaitlistSignInPage = () => {
             goBackRef={goBackRef}
             initialEmail={initialEmail}
             skipToOtp={skipToOtp}
+            onNotApproved={handleNotApproved}
           />
         </div>
       </div>

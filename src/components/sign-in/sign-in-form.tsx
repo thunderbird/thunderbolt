@@ -39,6 +39,10 @@ type SignInFormProps = {
    */
   skipToOtp?: boolean
   /**
+   * Called when user is not approved (waitlist). Parent handles redirect.
+   */
+  onNotApproved?: (email: string) => void
+  /**
    * Render function for the header back button (modal variant only)
    */
   renderBackButton?: (onClick: () => void) => React.ReactNode
@@ -66,6 +70,7 @@ export const SignInForm = ({
   onEmailSent,
   initialEmail,
   skipToOtp,
+  onNotApproved,
   renderBackButton,
   goBackRef,
 }: SignInFormProps) => {
@@ -82,6 +87,7 @@ export const SignInForm = ({
     onEmailSent,
     initialEmail,
     skipToOtp,
+    onNotApproved,
   })
 
   // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).

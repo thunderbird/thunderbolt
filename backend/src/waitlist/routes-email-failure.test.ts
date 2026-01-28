@@ -48,7 +48,7 @@ describe('Waitlist API - Email Failure Handling', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ success: true })
+      expect(await response.json()).toEqual({ success: true, approved: false })
 
       // DB entry should exist despite email failure
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'email-fail-new@example.com'))
@@ -73,7 +73,7 @@ describe('Waitlist API - Email Failure Handling', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ success: true })
+      expect(await response.json()).toEqual({ success: true, approved: false })
 
       // No duplicate entry created
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'email-fail-duplicate@example.com'))

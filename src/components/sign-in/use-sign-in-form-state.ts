@@ -170,7 +170,6 @@ export const useSignInFormState = ({
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
   const setOtp = (otp: string) => dispatch({ type: 'SET_OTP', payload: otp })
   const goBack = () => dispatch({ type: 'GO_BACK' })
-  const reset = () => dispatch({ type: 'RESET' })
 
   /** Resends the verification email. Returns true on success, false on failure. */
   const handleResend = async (): Promise<boolean> => {
@@ -218,7 +217,6 @@ export const useSignInFormState = ({
       goBack,
       setEmail,
       setOtp,
-      reset,
     },
   }
 }

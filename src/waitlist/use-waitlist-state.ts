@@ -1,8 +1,8 @@
-import { useHttpClient } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
-type WaitlistStatus = 'idle' | 'joining' | 'success' | 'error'
+type WaitlistStatus = 'idle' | 'joining' | 'success' | 'approved' | 'error'
 
 type State = {
   email: string
@@ -14,6 +14,7 @@ type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'START_JOINING' }
   | { type: 'JOIN_SUCCESS' }
+  | { type: 'JOIN_APPROVED' }
   | { type: 'JOIN_ERROR'; payload: string }
   | { type: 'RESET' }
 
@@ -31,6 +32,8 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'joining', errorMessage: '' }
     case 'JOIN_SUCCESS':
       return { ...state, status: 'success' }
+    case 'JOIN_APPROVED':
+      return { ...state, status: 'approved' }
     case 'JOIN_ERROR':
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'RESET':
@@ -46,6 +49,7 @@ const reducer = (state: State, action: Action): State => {
  */
 export const useWaitlistState = () => {
   const httpClient = useHttpClient()
+  const authClient = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -59,10 +63,28 @@ export const useWaitlistState = () => {
     dispatch({ type: 'START_JOINING' })
 
     try {
-      await httpClient.post('waitlist/join', {
-        json: { email: trimmedEmail },
-      })
-      dispatch({ type: 'JOIN_SUCCESS' })
+      const response = await httpClient
+        .post('waitlist/join', {
+          json: { email: trimmedEmail },
+        })
+        .json<{ success: boolean; approved?: boolean }>()
+
+      if (response.approved) {
+        // Send OTP before redirecting so the user lands directly on the OTP step
+        const { error } = await authClient.emailOtp.sendVerificationOtp({
+          email: trimmedEmail,
+          type: 'sign-in',
+        })
+
+        if (error) {
+          dispatch({ type: 'JOIN_ERROR', payload: error.message || 'Failed to send verification code' })
+          return
+        }
+
+        dispatch({ type: 'JOIN_APPROVED' })
+      } else {
+        dispatch({ type: 'JOIN_SUCCESS' })
+      }
     } catch {
       dispatch({ type: 'JOIN_ERROR', payload: 'Failed to join waitlist. Please try again.' })
     }

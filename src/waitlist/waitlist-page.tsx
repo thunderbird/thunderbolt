@@ -1,21 +1,35 @@
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
-import { Link } from 'react-router'
+import { useEffect } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 
 /**
  * Waitlist join page at /waitlist.
  * Shows email input form in idle state and confirmation message in success state.
+ * Redirects approved users to sign-in flow.
  */
 export const WaitlistPage = () => {
+  const navigate = useNavigate()
   const { state, isValidEmail, actions } = useWaitlistState()
+
+  // Redirect approved users to sign-in
+  useEffect(() => {
+    if (state.status === 'approved') {
+      navigate('/waitlist/signin', { state: { email: state.email, skipToOtp: true } })
+    }
+  }, [state.status, state.email, navigate])
+
+  // Approved users are being redirected to sign-in — render nothing to avoid a flash
+  if (state.status === 'approved') return null
 
   // Success state - user has joined the waitlist
   if (state.status === 'success') {
     return (
-      <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] bg-[#1a2329] p-8 backdrop-blur-[5px]">
+      <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] p-8 backdrop-blur-[5px]">
         <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
           {/* Header */}
           <div className="flex w-full flex-col items-center">
@@ -58,7 +72,7 @@ export const WaitlistPage = () => {
 
   // Idle/joining state - email input form
   return (
-    <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] bg-[#1a2329] p-8 backdrop-blur-[5px]">
+    <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] p-8 backdrop-blur-[5px]">
       <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
         {/* Header */}
         <div className="flex w-full flex-col items-center">
@@ -95,11 +109,12 @@ export const WaitlistPage = () => {
             <Button
               type="submit"
               disabled={state.status === 'joining' || !isValidEmail}
-              className={`h-[46px] w-full rounded-[12px] px-4 py-3 text-base font-medium leading-6 ${
+              className={cn(
+                'h-[46px] w-full rounded-[12px] px-4 py-3 text-base font-medium leading-6',
                 isValidEmail
                   ? 'bg-white text-black hover:bg-gray-100'
-                  : 'bg-[#3d4a54] text-[#98a2b3] disabled:opacity-50'
-              }`}
+                  : 'bg-[#3d4a54] text-[#98a2b3] disabled:opacity-50',
+              )}
             >
               {state.status === 'joining' ? (
                 <>

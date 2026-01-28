@@ -1,4 +1,3 @@
-import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -6,6 +5,8 @@ import { Loader2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
+import { WaitlistCard } from './waitlist-card'
+import { WaitlistHeader } from './waitlist-header'
 
 /**
  * Waitlist join page at /waitlist.
@@ -29,17 +30,9 @@ export const WaitlistPage = () => {
   // Success state - user has joined the waitlist
   if (state.status === 'success') {
     return (
-      <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] p-8 backdrop-blur-[5px]">
+      <WaitlistCard>
         <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
-          {/* Header */}
-          <div className="flex w-full flex-col items-center">
-            <div className="flex items-center justify-center gap-1">
-              <AppLogo size={16} className="!fill-[#DCE875]" />
-              <span className="font-brand text-xl font-medium leading-7 tracking-[-0.4px] text-[#f2f7fc]">
-                Thunderbolt
-              </span>
-            </div>
-          </div>
+          <WaitlistHeader />
 
           {/* Success message */}
           <div className="text-center font-sans">
@@ -66,23 +59,15 @@ export const WaitlistPage = () => {
             </p>
           </div>
         </div>
-      </div>
+      </WaitlistCard>
     )
   }
 
   // Idle/joining state - email input form
   return (
-    <div className="flex h-[600px] w-[430px] flex-col items-center justify-center overflow-clip rounded-[16px] border border-[#475467] p-8 backdrop-blur-[5px]">
+    <WaitlistCard>
       <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
-        {/* Header */}
-        <div className="flex w-full flex-col items-center">
-          <div className="flex items-center justify-center gap-1">
-            <AppLogo size={16} className="!fill-[#DCE875]" />
-            <span className="font-brand text-xl font-medium leading-7 tracking-[-0.4px] text-[#f2f7fc]">
-              Thunderbolt
-            </span>
-          </div>
-        </div>
+        <WaitlistHeader />
 
         {/* Headline */}
         <div className="text-center font-sans">
@@ -136,7 +121,7 @@ export const WaitlistPage = () => {
           </p>
         </div>
       </div>
-    </div>
+    </WaitlistCard>
   )
 }
 

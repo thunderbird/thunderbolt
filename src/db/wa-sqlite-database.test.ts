@@ -274,7 +274,7 @@ describe('WaSQLiteDatabase', () => {
       const firstRow = count[0] as unknown[] | undefined
       const countValue = firstRow?.[0] as number | undefined
       expect(countValue).toBe(50)
-    })
+    }, 1000)
   })
 
   describe('error handling', () => {

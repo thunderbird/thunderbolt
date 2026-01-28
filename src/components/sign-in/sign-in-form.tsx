@@ -3,7 +3,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
 import { ArrowLeft } from 'lucide-react'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
@@ -27,9 +27,26 @@ type SignInFormProps = {
    */
   onGoBack?: () => void
   /**
+   * Called when the verification email is successfully sent (transitions to OTP step)
+   */
+  onEmailSent?: () => void
+  /**
+   * Pre-fill the email input (user still needs to click submit)
+   */
+  initialEmail?: string
+  /**
+   * Skip directly to the OTP step (OTP must already be sent before navigating)
+   */
+  skipToOtp?: boolean
+  /**
    * Render function for the header back button (modal variant only)
    */
   renderBackButton?: (onClick: () => void) => React.ReactNode
+  /**
+   * Ref that exposes the form's goBack function to the parent.
+   * Useful for page variant where the back button lives outside the form.
+   */
+  goBackRef?: React.RefObject<(() => void) | null>
 }
 
 /**
@@ -41,7 +58,17 @@ type SignInFormProps = {
  * - sent/verifying: OTP verification
  * - success: Welcome message
  */
-export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackButton }: SignInFormProps) => {
+export const SignInForm = ({
+  variant,
+  onCancel,
+  onSuccess,
+  onGoBack,
+  onEmailSent,
+  initialEmail,
+  skipToOtp,
+  renderBackButton,
+  goBackRef,
+}: SignInFormProps) => {
   const authClient = useAuth()
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
@@ -49,16 +76,29 @@ export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackB
   const emailInputRef = useRef<HTMLInputElement>(null)
   const { isMobile } = useIsMobile()
 
-  const { state, actions } = useSignInFormState({
+  const { state, isValidEmail, actions } = useSignInFormState({
     authClient,
-    onSuccess,
     onCancel,
+    onEmailSent,
+    initialEmail,
+    skipToOtp,
   })
+
+  // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).
+  // Intentionally mount-only: skipToOtp comes from location.state and is stable for the component's lifetime.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (skipToOtp) onEmailSent?.()
+  }, [])
 
   const handleGoBack = () => {
     actions.goBack()
     onGoBack?.()
   }
+
+  // Expose goBack to parent via ref (for page variant where back button is external).
+  // Assigned during render so the ref always holds the latest closure.
+  if (goBackRef) goBackRef.current = handleGoBack
 
   const handleOpenAutoFocus = () => {
     // Only autofocus on desktop - mobile keyboards are disruptive
@@ -75,7 +115,7 @@ export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackB
   // OTP entry state
   if (state.status === 'sent' || state.status === 'verifying') {
     return (
-      <div className="relative w-full">
+      <div className="relative h-full w-full">
         {/* Back button for modal - rendered in header */}
         {variant === 'modal' && renderBackButton?.(handleGoBack)}
 
@@ -100,7 +140,6 @@ export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackB
           onOtpChange={actions.setOtp}
           onOtpComplete={actions.handleOtpComplete}
           onResend={actions.handleResend}
-          onGoBack={handleGoBack}
           onCancel={() => onCancel?.()}
           variant={variant}
         />
@@ -110,11 +149,12 @@ export const SignInForm = ({ variant, onCancel, onSuccess, onGoBack, renderBackB
 
   // Initial email entry state
   return (
-    <div className="w-full" ref={() => handleOpenAutoFocus()}>
+    <div className="h-full w-full" ref={() => handleOpenAutoFocus()}>
       <SignInEmailStep
         email={state.email}
         status={state.status}
         errorMessage={state.errorMessage}
+        isValidEmail={isValidEmail}
         onSubmit={actions.handleSubmit}
         onEmailChange={actions.setEmail}
         variant={variant}

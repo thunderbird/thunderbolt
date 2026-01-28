@@ -63,16 +63,34 @@ const reducer = (state: State, action: Action): State => {
 
 type UseSignInFormStateOptions = {
   authClient: AuthClient
-  onSuccess?: () => void
   onCancel?: () => void
+  onEmailSent?: () => void
+  /** Pre-fill the email input (user still needs to click submit) */
+  initialEmail?: string
+  /** Initialize directly in OTP step (OTP must already be sent before mounting) */
+  skipToOtp?: boolean
 }
 
 /**
  * State hook for the sign-in form.
  * Separates computation/logic from display for easier testing and reuse.
  */
-export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignInFormStateOptions) => {
-  const [state, dispatch] = useReducer(reducer, initialState)
+export const useSignInFormState = ({
+  authClient,
+  onCancel,
+  onEmailSent,
+  initialEmail,
+  skipToOtp,
+}: UseSignInFormStateOptions) => {
+  if (skipToOtp && !initialEmail?.trim()) {
+    throw new Error('useSignInFormState: skipToOtp requires a non-empty initialEmail')
+  }
+
+  const [state, dispatch] = useReducer(reducer, {
+    ...initialState,
+    email: initialEmail ?? '',
+    status: skipToOtp ? 'sent' : 'idle',
+  })
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
@@ -96,9 +114,13 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
       }
 
       dispatch({ type: 'SEND_SUCCESS' })
-    } catch {
+    } catch (error) {
+      console.error('Failed to send verification OTP:', error)
       dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
+      return
     }
+
+    onEmailSent?.()
   }
 
   const handleOtpComplete = async (value: string) => {
@@ -125,8 +147,8 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })
-      onSuccess?.()
-    } catch {
+    } catch (error) {
+      console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
     }
   }
@@ -163,7 +185,8 @@ export const useSignInFormState = ({ authClient, onSuccess, onCancel }: UseSignI
       // Clear OTP input for fresh entry
       dispatch({ type: 'SET_OTP', payload: '' })
       return true
-    } catch {
+    } catch (error) {
+      console.error('Failed to resend verification OTP:', error)
       dispatch({ type: 'SET_ERROR', payload: 'Failed to resend verification code. Please check your connection.' })
       return false
     }

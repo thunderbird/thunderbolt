@@ -2,7 +2,7 @@ import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { AlertTriangle, ArrowLeft, Check, Loader2, Mail } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
 
 type SignInOtpStepProps = {
   email: string
@@ -13,14 +13,15 @@ type SignInOtpStepProps = {
   onOtpChange: (otp: string) => void
   onOtpComplete: (otp: string) => void
   onResend: () => Promise<boolean>
-  onGoBack: () => void
   onCancel: () => void
   variant: 'modal' | 'page'
 }
 
 /**
  * OTP verification step for sign-in form.
- * Shows the 6-digit code input and resend button.
+ *
+ * Page variant: title + subtitle centered, OTP input at bottom (matches Figma).
+ * Modal variant: icon + headline + OTP input + cancel button.
  */
 export const SignInOtpStep = ({
   email,
@@ -31,26 +32,89 @@ export const SignInOtpStep = ({
   onOtpChange,
   onOtpComplete,
   onResend,
-  onGoBack,
   onCancel,
   variant,
 }: SignInOtpStepProps) => {
   const isVerifying = status === 'verifying'
 
+  // --- Page variant (matches Figma: title centered, input at bottom) ---
+  if (variant === 'page') {
+    return (
+      <div className="flex h-full w-full flex-col items-center">
+        {/* Title + subtitle — centered vertically */}
+        <div className="my-auto flex flex-col items-center text-center">
+          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+          <p className="mt-2 text-base text-foreground">
+            We&apos;ve sent a 6-digit code at <span className="font-bold">{email}</span>
+          </p>
+          <ActionFeedbackButton
+            variant="ghost"
+            size="sm"
+            onClick={onResend}
+            disabled={isVerifying}
+            className="mt-1 text-muted-foreground hover:text-foreground"
+            successContent={
+              <>
+                <Check className="mr-2 h-4 w-4" />
+                Sent
+              </>
+            }
+          >
+            Resend Email
+          </ActionFeedbackButton>
+        </div>
+
+        {/* OTP input + feedback at bottom */}
+        <div className="flex w-full flex-col items-center gap-4">
+          <InputOTP
+            maxLength={6}
+            pattern={REGEXP_ONLY_DIGITS}
+            value={otp}
+            onChange={onOtpChange}
+            onComplete={onOtpComplete}
+            disabled={isVerifying}
+            containerClassName="w-full"
+            autoFocus
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+          >
+            <InputOTPGroup className="w-full gap-2">
+              <InputOTPSlot index={0} className="flex-1" />
+              <InputOTPSlot index={1} className="flex-1" />
+              <InputOTPSlot index={2} className="flex-1" />
+              <InputOTPSlot index={3} className="flex-1" />
+              <InputOTPSlot index={4} className="flex-1" />
+              <InputOTPSlot index={5} className="flex-1" />
+            </InputOTPGroup>
+          </InputOTP>
+
+          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+
+          <Button
+            type="button"
+            onClick={() => onOtpComplete(otp)}
+            disabled={isVerifying || otp.length !== 6}
+            className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90"
+          >
+            {isVerifying ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              'Continue'
+            )}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Modal variant (existing design) ---
   return (
     <div className="flex w-full flex-col items-center">
-      {/* Back button - only for page variant, modal uses header */}
-      {variant === 'page' && (
-        <button
-          type="button"
-          onClick={onGoBack}
-          className="absolute left-4 top-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-      )}
-
       {/* Icon */}
       {isLocalhost ? (
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
@@ -133,14 +197,12 @@ export const SignInOtpStep = ({
         {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
       </div>
 
-      {/* Cancel button - for modal variant */}
-      {variant === 'modal' && (
-        <div className="mt-6 w-full">
-          <Button variant="outline" className="w-full" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      )}
+      {/* Cancel button */}
+      <div className="mt-6 w-full">
+        <Button variant="outline" className="w-full" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }

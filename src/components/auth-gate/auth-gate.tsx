@@ -1,11 +1,11 @@
 import { Navigate, Outlet } from 'react-router'
 
 import Loading from '@/loading'
-import { useAuthGate } from './use-auth-gate'
+import { useAuthGate, type AuthRequirement } from './use-auth-gate'
 
 type AuthGateProps = {
   /** What auth state is required to access child routes */
-  require: 'authenticated' | 'unauthenticated'
+  require: AuthRequirement
   /** Where to redirect when requirement is not met */
   redirectTo: string
 }

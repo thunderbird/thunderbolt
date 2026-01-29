@@ -42,10 +42,24 @@ export const useAutoScroll = ({
   const userHasScrolledRef = useRef(true)
   const animationFrameRef = useRef<number | null>(null)
   const isProgrammaticScrollRef = useRef(false)
+  const timeoutRef = useRef<number | null>(null)
 
   // Callback refs that trigger state updates
   const scrollContainerRef = useCallback((el: HTMLDivElement | null) => setScrollContainer(el), [])
   const scrollTargetRef = useCallback((el: HTMLDivElement | null) => setScrollTarget(el), [])
+
+  // Helper to clear programmatic flag after delay with proper cleanup
+  const clearProgrammaticFlagAfterDelay = useCallback(() => {
+    // Clear any pending timeout to prevent overlapping timeouts
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current)
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+      timeoutRef.current = null
+    }, 100) as unknown as number
+  }, [])
 
   const scrollToBottom = useCallback(
     (smoothScroll?: boolean, programmatic = false): boolean => {
@@ -82,9 +96,7 @@ export const useAutoScroll = ({
 
             // Clear programmatic flag after animation completes + buffer for observer
             if (programmatic) {
-              setTimeout(() => {
-                isProgrammaticScrollRef.current = false
-              }, 100)
+              clearProgrammaticFlagAfterDelay()
             }
           }
         }
@@ -95,15 +107,13 @@ export const useAutoScroll = ({
 
         // Clear flag after observer has chance to fire for instant scrolls
         if (programmatic) {
-          setTimeout(() => {
-            isProgrammaticScrollRef.current = false
-          }, 100)
+          clearProgrammaticFlagAfterDelay()
         }
       }
 
       return true
     },
-    [scrollContainer, smooth, isStreaming],
+    [scrollContainer, smooth, isStreaming, clearProgrammaticFlagAfterDelay],
   )
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -159,11 +169,15 @@ export const useAutoScroll = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollContainer, ...dependencies])
 
-  // Cleanup animation frame on unmount
+  // Cleanup animation frame and timeout on unmount
   useEffect(() => {
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
       }
     }
   }, [])

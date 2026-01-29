@@ -16,7 +16,7 @@ type UseAutoScrollReturn = {
   scrollTargetRef: RefCallback<HTMLDivElement>
   isAtBottom: boolean
   /** Scrolls to bottom. Returns true if scroll was performed, false if container not ready. */
-  scrollToBottom: (smooth?: boolean) => boolean
+  scrollToBottom: (smooth?: boolean, programmatic?: boolean) => boolean
   resetUserScroll: () => void
   scrollHandlers: {
     onWheel: (e: WheelEvent) => void
@@ -41,14 +41,20 @@ export const useAutoScroll = ({
   // Ref for sync access in effects - auto-scroll disabled by default
   const userHasScrolledRef = useRef(true)
   const animationFrameRef = useRef<number | null>(null)
+  const isProgrammaticScrollRef = useRef(false)
 
   // Callback refs that trigger state updates
   const scrollContainerRef = useCallback((el: HTMLDivElement | null) => setScrollContainer(el), [])
   const scrollTargetRef = useCallback((el: HTMLDivElement | null) => setScrollTarget(el), [])
 
   const scrollToBottom = useCallback(
-    (smoothScroll?: boolean): boolean => {
+    (smoothScroll?: boolean, programmatic = false): boolean => {
       if (!scrollContainer) return false
+
+      // Set flag for programmatic scrolls
+      if (programmatic) {
+        isProgrammaticScrollRef.current = true
+      }
 
       const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
       const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
@@ -73,12 +79,26 @@ export const useAutoScroll = ({
             animationFrameRef.current = requestAnimationFrame(step)
           } else {
             animationFrameRef.current = null
+
+            // Clear programmatic flag after animation completes + buffer for observer
+            if (programmatic) {
+              setTimeout(() => {
+                isProgrammaticScrollRef.current = false
+              }, 100)
+            }
           }
         }
 
         animationFrameRef.current = requestAnimationFrame(step)
       } else {
         scrollContainer.scrollTop = targetScrollTop
+
+        // Clear flag after observer has chance to fire for instant scrolls
+        if (programmatic) {
+          setTimeout(() => {
+            isProgrammaticScrollRef.current = false
+          }, 100)
+        }
       }
 
       return true
@@ -112,8 +132,8 @@ export const useAutoScroll = ({
         const atBottom = entry.isIntersecting
         setIsAtBottom(atBottom)
 
-        // Enable auto-scroll when user scrolls to bottom (not on initial setup)
-        if (atBottom && !isFirstObservation) {
+        // Enable auto-scroll when user scrolls to bottom (not on initial setup, not programmatic)
+        if (atBottom && !isFirstObservation && !isProgrammaticScrollRef.current) {
           userHasScrolledRef.current = false
         }
 

@@ -1,11 +1,11 @@
+import { getSettings } from '@/dal'
+import { defaultSettingCloudUrl } from '@/defaults/settings'
 import { PowerSyncDatabase } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
 import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000/v1'
 
 /** Maximum time to wait for initial sync (10 seconds) */
 const INITIAL_SYNC_TIMEOUT_MS = 10_000
@@ -56,7 +56,6 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
 export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private powerSync: PowerSyncDatabase | null = null
   private _db: AnyDrizzleDatabase | null = null
-  private connector: ThunderboltConnector | null = null
   private _isConnected = false
 
   get db(): AnyDrizzleDatabase {
@@ -99,9 +98,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 
-    // Create connector for authentication
-    this.connector = new ThunderboltConnector(BACKEND_URL)
-
     // Connect to PowerSync Cloud if sync is enabled
     if (isSyncEnabled()) {
       await this.connectToSync()
@@ -113,7 +109,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Call this when user enables sync.
    */
   async connectToSync(): Promise<void> {
-    if (!this.powerSync || !this.connector) {
+    if (!this.powerSync) {
       return
     }
 
@@ -122,7 +118,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
-      await this.powerSync.connect(this.connector)
+      const { cloudUrl } = await getSettings({ cloud_url: defaultSettingCloudUrl.value })
+      const connector = new ThunderboltConnector(cloudUrl ?? defaultSettingCloudUrl.value)
+      await this.powerSync.connect(connector)
       this._isConnected = true
     } catch (error) {
       console.warn('Failed to connect to PowerSync Cloud:', error)
@@ -203,7 +201,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       await this.powerSync.disconnectAndClear()
       this.powerSync = null
       this._db = null
-      this.connector = null
     }
   }
 }

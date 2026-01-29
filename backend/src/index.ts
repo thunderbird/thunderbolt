@@ -1,3 +1,4 @@
+import { createAccountRoutes } from '@/api/account'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createMainRoutes } from '@/api/routes'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
@@ -83,6 +84,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPostHogRoutes(fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings))
+      .use(createAccountRoutes(auth, database))
   )
 }
 

@@ -12,7 +12,14 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, id: chatThreadId, triggerData, retriesExhausted } = useCurrentChatSession()
+  const {
+    chatInstance,
+    chatThread,
+    id: chatThreadId,
+    triggerData,
+    retryCount,
+    retriesExhausted,
+  } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
 
@@ -22,9 +29,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     if (chatError) return true
 
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming) return true
-
-    return false
+    return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, messages, isStreaming])
 
   // Find the last assistant message index so we can hide it during errors
@@ -89,7 +94,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
       })}
 
       {/* Show error message if there's an error */}
-      {hasError && <ErrorMessage retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />}
+      {hasError && (
+        <ErrorMessage retryCount={retryCount} retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />
+      )}
     </div>
   )
 }

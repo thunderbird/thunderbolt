@@ -6,7 +6,7 @@ import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
 
-const MAX_RETRIES = 3
+export const maxRetries = 3
 
 export const createChatInstance = (
   id: string,
@@ -37,6 +37,7 @@ export const createChatInstance = (
   )
 
   let retryCount = 0
+  let retryTimeout: ReturnType<typeof setTimeout> | null = null
 
   const instance = new Chat<ThunderboltUIMessage>({
     id,
@@ -46,9 +47,14 @@ export const createChatInstance = (
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
-      if (!isError && !isAbort) {
+      if (isAbort) return
+
+      // Empty response without an error flag — treat as a retryable failure
+      const isEmptyResponse = !isError && !message.parts?.length
+
+      if (!isError && !isEmptyResponse) {
         retryCount = 0
-        useChatStore.getState().updateSession(id, { retriesExhausted: false })
+        useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
 
         const { sessions } = useChatStore.getState()
 
@@ -67,12 +73,12 @@ export const createChatInstance = (
         return
       }
 
-      if (isAbort) return
-
-      if (retryCount < MAX_RETRIES) {
+      if (retryCount < maxRetries) {
         retryCount++
-        console.info(`Auto-retrying (${retryCount}/${MAX_RETRIES})...`)
-        setTimeout(() => {
+        useChatStore.getState().updateSession(id, { retryCount })
+        console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
+        retryTimeout = setTimeout(() => {
+          retryTimeout = null
           instance.regenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
           })
@@ -86,10 +92,27 @@ export const createChatInstance = (
     },
   })
 
+  const originalRegenerate = instance.regenerate.bind(instance)
+
+  // Reset retry count on manual regenerate (Retry button) so auto-retries work again
+  instance.regenerate = async function () {
+    retryCount = 0
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+    return originalRegenerate()
+  }
+
   const originalSendMessage = instance.sendMessage.bind(instance)
 
   // Override the sendMessage method to check if the model is available for the chat thread
   instance.sendMessage = async function (message, options) {
+    // Cancel any pending auto-retry and reset error state for the new message
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
+    retryCount = 0
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+
     const { sessions } = useChatStore.getState()
 
     const session = sessions.get(id)

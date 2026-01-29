@@ -229,7 +229,7 @@ describe('ChatMessages', () => {
 
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
 
-      expect(screen.getByText('Hm, something went wrong. Retrying...')).toBeInTheDocument()
+      expect(screen.getByText('Something went wrong. Retrying (0/3)...')).toBeInTheDocument()
       expect(screen.queryByText('Retry')).not.toBeInTheDocument()
     })
 

@@ -213,6 +213,7 @@ export const hydrateStore = (state: {
       chatInstance: state.chatInstance,
       chatThread: state.chatThread,
       id: state.id,
+      retryCount: 0,
       retriesExhausted: false,
       selectedMode: state.selectedMode ?? defaultTestMode,
       selectedModel: state.selectedModel ?? defaultTestModel,

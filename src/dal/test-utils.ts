@@ -1,4 +1,3 @@
-import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
 import { reconcileDefaults } from '../lib/reconcile-defaults'
 
@@ -19,7 +18,6 @@ export const setupTestDatabase = async () => {
 
   // Run migrations to create tables
   const db = DatabaseSingleton.instance.db
-  await migrate(db)
   await reconcileDefaults(db)
 }
 
@@ -58,8 +56,4 @@ export const resetTestDatabase = async () => {
 
   // Re-initialize with fresh database
   await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations but skip reconciling defaults
-  const db = DatabaseSingleton.instance.db
-  await migrate(db)
 }

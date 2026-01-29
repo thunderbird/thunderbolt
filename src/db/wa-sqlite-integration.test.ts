@@ -1,4 +1,3 @@
-import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
@@ -19,11 +18,7 @@ describe('wa-sqlite integration', () => {
 
     // Initialize with wa-sqlite (not bun-sqlite like other tests)
     await DatabaseSingleton.instance.initialize({ type: 'wa-sqlite', path: ':memory:' })
-
-    // Run migrations
-    const db = DatabaseSingleton.instance.db
-    await migrate(db)
-  })
+  }, 10000) // Increase timeout for worker initialization under load
 
   afterAll(async () => {
     await DatabaseSingleton.instance.close()

@@ -1,7 +1,6 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
 import { loadAuthToken } from '@/lib/auth-token'
 import { createHandleError } from '@/lib/error-utils'
@@ -38,10 +37,6 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   return { db, skipMigrations }
 }
 
-const runDatabaseMigrations = async (db: AnyDrizzleDatabase): Promise<void> => {
-  await migrate(db)
-}
-
 const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
   await reconcileDefaults(db)
 }
@@ -72,11 +67,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
-  let skipMigrations = false
   try {
     const result = await initializeDatabase(appDirPath)
     db = result.db
-    skipMigrations = result.skipMigrations
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
@@ -87,22 +80,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 3: Database migrations (skip for PowerSync - it manages schema via views)
-  if (!skipMigrations) {
-    try {
-      await runDatabaseMigrations(db)
-    } catch (error) {
-      console.error('Failed to run database migrations:', error)
-      const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
-      trackError(migrationError, { initialization_step: 'database_migration' })
-      return {
-        success: false,
-        error: migrationError,
-      }
-    }
-  }
-
-  // Step 3.5: Wait for PowerSync initial sync before reconciling defaults
+  // Step 3: Wait for PowerSync initial sync before reconciling defaults
   // This ensures synced data from the cloud is available before we check for missing defaults
   try {
     await DatabaseSingleton.instance.waitForInitialSync()

@@ -28,15 +28,6 @@ export default defineConfig({
     },
   },
   plugins: [
-    {
-      name: 'bundle-migrations',
-      async buildStart() {
-        bundleMigrations({
-          migrationsDir: path.resolve(__dirname, 'src/drizzle'),
-          outputFile: path.resolve(__dirname, 'src/drizzle/_migrations.ts'),
-        })
-      },
-    },
     tailwindcss(),
     react(),
     // Include the bundle analyzer plugin only when explicitly requested.

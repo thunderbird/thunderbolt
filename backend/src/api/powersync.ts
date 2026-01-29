@@ -1,5 +1,5 @@
 import type { Auth } from '@/auth/elysia-plugin'
-import { getSettings } from '@/config/settings'
+import type { Settings } from '@/config/settings'
 import { db } from '@/db/client'
 import { jwt } from '@elysiajs/jwt'
 import { sql } from 'drizzle-orm'
@@ -114,9 +114,14 @@ const applyOperation = async (op: PowerSyncOperation, userId: string): Promise<v
 /**
  * PowerSync API routes for JWT token generation and data sync.
  * All routes require authentication.
+ * Returns an empty Elysia instance if PowerSync is not configured.
  */
-export const createPowerSyncRoutes = (auth: Auth) => {
-  const settings = getSettings()
+export const createPowerSyncRoutes = (auth: Auth, settings: Settings) => {
+  // Skip PowerSync routes if not configured
+  if (!settings.powersyncJwtSecret) {
+    console.warn('PowerSync is not configured, skipping PowerSync routes')
+    return new Elysia({ prefix: '/powersync' })
+  }
 
   return new Elysia({ prefix: '/powersync' })
     .use(

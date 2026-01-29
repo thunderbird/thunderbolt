@@ -1,6 +1,8 @@
 import { getSettings } from '@/dal'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
+import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { PowerSyncDatabase, SyncStreamConnectionMethod } from '@powersync/web'
+import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
 import { DatabaseSingleton } from '../singleton'
@@ -86,15 +88,17 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // Extract just the filename from the path
     const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
-    // Create PowerSync database
-    this.powerSync = new PowerSyncDatabase({
+    // Create PowerSync database.
+    // Cast options: @powersync/web uses a nested @powersync/common, so Schema/Table types differ from our Drizzle schema.
+    const options: WebPowerSyncDatabaseOptions = {
       database: { dbFilename },
-      schema: AppSchema,
-    })
+      schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
+    }
+    this.powerSync = new PowerSyncDatabase(options)
 
-    // Wrap with Drizzle for type-safe queries
-    // Cast through unknown since PowerSync's schema type differs from standard Drizzle
-    this._db = wrapPowerSyncWithDrizzle(this.powerSync, {
+    // Wrap with Drizzle for type-safe queries.
+    // Cast instance: drizzle-driver expects AbstractPowerSyncDatabase from root @powersync/common; PowerSyncDatabase is from @powersync/web (nested common).
+    this._db = wrapPowerSyncWithDrizzle(this.powerSync as unknown as AbstractPowerSyncDatabase, {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 

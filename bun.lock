@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "thunderbolt",
@@ -19,7 +18,7 @@
         "@openrouter/ai-sdk-provider": "^1.1.2",
         "@powersync/drizzle-driver": "^0.7.1",
         "@powersync/react": "^1.8.2",
-        "@powersync/web": "^1.31.0",
+        "@powersync/web": "^1.32.0",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-avatar": "^1.1.10",
@@ -418,7 +417,7 @@
 
     "@powersync/react": ["@powersync/react@1.8.2", "", { "peerDependencies": { "@powersync/common": "^1.41.1", "react": "*" } }, "sha512-15z8JKt66dq2bqX2P7QQ71eUIx3DWLc5WMdB/PDc9MIAHf1SERqKfzbzWGxKplQGHC/GogDA7G8IDoRadhNXOA=="],
 
-    "@powersync/web": ["@powersync/web@1.31.0", "", { "dependencies": { "@powersync/common": "1.45.0", "async-mutex": "^0.5.0", "bson": "^6.10.4", "comlink": "^4.4.2", "commander": "^12.1.0" }, "peerDependencies": { "@journeyapps/wa-sqlite": "^1.4.1" }, "bin": { "powersync-web": "bin/powersync.js" } }, "sha512-jjK2BxHbbhjjbruBFWdqGJkXm/G5VYTk8CKsH6o+xcwVc3ADAN8i+7UE0LxmJzNkdL2O20XTigqt+f9grK71qw=="],
+    "@powersync/web": ["@powersync/web@1.32.0", "", { "dependencies": { "@powersync/common": "1.46.0", "async-mutex": "^0.5.0", "bson": "^6.10.4", "comlink": "^4.4.2", "commander": "^12.1.0" }, "peerDependencies": { "@journeyapps/wa-sqlite": "^1.4.1" }, "bin": { "powersync-web": "bin/powersync.cjs" } }, "sha512-AYXF+0x5DTfyjPc2Eh89GZLTSanCZYqxsE/js1C9yRzI9+e3NkAjnX7r9n3FFkJS9PSlHlctDMxyb5x2epvMJg=="],
 
     "@radix-ui/number": ["@radix-ui/number@1.1.1", "", {}, "sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g=="],
 
@@ -2041,6 +2040,8 @@
     "@isaacs/cliui/wrap-ansi": ["wrap-ansi@8.1.0", "", { "dependencies": { "ansi-styles": "^6.1.0", "string-width": "^5.0.1", "strip-ansi": "^7.0.1" } }, "sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ=="],
 
     "@modelcontextprotocol/sdk/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "@powersync/web/@powersync/common": ["@powersync/common@1.46.0", "", { "dependencies": { "async-mutex": "^0.5.0", "event-iterator": "^2.0.0" } }, "sha512-NVIORj/IvLDBF6sWHsaO6U1u7v40yZaEGpscb+etIh7D7Oyaovv2novxdW94sSjbqmLAq4L8tFmgwNwgcU96Jg=="],
 
     "@powersync/web/commander": ["commander@12.1.0", "", {}, "sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA=="],
 

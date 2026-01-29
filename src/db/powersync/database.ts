@@ -1,6 +1,6 @@
 import { getSettings } from '@/dal'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
-import { PowerSyncDatabase } from '@powersync/web'
+import { PowerSyncDatabase, SyncStreamConnectionMethod } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
 import { DatabaseSingleton } from '../singleton'
@@ -120,7 +120,10 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     try {
       const { cloudUrl } = await getSettings({ cloud_url: defaultSettingCloudUrl.value })
       const connector = new ThunderboltConnector(cloudUrl ?? defaultSettingCloudUrl.value)
-      await this.powerSync.connect(connector)
+      // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
+      await this.powerSync.connect(connector, {
+        connectionMethod: SyncStreamConnectionMethod.HTTP,
+      })
       this._isConnected = true
     } catch (error) {
       console.warn('Failed to connect to PowerSync Cloud:', error)

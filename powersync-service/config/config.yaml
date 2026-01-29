@@ -1,0 +1,40 @@
+replication:
+  connections:
+    - type: postgresql
+      uri: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+      sslmode: disable
+
+storage:
+  type: mongodb
+  uri: mongodb://mongo:27017/powersync_demo
+
+port: 8080
+
+sync_rules:
+  content: |
+    bucket_definitions:
+      user_data:
+        parameters: SELECT request.user_id() as user_id
+        data:
+          - SELECT * FROM settings WHERE settings.user_id = bucket.user_id
+          - SELECT * FROM chat_threads WHERE chat_threads.user_id = bucket.user_id
+          - SELECT * FROM chat_messages WHERE chat_messages.user_id = bucket.user_id
+          - SELECT * FROM tasks WHERE tasks.user_id = bucket.user_id
+          - SELECT * FROM models WHERE models.user_id = bucket.user_id
+          - SELECT * FROM mcp_servers WHERE mcp_servers.user_id = bucket.user_id
+          - SELECT * FROM prompts WHERE prompts.user_id = bucket.user_id
+          - SELECT * FROM triggers WHERE triggers.user_id = bucket.user_id
+
+client_auth:
+  supabase: false
+  audience: ['powersync-dev', 'powersync']
+  jwks:
+    keys:
+      # HS256 key for local dev - must match backend POWERSYNC_JWT_SECRET (raw) and POWERSYNC_JWT_KID
+      # k is base64 of the shared secret
+      - kty: oct
+        k: cG93ZXJzeW5jLWRldi1zZWNyZXQtY2hhbmdlLWluLXByb2R1Y3Rpb24=
+        alg: HS256
+        kid: powersync-dev
+  telemetry:
+    disable_telemetry_sharing: false

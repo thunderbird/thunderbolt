@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -131,4 +131,37 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
 export const updateMessage = async (messageId: string, message: Partial<ChatMessage>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
+}
+
+/**
+ * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
+ */
+const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> => {
+  const db = DatabaseSingleton.instance.db
+  const children = (await db
+    .select({ id: chatMessagesTable.id })
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.parentId, messageId), isNull(chatMessagesTable.deletedAt)))) as {
+    id: string
+  }[]
+
+  const descendantIds = await Promise.all(children.map((c) => getMessageAndDescendantIds(c.id)))
+  return [messageId, ...descendantIds.flat()]
+}
+
+/**
+ * Soft deletes a chat message and all its descendants (children, grandchildren, etc.).
+ * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
+ * Cascade is handled in the DAL; parent_id is a logical reference only.
+ */
+export const deleteChatMessageAndDescendants = async (messageId: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  const idsToSoftDelete = await getMessageAndDescendantIds(messageId)
+  if (idsToSoftDelete.length === 0) return
+
+  const deletedAt = Date.now()
+  await db
+    .update(chatMessagesTable)
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+    .where(and(inArray(chatMessagesTable.id, idsToSoftDelete), isNull(chatMessagesTable.deletedAt)))
 }

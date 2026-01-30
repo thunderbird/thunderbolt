@@ -12,7 +12,12 @@ describe('useChatAutomation', () => {
     resetStore()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Wait for any pending promises to settle before cleanup
+    await act(async () => {
+      // Advance timers slightly to allow effects to settle
+      await getClock().tickAsync(50)
+    })
     // Cleanup rendered components before resetting store to prevent errors during unmount
     cleanup()
     // Reset store state after each test

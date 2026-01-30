@@ -47,7 +47,7 @@ describe('useChatAutomation', () => {
 
     // Wait for useEffect to run
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
@@ -80,7 +80,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -106,7 +106,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -139,7 +139,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -173,7 +173,7 @@ describe('useChatAutomation', () => {
 
     // First render - should trigger
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalledTimes(1)
@@ -181,7 +181,7 @@ describe('useChatAutomation', () => {
     // Re-render - should not trigger again
     rerender()
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     // Should still be called only once
@@ -223,7 +223,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     // Should have attempted to regenerate
@@ -267,7 +267,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
@@ -305,7 +305,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()

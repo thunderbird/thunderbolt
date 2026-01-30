@@ -22,10 +22,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
   })
 
   afterEach(async () => {
-    // Flush all pending timers BEFORE cleanup to prevent timer pollution between tests
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
     // Cleanup rendered components before resetting store to prevent errors during unmount
     cleanup()
     // Reset store state after each test

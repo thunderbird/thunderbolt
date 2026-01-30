@@ -3,22 +3,9 @@ import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import type { Index } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
-import * as tables from './tables'
+import * as tablesModule from './tables'
 
-/**
- * Tables to create for tests (schema applied at init, no migrations).
- * Matches PowerSync/Drizzle app schema.
- */
-const APP_TABLES: SQLiteTable[] = [
-  tables.settingsTable,
-  tables.chatThreadsTable,
-  tables.chatMessagesTable,
-  tables.tasksTable,
-  tables.modelsTable,
-  tables.mcpServersTable,
-  tables.promptsTable,
-  tables.triggersTable,
-]
+const tables = Object.values(tablesModule) as SQLiteTable[]
 
 type SQLiteColumnLike = { getSQLType?: () => string; name: string; primary?: boolean; notNull?: boolean }
 
@@ -74,12 +61,12 @@ const buildCreateIndexSQL = (tableName: string, index: Index): string => {
  * @param db - Drizzle SQLite database (e.g. Bun SQLite for tests)
  */
 export const applySchema = async (db: AnyDrizzleDatabase): Promise<void> => {
-  for (const table of APP_TABLES) {
+  for (const table of tables) {
     const createTableSQL = buildCreateTableSQL(table)
     await db.run(sql.raw(createTableSQL))
   }
 
-  for (const table of APP_TABLES) {
+  for (const table of tables) {
     const config = getTableConfig(table)
     for (const index of config.indexes) {
       const createIndexSQL = buildCreateIndexSQL(config.name, index)

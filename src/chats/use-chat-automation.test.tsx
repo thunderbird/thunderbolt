@@ -7,15 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatAutomation } from './use-chat-automation'
 
 describe('useChatAutomation', () => {
-  let consoleErrorSpy: ReturnType<typeof mock>
-
   beforeEach(() => {
     // Reset store state before each test
     resetStore()
-
-    // Suppress console.error for tests that intentionally trigger errors
-    consoleErrorSpy = mock(() => {})
-    console.error = consoleErrorSpy
   })
 
   afterEach(() => {
@@ -23,7 +17,6 @@ describe('useChatAutomation', () => {
     cleanup()
     // Reset store state after each test
     resetStore()
-    consoleErrorSpy?.mockRestore()
   })
 
   it('should trigger regenerate when all conditions are met', async () => {
@@ -220,6 +213,11 @@ describe('useChatAutomation', () => {
       triggerData: null,
     })
 
+    // Create local spy just for this test to verify error logging
+    const consoleErrorSpy = mock(() => {})
+    const originalConsoleError = console.error
+    console.error = consoleErrorSpy
+
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
       wrapper: createQueryTestWrapper(),
     })
@@ -232,6 +230,9 @@ describe('useChatAutomation', () => {
     expect(regenerateError).toHaveBeenCalled()
     // Should have logged the error
     expect(consoleErrorSpy).toHaveBeenCalledWith('Auto regenerate error', expect.any(Error))
+
+    // Restore console.error after test
+    console.error = originalConsoleError
   })
 
   it('should trigger when messages array has multiple messages and last is from user', async () => {

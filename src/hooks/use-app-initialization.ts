@@ -22,19 +22,14 @@ const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
 }
 
-const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleDatabase; skipMigrations: boolean }> => {
+const initializeDatabase = async (appDirPath: string): Promise<AnyDrizzleDatabase> => {
   const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(databaseType, appDirPath)
 
-  const db = await DatabaseSingleton.instance.initialize({
+  return await DatabaseSingleton.instance.initialize({
     type: databaseType,
     path: dbPath,
   })
-
-  // PowerSync manages schema via views, skip Drizzle migrations
-  const skipMigrations = databaseType === 'powersync'
-
-  return { db, skipMigrations }
 }
 
 const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
@@ -68,8 +63,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
   try {
-    const result = await initializeDatabase(appDirPath)
-    db = result.db
+    db = await initializeDatabase(appDirPath)
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)

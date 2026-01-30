@@ -15,6 +15,7 @@ export const drizzleSchema = {
   prompts: tables.promptsTable,
   triggers: tables.triggersTable,
   modes: tables.modesTable,
+  devices: tables.devicesTable,
 }
 
 /**

@@ -83,3 +83,6 @@ export {
 
 // Modes
 export { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'
+
+// Devices
+export { getAllDevices, getDevice, type Device } from './devices'

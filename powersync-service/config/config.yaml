@@ -25,6 +25,7 @@ sync_rules:
           - SELECT * FROM prompts WHERE prompts.user_id = bucket.user_id
           - SELECT * FROM triggers WHERE triggers.user_id = bucket.user_id
           - SELECT * FROM modes WHERE modes.user_id = bucket.user_id
+          - SELECT * FROM devices WHERE devices.user_id = bucket.user_id
 
 client_auth:
   supabase: false

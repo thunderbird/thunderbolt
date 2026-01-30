@@ -1,5 +1,9 @@
-import { getAuthToken } from '@/lib/auth-token'
+import { getDeviceId, getAuthToken } from '@/lib/auth-token'
+import { getDeviceDisplayName } from '@/lib/platform'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
+
+/** Dispatched when backend returns 410 (account deleted) or 403 + DEVICE_DISCONNECTED. App should reset and reload. */
+export const POWERSYNC_CREDENTIALS_INVALID = 'powersync_credentials_invalid'
 
 type TokenResponse = {
   token: string
@@ -7,17 +11,22 @@ type TokenResponse = {
   powerSyncUrl: string
 }
 
+type ErrorBody = { code?: string; error?: string }
+
 /**
- * Build headers with Authorization Bearer token if available.
+ * Build headers with Authorization Bearer token and device id/name if available.
  */
 const buildHeaders = (additionalHeaders?: Record<string, string>): Record<string, string> => {
   const headers: Record<string, string> = { ...additionalHeaders }
   const token = getAuthToken()
-
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-
+  const deviceId = getDeviceId()
+  if (deviceId) {
+    headers['X-Device-ID'] = deviceId
+    headers['X-Device-Name'] = getDeviceDisplayName()
+  }
   return headers
 }
 
@@ -34,18 +43,31 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * Returns null if unable to get credentials (e.g., not authenticated or PowerSync not configured).
    */
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
+    const hadToken = Boolean(getAuthToken())
     try {
       const response = await fetch(`${this.backendUrl}/powersync/token`, {
         headers: buildHeaders(),
       })
 
       if (!response.ok) {
-        console.error('Failed to fetch PowerSync credentials:', response.status)
+        const status = response.status
+        let body: ErrorBody = {}
+        try {
+          body = (await response.json()) as ErrorBody
+        } catch {
+          // ignore
+        }
+        const isResetSignal = status === 410 || (status === 403 && body.code === 'DEVICE_DISCONNECTED')
+        if (isResetSignal && hadToken) {
+          window.dispatchEvent(new CustomEvent(POWERSYNC_CREDENTIALS_INVALID))
+        }
+        if (status !== 401) {
+          console.error('Failed to fetch PowerSync credentials:', status, body)
+        }
         return null
       }
 
-      const data: TokenResponse = await response.json()
-
+      const data: TokenResponse = (await response.json()) as TokenResponse
       return {
         endpoint: data.powerSyncUrl,
         token: data.token,

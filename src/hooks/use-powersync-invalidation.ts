@@ -18,6 +18,7 @@ const TABLE_TO_QUERY_KEYS: Record<string, string[][]> = {
   prompts: [['prompts']],
   triggers: [['triggers']],
   modes: [['modes']],
+  devices: [['devices']],
 }
 
 /**

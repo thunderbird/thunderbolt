@@ -36,6 +36,13 @@
       "when": 1770214255014,
       "tag": "0004_equal_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1769803996373,
+      "tag": "0004_living_fixer",
+      "breakpoints": true
     }
   ]
 }

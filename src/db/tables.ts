@@ -182,3 +182,13 @@ export const modesTable = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+/** Synced via PowerSync. No token. Used for device list and revoke access. */
+export const devicesTable = sqliteTable('devices', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  name: text('name'),
+  lastSeen: integer('last_seen').default(sql`(unixepoch())`),
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+  revokedAt: integer('revoked_at'),
+})

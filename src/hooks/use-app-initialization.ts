@@ -2,7 +2,6 @@ import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { DatabaseSingleton } from '@/db/singleton'
-import { loadAuthToken } from '@/lib/auth-token'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
@@ -94,13 +93,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       success: false,
       error: reconcileError,
     }
-  }
-
-  // Step 4.5: Load auth token for mobile (non-critical)
-  try {
-    await loadAuthToken()
-  } catch (error) {
-    console.warn('Failed to load auth token, continuing:', error)
   }
 
   // Step 5: HTTP client initialization (use provided client or create one)

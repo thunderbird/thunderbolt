@@ -4,6 +4,7 @@ import { user } from '@/db/auth-schema'
 import {
   chatMessagesTable,
   chatThreadsTable,
+  devicesTable,
   modelsTable,
   mcpServersTable,
   promptsTable,
@@ -11,7 +12,7 @@ import {
   tasksTable,
   triggersTable,
 } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 
 /**
@@ -35,6 +36,16 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
         set.status = 401
         return { error: 'Unauthorized' }
       }
+    })
+    .post('/devices/:id/revoke', async ({ params, set, user: sessionUser }) => {
+      const userId = sessionUser!.id
+      const deviceId = params.id
+      const now = Math.floor(Date.now() / 1000)
+      await database
+        .update(devicesTable)
+        .set({ revokedAt: now })
+        .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+      set.status = 204
     })
     .delete('/', async ({ set, user: sessionUser }) => {
       const userId = sessionUser!.id

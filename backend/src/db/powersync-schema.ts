@@ -183,3 +183,13 @@ export const modesTable = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+/** Synced via PowerSync. Device list and revoke access. No token. */
+export const devicesTable = pgTable('devices', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  name: text('name'),
+  lastSeen: integer('last_seen').default(sql`extract(epoch from now())::integer`),
+  createdAt: integer('created_at').default(sql`extract(epoch from now())::integer`),
+  revokedAt: integer('revoked_at'),
+})

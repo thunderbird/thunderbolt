@@ -8,12 +8,22 @@ on:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
+      nightly:
+        description: 'Is this a nightly build?'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
+      nightly:
+        description: 'Is this a nightly build?'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-release-${{ inputs.version }}
@@ -52,7 +62,6 @@ jobs:
 
             Binaries will be attached to this release after successful builds.
 
-      # Create CrabNebula Cloud draft release for auto-updates
       - name: Create CrabNebula Draft Release
         uses: crabnebula-dev/cloud-release@v0.2.0
         with:
@@ -258,7 +267,6 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
-      # Upload to CrabNebula Cloud for auto-updates
       - name: Upload to CrabNebula Cloud
         uses: crabnebula-dev/cloud-release@v0.2.0
         with:

@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      nightly:
+        description: 'Is this a nightly build?'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
@@ -40,6 +45,11 @@ on:
         type: boolean
       notify_testers:
         description: 'Notify external testers'
+        required: false
+        default: false
+        type: boolean
+      nightly:
+        description: 'Is this a nightly build?'
         required: false
         default: false
         type: boolean

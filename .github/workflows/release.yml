@@ -2,6 +2,9 @@ name: Release
 run-name: Release triggered by ${{ github.actor }}
 
 on:
+  schedule:
+    # Nightly build at midnight EST (05:00 UTC)
+    - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
       platform:
@@ -42,33 +45,37 @@ jobs:
     uses: ./.github/workflows/version-bump.yml
     secrets: inherit
     with:
-      platform: ${{ inputs.platform }}
+      platform: ${{ inputs.platform || 'all' }}
       version: ${{ inputs.version }}
-      version_type: ${{ inputs.version_type }}
+      version_type: ${{ inputs.version_type || 'auto' }}
+      nightly: ${{ github.event_name == 'schedule' }}
 
   desktop:
     name: Desktop Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop' || github.event_name == 'schedule')
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}
 
   ios:
     name: iOS Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios' || github.event_name == 'schedule')
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}
 
   android:
     name: Android Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android' || github.event_name == 'schedule')
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}

@@ -44,7 +44,7 @@
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
     "drizzle-kit": "^0.31.7",
-    "eslint": "^8.56.0",
+    "eslint": "^9.39.2",
     "globals": "^16.4.0",
     "pino-pretty": "^13.1.1",
     "prettier": "^3.2.4",

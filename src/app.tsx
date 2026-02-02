@@ -64,19 +64,23 @@ function AppRoutes(_: { initData: InitData }) {
     experimental_feature_tasks: Boolean,
   })
 
+  const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true'
+
   return (
     <Routes>
       {/* Auth flow routes - NO guards (must work during auth) */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-      {/* Waitlist routes - unauthenticated only */}
-      <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
-        <Route path="waitlist" element={<WaitlistLayout />}>
-          <Route index element={<WaitlistPage />} />
-          <Route path="signin" element={<WaitlistSignInPage />} />
+      {/* Waitlist routes - unauthenticated only (skip when bypass is enabled) */}
+      {!bypassWaitlist && (
+        <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
+          <Route path="waitlist" element={<WaitlistLayout />}>
+            <Route index element={<WaitlistPage />} />
+            <Route path="signin" element={<WaitlistSignInPage />} />
+          </Route>
         </Route>
-      </Route>
+      )}
 
       {/* Main app routes - authenticated only */}
       <Route element={<AuthGate require="authenticated" redirectTo="/waitlist" />}>

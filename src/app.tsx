@@ -83,7 +83,7 @@ function AppRoutes(_: { initData: InitData }) {
       )}
 
       {/* Main app routes - authenticated only */}
-      <Route element={<AuthGate require="authenticated" redirectTo="/waitlist" />}>
+      <Route element={<AuthGate require="authenticated" redirectTo={bypassWaitlist ? '/' : '/waitlist'} />}>
         <Route
           path="/"
           element={

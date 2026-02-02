@@ -2,12 +2,11 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { useChatScrollHandler } from './use-chat-scroll-handler'
 
-// Mock useCurrentChatSession to return a mock chat instance
-mock.module('./chat-store', () => ({
-  useCurrentChatSession: () => ({
-    chatInstance: { id: 'test-chat' }, // Mock chat instance
-  }),
-}))
+// Create mock useCurrentChatSession via dependency injection (not mock.module to prevent test pollution)
+const createMockUseCurrentChatSession = (): any =>
+  mock(() => ({
+    chatInstance: { id: 'test-chat' },
+  }))
 
 describe('useChatScrollHandler', () => {
   afterEach(() => {
@@ -53,11 +52,13 @@ describe('useChatScrollHandler', () => {
     it('should return all required refs and handlers', () => {
       const { mockUseAutoScroll } = createMockUseAutoScroll()
       const mockUseChat = createMockUseChat('idle')
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { result } = renderHook(() =>
         useChatScrollHandler({
           useAutoScroll: mockUseAutoScroll,
           useChat: mockUseChat,
+          useCurrentChatSession: mockUseCurrentChatSession,
         }),
       )
 
@@ -74,12 +75,14 @@ describe('useChatScrollHandler', () => {
     describe('submit trigger', () => {
       it('scrolls when status changes to submitted', () => {
         const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
         const { rerender } = renderHook(
           ({ status }) =>
             useChatScrollHandler({
               useAutoScroll: mockUseAutoScroll,
               useChat: createMockUseChat(status),
+              useCurrentChatSession: mockUseCurrentChatSession,
             }),
           {
             initialProps: { status: 'idle' },
@@ -101,12 +104,14 @@ describe('useChatScrollHandler', () => {
 
       it('does not scroll when status stays submitted', () => {
         const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
         const { rerender } = renderHook(
           ({ status }) =>
             useChatScrollHandler({
               useAutoScroll: mockUseAutoScroll,
               useChat: createMockUseChat(status),
+              useCurrentChatSession: mockUseCurrentChatSession,
             }),
           {
             initialProps: { status: 'submitted' },
@@ -126,14 +131,18 @@ describe('useChatScrollHandler', () => {
     })
 
     describe('streaming start trigger', () => {
-      it('scrolls when status changes from submitted to streaming', () => {
+      it('does not scroll on submitted to streaming transition (viewport positioning handles this)', () => {
+        // With viewport positioning, scrolling on submitted→streaming was removed
+        // The scroll now happens on submit, not on streaming start
         const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
         const { rerender } = renderHook(
           ({ status }) =>
             useChatScrollHandler({
               useAutoScroll: mockUseAutoScroll,
               useChat: createMockUseChat(status),
+              useCurrentChatSession: mockUseCurrentChatSession,
             }),
           {
             initialProps: { status: 'submitted' },
@@ -147,18 +156,20 @@ describe('useChatScrollHandler', () => {
           rerender({ status: 'streaming' })
         })
 
-        expect(mockScrollToBottom).toHaveBeenCalledTimes(1)
-        expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
+        // No scroll on this transition - viewport was already positioned on submit
+        expect(mockScrollToBottom).not.toHaveBeenCalled()
       })
 
       it('does not scroll when transitioning to streaming from non-submitted status', () => {
         const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
         const { rerender } = renderHook(
           ({ status }) =>
             useChatScrollHandler({
               useAutoScroll: mockUseAutoScroll,
               useChat: createMockUseChat(status),
+              useCurrentChatSession: mockUseCurrentChatSession,
             }),
           {
             initialProps: { status: 'idle' },
@@ -180,12 +191,14 @@ describe('useChatScrollHandler', () => {
     describe('rapid status transitions', () => {
       it('handles submitted → streaming → idle transitions correctly', () => {
         const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
         const { rerender } = renderHook(
           ({ status }) =>
             useChatScrollHandler({
               useAutoScroll: mockUseAutoScroll,
               useChat: createMockUseChat(status),
+              useCurrentChatSession: mockUseCurrentChatSession,
             }),
           {
             initialProps: { status: 'idle' },
@@ -198,6 +211,7 @@ describe('useChatScrollHandler', () => {
         act(() => {
           rerender({ status: 'submitted' })
         })
+        // Should scroll on submit (for < 3 messages, uses scrollToBottom)
         expect(mockScrollToBottom).toHaveBeenCalledTimes(1)
 
         mockScrollToBottom.mockClear()
@@ -206,7 +220,8 @@ describe('useChatScrollHandler', () => {
         act(() => {
           rerender({ status: 'streaming' })
         })
-        expect(mockScrollToBottom).toHaveBeenCalledTimes(1)
+        // No scroll on this transition - viewport was already positioned on submit
+        expect(mockScrollToBottom).not.toHaveBeenCalled()
 
         mockScrollToBottom.mockClear()
 
@@ -223,12 +238,14 @@ describe('useChatScrollHandler', () => {
   describe('first token detection', () => {
     it('scrolls when first text content arrives during streaming', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { rerender } = renderHook(
         ({ status, messages }) =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         {
           initialProps: {
@@ -259,12 +276,14 @@ describe('useChatScrollHandler', () => {
 
     it('does not scroll on empty parts array', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { rerender } = renderHook(
         ({ status, messages }) =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         {
           initialProps: {
@@ -294,12 +313,14 @@ describe('useChatScrollHandler', () => {
 
     it('does not scroll on parts with empty text', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { rerender } = renderHook(
         ({ status, messages }) =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         {
           initialProps: {
@@ -329,12 +350,14 @@ describe('useChatScrollHandler', () => {
 
     it('does not scroll on second token (only first token)', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { rerender } = renderHook(
         ({ status, messages }) =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         {
           initialProps: {
@@ -370,12 +393,14 @@ describe('useChatScrollHandler', () => {
 
     it('does not crash when messages array is empty during streaming', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       expect(() => {
         renderHook(() =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat('streaming', []),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         )
       }).not.toThrow()
@@ -385,6 +410,7 @@ describe('useChatScrollHandler', () => {
 
     it('ignores non-assistant messages for first token detection', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       renderHook(() =>
         useChatScrollHandler({
@@ -395,6 +421,7 @@ describe('useChatScrollHandler', () => {
               parts: [{ type: 'text', text: 'Hello' }],
             },
           ]),
+          useCurrentChatSession: mockUseCurrentChatSession,
         }),
       )
 
@@ -404,14 +431,16 @@ describe('useChatScrollHandler', () => {
   })
 
   describe('hasScrolledForFirstTokenRef reset', () => {
-    it('resets flag on new message submit and scrolls on next first token', () => {
+    it('resets flag on new message submit (flag tracks first-token scroll state)', () => {
       const { mockUseAutoScroll, mockScrollToBottom } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
 
       const { rerender } = renderHook(
         ({ status, messages }) =>
           useChatScrollHandler({
             useAutoScroll: mockUseAutoScroll,
             useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: mockUseCurrentChatSession,
           }),
         {
           initialProps: {
@@ -426,7 +455,8 @@ describe('useChatScrollHandler', () => {
         },
       )
 
-      // First token scroll happens during init
+      // First token scroll happens during init (1 message, so scrollToBottom is called)
+      expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
       mockScrollToBottom.mockClear()
 
       // Complete first message
@@ -442,7 +472,7 @@ describe('useChatScrollHandler', () => {
         })
       })
 
-      // User submits second message
+      // User submits second message (now 2 messages: 1 assistant + 1 user)
       act(() => {
         rerender({
           status: 'submitted',
@@ -459,8 +489,8 @@ describe('useChatScrollHandler', () => {
         })
       })
 
-      // Should scroll on submit and reset the flag
-      expect(mockScrollToBottom).toHaveBeenCalled()
+      // Should scroll on submit (< 3 messages, so uses scrollToBottom)
+      expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
       mockScrollToBottom.mockClear()
 
       // Start streaming second response
@@ -480,9 +510,11 @@ describe('useChatScrollHandler', () => {
         })
       })
 
+      // No scroll on submitted→streaming transition
+      expect(mockScrollToBottom).not.toHaveBeenCalled()
       mockScrollToBottom.mockClear()
 
-      // Second assistant response arrives
+      // Second assistant response arrives (now 3 messages)
       act(() => {
         rerender({
           status: 'streaming',
@@ -503,20 +535,23 @@ describe('useChatScrollHandler', () => {
         })
       })
 
-      // Should scroll again because flag was reset on submit!
-      expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
+      // With 3 messages, viewport positioning is used - no scrollToBottom on first token
+      // (viewport was already positioned on submit)
+      expect(mockScrollToBottom).not.toHaveBeenCalled()
     })
   })
 
   describe('scrollToBottomAndActivate', () => {
     it('calls scrollToBottom and resetUserScroll when scroll succeeds', () => {
       const { mockUseAutoScroll, mockScrollToBottom, mockResetUserScroll } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
       mockScrollToBottom.mockReturnValue(true) // Simulate successful scroll
 
       const { result } = renderHook(() =>
         useChatScrollHandler({
           useAutoScroll: mockUseAutoScroll,
           useChat: createMockUseChat('idle'),
+          useCurrentChatSession: mockUseCurrentChatSession,
         }),
       )
 
@@ -530,12 +565,14 @@ describe('useChatScrollHandler', () => {
 
     it('does not call resetUserScroll when scroll fails', () => {
       const { mockUseAutoScroll, mockScrollToBottom, mockResetUserScroll } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
       mockScrollToBottom.mockReturnValue(false) // Simulate failed scroll
 
       const { result } = renderHook(() =>
         useChatScrollHandler({
           useAutoScroll: mockUseAutoScroll,
           useChat: createMockUseChat('idle'),
+          useCurrentChatSession: mockUseCurrentChatSession,
         }),
       )
 

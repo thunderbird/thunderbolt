@@ -40,6 +40,22 @@ Please follow these guidelines for unit tests:
 - Always write unit tests for logic, code branching, and algorithms - these should be thoroughly covered. Unit tests for component user interactions (such as clicking or typing) are optional and might be better covered by higher-level tests (e.g., with Cypress).
 - Keep display logic separate from side effects and state in React components by extracting hooks. If a component has many useStates, bundle them into one state hook—this makes logic easy to test and leaves snapshot tests for checking output changes.
 
+## Timer Management
+
+Fake timers are automatically installed and cleaned up for each test. If you need to manually advance time within a test, use `getClock()`:
+
+```typescript
+// Wait for specific time (e.g., debounce)
+await act(async () => {
+  await getClock().tickAsync(300)
+})
+
+// Or settle all pending timers
+await act(async () => {
+  await getClock().runAllAsync()
+})
+```
+
 ## ⚠️ CRITICAL: Avoid `mock.module()` for Shared Modules
 
 **Bun's `mock.module()` creates global, persistent mocks that leak across test files.** This is the #1 cause of mysterious test failures in CI where tests pass individually but fail when run together.

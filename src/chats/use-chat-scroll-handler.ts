@@ -1,6 +1,6 @@
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
 import { useCallback, useEffect, useRef } from 'react'
-import { useCurrentChatSession } from './chat-store'
+import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
 // Viewport positioning constants
@@ -15,11 +15,13 @@ const userMessageViewportOffsetPx = 20 // Breathing room from top
 type UseChatScrollHandlerProps = {
   useAutoScroll?: typeof useAutoScroll_default
   useChat?: typeof useChat_default
+  useCurrentChatSession?: typeof useCurrentChatSession_default
 }
 
 export const useChatScrollHandler = ({
   useAutoScroll = useAutoScroll_default,
   useChat = useChat_default,
+  useCurrentChatSession = useCurrentChatSession_default,
 }: UseChatScrollHandlerProps = {}) => {
   const { chatInstance } = useCurrentChatSession()
   const { status, messages } = useChat({ chat: chatInstance })

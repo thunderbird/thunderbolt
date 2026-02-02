@@ -38,7 +38,6 @@ export const createChatInstance = (
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
-  let originalRegenerate: () => Promise<void>
 
   const instance = new Chat<ThunderboltUIMessage>({
     id,
@@ -96,7 +95,7 @@ export const createChatInstance = (
     },
   })
 
-  originalRegenerate = instance.regenerate.bind(instance)
+  const originalRegenerate = instance.regenerate.bind(instance)
 
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {

@@ -16,10 +16,10 @@ export const WaitlistCard = ({ children }: WaitlistCardProps) => {
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center overflow-clip backdrop-blur-[5px]',
+        'flex flex-col items-center backdrop-blur-[5px]',
         isMobile
-          ? 'inset-0 w-full min-h-dvh border-0 rounded-none px-4 py-8'
-          : 'h-[600px] w-[430px] rounded-[16px] border border-[#475467] p-8',
+          ? 'inset-0 w-full min-h-dvh border-0 rounded-none px-4 py-8 justify-start overflow-y-auto'
+          : 'h-[600px] w-[430px] rounded-[16px] border border-border p-8 justify-center overflow-clip',
       )}
     >
       {children}

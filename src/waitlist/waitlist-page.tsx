@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
@@ -34,7 +33,6 @@ export const WaitlistPage = () => {
 
   // Success state - user has joined the waitlist (or was redirected from sign-in)
   if (state.status === 'success' || showSuccessEmail) {
-    const displayEmail = showSuccessEmail ?? state.email
     return (
       <WaitlistCard>
         <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
@@ -42,23 +40,19 @@ export const WaitlistPage = () => {
 
           {/* Success message */}
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-white">We will send you an</p>
-            <p className="text-[28px] font-medium leading-normal text-white">email when the</p>
-            <p className="text-[28px] font-medium leading-normal text-white">app is ready!</p>
-            <p className="mt-4 text-base font-normal leading-6 text-[#98a2b3]">
-              {displayEmail}
-              <br />
-              has joined the list!
+            <p className="text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+            <p className="mt-4 text-base font-normal leading-6 text-muted-foreground">
+              If this email is on our waitlist, we'll send you updates when the app is ready.
             </p>
           </div>
 
           {/* Footer */}
           <div className="w-full py-8 text-center">
-            <p className="font-sans text-base font-normal leading-6 text-[#f2f7fc]">
+            <p className="font-sans text-base font-normal leading-6 text-foreground">
               Need any help?{' '}
               <a
                 href="mailto:support@thunderbolt.io"
-                className="text-[#5fa0d9] underline decoration-solid underline-offset-[7%]"
+                className="text-primary underline decoration-solid underline-offset-[7%]"
               >
                 Contact our support.
               </a>
@@ -77,8 +71,8 @@ export const WaitlistPage = () => {
 
         {/* Headline */}
         <div className="text-center font-sans">
-          <p className="text-[28px] font-medium leading-normal text-white">We're almost ready.</p>
-          <p className="text-[28px] font-medium leading-normal text-white">Join the waitlist?</p>
+          <p className="text-[28px] font-medium leading-normal text-foreground">We're almost ready.</p>
+          <p className="text-[28px] font-medium leading-normal text-foreground">Join the waitlist?</p>
         </div>
 
         {/* Form */}
@@ -91,7 +85,9 @@ export const WaitlistPage = () => {
               value={state.email}
               onChange={(e) => actions.setEmail(e.target.value)}
               disabled={state.status === 'joining'}
-              className="h-[46px] rounded-[12px] border border-[#475467] bg-[#263035] px-3 py-2.5 text-base leading-6 text-[#f2f7fc] placeholder:text-[#98a2b3]"
+              variant="filled"
+              inputSize="xl"
+              className="w-full rounded-xl"
               autoComplete="email"
             />
 
@@ -100,12 +96,7 @@ export const WaitlistPage = () => {
             <Button
               type="submit"
               disabled={state.status === 'joining' || !isValidEmail}
-              className={cn(
-                'h-[46px] w-full rounded-[12px] px-4 py-3 text-base font-medium leading-6',
-                isValidEmail
-                  ? 'bg-white text-black hover:bg-gray-100'
-                  : 'bg-[#3d4a54] text-[#98a2b3] disabled:opacity-50',
-              )}
+              className="h-[46px] w-full rounded-[12px] text-base"
             >
               {state.status === 'joining' ? (
                 <>
@@ -119,9 +110,9 @@ export const WaitlistPage = () => {
           </form>
 
           {/* Login link */}
-          <p className="font-sans text-base font-normal leading-6 text-[#f2f7fc]">
+          <p className="font-sans text-base font-normal leading-6 text-foreground">
             Already have an account?{' '}
-            <Link to="/waitlist/signin" className="text-[#5fa0d9] underline decoration-solid underline-offset-[7%]">
+            <Link to="/waitlist/signin" className="text-primary underline decoration-solid underline-offset-[7%]">
               Log in
             </Link>
           </p>

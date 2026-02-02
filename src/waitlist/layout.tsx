@@ -7,7 +7,7 @@ import { Outlet } from 'react-router'
 export const WaitlistLayout = () => {
   return (
     <div
-      className="dark flex min-h-dvh w-full flex-col items-center justify-center bg-background"
+      className="flex min-h-dvh w-full flex-col items-center justify-center bg-background"
       style={{
         paddingTop: 'var(--safe-area-top-padding)',
         paddingBottom: 'var(--safe-area-bottom-padding)',

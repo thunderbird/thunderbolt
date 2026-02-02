@@ -62,19 +62,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
-          ref: ${{ github.ref }}
+          ref: v${{ inputs.version }}
           fetch-depth: 0
-
-      - name: Ensure we have the version tag
-        run: |
-          git fetch origin --tags
-          # Verify the tag exists and matches our version
-          if ! git rev-parse v${{ inputs.version }} >/dev/null 2>&1; then
-            echo "❌ Tag v${{ inputs.version }} not found!"
-            exit 1
-          fi
-          # Ensure we're on a commit that contains the version tag
-          git pull origin ${{ github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3

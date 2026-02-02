@@ -32,14 +32,6 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, messages, isStreaming])
 
-  // Find the last assistant message index so we can hide it during errors
-  const lastAssistantIndex = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return i
-    }
-    return -1
-  }, [messages])
-
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
     () =>
@@ -74,10 +66,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         }
 
         if (message.role === 'assistant') {
-          // Skip the last assistant message when there's an error — it's the broken
-          // response that regenerate() will remove. This prevents layout shift when
-          // the retry fires and the message disappears.
-          if (hasError && i === lastAssistantIndex) return null
+          // Hide the last assistant message only if it's the broken empty response
+          // that regenerate() will remove. Don't hide valid previous responses.
+          if (hasError && !message.parts?.length) return null
 
           return (
             <AssistantMessage

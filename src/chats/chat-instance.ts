@@ -38,6 +38,7 @@ export const createChatInstance = (
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
+  let originalRegenerate: () => Promise<void>
 
   const instance = new Chat<ThunderboltUIMessage>({
     id,
@@ -77,12 +78,15 @@ export const createChatInstance = (
         retryCount++
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
-        retryTimeout = setTimeout(() => {
-          retryTimeout = null
-          instance.regenerate().catch((err) => {
-            console.error('Auto-retry failed:', err)
-          })
-        }, 2000 * retryCount)
+        retryTimeout = setTimeout(
+          () => {
+            retryTimeout = null
+            originalRegenerate().catch((err) => {
+              console.error('Auto-retry failed:', err)
+            })
+          },
+          2000 * retryCount * (0.5 + Math.random()),
+        )
       } else {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
       }
@@ -92,7 +96,7 @@ export const createChatInstance = (
     },
   })
 
-  const originalRegenerate = instance.regenerate.bind(instance)
+  originalRegenerate = instance.regenerate.bind(instance)
 
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {

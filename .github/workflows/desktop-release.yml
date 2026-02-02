@@ -46,7 +46,10 @@ jobs:
         run: |
           echo "version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
 
+      # For nightly builds, skip creating a new release (version-bump.yml already created it)
+      # For regular releases, create a draft release candidate
       - name: Create GitHub Release
+        if: ${{ !inputs.nightly }}
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ inputs.version }}
@@ -62,7 +65,9 @@ jobs:
 
             Binaries will be attached to this release after successful builds.
 
+      # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
+        if: ${{ !inputs.nightly }}
         uses: crabnebula-dev/cloud-release@v0.2.0
         with:
           command: release draft thunderbird/thunderbolt ${{ inputs.version }}
@@ -267,7 +272,9 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
+      # Skip CrabNebula for nightly builds
       - name: Upload to CrabNebula Cloud
+        if: ${{ !inputs.nightly }}
         uses: crabnebula-dev/cloud-release@v0.2.0
         with:
           command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
@@ -283,7 +290,8 @@ jobs:
           ref: v${{ inputs.version }}
           fetch-depth: 0
 
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release (Stable)
+        if: ${{ !inputs.nightly }}
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ inputs.version }}
@@ -309,8 +317,34 @@ jobs:
 
             **Note:** iOS builds are deployed separately via the iOS Release workflow.
 
-      # Publish release on CrabNebula Cloud for auto-updates
+      - name: Publish GitHub Release (Nightly)
+        if: ${{ inputs.nightly }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          draft: false
+          prerelease: true
+          name: Nightly Build v${{ inputs.version }}
+          body: |
+            ## Nightly Build v${{ inputs.version }}
+
+            **Warning:** This is an automated nightly build and may be unstable. Use at your own risk.
+
+            ### Downloads
+
+            Download the appropriate installer for your platform below.
+
+            - **Windows**: `.msi` or `.exe` installer
+            - **macOS**: `.dmg` installer (Intel and Apple Silicon)
+            - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
+
+            ---
+
+            For stable releases, please visit the [latest release](../../releases/latest).
+
+      # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
+        if: ${{ !inputs.nightly }}
         uses: crabnebula-dev/cloud-release@v0.2.0
         with:
           command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri

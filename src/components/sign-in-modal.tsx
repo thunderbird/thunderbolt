@@ -32,7 +32,13 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const handleGoToOtp = () => setStep('otp')
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) setStep('email')
+        onOpenChange(open)
+      }}
+    >
       <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
         {step === 'otp' && (
           <button

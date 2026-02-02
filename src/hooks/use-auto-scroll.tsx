@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type RefCallback, type TouchEvent, type WheelEvent } from 'react'
 
-const smoothScrollDuration = 300
+// Scroll animation configuration - uses slow, cinematic timing for smooth viewport positioning
+const easeInOutCubic = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) // Gentle start and end
 
-const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+const smoothScrollDuration = 1200 // 1.2s - deliberate, calm animation that helps users follow viewport positioning
+const smoothScrollEasing = easeInOutCubic
 
 type UseAutoScrollOptions = {
   dependencies?: unknown[]
@@ -17,6 +19,8 @@ type UseAutoScrollReturn = {
   isAtBottom: boolean
   /** Scrolls to bottom. Returns true if scroll was performed, false if container not ready. */
   scrollToBottom: (smooth?: boolean, programmatic?: boolean) => boolean
+  /** Scrolls to element matching selector with optional offset from top. Returns true if scroll was performed, false if container not ready. Fallback to scrollToBottom if element not found. */
+  scrollToElement: (selector: string, offsetFromTop?: number, smooth?: boolean, programmatic?: boolean) => boolean
   resetUserScroll: () => void
   scrollHandlers: {
     onWheel: (e: WheelEvent) => void
@@ -61,8 +65,12 @@ export const useAutoScroll = ({
     }, 100) as unknown as number
   }, [])
 
-  const scrollToBottom = useCallback(
-    (smoothScroll?: boolean, programmatic = false): boolean => {
+  /**
+   * Performs smooth scroll animation to target position, or instant scroll if smooth=false.
+   * Manages programmatic scroll flag and animation frame cleanup.
+   */
+  const scrollToPosition = useCallback(
+    (targetScrollTop: number, smoothScroll?: boolean, programmatic = false): boolean => {
       if (!scrollContainer) return false
 
       // Set flag for programmatic scrolls
@@ -70,7 +78,6 @@ export const useAutoScroll = ({
         isProgrammaticScrollRef.current = true
       }
 
-      const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
       const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
 
       if (shouldSmooth) {
@@ -85,7 +92,7 @@ export const useAutoScroll = ({
         const step = (currentTime: number) => {
           const elapsed = currentTime - startTime
           const progress = Math.min(elapsed / smoothScrollDuration, 1)
-          const easedProgress = easeOutCubic(progress)
+          const easedProgress = smoothScrollEasing(progress)
 
           scrollContainer.scrollTop = startScrollTop + distance * easedProgress
 
@@ -94,7 +101,6 @@ export const useAutoScroll = ({
           } else {
             animationFrameRef.current = null
 
-            // Clear programmatic flag after animation completes + buffer for observer
             if (programmatic) {
               clearProgrammaticFlagAfterDelay()
             }
@@ -105,7 +111,6 @@ export const useAutoScroll = ({
       } else {
         scrollContainer.scrollTop = targetScrollTop
 
-        // Clear flag after observer has chance to fire for instant scrolls
         if (programmatic) {
           clearProgrammaticFlagAfterDelay()
         }
@@ -114,6 +119,41 @@ export const useAutoScroll = ({
       return true
     },
     [scrollContainer, smooth, isStreaming, clearProgrammaticFlagAfterDelay],
+  )
+
+  const scrollToBottom = useCallback(
+    (smoothScroll?: boolean, programmatic = false): boolean => {
+      if (!scrollContainer) return false
+      const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
+      return scrollToPosition(targetScrollTop, smoothScroll, programmatic)
+    },
+    [scrollContainer, scrollToPosition],
+  )
+
+  /**
+   * Scrolls to an element matching the given selector with an optional offset from the top.
+   * Falls back to scrollToBottom if the element is not found.
+   * @param selector - CSS selector to find the target element
+   * @param offsetFromTop - Pixels from top of viewport (default: 0)
+   * @param smoothScroll - Enable smooth scrolling animation
+   * @param programmatic - Mark as programmatic to avoid triggering user scroll detection
+   * @returns true if scroll was performed, false if container not ready
+   */
+  const scrollToElement = useCallback(
+    (selector: string, offsetFromTop = 0, smoothScroll?: boolean, programmatic = false): boolean => {
+      if (!scrollContainer) return false
+
+      const element = scrollContainer.querySelector(selector)
+      if (!element) {
+        return scrollToBottom(smoothScroll, programmatic)
+      }
+
+      // Calculate scroll position: element's offset from container top, minus desired offset
+      const elementTop = (element as HTMLElement).offsetTop
+      const targetScrollTop = Math.max(0, elementTop - offsetFromTop)
+      return scrollToPosition(targetScrollTop, smoothScroll, programmatic)
+    },
+    [scrollContainer, scrollToBottom, scrollToPosition],
   )
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -187,6 +227,7 @@ export const useAutoScroll = ({
     scrollTargetRef,
     isAtBottom,
     scrollToBottom,
+    scrollToElement,
     resetUserScroll,
     scrollHandlers: { onWheel: handleWheel, onTouchStart: handleTouchStart },
   }

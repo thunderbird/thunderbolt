@@ -1,7 +1,9 @@
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
+import { useEffect } from 'react'
 import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
 
 type SignInOtpStepProps = {
@@ -37,7 +39,19 @@ export const SignInOtpStep = ({
 }: SignInOtpStepProps) => {
   const isVerifying = status === 'verifying'
 
-  // --- Page variant (matches Figma: title centered, input at bottom) ---
+  // Auto-submit when 6 digits are entered (page variant only)
+  useEffect(() => {
+    if (variant === 'page' && otp.length === 6 && !isVerifying) {
+      onOtpComplete(otp)
+    }
+  }, [otp, variant, isVerifying, onOtpComplete])
+
+  // Handle OTP input change - only allow digits
+  const handleOtpInputChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, '').slice(0, 6)
+    onOtpChange(digitsOnly)
+  }
+
   if (variant === 'page') {
     return (
       <div className="flex h-full w-full flex-col items-center">
@@ -66,29 +80,19 @@ export const SignInOtpStep = ({
 
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
-          <InputOTP
-            maxLength={6}
-            pattern={REGEXP_ONLY_DIGITS}
+          <Input
+            type="text"
+            inputMode="numeric"
+            placeholder="6-digit code"
             value={otp}
-            onChange={onOtpChange}
-            onComplete={onOtpComplete}
+            onChange={(e) => handleOtpInputChange(e.target.value)}
             disabled={isVerifying}
-            containerClassName="w-full"
+            variant="filled"
+            inputSize="xl"
+            className="w-full rounded-xl"
             autoFocus
-            autoComplete="off"
-            data-1p-ignore
-            data-lpignore="true"
-            data-form-type="other"
-          >
-            <InputOTPGroup className="w-full gap-2">
-              <InputOTPSlot index={0} className="flex-1" />
-              <InputOTPSlot index={1} className="flex-1" />
-              <InputOTPSlot index={2} className="flex-1" />
-              <InputOTPSlot index={3} className="flex-1" />
-              <InputOTPSlot index={4} className="flex-1" />
-              <InputOTPSlot index={5} className="flex-1" />
-            </InputOTPGroup>
-          </InputOTP>
+            autoComplete="one-time-code"
+          />
 
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
@@ -96,7 +100,7 @@ export const SignInOtpStep = ({
             type="button"
             onClick={() => onOtpComplete(otp)}
             disabled={isVerifying || otp.length !== 6}
-            className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90"
+            className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
               <>

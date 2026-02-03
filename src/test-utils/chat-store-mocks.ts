@@ -1,7 +1,22 @@
 import { useChatStore } from '@/chats/chat-store'
-import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
+
+/**
+ * Creates a mock Mode for testing
+ */
+export const createMockMode = (overrides?: Partial<Mode>): Mode =>
+  ({
+    id: 'mode-chat',
+    name: 'chat',
+    label: 'Chat',
+    icon: 'message-square',
+    systemPrompt: null,
+    isDefault: 1,
+    order: 0,
+    ...overrides,
+  }) as Mode
 
 /**
  * Creates a mock Model for testing
@@ -136,9 +151,22 @@ export const createMockChatInstanceWithValidation = (
 }
 
 /**
+ * Default mode used when selectedMode is null but a session needs to be created
+ */
+const defaultTestMode: Mode = {
+  id: 'mode-chat',
+  name: 'chat',
+  label: 'Chat',
+  icon: 'message-square',
+  systemPrompt: null,
+  isDefault: 1,
+  order: 0,
+} as Mode
+
+/**
  * Default model used when selectedModel is null but a session needs to be created
  */
-const DEFAULT_TEST_MODEL: Model = {
+const defaultTestModel: Model = {
   id: 'default-model',
   provider: 'openai',
   name: 'Default Model',
@@ -156,11 +184,18 @@ export const hydrateStore = (state: {
   chatThread: ChatThread | null
   id: string
   mcpClients?: unknown[]
+  modes?: Mode[]
   models?: Model[]
+  selectedMode?: Mode | null
   selectedModel: Model | null
   triggerData: AutomationRun | null
 }) => {
   const store = useChatStore.getState()
+
+  // Set modes first (needed for setSelectedMode)
+  if (state.modes) {
+    store.setModes(state.modes)
+  }
 
   // Set models first (needed for setSelectedModel)
   if (state.models) {
@@ -172,13 +207,14 @@ export const hydrateStore = (state: {
     store.setMcpClients(state.mcpClients as never[])
   }
 
-  // Create or update session - use default model if selectedModel is null
+  // Create or update session - use defaults if selectedMode/Model is null
   if (state.id && state.chatInstance) {
     const sessionData = {
       chatInstance: state.chatInstance,
       chatThread: state.chatThread,
       id: state.id,
-      selectedModel: state.selectedModel ?? DEFAULT_TEST_MODEL,
+      selectedMode: state.selectedMode ?? defaultTestMode,
+      selectedModel: state.selectedModel ?? defaultTestModel,
       triggerData: state.triggerData,
     }
 
@@ -199,6 +235,7 @@ export const resetStore = () => {
   useChatStore.setState({
     currentSessionId: null,
     mcpClients: [],
+    modes: [],
     models: [],
     sessions: new Map(),
   })

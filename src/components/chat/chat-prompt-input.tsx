@@ -1,4 +1,4 @@
-import { useCurrentChatSession } from '@/chats/chat-store'
+import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
@@ -8,6 +8,7 @@ import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from '
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
+import { ModeSelector } from '../ui/mode-selector'
 import { PromptInput } from '../ui/prompt-input'
 import { useSidebar as useSidebar_default } from '../ui/sidebar'
 
@@ -36,8 +37,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     ref,
   ) => {
     const navigate = useNavigate()
+    const modes = useChatStore((state) => state.modes)
+    const setSelectedMode = useChatStore((state) => state.setSelectedMode)
 
-    const { chatInstance, id: chatThreadId, selectedModel } = useCurrentChatSession()
+    const { chatInstance, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
@@ -46,6 +49,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const [input, setInput] = useState('')
     const formRef = useRef<HTMLFormElement>(null)
+
+    const handleModeChange = useCallback(
+      (modeId: string) => {
+        setSelectedMode(chatThreadId, modeId)
+      },
+      [chatThreadId, setSelectedMode],
+    )
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
@@ -100,6 +110,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const footerStartElements = (
+      <div className="flex items-center gap-2">
+        {modes.length > 0 && <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} />}
+        {isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />}
+      </div>
+    )
+
     return (
       <>
         <PromptInput
@@ -115,9 +132,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           autoFocus={!isMobile}
           submitOnEnter={!isStreaming && !isPlatformMobile()}
           className="flex flex-col gap-2 bg-background dark:bg-input/30 border dark:border-input p-3 rounded-2xl w-full"
-          footerStartElements={
-            isContextKnown && <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
-          }
+          footerStartElements={footerStartElements}
         />
         <ContextOverflowModal
           isOpen={showOverflowModal}

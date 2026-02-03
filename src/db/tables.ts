@@ -20,6 +20,7 @@ export const chatThreadsTable = sqliteTable(
     triggeredBy: text('triggered_by').references(() => promptsTable.id, { onDelete: 'set null' }),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
+    modeId: text('mode_id').references(() => modesTable.id, { onDelete: 'set null' }),
     deletedAt: integer('deleted_at'),
   },
   (table) => [
@@ -154,6 +155,26 @@ export const triggersTable = sqliteTable(
   (table) => [
     index('idx_triggers_active')
       .on(table.promptId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+export const modesTable = sqliteTable(
+  'modes',
+  {
+    id: text('id').primaryKey().notNull().unique(),
+    name: text('name').notNull(),
+    label: text('label').notNull(),
+    icon: text('icon').notNull(),
+    systemPrompt: text('system_prompt'),
+    isDefault: integer('is_default').default(0),
+    order: integer('order').default(0),
+    defaultHash: text('default_hash'),
+    deletedAt: integer('deleted_at'),
+  },
+  (table) => [
+    index('idx_modes_active')
+      .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

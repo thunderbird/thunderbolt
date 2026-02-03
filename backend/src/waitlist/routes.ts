@@ -4,6 +4,7 @@ import type { db } from '@/db/client'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
@@ -18,7 +19,7 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<vo
 }
 
 export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
-  new Elysia({ prefix: '/waitlist' }).post(
+  new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
     '/join',
     async ({ body }) => {
       const email = normalizeEmail(body.email)

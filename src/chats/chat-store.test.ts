@@ -1,5 +1,6 @@
 import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import type { Mode } from '@/types'
 import {
   createMockAutomationRun,
   createMockChatInstanceWithValidation,
@@ -99,6 +100,7 @@ describe('chat-store', () => {
 
       // Create session without selected model - need to manually set up
       useChatStore.getState().setModels([])
+      useChatStore.getState().setModes([])
       useChatStore.setState((state) => ({
         ...state,
         sessions: new Map([
@@ -108,6 +110,7 @@ describe('chat-store', () => {
               chatInstance,
               chatThread: null,
               id: 'test-id',
+              selectedMode: null as unknown as Mode,
               selectedModel: null as unknown as Model,
               triggerData: null,
             },

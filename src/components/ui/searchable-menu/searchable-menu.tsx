@@ -58,7 +58,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSect
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>
+      {group.label && <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>}
       <div className="flex flex-col">
         {group.items.map((item) => (
           <ItemButton
@@ -112,6 +112,7 @@ export const SearchableMenu = <T,>({
   onOpenChange: controlledOnOpenChange,
   contentClassName,
   align = 'start',
+  side,
   maxHeight = 300,
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
@@ -188,7 +189,9 @@ export const SearchableMenu = <T,>({
 
       <PopoverContent
         align={isMobile ? 'center' : align}
-        className={cn('p-0 rounded-lg duration-100', contentClassName)}
+        side={side}
+        collisionPadding={16}
+        className={cn('p-0 rounded-lg duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

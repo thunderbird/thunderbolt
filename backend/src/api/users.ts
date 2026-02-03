@@ -1,9 +1,11 @@
 import type { db } from '@/db/client'
 import { usersTable } from '@/db/schema'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 
 export const createUsersRoutes = (fetchFn: typeof fetch, database: typeof db) => {
   return new Elysia({ prefix: '/users' })
+    .onError(safeErrorHandler)
     .get('/', async () => {
       return await database.select().from(usersTable)
     })

@@ -1,4 +1,5 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -12,6 +13,7 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
   return new Elysia({
     prefix: '/posthog',
   })
+    .onError(safeErrorHandler)
     .use(
       cors({
         origin: getCorsOrigins(settings),

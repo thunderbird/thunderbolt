@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { DatabaseSingleton } from '@/db/singleton'
-import { modelsTable } from '@/db/tables'
+import { modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread } from '@/dal/chat-threads'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
@@ -14,6 +14,27 @@ import type { ThunderboltUIMessage } from '@/types'
 import { createElement } from 'react'
 import { BrowserRouter } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
+
+/**
+ * Helper function to create a default mode (required for getSelectedMode)
+ */
+const createDefaultMode = async () => {
+  const db = DatabaseSingleton.instance.db
+
+  await db.insert(modesTable).values({
+    id: 'mode-chat',
+    name: 'chat',
+    label: 'Chat',
+    icon: 'message-square',
+    systemPrompt: null,
+    isDefault: 1,
+    order: 0,
+    deletedAt: null,
+    defaultHash: null,
+  })
+
+  return 'mode-chat'
+}
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -120,7 +141,8 @@ describe('useHydrateChatStore', () => {
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
-    // Create system model (required for getDefaultModelForThread)
+    // Create default mode (required for getSelectedMode) and system model (required for getDefaultModelForThread)
+    await createDefaultMode()
     await createSystemModel()
   })
 

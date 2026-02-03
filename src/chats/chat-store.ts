@@ -1,7 +1,7 @@
 import { updateSettings } from '@/dal'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
-import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import { useShallow } from 'zustand/react/shallow'
@@ -10,6 +10,7 @@ type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
   id: string
+  selectedMode: Mode
   selectedModel: Model
   triggerData: AutomationRun | null
 }
@@ -17,6 +18,7 @@ type ChatSession = {
 type ChatStoreState = {
   currentSessionId: string | null
   mcpClients: MCPClient[]
+  modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
 }
@@ -25,7 +27,9 @@ type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
   setMcpClients(mcpClients: MCPClient[]): void
+  setModes(modes: Mode[]): void
   setModels(models: Model[]): void
+  setSelectedMode(id: string, modeId: string | null): void
   setSelectedModel(id: string, modelId: string | null): void
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
@@ -35,6 +39,7 @@ type ChatStore = ChatStoreState & ChatStoreActions
 const initialState: ChatStoreState = {
   currentSessionId: null,
   mcpClients: [],
+  modes: [],
   models: [],
   sessions: new Map(),
 }
@@ -63,8 +68,37 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ mcpClients })
   },
 
+  setModes: (modes) => {
+    set({ modes })
+  },
+
   setModels: (models) => {
     set({ models })
+  },
+
+  setSelectedMode: (id, modeId) => {
+    const { modes, sessions } = get()
+
+    const mode = modes.find((m) => m.id === modeId)
+
+    if (!mode) {
+      throw new Error('Mode not found')
+    }
+
+    const session = sessions.get(id)
+
+    if (!session) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, selectedMode: mode })
+
+    set({ sessions: nextSessions })
+
+    updateSettings({ selected_mode: mode.id })
+
+    trackEvent('mode_select', { mode: mode.id })
   },
 
   setSelectedModel: async (id, modelId) => {

@@ -48,6 +48,8 @@ export type SearchableMenuProps<T = unknown> = {
   contentClassName?: string
   /** Align popover */
   align?: 'start' | 'center' | 'end'
+  /** Side of the trigger to open the popover (top opens upward, bottom opens downward) */
+  side?: 'top' | 'bottom' | 'left' | 'right'
   /** Max height for the items list */
   maxHeight?: string | number
 }

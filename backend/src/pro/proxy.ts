@@ -1,4 +1,5 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
@@ -12,6 +13,7 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({
     prefix: '/proxy',
   })
+    .onError(safeErrorHandler)
     .use(
       cors({
         origin: getCorsOrigins(settings),

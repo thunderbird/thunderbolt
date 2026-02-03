@@ -49,6 +49,7 @@ type AiFetchStreamingResponseOptions = {
   init: RequestInit
   saveMessages: SaveMessagesFunction
   modelId: string
+  modeSystemPrompt?: string
   mcpClients?: MCPClient[]
   httpClient?: KyInstance
 }
@@ -113,6 +114,7 @@ export const aiFetchStreamingResponse = async ({
   init,
   saveMessages,
   modelId,
+  modeSystemPrompt,
   mcpClients,
   httpClient,
 }: AiFetchStreamingResponseOptions) => {
@@ -197,6 +199,7 @@ export const aiFetchStreamingResponse = async ({
       currency: settings.currency,
     },
     integrationStatus: getIntegrationStatus(),
+    modeSystemPrompt,
   })
 
   try {

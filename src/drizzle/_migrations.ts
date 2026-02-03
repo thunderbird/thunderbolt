@@ -94,4 +94,9 @@ export const migrations: Migration[] = [
     name: '0016_fine_night_nurse.sql',
     sql: 'CREATE INDEX `idx_chat_messages_active` ON `chat_messages` (`chat_thread_id`) WHERE "chat_messages"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_chat_threads_active` ON `chat_threads` (`id`) WHERE "chat_threads"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_mcp_servers_active` ON `mcp_servers` (`id`) WHERE "mcp_servers"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_models_active` ON `models` (`id`) WHERE "models"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_prompts_active` ON `prompts` (`id`) WHERE "prompts"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_tasks_active` ON `tasks` (`id`) WHERE "tasks"."deleted_at" IS NULL;--> statement-breakpoint\nCREATE INDEX `idx_triggers_active` ON `triggers` (`prompt_id`) WHERE "triggers"."deleted_at" IS NULL;',
   },
+  {
+    hash: '0017_glorious_marauders',
+    name: '0017_glorious_marauders.sql',
+    sql: 'CREATE TABLE `modes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`name` text NOT NULL,\n\t`label` text NOT NULL,\n\t`icon` text NOT NULL,\n\t`system_prompt` text,\n\t`is_default` integer DEFAULT 0,\n\t`order` integer DEFAULT 0,\n\t`default_hash` text,\n\t`deleted_at` integer\n);\n--> statement-breakpoint\nCREATE UNIQUE INDEX `modes_id_unique` ON `modes` (`id`);--> statement-breakpoint\nCREATE INDEX `idx_modes_active` ON `modes` (`id`) WHERE "modes"."deleted_at" IS NULL;--> statement-breakpoint\nALTER TABLE `chat_threads` ADD `mode_id` text REFERENCES modes(id);',
+  },
 ]

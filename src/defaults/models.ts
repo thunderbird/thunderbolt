@@ -49,26 +49,6 @@ export const defaultModelGptOss120b: Model = {
   description: 'Fast and confidential',
 }
 
-export const defaultModelMistralLarge3Instruct: Model = {
-  id: '019af08a-f7b4-7ebf-ae40-d558193977d8',
-  name: 'Mistral Large 3',
-  provider: 'thunderbolt',
-  model: 'mistral-large-3',
-  isSystem: 1,
-  enabled: 1,
-  isConfidential: 0,
-  contextWindow: 256000,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  supportsParallelToolCalls: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-  vendor: 'mistral',
-  description: 'Balance between privacy and power',
-}
-
 export const defaultModelMistralMedium31: Model = {
   id: '019af08a-9836-783d-ab56-39b9fec48af1',
   name: 'Mistral Medium 3.1',
@@ -115,6 +95,5 @@ export const defaultModelSonnet45: Model = {
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
   defaultModelMistralMedium31,
-  defaultModelMistralLarge3Instruct,
   defaultModelSonnet45,
 ] as const

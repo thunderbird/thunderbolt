@@ -177,8 +177,10 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
     setIsInitializing(true)
     try {
       const result = await executeInitializationSteps(httpClient)
+      const { experimentalFeatureTasks } = await getSettings({ experimental_feature_tasks: false })
+
       if (result.success) {
-        setInitData(result.data)
+        setInitData({ ...result.data, experimentalFeatureTasks })
         setInitError(undefined)
       } else {
         setInitError(result.error)

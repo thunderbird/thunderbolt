@@ -25,6 +25,7 @@ export type InitData = {
   sideviewId: string | null
   posthogClient: PostHog | null
   httpClient: HttpClient
+  experimentalFeatureTasks: boolean
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>

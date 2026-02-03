@@ -55,17 +55,9 @@ function AppContent({ initData }: { initData: InitData }) {
   )
 }
 
-function AppRoutes(_: { initData: InitData }) {
+function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
   useDeepLinkListener()
-
-  const { experimentalFeatureTasks } = useSettings({
-    experimental_feature_tasks: Boolean,
-  })
-
-  if (experimentalFeatureTasks.isLoading) {
-    return null
-  }
 
   return (
     <Routes>
@@ -74,7 +66,7 @@ function AppRoutes(_: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to="/chats/new" replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+          {initData.experimentalFeatureTasks && <Route path="tasks" element={<TasksPage />} />}
           <Route path="automations" element={<AutomationsPage />} />
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>

@@ -58,12 +58,16 @@ export const RetriesExhausted: Story = {
   args: {
     retryCount: maxRetries,
     retriesExhausted: true,
-    onRetry: () => console.log('Retry clicked'),
+    onRetry: () => {
+      console.log('Retry clicked')
+      // In real usage, the component will show "Retrying..." state
+    },
   },
   parameters: {
     docs: {
       description: {
-        story: 'Red banner with manual Retry button shown after all auto-retries have failed.',
+        story:
+          'Red banner with manual Retry button shown after all auto-retries have failed. Clicking the button shows a "Retrying..." state to prevent double-clicks.',
       },
     },
   },

@@ -119,6 +119,7 @@ export type EventType =
   | 'chat_send_prompt'
   | 'chat_send_prompt_overflow'
   | 'chat_receive_reply'
+  | 'chat_auto_retry'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'

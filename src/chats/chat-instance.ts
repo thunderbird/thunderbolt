@@ -8,6 +8,12 @@ import { useChatStore } from './chat-store'
 
 export const maxRetries = 3
 
+/**
+ * Calculate retry delay with exponential backoff and jitter.
+ * Jitter prevents synchronized retries from overwhelming servers.
+ */
+const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
+
 export const createChatInstance = (
   id: string,
   messages: ThunderboltUIMessage[],
@@ -77,15 +83,15 @@ export const createChatInstance = (
         retryCount++
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
-        retryTimeout = setTimeout(
-          () => {
-            retryTimeout = null
-            originalRegenerate().catch((err) => {
-              console.error('Auto-retry failed:', err)
-            })
-          },
-          2000 * retryCount * (0.5 + Math.random()),
-        )
+
+        trackEvent('chat_auto_retry', { attempt: retryCount, max_retries: maxRetries })
+
+        retryTimeout = setTimeout(() => {
+          retryTimeout = null
+          originalRegenerate().catch((err) => {
+            console.error('Auto-retry failed:', err)
+          })
+        }, getRetryDelay(retryCount))
       } else {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
       }

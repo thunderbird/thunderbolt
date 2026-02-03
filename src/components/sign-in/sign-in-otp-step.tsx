@@ -1,9 +1,7 @@
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { useEffect } from 'react'
 import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
 
 type SignInOtpStepProps = {
@@ -39,19 +37,6 @@ export const SignInOtpStep = ({
 }: SignInOtpStepProps) => {
   const isVerifying = status === 'verifying'
 
-  // Auto-submit when 6 digits are entered (page variant only)
-  useEffect(() => {
-    if (variant === 'page' && otp.length === 6 && !isVerifying) {
-      onOtpComplete(otp)
-    }
-  }, [otp, variant, isVerifying, onOtpComplete])
-
-  // Handle OTP input change - only allow digits
-  const handleOtpInputChange = (value: string) => {
-    const digitsOnly = value.replace(/\D/g, '').slice(0, 6)
-    onOtpChange(digitsOnly)
-  }
-
   if (variant === 'page') {
     return (
       <div className="flex h-full w-full flex-col items-center">
@@ -59,7 +44,7 @@ export const SignInOtpStep = ({
         <div className="my-auto flex flex-col items-center text-center">
           <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
           <p className="mt-2 text-base text-foreground">
-            We&apos;ve sent a 6-digit code at <span className="font-bold">{email}</span>
+            If you have access, we&apos;ve sent a 6-digit code to <span className="font-bold">{email}</span>
           </p>
           <ActionFeedbackButton
             variant="ghost"
@@ -80,19 +65,28 @@ export const SignInOtpStep = ({
 
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
-          <Input
-            type="text"
-            inputMode="numeric"
-            placeholder="6-digit code"
+          <InputOTP
+            maxLength={6}
+            pattern={REGEXP_ONLY_DIGITS}
             value={otp}
-            onChange={(e) => handleOtpInputChange(e.target.value)}
+            onChange={onOtpChange}
+            onComplete={onOtpComplete}
             disabled={isVerifying}
-            variant="filled"
-            inputSize="xl"
-            className="w-full rounded-xl"
             autoFocus
             autoComplete="one-time-code"
-          />
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+          >
+            <InputOTPGroup>
+              <InputOTPSlot index={0} />
+              <InputOTPSlot index={1} />
+              <InputOTPSlot index={2} />
+              <InputOTPSlot index={3} />
+              <InputOTPSlot index={4} />
+              <InputOTPSlot index={5} />
+            </InputOTPGroup>
+          </InputOTP>
 
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 

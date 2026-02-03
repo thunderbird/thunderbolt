@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
@@ -82,8 +82,8 @@ function AppRoutes(_: { initData: InitData }) {
         </Route>
       )}
 
-      {/* Main app routes - authenticated only */}
-      <Route element={<AuthGate require="authenticated" redirectTo={bypassWaitlist ? '/' : '/waitlist'} />}>
+      {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
+      <Route element={bypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
         <Route
           path="/"
           element={

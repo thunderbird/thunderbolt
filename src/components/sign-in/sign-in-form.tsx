@@ -2,7 +2,6 @@ import { useAuth } from '@/contexts'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
-import { ArrowLeft } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
@@ -126,20 +125,8 @@ export const SignInForm = ({
   if (state.status === 'sent' || state.status === 'verifying') {
     return (
       <div className="relative h-full w-full">
-        {/* Back button for modal - rendered in header */}
-        {variant === 'modal' && renderBackButton?.(handleGoBack)}
-
-        {/* Default back button for modal if no render function provided */}
-        {variant === 'modal' && !renderBackButton && (
-          <button
-            type="button"
-            onClick={handleGoBack}
-            className="absolute -top-8 left-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        )}
+        {/* Optional back button slot - parent can render here if needed */}
+        {renderBackButton?.(handleGoBack)}
 
         <SignInOtpStep
           email={state.email}

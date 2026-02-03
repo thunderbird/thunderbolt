@@ -51,6 +51,7 @@ describe('Proxy Routes', () => {
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders: 'Content-Type,Authorization',
       corsExposeHeaders: '',
+      waitlistEnabled: false,
     })
 
     // Create mock fetch

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefCallback, type TouchEvent, type WheelEvent } from 'react'
 
-// Scroll animation configuration - uses slow, cinematic timing for smooth viewport positioning
-const easeInOutCubic = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) // Gentle start and end
+const smoothScrollDuration = 300
 
-const smoothScrollDuration = 1200 // 1.2s - deliberate, calm animation that helps users follow viewport positioning
-const smoothScrollEasing = easeInOutCubic
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
 
 type UseAutoScrollOptions = {
   dependencies?: unknown[]
@@ -92,7 +90,7 @@ export const useAutoScroll = ({
         const step = (currentTime: number) => {
           const elapsed = currentTime - startTime
           const progress = Math.min(elapsed / smoothScrollDuration, 1)
-          const easedProgress = smoothScrollEasing(progress)
+          const easedProgress = easeOutCubic(progress)
 
           scrollContainer.scrollTop = startScrollTop + distance * easedProgress
 

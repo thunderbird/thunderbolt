@@ -63,6 +63,10 @@ function AppRoutes(_: { initData: InitData }) {
     experimental_feature_tasks: Boolean,
   })
 
+  if (experimentalFeatureTasks.isLoading) {
+    return null
+  }
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>

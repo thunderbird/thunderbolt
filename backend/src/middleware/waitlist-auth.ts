@@ -22,12 +22,7 @@ export const createWaitlistAuthMiddleware = (settings: Settings, auth: Auth) =>
       const path = url.pathname
 
       // Always allow public paths
-      if (isPublicPath(path)) {
-        return
-      }
-
-      // If waitlist not enabled, allow all requests
-      if (!settings.waitlistEnabled) {
+      if (isPublicPath(path) || !settings.waitlistEnabled) {
         return
       }
 

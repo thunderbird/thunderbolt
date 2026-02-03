@@ -105,6 +105,10 @@ export const createChatInstance = (
 
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
     retryCount = 0
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
     return originalRegenerate()

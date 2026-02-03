@@ -18,7 +18,6 @@ type PromptInputProps = {
   submitOnEnter?: boolean
   noForm?: boolean
   isStreaming?: boolean
-  isOffline?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
   // Model selection props - optional, only used in automation modal
@@ -46,7 +45,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       submitOnEnter = false,
       noForm = false,
       isStreaming = false,
-      isOffline = false,
       onStop,
       footerStartElements,
       chatThread = null,
@@ -115,7 +113,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                   type="submit"
                   variant="default"
                   className="size-8 rounded-lg flex items-center justify-center"
-                  disabled={isLoading || isOffline || !value.trim()}
+                  disabled={isLoading || !value.trim()}
                 >
                   <ArrowUp className="size-4" />
                 </Button>

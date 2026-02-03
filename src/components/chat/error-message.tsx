@@ -1,6 +1,6 @@
 import { maxRetries } from '@/chats/chat-instance'
 import { Loader2 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo } from 'react'
 
 type ErrorMessageProps = {
   retryCount: number
@@ -9,14 +9,6 @@ type ErrorMessageProps = {
 }
 
 export const ErrorMessage = memo(({ retryCount, retriesExhausted, onRetry }: ErrorMessageProps) => {
-  const [isRetrying, setIsRetrying] = useState(false)
-
-  const handleRetry = () => {
-    if (isRetrying) return
-    setIsRetrying(true)
-    onRetry?.()
-  }
-
   if (!retriesExhausted) {
     return (
       <div className="px-4 py-3 rounded-md bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
@@ -37,11 +29,10 @@ export const ErrorMessage = memo(({ retryCount, retriesExhausted, onRetry }: Err
         {onRetry && (
           <button
             type="button"
-            onClick={handleRetry}
-            disabled={isRetrying}
-            className="cursor-pointer shrink-0 text-sm font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-md"
+            onClick={onRetry}
+            className="cursor-pointer shrink-0 text-sm font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1.5 rounded-md"
           >
-            {isRetrying ? 'Retrying...' : 'Retry'}
+            Retry
           </button>
         )}
       </div>

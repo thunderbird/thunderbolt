@@ -32,6 +32,10 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, messages, isStreaming])
 
+  // Stale error: empty assistant message from a previous session (e.g. page refresh mid-retry).
+  // No chatError and no active retry — show the Retry button immediately.
+  const effectiveRetriesExhausted = retriesExhausted || (hasError && !chatError && retryCount === 0)
+
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
     () =>
@@ -86,7 +90,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
       {/* Show error message if there's an error */}
       {hasError && (
-        <ErrorMessage retryCount={retryCount} retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />
+        <ErrorMessage
+          retryCount={retryCount}
+          retriesExhausted={effectiveRetriesExhausted}
+          onRetry={() => regenerate()}
+        />
       )}
     </div>
   )

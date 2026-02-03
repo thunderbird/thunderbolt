@@ -6,7 +6,7 @@ import { Elysia } from 'elysia'
 const publicPathPrefixes = [
   '/v1/waitlist', // Waitlist endpoints
   '/v1/health', // Health checks
-  '/api/auth', // Auth endpoints (handled by Better Auth)
+  '/v1/api/auth', // Auth endpoints (handled by Better Auth)
 ]
 
 const isPublicPath = (path: string) => publicPathPrefixes.some((prefix) => path.startsWith(prefix))

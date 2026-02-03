@@ -1,8 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
-import { useEffect } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -10,23 +9,14 @@ import { WaitlistHeader } from './waitlist-header'
 /**
  * Waitlist join page at /waitlist.
  * Shows email input form in idle state and confirmation message in success state.
- * Redirects approved users to sign-in flow.
+ *
+ * Privacy note: All users see the same success message regardless of their actual status.
+ * Emails guide users based on whether they're approved, pending, or already have an account.
  */
 export const WaitlistPage = () => {
-  const navigate = useNavigate()
   const location = useLocation()
   const locationState = location.state as { email?: string; showSuccess?: boolean } | null
   const { state, isValidEmail, actions } = useWaitlistState()
-
-  // Redirect approved users to sign-in
-  useEffect(() => {
-    if (state.status === 'approved') {
-      navigate('/waitlist/signin', { state: { email: state.email, skipToOtp: true } })
-    }
-  }, [state.status, state.email, navigate])
-
-  // Approved users are being redirected to sign-in — render nothing to avoid a flash
-  if (state.status === 'approved') return null
 
   // Redirected from sign-in page (non-eligible user) — show success screen with their email
   const showSuccessEmail = locationState?.showSuccess && locationState.email ? locationState.email : null

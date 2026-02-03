@@ -1,18 +1,39 @@
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 
+/**
+ * Tracks emails that should receive the waitlist-approved template instead of magic-link.
+ * Used when triggering OTP from the waitlist form for approved users.
+ */
+const waitlistApprovedEmails = new Set<string>()
+
+/** Mark an email to receive the waitlist-approved template on next OTP send */
+export const markWaitlistApproved = (email: string): void => {
+  waitlistApprovedEmails.add(email.toLowerCase())
+}
+
+/** Check and consume the waitlist-approved flag for an email */
+export const consumeWaitlistApproved = (email: string): boolean => {
+  const normalized = email.toLowerCase()
+  if (waitlistApprovedEmails.has(normalized)) {
+    waitlistApprovedEmails.delete(normalized)
+    return true
+  }
+  return false
+}
+
 /** Deep link base URL for mobile apps (iOS/Android) */
-const DEEP_LINK_HOST = 'https://thunderbolt.io'
+const deepLinkHost = 'https://thunderbolt.io'
 
 /** Platforms that support deep linking */
-const DEEP_LINK_PLATFORMS = ['ios', 'android']
+const deepLinkPlatforms = ['ios', 'android']
 
 /** Tauri app origin - always included for mobile/desktop app support */
-const TAURI_ORIGIN = 'tauri://localhost'
+const tauriOrigin = 'tauri://localhost'
 
 /** Default trusted origins for development */
-const DEFAULT_TRUSTED_ORIGINS = [
+const defaultTrustedOrigins = [
   'http://localhost:1420', // Vite dev server
-  TAURI_ORIGIN, // Tauri app (iOS/Android/Desktop)
+  tauriOrigin, // Tauri app (iOS/Android/Desktop)
 ]
 
 /**
@@ -21,11 +42,11 @@ const DEFAULT_TRUSTED_ORIGINS = [
  */
 export const parseTrustedOrigins = (envValue?: string): string[] => {
   const origins = envValue?.split(',').filter(Boolean)
-  const baseOrigins = origins && origins.length > 0 ? origins : DEFAULT_TRUSTED_ORIGINS
+  const baseOrigins = origins && origins.length > 0 ? origins : defaultTrustedOrigins
 
   // Always ensure tauri://localhost is included for Tauri app support
-  if (!baseOrigins.includes(TAURI_ORIGIN)) {
-    return [...baseOrigins, TAURI_ORIGIN]
+  if (!baseOrigins.includes(tauriOrigin)) {
+    return [...baseOrigins, tauriOrigin]
   }
 
   return baseOrigins
@@ -36,7 +57,7 @@ export const parseTrustedOrigins = (envValue?: string): string[] => {
  */
 export const isDeepLinkPlatform = (request?: Request): boolean => {
   const platform = request?.headers.get('x-client-platform')
-  return platform ? DEEP_LINK_PLATFORMS.includes(platform) : false
+  return platform ? deepLinkPlatforms.includes(platform) : false
 }
 
 /**
@@ -57,7 +78,7 @@ export const getValidatedOrigin = (trustedOrigins: string[], request?: Request):
  * Uses deep link URL for mobile platforms so the link opens the app
  */
 export const buildVerifyUrl = (origin: string, email: string, otp: string, request?: Request): string => {
-  const baseUrl = isDeepLinkPlatform(request) ? DEEP_LINK_HOST : origin
+  const baseUrl = isDeepLinkPlatform(request) ? deepLinkHost : origin
   const params = new URLSearchParams({ email, otp })
   return `${baseUrl}/auth/verify?${params.toString()}`
 }
@@ -69,23 +90,29 @@ type SendSignInEmailParams = {
 }
 
 /**
- * Send sign-in email with both OTP code and a clickable link
+ * Send sign-in email with both OTP code and a clickable link.
+ * Uses 'waitlist-approved' template if the email was marked via markWaitlistApproved(),
+ * otherwise uses the standard 'magic-link' template.
  */
 export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
+  const isWaitlistApproved = consumeWaitlistApproved(email)
+  const templateId = isWaitlistApproved ? 'waitlist-approved' : 'magic-link'
+
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
+    console.info(`📧 [DEV] Template: ${templateId}`)
     return
   }
 
   const data = await sendEmail({
     to: email,
-    templateId: 'magic-link',
+    templateId,
     variables: {
       otp_code: otp,
       magic_link: verifyUrl,
     },
   })
 
-  console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)
+  console.info(`✅ Sign-in email sent successfully (${templateId}). ID: ${data?.id}`)
 }

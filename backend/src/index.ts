@@ -8,6 +8,7 @@ import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
+import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -53,7 +54,7 @@ export const createApp = async (deps?: AppDeps) => {
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
   // Create auth plugin with the database instance
-  const { plugin: betterAuthPlugin } = createBetterAuthPlugin(database)
+  const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
 
   return (
     configuredApp
@@ -71,6 +72,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createErrorHandlingMiddleware())
       // Better Auth handler (mounted at /api/auth/*)
       .use(betterAuthPlugin)
+      // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true
+      .use(createWaitlistAuthMiddleware(settings, auth))
       // Mount route groups
       .use(createMainRoutes(fetchFn))
       .use(createUsersRoutes(fetchFn, database))
@@ -79,7 +82,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createProToolsRoutes(fetchFn))
       .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
-      .use(createWaitlistRoutes(database))
+      .use(createWaitlistRoutes(database, auth))
   )
 }
 

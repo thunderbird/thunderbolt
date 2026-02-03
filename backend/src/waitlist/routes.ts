@@ -1,3 +1,5 @@
+import type { Auth } from '@/auth/auth'
+import { markWaitlistApproved } from '@/auth/utils'
 import type { db } from '@/db/client'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
@@ -6,17 +8,34 @@ import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
 
-export const createWaitlistRoutes = (database: typeof db) =>
+/**
+ * Trigger Better Auth's OTP flow for approved users.
+ * Marks the email first so the callback uses the 'waitlist-approved' template.
+ */
+const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<void> => {
+  markWaitlistApproved(email)
+  await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+}
+
+export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
   new Elysia({ prefix: '/waitlist' }).post(
     '/join',
     async ({ body }) => {
       const email = normalizeEmail(body.email)
 
-      // Check if user already has a BetterAuth account (existing users bypass waitlist)
+      // Check if user already has a BetterAuth account (they're "approved" by default)
       const existingUser = await database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
 
       if (existingUser.length > 0) {
-        return { success: true, approved: true }
+        // Trigger OTP flow - sends magic link email for one-click sign-in
+        try {
+          await sendApprovedMagicLinkEmail(auth, email)
+        } catch (error) {
+          console.error('Failed to send magic link email', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+        return { success: true }
       }
 
       // Check if email already exists on the waitlist
@@ -26,22 +45,28 @@ export const createWaitlistRoutes = (database: typeof db) =>
         .where(eq(waitlist.email, email))
         .limit(1)
 
-      // If entry exists, check if approved
+      // If entry exists, send appropriate email based on status
       if (existing.length > 0) {
-        // If approved, tell frontend to redirect to sign-in
         if (existing[0].status === 'approved') {
-          return { success: true, approved: true }
+          // Trigger OTP flow - sends magic link email for one-click sign-in
+          try {
+            await sendApprovedMagicLinkEmail(auth, email)
+          } catch (error) {
+            console.error('Failed to send magic link email', {
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        } else {
+          // Send reminder email (pending status)
+          try {
+            await sendWaitlistReminderEmail({ email })
+          } catch (error) {
+            console.error('Failed to send waitlist reminder email', {
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
         }
-
-        // Otherwise send reminder email (prevents email enumeration)
-        try {
-          await sendWaitlistReminderEmail({ email })
-        } catch (error) {
-          console.error('Failed to send waitlist reminder email', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-        return { success: true, approved: false }
+        return { success: true }
       }
 
       // Add new entry to waitlist
@@ -58,7 +83,7 @@ export const createWaitlistRoutes = (database: typeof db) =>
           error: error instanceof Error ? error.message : String(error),
         })
       }
-      return { success: true, approved: false }
+      return { success: true }
     },
     {
       body: t.Object({

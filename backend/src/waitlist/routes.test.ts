@@ -33,7 +33,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true, approved: false })
+      // Privacy: response doesn't reveal approval status
+      expect(result).toEqual({ success: true })
 
       // Verify in database
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
@@ -78,7 +79,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true, approved: false })
+      // Privacy: response doesn't reveal approval status
+      expect(result).toEqual({ success: true })
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'duplicate@example.com'))
@@ -106,7 +108,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true, approved: false })
+      // Privacy: response doesn't reveal approval status
+      expect(result).toEqual({ success: true })
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'case@example.com'))
@@ -137,7 +140,7 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(422)
     })
 
-    it('should return approved: true for approved users', async () => {
+    it('should return same success response for approved users (privacy)', async () => {
       // Add approved user directly to database
       await db.insert(waitlist).values({
         id: crypto.randomUUID(),
@@ -155,10 +158,11 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true, approved: true })
+      // Privacy: same response as non-approved users - no way to enumerate approved emails
+      expect(result).toEqual({ success: true })
     })
 
-    it('should return approved: true for existing BetterAuth user', async () => {
+    it('should return same success response for existing BetterAuth user (privacy)', async () => {
       // Add existing user directly to BetterAuth user table
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -177,9 +181,10 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true, approved: true })
+      // Privacy: same response as new users - no way to enumerate existing accounts
+      expect(result).toEqual({ success: true })
 
-      // Verify no waitlist entry was created
+      // Verify no waitlist entry was created (user is in user table, not waitlist)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'existing@example.com'))
       expect(entries).toHaveLength(0)
     })

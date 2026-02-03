@@ -13,4 +13,4 @@ libsql = { workspace = true }
 tauri = { version = "2.8.2", features = [] }
 tokio = { version = "1.47.1", features = ["full"] }
 base64 = "0.22.1"
-bytes = "1.10.1"
+bytes = "1.11.1"

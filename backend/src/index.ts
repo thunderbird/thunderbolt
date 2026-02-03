@@ -1,5 +1,4 @@
 import { createMainRoutes } from '@/api/routes'
-import { createUsersRoutes } from '@/api/users'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
@@ -76,7 +75,6 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createWaitlistAuthMiddleware(settings, auth))
       // Mount route groups
       .use(createMainRoutes(fetchFn))
-      .use(createUsersRoutes(fetchFn, database))
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
       .use(createProToolsRoutes(fetchFn))

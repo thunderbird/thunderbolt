@@ -126,16 +126,16 @@ describe('Waitlist Auth Middleware', () => {
       expect(body).toEqual({ status: 'ok' })
     })
 
-    it('should always allow /api/auth endpoints without auth', async () => {
+    it('should always allow /v1/api/auth endpoints without auth', async () => {
       const settings = createMockSettings({ waitlistEnabled: true })
       const auth = createMockAuth(false) // No session
 
       const app = new Elysia()
         .use(createWaitlistAuthMiddleware(settings, auth))
-        .post('/api/auth/sign-in', () => ({ success: true }))
+        .post('/v1/api/auth/sign-in', () => ({ success: true }))
 
       const response = await app.handle(
-        new Request('http://localhost/api/auth/sign-in', {
+        new Request('http://localhost/v1/api/auth/sign-in', {
           method: 'POST',
         }),
       )

@@ -112,19 +112,17 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     console.warn('Failed to load auth token, continuing:', error)
   }
 
-  // Step 5: HTTP client initialization and experimental feature tasks (use provided client or create one)
+  // Step 5: HTTP client initialization (use provided client or create one)
   let client: HttpClient
-  let experimentalFeatureTasks = false
+
   if (httpClient) {
     client = httpClient
   } else {
     try {
-      const { cloudUrl, experimentalFeatureTasks: experimentalFeatureTasksValue } = await getSettings({
+      const { cloudUrl } = await getSettings({
         cloud_url: 'http://localhost:8000/v1',
-        experimental_feature_tasks: false,
       })
       client = ky.create({ prefixUrl: cloudUrl })
-      experimentalFeatureTasks = experimentalFeatureTasksValue
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
       const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
@@ -156,6 +154,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   const url = new URL(window.location.href)
   const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
+
+  // Step 8: Get experimental feature tasks
+  const { experimentalFeatureTasks } = await getSettings({
+    experimental_feature_tasks: false,
+  })
 
   return {
     success: true,

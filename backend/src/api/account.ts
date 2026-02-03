@@ -59,6 +59,7 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
         await tx.delete(promptsTable).where(eq(promptsTable.userId, userId))
         await tx.delete(mcpServersTable).where(eq(mcpServersTable.userId, userId))
         await tx.delete(modelsTable).where(eq(modelsTable.userId, userId))
+        await tx.delete(devicesTable).where(eq(devicesTable.userId, userId))
         await tx.delete(user).where(eq(user.id, userId))
       })
 

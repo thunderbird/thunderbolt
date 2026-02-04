@@ -36,6 +36,7 @@ import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
+import { useSettings } from './hooks/use-settings'
 
 const queryClient = new QueryClient()
 
@@ -58,6 +59,10 @@ function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
   useDeepLinkListener()
 
+  const { experimentalFeatureTasks } = useSettings({
+    experimental_feature_tasks: initData.experimentalFeatureTasks,
+  })
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -65,7 +70,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<ChatLayout />}>
           <Route index element={<Navigate to="/chats/new" replace />} />
           <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          {initData.experimentalFeatureTasks && <Route path="tasks" element={<TasksPage />} />}
+          {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
           <Route path="automations" element={<AutomationsPage />} />
           <Route path="message-simulator" element={<MessageSimulatorPage />} />
         </Route>

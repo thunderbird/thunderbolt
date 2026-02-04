@@ -56,9 +56,16 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
         .where(eq(waitlist.email, email))
         .limit(1)
 
-      // If entry exists, send appropriate email based on status
+      // If entry exists, handle based on status
       if (existing.length > 0) {
         if (existing[0].status === 'approved') {
+          await sendApprovedMagicLinkEmail(auth, email)
+          return { success: true }
+        }
+
+        // Pending user - check if they now qualify for auto-approval (e.g., feature deployed after they joined)
+        if (isAutoApprovedDomain(email)) {
+          await database.update(waitlist).set({ status: 'approved' }).where(eq(waitlist.id, existing[0].id))
           await sendApprovedMagicLinkEmail(auth, email)
         } else {
           await sendWaitlistReminderEmail({ email })

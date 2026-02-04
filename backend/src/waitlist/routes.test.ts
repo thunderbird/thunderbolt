@@ -284,5 +284,31 @@ describe('Waitlist API', () => {
       expect(entries).toHaveLength(1)
       expect(entries[0].status).toBe('pending')
     })
+
+    it('should upgrade existing pending user with auto-approved domain', async () => {
+      // User joined before auto-approval feature was deployed
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'legacy@mozilla.org',
+        status: 'pending',
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'legacy@mozilla.org' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify status was upgraded to approved
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'legacy@mozilla.org'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+    })
   })
 })

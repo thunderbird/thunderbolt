@@ -90,10 +90,16 @@ describe('SignInModal', () => {
     })
   }
 
+  /** Wait for the modal to render and return the email input */
+  const waitForModal = async () => {
+    const input = await screen.findByPlaceholderText('Email address')
+    return input
+  }
+
   describe('rendering', () => {
-    it('renders when open', () => {
+    it('renders when open', async () => {
       renderModal({ open: true })
-      expect(screen.getByText('Unlock more features')).toBeInTheDocument()
+      expect(await screen.findByText('Unlock more features')).toBeInTheDocument()
     })
 
     it('does not render content when closed', () => {
@@ -101,43 +107,46 @@ describe('SignInModal', () => {
       expect(screen.queryByText('Unlock more features')).not.toBeInTheDocument()
     })
 
-    it('displays feature cards', () => {
+    it('displays feature cards', async () => {
       renderModal()
+      await waitForModal()
       expect(screen.getByText('Access more powerful AI models')).toBeInTheDocument()
       expect(screen.getByText('Sync chats between devices')).toBeInTheDocument()
     })
 
-    it('displays email input placeholder', () => {
+    it('displays email input placeholder', async () => {
       renderModal()
-      expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
+      expect(await screen.findByPlaceholderText('Email address')).toBeInTheDocument()
     })
 
-    it('displays send button', () => {
+    it('displays send button', async () => {
       renderModal()
+      await waitForModal()
       expect(screen.getByRole('button', { name: 'Send Magic Link' })).toBeInTheDocument()
     })
   })
 
   describe('email input', () => {
-    it('updates email value on change', () => {
+    it('updates email value on change', async () => {
       renderModal()
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
 
       fireEvent.change(input, { target: { value: 'test@example.com' } })
 
       expect(input).toHaveValue('test@example.com')
     })
 
-    it('disables submit button when email is empty', () => {
+    it('disables submit button when email is empty', async () => {
       renderModal()
+      await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
       expect(button).toBeDisabled()
     })
 
-    it('enables submit button when email has value', () => {
+    it('enables submit button when email has value', async () => {
       renderModal()
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
       fireEvent.change(input, { target: { value: 'test@example.com' } })
@@ -145,9 +154,9 @@ describe('SignInModal', () => {
       expect(button).not.toBeDisabled()
     })
 
-    it('disables submit button when email is only whitespace', () => {
+    it('disables submit button when email is only whitespace', async () => {
       renderModal()
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
       fireEvent.change(input, { target: { value: '   ' } })
@@ -180,7 +189,7 @@ describe('SignInModal', () => {
     it('calls emailOtp.sendVerificationOtp with trimmed email', async () => {
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
       fireEvent.change(input, { target: { value: '  test@example.com  ' } })
@@ -205,7 +214,7 @@ describe('SignInModal', () => {
       )
 
       renderModal()
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
       fireEvent.change(input, { target: { value: 'test@example.com' } })
@@ -228,7 +237,7 @@ describe('SignInModal', () => {
     it('shows sent state after successful submission', async () => {
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
@@ -243,7 +252,8 @@ describe('SignInModal', () => {
 
     it('does not submit when email is empty', async () => {
       renderModal()
-      const form = screen.getByPlaceholderText('Email address').closest('form')!
+      const input = await waitForModal()
+      const form = input.closest('form')!
 
       fireEvent.submit(form)
 
@@ -262,7 +272,7 @@ describe('SignInModal', () => {
       })
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
@@ -279,7 +289,7 @@ describe('SignInModal', () => {
       })
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
@@ -292,9 +302,9 @@ describe('SignInModal', () => {
   })
 
   describe('modal close behavior', () => {
-    it('resets state when modal is closed', () => {
+    it('resets state when modal is closed', async () => {
       renderModal()
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
 
       // Enter email
       fireEvent.change(input, { target: { value: 'test@example.com' } })
@@ -306,7 +316,7 @@ describe('SignInModal', () => {
     it('calls onOpenChange when close button is clicked in sent state', async () => {
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
@@ -326,7 +336,7 @@ describe('SignInModal', () => {
     it('shows OTP input after sending verification code', async () => {
       renderModal()
 
-      const input = screen.getByPlaceholderText('Email address')
+      const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
       fireEvent.submit(input.closest('form')!)
 
@@ -343,7 +353,7 @@ describe('SignInModal', () => {
       renderModal()
 
       // Send verification code first
-      const emailInput = screen.getByPlaceholderText('Email address')
+      const emailInput = await waitForModal()
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)
 
@@ -372,7 +382,7 @@ describe('SignInModal', () => {
       renderModal()
 
       // Send verification code first
-      const emailInput = screen.getByPlaceholderText('Email address')
+      const emailInput = await waitForModal()
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)
 
@@ -396,7 +406,7 @@ describe('SignInModal', () => {
       renderModal()
 
       // Send verification code first
-      const emailInput = screen.getByPlaceholderText('Email address')
+      const emailInput = await waitForModal()
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
       fireEvent.submit(emailInput.closest('form')!)
 

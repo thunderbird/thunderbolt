@@ -110,14 +110,37 @@ export const WaitlistPage = () => {
             </Button>
           </form>
 
-          {/* Login link */}
-          <p className="font-sans text-base font-normal leading-6 text-foreground">
-            Already have an account?{' '}
-            <Link to="/waitlist/signin" className="text-primary underline decoration-solid underline-offset-[7%]">
-              Log in
-            </Link>
+          {/* Terms notice */}
+          <p className="text-center text-xs text-muted-foreground">
+            By continuing, you agree to our{' '}
+            <a
+              href="https://www.mozilla.org/en-US/about/legal/terms/mozilla/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a
+              href="https://www.thunderbird.net/en-US/privacy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              Privacy Policy
+            </a>
+            .
           </p>
         </div>
+
+        {/* Login link - bottom aligned */}
+        <p className="font-sans text-base font-normal leading-6 text-foreground">
+          Already have an account?{' '}
+          <Link to="/waitlist/signin" className="text-primary underline decoration-solid underline-offset-[7%]">
+            Early Access Login
+          </Link>
+        </p>
       </div>
     </WaitlistCard>
   )

@@ -17,7 +17,7 @@ describe('Account API', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const auth = createAuth(db)
-    app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db))
+    app = new Elysia().use(createAccountRoutes(auth, db))
   })
 
   afterEach(async () => {

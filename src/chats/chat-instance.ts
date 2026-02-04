@@ -53,12 +53,19 @@ export const createChatInstance = (
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
-      if (isAbort) return
+      if (isAbort) {
+        // Clear any pending retry timer and reset retry state when aborted
+        if (retryTimeout) {
+          clearTimeout(retryTimeout)
+          retryTimeout = null
+        }
+        retryCount = 0
+        useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+        return
+      }
 
-      // Empty response without an error flag — treat as a retryable failure
-      const isEmptyResponse = !isError && !message.parts?.length
-
-      if (!isError && !isEmptyResponse) {
+      // Handle successful responses: message exists, no error, and has parts
+      if (!isError && message && message.parts?.length) {
         retryCount = 0
         useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
 
@@ -72,7 +79,7 @@ export const createChatInstance = (
 
         trackEvent('chat_receive_reply', {
           model: session.selectedModel,
-          length: message.parts?.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0) || 0,
+          length: message.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
           reply_number: instance.messages.length + 1,
         })
 
@@ -88,10 +95,15 @@ export const createChatInstance = (
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
-          if (!useChatStore.getState().sessions.has(id)) return
+          const { sessions, currentSessionId } = useChatStore.getState()
+          // Only retry if the session still exists AND is still the current active session.
+          // This prevents retries from executing when the user has switched to a different thread.
+          if (!sessions.has(id) || currentSessionId !== id) return
           originalRegenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
-            if (useChatStore.getState().sessions.has(id)) {
+            const { sessions: sessionsAfterError, currentSessionId: currentSessionIdAfterError } =
+              useChatStore.getState()
+            if (sessionsAfterError.has(id) && currentSessionIdAfterError === id) {
               useChatStore.getState().updateSession(id, { retriesExhausted: true })
             }
           })

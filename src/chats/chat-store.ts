@@ -10,6 +10,8 @@ type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
   id: string
+  retryCount: number
+  retriesExhausted: boolean
   selectedMode: Mode
   selectedModel: Model
   triggerData: AutomationRun | null

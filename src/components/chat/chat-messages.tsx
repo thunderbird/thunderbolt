@@ -13,21 +13,24 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, id: chatThreadId, triggerData } = useCurrentChatSession()
+  const {
+    chatInstance,
+    chatThread,
+    id: chatThreadId,
+    triggerData,
+    retryCount,
+    retriesExhausted,
+  } = useCurrentChatSession()
 
-  const { error: chatError, status, messages } = useChat({ chat: chatInstance })
+  const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
 
-  const error = useMemo(() => {
-    if (chatError) {
-      return chatError.message
-    }
+  const hasError = useMemo(() => {
+    if (chatError) return true
 
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming) {
-      return 'Something went wrong. Please try again.'
-    }
+    return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, messages, isStreaming])
 
   // Extract prompt from the first message (automation prompt) for trigger display
@@ -64,9 +67,14 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         }
 
         if (message.role === 'assistant') {
+          // Hide empty assistant messages during errors — these are broken responses
+          // that regenerate() will remove. Messages with parts are valid responses.
+          if (hasError && !message.parts?.length) return null
+
           const isLastMessage = i === messages.length - 1
           // Only apply viewport positioning from second message onwards
           const shouldApplyViewport = isLastMessage && shouldUseViewportPositioning(messages.length)
+
           return (
             <AssistantMessage
               key={message.id}
@@ -83,7 +91,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
       })}
 
       {/* Show error message if there's an error */}
-      {!!error && <ErrorMessage message={error} />}
+      {hasError && (
+        <ErrorMessage retryCount={retryCount} retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />
+      )}
     </div>
   )
 }

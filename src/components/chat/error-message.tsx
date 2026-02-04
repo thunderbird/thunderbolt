@@ -9,7 +9,10 @@ type ErrorMessageProps = {
 }
 
 export const ErrorMessage = memo(({ retryCount, retriesExhausted, onRetry }: ErrorMessageProps) => {
-  if (!retriesExhausted) {
+  // Show spinner only when a retry is actively in progress (retryCount > 0).
+  // retryCount === 0 means either stale error (page refresh) or fresh error
+  // before onFinish has scheduled a retry — in both cases show the Retry button.
+  if (retryCount > 0 && !retriesExhausted) {
     return (
       <div className="px-4 py-3 rounded-md bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
         <div className="flex items-center gap-2">

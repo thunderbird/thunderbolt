@@ -227,10 +227,35 @@ describe('ChatMessages', () => {
         triggerData: null,
       })
 
+      // Simulate an active retry in progress
+      useChatStore.getState().updateSession('thread-1', { retryCount: 1 })
+
       render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
 
-      expect(screen.getByText('Something went wrong. Retrying (0/3)...')).toBeInTheDocument()
+      expect(screen.getByText('Something went wrong. Retrying (1/3)...')).toBeInTheDocument()
       expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+    })
+
+    it('should show retry button when error occurs before any retry is scheduled', () => {
+      const mockChatInstance = createMockChatInstance([])
+      const chatError = new Error('Network error')
+      const mockUseChat = createMockUseChat(mockChatInstance, chatError)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      // retryCount defaults to 0 — no active retry (e.g. stale error after page refresh)
+      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createQueryTestWrapper() })
+
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
+      expect(screen.getByText('Retry')).toBeInTheDocument()
     })
 
     it('should show error message with retry button when retries are exhausted', () => {

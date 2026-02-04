@@ -90,6 +90,7 @@ export const createChatInstance = (
           retryTimeout = null
           originalRegenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
+            useChatStore.getState().updateSession(id, { retriesExhausted: true })
           })
         }, getRetryDelay(retryCount))
       } else {

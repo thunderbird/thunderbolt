@@ -78,11 +78,15 @@ export const createAuth = (database: typeof DbType) =>
 
               if (waitlistEntry.length === 0) {
                 // Add to waitlist if not already there (helpful UX)
-                await database.insert(waitlist).values({
-                  id: crypto.randomUUID(),
-                  email: normalizedEmail,
-                  status: 'pending',
-                })
+                // Use onConflictDoNothing to handle rare race condition gracefully
+                await database
+                  .insert(waitlist)
+                  .values({
+                    id: crypto.randomUUID(),
+                    email: normalizedEmail,
+                    status: 'pending',
+                  })
+                  .onConflictDoNothing()
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
               } else {
                 // On waitlist but not approved — send a "not ready yet" email

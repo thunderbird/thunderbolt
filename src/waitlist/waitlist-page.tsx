@@ -136,9 +136,9 @@ export const WaitlistPage = () => {
 
         {/* Login link - bottom aligned */}
         <p className="font-sans text-base font-normal leading-6 text-foreground">
-          Already have an account?{' '}
+          Already received an invite?{' '}
           <Link to="/waitlist/signin" className="text-primary underline decoration-solid underline-offset-[7%]">
-            Early Access Login
+            Log In
           </Link>
         </p>
       </div>

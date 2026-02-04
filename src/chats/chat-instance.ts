@@ -101,11 +101,10 @@ export const createChatInstance = (
           if (!sessions.has(id) || currentSessionId !== id) return
           originalRegenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
-            const { sessions: sessionsAfterError, currentSessionId: currentSessionIdAfterError } =
-              useChatStore.getState()
-            if (sessionsAfterError.has(id) && currentSessionIdAfterError === id) {
-              useChatStore.getState().updateSession(id, { retriesExhausted: true })
-            }
+            // Don't set retriesExhausted here - let onFinish handle retry logic.
+            // When originalRegenerate() fails, onFinish will be called again and will
+            // either schedule another retry (if retryCount < maxRetries) or set
+            // retriesExhausted: true (if retries are exhausted).
           })
         }, getRetryDelay(retryCount))
       } else {

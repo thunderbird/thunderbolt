@@ -618,6 +618,53 @@ describe('create-release.ts', () => {
     })
   })
 
+  describe('Pre-release Suffix Handling', () => {
+    it('should strip pre-release suffix before bumping patch', () => {
+      const current = '0.1.43-desktop-rc'
+      const cleanVersion = current.split('-')[0]
+      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const result = `${major}.${minor}.${patch + 1}`
+
+      expect(result).toBe('0.1.44')
+    })
+
+    it('should strip iOS release candidate suffix before bumping minor', () => {
+      const current = '0.3.0-ios-rc'
+      const cleanVersion = current.split('-')[0]
+      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const result = `${major}.${minor + 1}.0`
+
+      expect(result).toBe('0.4.0')
+    })
+
+    it('should handle version without suffix unchanged', () => {
+      const current = '1.2.3'
+      const cleanVersion = current.split('-')[0]
+      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const result = `${major}.${minor}.${patch + 1}`
+
+      expect(result).toBe('1.2.4')
+    })
+
+    it('should detect NaN in version numbers for validation', () => {
+      const current = '0.1.NaN'
+      const cleanVersion = current.split('-')[0]
+      const parts = cleanVersion.split('.').map(Number)
+      const hasNaN = parts.some((n) => isNaN(n))
+
+      expect(hasNaN).toBe(true)
+    })
+
+    it('should handle multiple hyphens in suffix', () => {
+      const current = '0.1.43-desktop-rc-rc'
+      const cleanVersion = current.split('-')[0]
+      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const result = `${major}.${minor}.${patch + 1}`
+
+      expect(result).toBe('0.1.44')
+    })
+  })
+
   describe('Edge Cases', () => {
     it('should handle version with leading zeros', () => {
       const version = '01.02.03'

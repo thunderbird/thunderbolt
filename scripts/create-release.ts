@@ -129,9 +129,22 @@ const getCurrentVersion = (): string => {
 
 /**
  * Bump version based on type
+ * Handles pre-release suffixes like '-desktop-rc', '-ios-rc' by stripping them first
  */
 const bumpVersion = (current: string, type: 'major' | 'minor' | 'patch'): string => {
-  const [major, minor, patch] = current.split('.').map(Number)
+  // Strip any pre-release suffix (e.g., '-desktop-rc', '-ios-rc') before parsing
+  const cleanVersion = current.split('-')[0]
+  const parts = cleanVersion.split('.')
+
+  if (parts.length !== 3) {
+    throw new Error(`Invalid version format: ${current}. Expected X.Y.Z format.`)
+  }
+
+  const [major, minor, patch] = parts.map(Number)
+
+  if ([major, minor, patch].some((n) => isNaN(n) || n < 0)) {
+    throw new Error(`Invalid version numbers in: ${current}`)
+  }
 
   switch (type) {
     case 'major':

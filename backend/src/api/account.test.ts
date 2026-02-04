@@ -8,7 +8,7 @@ import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
 
 describe('Account API', () => {
-  let app: Elysia
+  let app: ReturnType<typeof createAccountRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -17,7 +17,9 @@ describe('Account API', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const auth = createAuth(db)
-    app = new Elysia().use(createAccountRoutes(auth, db))
+    app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db)) as unknown as ReturnType<
+      typeof createAccountRoutes
+    >
   })
 
   afterEach(async () => {
@@ -74,10 +76,7 @@ describe('Account API', () => {
         userId,
       })
 
-      const auth = createAuth(db)
-      const accountApp = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db))
-
-      const response = await accountApp.handle(
+      const response = await app.handle(
         new Request('http://localhost/v1/account', {
           method: 'DELETE',
           headers: { Authorization: 'Bearer bearer-token-full-delete' },

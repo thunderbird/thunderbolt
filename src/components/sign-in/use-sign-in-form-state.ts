@@ -1,5 +1,4 @@
 import type { AuthClient } from '@/contexts'
-import { setSyncEnabled } from '@/db/powersync'
 import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
@@ -74,23 +73,20 @@ type UseSignInFormStateOptions = {
 }
 
 /**
- * Enable sync after sign-in for both new and returning users.
- * Sync is enabled by default for all users.
- * For returning users, clears pending CRUD operations to avoid conflicts with cloud data.
+ * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
+ * For returning users only: reset pending CRUD operations so that when they later enable
+ * sync, local ops do not conflict with cloud data.
  */
-const enableSyncAfterSignIn = async (isNewUser: boolean): Promise<void> => {
+const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
+  if (isNewUser) return
+
   try {
     const database = DatabaseSingleton.instance.database
-
-    // For returning users only: clear pending CRUD operations to avoid conflicts with cloud data
-    if (!isNewUser && 'clearPendingCrudOperations' in database) {
+    if ('clearPendingCrudOperations' in database) {
       await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
     }
-
-    // Enable sync preference and connect (for both new and returning users)
-    await setSyncEnabled(true)
   } catch (error) {
-    console.error('Failed to enable sync after sign-in:', error)
+    console.error('Failed to clear pending CRUD after sign-in:', error)
   }
 }
 
@@ -167,9 +163,8 @@ export const useSignInFormState = ({
         await setAuthToken(result.data.token)
       }
 
-      // Enable sync for all users (new and returning)
       const isNewUser = (result.data as { isNewUser?: boolean })?.isNewUser ?? false
-      await enableSyncAfterSignIn(isNewUser)
+      await onSignInSuccess(isNewUser)
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })

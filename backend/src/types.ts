@@ -1,4 +1,5 @@
 import type { db } from '@/db/client'
+import type { WaitlistEmailService } from '@/waitlist/routes'
 
 /**
  * Standard dependencies for Elysia app creation
@@ -7,4 +8,5 @@ import type { db } from '@/db/client'
 export type AppDeps = {
   fetchFn?: typeof fetch
   database?: typeof db
+  waitlistEmailService?: WaitlistEmailService
 }

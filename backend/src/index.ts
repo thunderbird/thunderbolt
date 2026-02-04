@@ -80,7 +80,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createProToolsRoutes(fetchFn))
       .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
-      .use(createWaitlistRoutes(database, auth))
+      .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
   )
 }
 

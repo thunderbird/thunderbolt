@@ -311,4 +311,55 @@ describe('Waitlist API', () => {
       expect(entries[0].status).toBe('approved')
     })
   })
+
+  describe('Email failure handling (via dependency injection)', () => {
+    it('should return 500 if joined email fails to send', async () => {
+      // Create app with failing email service - no module mocking needed
+      const failingEmailService = {
+        sendJoinedEmail: () => Promise.reject(new Error('Email service error')),
+        sendReminderEmail: () => Promise.resolve(),
+      }
+      const appWithFailingEmail = await createApp({ database: db, waitlistEmailService: failingEmailService })
+
+      const response = await appWithFailingEmail.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'email-fail@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+
+      // DB entry should still exist (inserted before email send)
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'email-fail@example.com'))
+      expect(entries).toHaveLength(1)
+    })
+
+    it('should return 500 if reminder email fails to send', async () => {
+      // Add existing pending user
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'pending-user@example.com',
+        status: 'pending',
+      })
+
+      // Create app with failing reminder email
+      const failingEmailService = {
+        sendJoinedEmail: () => Promise.resolve(),
+        sendReminderEmail: () => Promise.reject(new Error('Email service error')),
+      }
+      const appWithFailingEmail = await createApp({ database: db, waitlistEmailService: failingEmailService })
+
+      const response = await appWithFailingEmail.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'pending-user@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+    })
+  })
 })

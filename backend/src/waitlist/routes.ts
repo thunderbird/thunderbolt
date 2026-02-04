@@ -8,7 +8,24 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { autoApprovedDomains } from '@/lib/constants'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
+import {
+  sendWaitlistJoinedEmail as defaultSendJoinedEmail,
+  sendWaitlistReminderEmail as defaultSendReminderEmail,
+} from './utils'
+
+/**
+ * Email service interface for dependency injection.
+ * Allows tests to provide fake implementations without module mocking.
+ */
+export type WaitlistEmailService = {
+  sendJoinedEmail: (params: { email: string }) => Promise<void>
+  sendReminderEmail: (params: { email: string }) => Promise<void>
+}
+
+const defaultEmailService: WaitlistEmailService = {
+  sendJoinedEmail: defaultSendJoinedEmail,
+  sendReminderEmail: defaultSendReminderEmail,
+}
 
 /**
  * Check if an email domain is in the auto-approved list.
@@ -35,7 +52,13 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<vo
   }
 }
 
-export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
+type WaitlistRoutesOptions = {
+  database: typeof db
+  auth: Auth
+  emailService?: WaitlistEmailService
+}
+
+export const createWaitlistRoutes = ({ database, auth, emailService = defaultEmailService }: WaitlistRoutesOptions) =>
   new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
     '/join',
     async ({ body }) => {
@@ -68,7 +91,7 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
           await database.update(waitlist).set({ status: 'approved' }).where(eq(waitlist.id, existing[0].id))
           await sendApprovedMagicLinkEmail(auth, email)
         } else {
-          await sendWaitlistReminderEmail({ email })
+          await emailService.sendReminderEmail({ email })
         }
         return { success: true }
       }
@@ -87,7 +110,7 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
       if (isAutoApproved) {
         await sendApprovedMagicLinkEmail(auth, email)
       } else {
-        await sendWaitlistJoinedEmail({ email })
+        await emailService.sendJoinedEmail({ email })
       }
       return { success: true }
     },

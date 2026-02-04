@@ -112,6 +112,7 @@ export default function PreferencesSettingsPage() {
 
   // Local state for sync enabled (PowerSync)
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
+  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
 
   // Use our useSettings hook for all settings
   const {
@@ -348,8 +349,20 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleSyncToggle = async (enabled: boolean) => {
-    await setSyncEnabled(enabled)
-    trackEvent(enabled ? 'settings_sync_enabled' : 'settings_sync_disabled')
+    if (!enabled) {
+      await setSyncEnabled(false)
+      setSyncEnabledState(false)
+      trackEvent('settings_sync_disabled')
+      return
+    }
+    setSyncEnableWarningOpen(true)
+  }
+
+  const handleConfirmEnableSync = async () => {
+    await setSyncEnabled(true)
+    setSyncEnabledState(true)
+    trackEvent('settings_sync_enabled')
+    setSyncEnableWarningOpen(false)
   }
 
   return (
@@ -804,6 +817,22 @@ export default function PreferencesSettingsPage() {
           <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
         </div>
       </SectionCard>
+
+      <AlertDialog open={syncEnableWarningOpen} onOpenChange={(open) => !open && setSyncEnableWarningOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable sync?</AlertDialogTitle>
+            <AlertDialogDescription>
+              At this time, synced data is not encrypted. Enabling sync will store your data on our servers without
+              encryption. Do you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEnableSync}>Enable sync</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="h-6" />
 

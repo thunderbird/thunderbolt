@@ -25,6 +25,7 @@ Tool efficiency: Prefer efficient solutions—fetch once, extract what you need,
   order: 0,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeSearch: Mode = {
@@ -45,6 +46,7 @@ Do NOT answer questions directly. Do NOT write paragraphs. Just search and show 
   order: 1,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeResearch: Mode = {
@@ -88,6 +90,7 @@ AFTER completing a sub-question, move to the next. Do NOT skip sub-questions. Do
   order: 2,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 /**

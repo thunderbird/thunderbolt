@@ -139,6 +139,12 @@ jobs:
         with:
           xcode-select-version: '26.2'
 
+      - name: Fix Xcode 26 Metal Toolchain Issue
+        # Xcode 26+ adds MetalToolchain to TOOLCHAINS before XcodeDefault, causing
+        # Swift compatibility libraries to not be found. Force use of default toolchain.
+        # See: https://github.com/actions/runner-images/issues/13135
+        run: echo "TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault" >> $GITHUB_ENV
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@cf7216d52fba1017929b4d7162fabe2b30af5b49 # v1.262.0
         with:

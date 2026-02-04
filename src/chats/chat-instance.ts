@@ -98,7 +98,13 @@ export const createChatInstance = (
           const { sessions, currentSessionId } = useChatStore.getState()
           // Only retry if the session still exists AND is still the current active session.
           // This prevents retries from executing when the user has switched to a different thread.
-          if (!sessions.has(id) || currentSessionId !== id) return
+          if (!sessions.has(id) || currentSessionId !== id) {
+            // Reset retry state when bailing out due to session switch, so the UI
+            // doesn't show "Retrying..." when the user switches back to this session.
+            retryCount = 0
+            useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+            return
+          }
           originalRegenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
             // Don't set retriesExhausted here - let onFinish handle retry logic.

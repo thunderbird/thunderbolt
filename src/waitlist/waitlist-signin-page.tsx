@@ -1,5 +1,5 @@
 import { SignInForm } from '@/components/sign-in'
-import { ArrowLeft } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { WaitlistCard } from './waitlist-card'
@@ -29,22 +29,9 @@ export const WaitlistSignInPage = () => {
     }
   }
 
-  /** Redirect non-approved users to waitlist success page */
-  const handleNotApproved = (email: string) => {
-    navigate('/waitlist', { state: { email, showSuccess: true } })
-  }
-
   return (
     <WaitlistCard>
-      {/* Back arrow */}
-      <button
-        type="button"
-        onClick={handleBackClick}
-        className="absolute left-6 top-6 flex size-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted"
-        aria-label="Back to waitlist"
-      >
-        <ArrowLeft className="size-5" />
-      </button>
+      <BackButton onClick={handleBackClick} className="absolute left-6 top-6" />
 
       <div className="flex w-full flex-1 flex-col items-center p-4">
         <WaitlistHeader />
@@ -60,7 +47,6 @@ export const WaitlistSignInPage = () => {
             goBackRef={goBackRef}
             initialEmail={initialEmail}
             skipToOtp={skipToOtp}
-            onNotApproved={handleNotApproved}
           />
         </div>
       </div>

@@ -1,4 +1,3 @@
-import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
@@ -9,17 +8,17 @@ type WaitlistCardProps = {
 /**
  * Shared card container for waitlist pages.
  * Responsive: full-screen on mobile, fixed-size card on desktop.
+ * Uses CSS media queries to avoid layout flicker during navigation.
  */
 export const WaitlistCard = ({ children }: WaitlistCardProps) => {
-  const { isMobile } = useIsMobile()
-
   return (
     <div
       className={cn(
         'relative flex flex-col items-center backdrop-blur-[5px]',
-        isMobile
-          ? 'inset-0 w-full min-h-dvh border-0 rounded-none px-4 py-8 justify-start overflow-y-auto'
-          : 'h-[600px] w-[430px] rounded-[16px] border border-border p-8 justify-center overflow-clip',
+        // Mobile styles (default)
+        'inset-0 w-full min-h-dvh border-0 rounded-none px-4 py-8 justify-start overflow-y-auto',
+        // Desktop styles (md breakpoint = 768px)
+        'md:h-[600px] md:w-[430px] md:min-h-0 md:rounded-[16px] md:border md:border-border md:p-8 md:justify-center md:overflow-clip',
       )}
     >
       {children}

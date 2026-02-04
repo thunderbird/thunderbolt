@@ -3,7 +3,6 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { betterAuth } from 'better-auth'
-import { APIError } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
@@ -72,9 +71,10 @@ export const createAuth = (database: typeof DbType) =>
               .where(eq(waitlist.email, normalizedEmail))
               .limit(1)
 
-            // If not on waitlist or not approved, block sign-in and return error to frontend
+            // For non-approved users, send appropriate email but don't reveal status
+            // (they'll see the OTP screen but won't receive the actual code)
             if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
-              console.info('🚫 Blocked sign-in attempt for non-approved email')
+              console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
 
               if (waitlistEntry.length === 0) {
                 // Add to waitlist if not already there (helpful UX)
@@ -89,9 +89,9 @@ export const createAuth = (database: typeof DbType) =>
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
               }
 
-              throw new APIError('BAD_REQUEST', {
-                message: 'WAITLIST_NOT_APPROVED',
-              })
+              // Return without sending OTP - user will see OTP screen but won't have the code
+              // This prevents revealing whether an email is on the waitlist or not
+              return
             }
           }
 

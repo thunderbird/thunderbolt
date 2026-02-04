@@ -1,7 +1,8 @@
+import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
-import { Link, useLocation } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -14,6 +15,7 @@ import { WaitlistHeader } from './waitlist-header'
  * Emails guide users based on whether they're approved, pending, or already have an account.
  */
 export const WaitlistPage = () => {
+  const navigate = useNavigate()
   const location = useLocation()
   const locationState = location.state as { email?: string; showSuccess?: boolean } | null
   const { state, isValidEmail, actions } = useWaitlistState()
@@ -21,18 +23,25 @@ export const WaitlistPage = () => {
   // Redirected from sign-in page (non-eligible user) — show success screen with their email
   const showSuccessEmail = locationState?.showSuccess && locationState.email ? locationState.email : null
 
+  const handleBack = () => {
+    actions.reset()
+    navigate('/waitlist', { replace: true })
+  }
+
   // Success state - user has joined the waitlist (or was redirected from sign-in)
   if (state.status === 'success' || showSuccessEmail) {
     return (
       <WaitlistCard>
+        <BackButton onClick={handleBack} className="absolute left-6 top-6" />
+
         <div className="flex w-full flex-1 flex-col items-center justify-between p-4">
           <WaitlistHeader />
 
           {/* Success message */}
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+            <p className="text-[28px] font-medium leading-normal text-foreground">Thanks for signing up!</p>
             <p className="mt-4 text-base font-normal leading-6 text-muted-foreground">
-              If this email is on our waitlist, we'll send you updates when the app is ready.
+              We'll send you an email when the app is ready for you to join!
             </p>
           </div>
 

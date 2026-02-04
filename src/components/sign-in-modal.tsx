@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { useState } from 'react'
 import {
   ResponsiveModal,
@@ -40,16 +40,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
       }}
     >
       <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
-        {step === 'otp' && (
-          <button
-            type="button"
-            onClick={handleGoBack}
-            className="absolute left-4 top-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        )}
+        {step === 'otp' && <BackButton onClick={handleGoBack} className="absolute left-4 top-4" />}
         <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
           {step === 'email' ? 'Unlock more features' : 'Enter your code'}
         </ResponsiveModalTitle>

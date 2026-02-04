@@ -69,8 +69,6 @@ type UseSignInFormStateOptions = {
   initialEmail?: string
   /** Initialize directly in OTP step (OTP must already be sent before mounting) */
   skipToOtp?: boolean
-  /** Called when user is not approved (waitlist). Parent handles redirect. */
-  onNotApproved?: (email: string) => void
 }
 
 /**
@@ -83,7 +81,6 @@ export const useSignInFormState = ({
   onEmailSent,
   initialEmail,
   skipToOtp,
-  onNotApproved,
 }: UseSignInFormStateOptions) => {
   if (skipToOtp && !initialEmail?.trim()) {
     throw new Error('useSignInFormState: skipToOtp requires a non-empty initialEmail')
@@ -112,12 +109,6 @@ export const useSignInFormState = ({
       })
 
       if (error) {
-        // Check for waitlist not approved error from backend
-        if (error.message === 'WAITLIST_NOT_APPROVED') {
-          dispatch({ type: 'GO_BACK' })
-          onNotApproved?.(trimmedEmail)
-          return
-        }
         dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
         return
       }
@@ -186,12 +177,6 @@ export const useSignInFormState = ({
       })
 
       if (error) {
-        // Check for waitlist not approved error (user's status may have changed)
-        if (error.message === 'WAITLIST_NOT_APPROVED') {
-          dispatch({ type: 'GO_BACK' })
-          onNotApproved?.(trimmedEmail)
-          return false
-        }
         dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
         return false
       }

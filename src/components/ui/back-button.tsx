@@ -10,7 +10,7 @@ type BackButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 const sizeClasses = {
   sm: { button: 'size-6', icon: 'size-3' },
   md: { button: 'size-8', icon: 'size-5' },
-}
+} as const
 
 /**
  * Circular back button with arrow icon.

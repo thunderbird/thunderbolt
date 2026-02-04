@@ -79,12 +79,9 @@ export const SignInOtpStep = ({
             data-form-type="other"
           >
             <InputOTPGroup className="gap-2">
-              <InputOTPSlot index={0} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
-              <InputOTPSlot index={1} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
-              <InputOTPSlot index={2} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
-              <InputOTPSlot index={3} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
-              <InputOTPSlot index={4} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
-              <InputOTPSlot index={5} className="h-12 w-12 shrink-0 rounded-lg first:rounded-lg last:rounded-lg" />
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
+              ))}
             </InputOTPGroup>
           </InputOTP>
 

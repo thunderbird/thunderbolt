@@ -111,7 +111,7 @@ describe('Waitlist Auth Middleware', () => {
       expect(body).toEqual({ success: true })
     })
 
-    it('should always allow /v1/health endpoints without auth', async () => {
+    it('should always allow /v1/health endpoint without auth (exact match)', async () => {
       const settings = createMockSettings({ waitlistEnabled: true })
       const auth = createMockAuth(false) // No session
 
@@ -124,6 +124,19 @@ describe('Waitlist Auth Middleware', () => {
       expect(response.status).toBe(200)
       const body = await response.json()
       expect(body).toEqual({ status: 'ok' })
+    })
+
+    it('should NOT allow /v1/health-admin (boundary check)', async () => {
+      const settings = createMockSettings({ waitlistEnabled: true })
+      const auth = createMockAuth(false) // No session
+
+      const app = new Elysia()
+        .use(createWaitlistAuthMiddleware(settings, auth))
+        .get('/v1/health-admin', () => ({ status: 'admin' }))
+
+      const response = await app.handle(new Request('http://localhost/v1/health-admin'))
+
+      expect(response.status).toBe(401)
     })
 
     it('should always allow /v1/api/auth endpoints without auth', async () => {

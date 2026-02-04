@@ -4,12 +4,19 @@ import { Elysia } from 'elysia'
 
 /** Paths that are always public (no auth required) */
 const publicPathPrefixes = [
-  '/v1/waitlist', // Waitlist endpoints
-  '/v1/health', // Health checks
-  '/v1/api/auth', // Auth endpoints (handled by Better Auth)
+  '/v1/waitlist/', // Waitlist endpoints
+  '/v1/health', // Health checks (exact match)
+  '/v1/api/auth/', // Auth endpoints (handled by Better Auth)
 ]
 
-const isPublicPath = (path: string) => publicPathPrefixes.some((prefix) => path.startsWith(prefix))
+/** Check if path matches a public prefix (with proper boundary checking) */
+const isPublicPath = (path: string) =>
+  publicPathPrefixes.some((prefix) => {
+    // Exact match for paths without trailing slash (e.g., /v1/health)
+    if (!prefix.endsWith('/')) return path === prefix
+    // Prefix match for paths with trailing slash
+    return path.startsWith(prefix) || path === prefix.slice(0, -1)
+  })
 
 /**
  * Middleware that enforces authentication when WAITLIST_ENABLED=true.

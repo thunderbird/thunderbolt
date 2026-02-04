@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
@@ -90,10 +90,10 @@ export const SignInForm = ({
     if (skipToOtp) onEmailSent?.()
   }, [])
 
-  const handleGoBack = () => {
+  const handleGoBack = useCallback(() => {
     actions.goBack()
     onGoBack?.()
-  }
+  }, [actions, onGoBack])
 
   // Expose goBack to parent via ref (for page variant where back button is external).
   useEffect(() => {

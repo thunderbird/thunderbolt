@@ -7,6 +7,8 @@ import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
 
+const SUPPORT_EMAIL = 'support@thunderbolt.io'
+
 /**
  * Waitlist join page at /waitlist.
  * Shows email input form in idle state and confirmation message in success state.
@@ -17,11 +19,11 @@ import { WaitlistHeader } from './waitlist-header'
 export const WaitlistPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const locationState = location.state as { email?: string; showSuccess?: boolean } | null
+  const locationState = location.state as { showSuccess?: boolean } | null
   const { state, isValidEmail, actions } = useWaitlistState()
 
-  // Redirected from sign-in page (non-eligible user) — show success screen with their email
-  const showSuccessEmail = locationState?.showSuccess && locationState.email ? locationState.email : null
+  // Redirected from sign-in page (non-eligible user) — show success screen
+  const showSuccessFromRedirect = locationState?.showSuccess ?? false
 
   const handleBack = () => {
     actions.reset()
@@ -29,7 +31,7 @@ export const WaitlistPage = () => {
   }
 
   // Success state - user has joined the waitlist (or was redirected from sign-in)
-  if (state.status === 'success' || showSuccessEmail) {
+  if (state.status === 'success' || showSuccessFromRedirect) {
     return (
       <WaitlistCard>
         <BackButton onClick={handleBack} className="absolute left-6 top-6" />
@@ -50,7 +52,7 @@ export const WaitlistPage = () => {
             <p className="font-sans text-base font-normal leading-6 text-foreground">
               Need any help?{' '}
               <a
-                href="mailto:support@thunderbolt.io"
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="text-primary underline decoration-solid underline-offset-[7%]"
               >
                 Contact our support.

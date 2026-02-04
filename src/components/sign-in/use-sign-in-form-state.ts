@@ -82,14 +82,13 @@ export const useSignInFormState = ({
   initialEmail,
   skipToOtp,
 }: UseSignInFormStateOptions) => {
-  if (skipToOtp && !initialEmail?.trim()) {
-    throw new Error('useSignInFormState: skipToOtp requires a non-empty initialEmail')
-  }
+  // If skipToOtp is requested without an email, fall back to idle state instead of crashing
+  const canSkipToOtp = skipToOtp && !!initialEmail?.trim()
 
   const [state, dispatch] = useReducer(reducer, {
     ...initialState,
     email: initialEmail ?? '',
-    status: skipToOtp ? 'sent' : 'idle',
+    status: canSkipToOtp ? 'sent' : 'idle',
   })
 
   const isValidEmail = isValidEmailFormat(state.email.trim())

@@ -258,6 +258,30 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           bun install
+
+          # Create export options plist to work around Fastlane Xcode 16 bug
+          # See: https://github.com/fastlane/fastlane/issues/29256
+          # Keeping for Xcode 26 until compatibility is confirmed
+          cd src-tauri/gen/apple
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>net.thunderbird.thunderbolt</key>
+                  <string>$PROVISIONING_PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          cd ../../../
+
           bun tauri ios build --export-method app-store-connect
 
       - name: Upload to TestFlight

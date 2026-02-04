@@ -47,7 +47,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
         )}
       </ResponsiveModalHeader>
 
-      <ResponsiveModalContent centered className="gap-4">
+      <ResponsiveModalContent centered={step === 'otp'} className="flex flex-col gap-4">
         <SignInForm
           variant="modal"
           onSuccess={handleClose}

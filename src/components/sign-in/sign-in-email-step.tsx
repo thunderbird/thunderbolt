@@ -37,7 +37,7 @@ export const SignInEmailStep = ({
   const isLoading = status === 'sending'
 
   return (
-    <form onSubmit={onSubmit} className="flex h-full w-full flex-col">
+    <form onSubmit={onSubmit} className="flex h-full w-full flex-1 flex-col">
       {/* Title — page variant only (modal has its own header) */}
       {variant === 'page' && (
         <div className="text-center">
@@ -45,39 +45,41 @@ export const SignInEmailStep = ({
         </div>
       )}
 
-      {/* Feature cards — centered vertically via my-auto */}
-      <div className="my-auto flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
-        {variant === 'page' ? (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
-                <Github className="size-6 text-emerald-600 dark:text-[#DCE875]" />
+      {/* Feature cards — centered via flex-1 wrapper */}
+      <div className="flex flex-1 items-center">
+        <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
+          {variant === 'page' ? (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
+                  <Github className="size-6 text-emerald-600 dark:text-[#DCE875]" />
+                </div>
+                <p className="text-base text-muted-foreground">Thunderbolt is open-source</p>
               </div>
-              <p className="text-base text-muted-foreground">Thunderbolt is open-source</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
-                <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
+                  <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
+                </div>
+                <p className="text-base text-muted-foreground">No logs or training on your data</p>
               </div>
-              <p className="text-base text-muted-foreground">No logs or training on your data</p>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 dark:bg-transparent">
-                <RefreshCw className="size-6 text-sky-600 dark:text-[#DCE875]" />
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 dark:bg-transparent">
+                  <RefreshCw className="size-6 text-sky-600 dark:text-[#DCE875]" />
+                </div>
+                <p className="text-base text-muted-foreground">Sync chats between devices</p>
               </div>
-              <p className="text-base text-muted-foreground">Sync chats between devices</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 dark:bg-transparent">
-                <Brain className="size-6 text-violet-600 dark:text-[#DCE875]" />
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 dark:bg-transparent">
+                  <Brain className="size-6 text-violet-600 dark:text-[#DCE875]" />
+                </div>
+                <p className="text-base text-muted-foreground">Access more powerful AI models</p>
               </div>
-              <p className="text-base text-muted-foreground">Access more powerful AI models</p>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {status === 'error' && (
@@ -85,11 +87,7 @@ export const SignInEmailStep = ({
       )}
 
       {/* Bottom controls — input + button */}
-      <div className="flex flex-col gap-4">
-        {variant === 'modal' && (
-          <p className="text-center text-xs text-muted-foreground">We&apos;ll send you a secure link to sign in.</p>
-        )}
-
+      <div className="flex w-full flex-col gap-4">
         <div className="relative w-full">
           {variant === 'modal' && (
             <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />

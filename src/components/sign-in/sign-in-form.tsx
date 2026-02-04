@@ -140,7 +140,7 @@ export const SignInForm = ({
 
   // Initial email entry state
   return (
-    <div className="h-full w-full">
+    <div className="flex h-full w-full flex-1 flex-col">
       <SignInEmailStep
         email={state.email}
         status={state.status}

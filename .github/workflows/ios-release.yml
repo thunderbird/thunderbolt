@@ -141,9 +141,14 @@ jobs:
 
       - name: Fix Xcode 26 Metal Toolchain Issue
         # Xcode 26+ adds MetalToolchain to TOOLCHAINS before XcodeDefault, causing
-        # Swift compatibility libraries to not be found. Force use of default toolchain.
-        # See: https://github.com/actions/runner-images/issues/13135
-        run: echo "TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault" >> $GITHUB_ENV
+        # Swift compatibility libraries to not be found. Since Tauri invokes xcodebuild
+        # internally (we can't pass -toolchain flag), we must remove the Metal toolchain.
+        # See: https://github.com/actions/runner-images/issues/13135#issuecomment-3397914993
+        run: |
+          echo "🔧 Removing Metal Toolchain to prevent TOOLCHAINS override..."
+          xcodebuild -deleteComponent metalToolchain || sudo rm -rf /System/Library/AssetsV2/com_apple_MobileAsset_MetalToolchain || true
+          echo "TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault" >> $GITHUB_ENV
+          echo "✅ Metal Toolchain removed"
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@cf7216d52fba1017929b4d7162fabe2b30af5b49 # v1.262.0

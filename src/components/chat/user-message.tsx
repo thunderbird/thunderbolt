@@ -2,13 +2,13 @@ import type { UIMessage } from 'ai'
 import { memo } from 'react'
 import { MemoizedMarkdown } from './memoized-markdown'
 
-interface UserMessageProps {
+type UserMessageProps = {
   message: UIMessage
 }
 
 export const UserMessage = memo(({ message }: UserMessageProps) => {
   return (
-    <>
+    <div data-message-id={message.id}>
       {message.parts
         .filter((part) => part.type === 'text')
         .map((part, j) => (
@@ -18,6 +18,6 @@ export const UserMessage = memo(({ message }: UserMessageProps) => {
             </div>
           </div>
         ))}
-    </>
+    </div>
   )
 })

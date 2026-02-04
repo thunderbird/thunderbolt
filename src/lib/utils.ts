@@ -245,6 +245,16 @@ export const isLocalhostUrl = (url: string | null): boolean => {
 }
 
 /**
+ * Validates email format using a practical regex pattern.
+ * Checks for: local-part@domain.tld structure with basic character validation.
+ */
+export const isValidEmailFormat = (email: string): boolean => {
+  const emailRegex =
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+  return emailRegex.test(email)
+}
+
+/**
  * Maximum content length for LLM context (16K chars ≈ 4K tokens)
  * Used by fetch_content, Google Drive, and OneDrive file retrieval
  */

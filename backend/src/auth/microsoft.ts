@@ -1,4 +1,5 @@
 import { getSettings } from '@/config/settings'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -11,6 +12,7 @@ const SCOPES = 'https://graph.microsoft.com/mail.read User.Read offline_access'
  */
 export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/microsoft' })
+    .onError(safeErrorHandler)
     .get('/config', async () => {
       const settings = getSettings()
 

@@ -586,90 +586,95 @@ describe('useHandleIntegrationCompletion', () => {
     console.warn = originalWarn
   })
 
-  it('should wait for chat to be ready before sending message', async () => {
-    const threadId = await createTestThread()
-    const widgetMessageId = uuidv7()
-    const userMessageId = uuidv7()
+  it(
+    'should wait for chat to be ready before sending message',
+    async () => {
+      const threadId = await createTestThread()
+      const widgetMessageId = uuidv7()
+      const userMessageId = uuidv7()
 
-    const userMessage: ThunderboltUIMessage = {
-      id: userMessageId,
-      role: 'user',
-      parts: [{ type: 'text', text: 'Send email' }],
-    }
+      const userMessage: ThunderboltUIMessage = {
+        id: userMessageId,
+        role: 'user',
+        parts: [{ type: 'text', text: 'Send email' }],
+      }
 
-    const widgetMessage: ThunderboltUIMessage = {
-      id: widgetMessageId,
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'Please connect <widget:connect-integration>' }],
-    }
+      const widgetMessage: ThunderboltUIMessage = {
+        id: widgetMessageId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Please connect <widget:connect-integration>' }],
+      }
 
-    await createTestMessages(threadId, [userMessage, widgetMessage])
+      await createTestMessages(threadId, [userMessage, widgetMessage])
 
-    const mockSaveMessages = createMockSaveMessages()
-    const mockSendMessage = mock(() => Promise.resolve())
-    const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
+      const mockSaveMessages = createMockSaveMessages()
+      const mockSendMessage = mock(() => Promise.resolve())
+      const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
 
-    Object.assign(mockChatInstance, { status: 'streaming' as const })
-    mockChatInstance.sendMessage = mockSendMessage
+      Object.assign(mockChatInstance, { status: 'streaming' as const })
+      mockChatInstance.sendMessage = mockSendMessage
 
-    sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
+      sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    // Use the real store and hydrate it with test data
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: threadId,
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+      // Use the real store and hydrate it with test data
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: null,
+        id: threadId,
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
 
-    await updateSettings({
-      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-      integrations_microsoft_credentials: '',
-    })
+      await updateSettings({
+        integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
+        integrations_microsoft_credentials: '',
+      })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+      const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+      if (!eventHandler) throw new Error('Event handler not found')
 
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
+      const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
+      eventHandler(event as Event)
 
-    // Advance timers step by step to allow the hook to process through its polling stages
-    await act(async () => {
-      // Let the integration status polling complete
-      await getClock().tickAsync(1000)
-    })
+      // Advance timers step by step to allow the hook to process through its polling stages
+      await act(async () => {
+        // Let the integration status polling complete
+        await getClock().tickAsync(1000)
+      })
 
-    await act(async () => {
-      // Let the message-in-chat polling complete
-      await getClock().tickAsync(1000)
-    })
+      await act(async () => {
+        // Let the message-in-chat polling complete
+        await getClock().tickAsync(1000)
+      })
 
-    expect(mockSaveMessages).toHaveBeenCalled()
-    expect(mockSendMessage).not.toHaveBeenCalled()
+      expect(mockSaveMessages).toHaveBeenCalled()
+      expect(mockSendMessage).not.toHaveBeenCalled()
 
-    // Change status to ready before waitForChatReady times out
-    Object.assign(mockChatInstance, { status: 'ready' as const })
+      // Change status to ready before waitForChatReady times out
+      Object.assign(mockChatInstance, { status: 'ready' as const })
 
-    // Advance timers to allow waitForChatReady to poll and detect the status change
-    await act(async () => {
-      await getClock().tickAsync(200)
-    })
+      // Advance timers to allow waitForChatReady to poll and detect the status change
+      await act(async () => {
+        await getClock().tickAsync(200)
+      })
 
-    expect(mockSendMessage).toHaveBeenCalled()
-  })
+      expect(mockSendMessage).toHaveBeenCalled()
+    },
+    // CI VMs have slower async processing overhead
+    { timeout: 5000 },
+  )
 })

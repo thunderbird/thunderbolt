@@ -1,3 +1,4 @@
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { exaPlugin } from './exa'
 import { createLinkPreviewRoutes } from './link-preview'
@@ -29,14 +30,7 @@ export const createProToolsRoutes = (fetchFn: typeof fetch = globalThis.fetch) =
   const weatherClient = new OpenMeteoWeather(fetchFn)
 
   return new Elysia({ prefix: '/pro' })
-    .onError(({ code, error, set }) => {
-      set.status = code === 'VALIDATION' ? 400 : 500
-      return {
-        success: false,
-        data: null,
-        error: error instanceof Error ? error.message : String(error),
-      }
-    })
+    .onError(safeErrorHandler)
     .use(exaPlugin)
     .use(createProxyRoutes(fetchFn))
     .use(createLinkPreviewRoutes(fetchFn))

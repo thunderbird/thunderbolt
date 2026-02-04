@@ -6,7 +6,7 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
-import { sendWaitlistNotReadyEmail } from '@/waitlist/utils'
+import { sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 /**
@@ -71,15 +71,30 @@ export const createAuth = (database: typeof DbType) =>
               .where(eq(waitlist.email, normalizedEmail))
               .limit(1)
 
-            // If not on waitlist or not approved, don't send OTP
+            // For non-approved users, send appropriate email but don't reveal status
+            // (they'll see the OTP screen but won't receive the actual code)
             if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
-              console.info('🚫 Blocked sign-in attempt for non-approved email')
+              console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
 
-              // If on waitlist but not approved, send a "not ready yet" email
-              if (waitlistEntry.length > 0) {
+              if (waitlistEntry.length === 0) {
+                // Add to waitlist if not already there (helpful UX)
+                // Use onConflictDoNothing to handle rare race condition gracefully
+                await database
+                  .insert(waitlist)
+                  .values({
+                    id: crypto.randomUUID(),
+                    email: normalizedEmail,
+                    status: 'pending',
+                  })
+                  .onConflictDoNothing()
+                await sendWaitlistJoinedEmail({ email: normalizedEmail })
+              } else {
+                // On waitlist but not approved — send a "not ready yet" email
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
               }
 
+              // Return without sending OTP - user will see OTP screen but won't have the code
+              // This prevents revealing whether an email is on the waitlist or not
               return
             }
           }

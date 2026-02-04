@@ -44,25 +44,24 @@ export type AppDeps = {
 const createApp = async ({ fetchFn = globalThis.fetch, database = db }: AppDeps = {}) => {
   // ...
   // Pass dependencies to routes that need them
-  .use(createUsersRoutes(fetchFn, database))
+  .use(createWaitlistRoutes(database))
 }
 ```
 
-Route creators accept `fetchFn` as first argument and `database` as optional second argument:
+Route creators accept dependencies as arguments:
 
 ```typescript
-export const createUsersRoutes = (
-  fetchFn: typeof fetch = globalThis.fetch,
-  database: typeof db = db
-) => {
-  return new Elysia({ prefix: '/users' })
-    .get('/', async () => {
-      return await database.select().from(usersTable)
+export const createWaitlistRoutes = (database: typeof db) => {
+  return new Elysia({ prefix: '/waitlist' })
+    .post('/join', async ({ body }) => {
+      // Use the injected database instance
+      await database.insert(waitlist).values({ email: body.email })
+      return { success: true }
     })
 }
 ```
 
-### 4. Writing a Test (`src/api/users.test.ts` example)
+### 4. Writing a Test
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'

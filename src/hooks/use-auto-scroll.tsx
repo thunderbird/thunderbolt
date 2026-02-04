@@ -16,7 +16,9 @@ type UseAutoScrollReturn = {
   scrollTargetRef: RefCallback<HTMLDivElement>
   isAtBottom: boolean
   /** Scrolls to bottom. Returns true if scroll was performed, false if container not ready. */
-  scrollToBottom: (smooth?: boolean) => boolean
+  scrollToBottom: (smooth?: boolean, programmatic?: boolean) => boolean
+  /** Scrolls to element matching selector with optional offset from top. Returns true if scroll was performed, false if container not ready. Fallback to scrollToBottom if element not found. */
+  scrollToElement: (selector: string, offsetFromTop?: number, smooth?: boolean, programmatic?: boolean) => boolean
   resetUserScroll: () => void
   scrollHandlers: {
     onWheel: (e: WheelEvent) => void
@@ -41,16 +43,39 @@ export const useAutoScroll = ({
   // Ref for sync access in effects - auto-scroll disabled by default
   const userHasScrolledRef = useRef(true)
   const animationFrameRef = useRef<number | null>(null)
+  const isProgrammaticScrollRef = useRef(false)
+  const timeoutRef = useRef<number | null>(null)
 
   // Callback refs that trigger state updates
   const scrollContainerRef = useCallback((el: HTMLDivElement | null) => setScrollContainer(el), [])
   const scrollTargetRef = useCallback((el: HTMLDivElement | null) => setScrollTarget(el), [])
 
-  const scrollToBottom = useCallback(
-    (smoothScroll?: boolean): boolean => {
+  // Helper to clear programmatic flag after delay with proper cleanup
+  const clearProgrammaticFlagAfterDelay = useCallback(() => {
+    // Clear any pending timeout to prevent overlapping timeouts
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current)
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+      timeoutRef.current = null
+    }, 100) as unknown as number
+  }, [])
+
+  /**
+   * Performs smooth scroll animation to target position, or instant scroll if smooth=false.
+   * Manages programmatic scroll flag and animation frame cleanup.
+   */
+  const scrollToPosition = useCallback(
+    (targetScrollTop: number, smoothScroll?: boolean, programmatic = false): boolean => {
       if (!scrollContainer) return false
 
-      const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
+      // Set flag for programmatic scrolls
+      if (programmatic) {
+        isProgrammaticScrollRef.current = true
+      }
+
       const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
 
       if (shouldSmooth) {
@@ -73,17 +98,60 @@ export const useAutoScroll = ({
             animationFrameRef.current = requestAnimationFrame(step)
           } else {
             animationFrameRef.current = null
+
+            if (programmatic) {
+              clearProgrammaticFlagAfterDelay()
+            }
           }
         }
 
         animationFrameRef.current = requestAnimationFrame(step)
       } else {
         scrollContainer.scrollTop = targetScrollTop
+
+        if (programmatic) {
+          clearProgrammaticFlagAfterDelay()
+        }
       }
 
       return true
     },
-    [scrollContainer, smooth, isStreaming],
+    [scrollContainer, smooth, isStreaming, clearProgrammaticFlagAfterDelay],
+  )
+
+  const scrollToBottom = useCallback(
+    (smoothScroll?: boolean, programmatic = false): boolean => {
+      if (!scrollContainer) return false
+      const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
+      return scrollToPosition(targetScrollTop, smoothScroll, programmatic)
+    },
+    [scrollContainer, scrollToPosition],
+  )
+
+  /**
+   * Scrolls to an element matching the given selector with an optional offset from the top.
+   * Falls back to scrollToBottom if the element is not found.
+   * @param selector - CSS selector to find the target element
+   * @param offsetFromTop - Pixels from top of viewport (default: 0)
+   * @param smoothScroll - Enable smooth scrolling animation
+   * @param programmatic - Mark as programmatic to avoid triggering user scroll detection
+   * @returns true if scroll was performed, false if container not ready
+   */
+  const scrollToElement = useCallback(
+    (selector: string, offsetFromTop = 0, smoothScroll?: boolean, programmatic = false): boolean => {
+      if (!scrollContainer) return false
+
+      const element = scrollContainer.querySelector(selector)
+      if (!element) {
+        return scrollToBottom(smoothScroll, programmatic)
+      }
+
+      // Calculate scroll position: element's offset from container top, minus desired offset
+      const elementTop = (element as HTMLElement).offsetTop
+      const targetScrollTop = Math.max(0, elementTop - offsetFromTop)
+      return scrollToPosition(targetScrollTop, smoothScroll, programmatic)
+    },
+    [scrollContainer, scrollToBottom, scrollToPosition],
   )
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -112,8 +180,8 @@ export const useAutoScroll = ({
         const atBottom = entry.isIntersecting
         setIsAtBottom(atBottom)
 
-        // Enable auto-scroll when user scrolls to bottom (not on initial setup)
-        if (atBottom && !isFirstObservation) {
+        // Enable auto-scroll when user scrolls to bottom (not on initial setup, not programmatic)
+        if (atBottom && !isFirstObservation && !isProgrammaticScrollRef.current) {
           userHasScrolledRef.current = false
         }
 
@@ -139,11 +207,15 @@ export const useAutoScroll = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollContainer, ...dependencies])
 
-  // Cleanup animation frame on unmount
+  // Cleanup animation frame and timeout on unmount
   useEffect(() => {
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
       }
     }
   }, [])
@@ -153,6 +225,7 @@ export const useAutoScroll = ({
     scrollTargetRef,
     isAtBottom,
     scrollToBottom,
+    scrollToElement,
     resetUserScroll,
     scrollHandlers: { onWheel: handleWheel, onTouchStart: handleTouchStart },
   }

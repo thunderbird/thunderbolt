@@ -1,3 +1,4 @@
+import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
@@ -32,6 +33,7 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
+      // Privacy: response doesn't reveal approval status
       expect(result).toEqual({ success: true })
 
       // Verify in database
@@ -77,6 +79,7 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
+      // Privacy: response doesn't reveal approval status
       expect(result).toEqual({ success: true })
 
       // Verify only one entry exists
@@ -105,6 +108,7 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
+      // Privacy: response doesn't reveal approval status
       expect(result).toEqual({ success: true })
 
       // Verify only one entry exists
@@ -134,6 +138,55 @@ describe('Waitlist API', () => {
       )
 
       expect(response.status).toBe(422)
+    })
+
+    it('should return same success response for approved users (privacy)', async () => {
+      // Add approved user directly to database
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'approved@example.com',
+        status: 'approved',
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'approved@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      // Privacy: same response as non-approved users - no way to enumerate approved emails
+      expect(result).toEqual({ success: true })
+    })
+
+    it('should return same success response for existing BetterAuth user (privacy)', async () => {
+      // Add existing user directly to BetterAuth user table
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        name: 'Existing User',
+        email: 'existing@example.com',
+        emailVerified: true,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'existing@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      // Privacy: same response as new users - no way to enumerate existing accounts
+      expect(result).toEqual({ success: true })
+
+      // Verify no waitlist entry was created (user is in user table, not waitlist)
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'existing@example.com'))
+      expect(entries).toHaveLength(0)
     })
   })
 })

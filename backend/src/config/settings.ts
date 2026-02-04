@@ -29,6 +29,9 @@ const settingsSchema = z.object({
   posthogHost: z.string().default('https://us.i.posthog.com'),
   posthogApiKey: z.string().default(''),
 
+  // Waitlist settings
+  waitlistEnabled: z.boolean().default(false),
+
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
   corsOriginRegex: z
@@ -66,6 +69,7 @@ const parseSettings = (): Settings => {
     port: process.env.PORT || '8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
+    waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
     corsOriginRegex:
       process.env.CORS_ORIGIN_REGEX ||

@@ -48,6 +48,7 @@ describe('Waitlist API - Email Failure Handling', () => {
       )
 
       expect(response.status).toBe(200)
+      // Privacy: response doesn't reveal approval status
       expect(await response.json()).toEqual({ success: true })
 
       // DB entry should exist despite email failure
@@ -73,6 +74,7 @@ describe('Waitlist API - Email Failure Handling', () => {
       )
 
       expect(response.status).toBe(200)
+      // Privacy: response doesn't reveal approval status
       expect(await response.json()).toEqual({ success: true })
 
       // No duplicate entry created

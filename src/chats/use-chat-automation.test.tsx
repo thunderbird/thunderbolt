@@ -7,23 +7,21 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatAutomation } from './use-chat-automation'
 
 describe('useChatAutomation', () => {
-  let consoleErrorSpy: ReturnType<typeof mock>
-
   beforeEach(() => {
     // Reset store state before each test
     resetStore()
-
-    // Suppress console.error for tests that intentionally trigger errors
-    consoleErrorSpy = mock(() => {})
-    console.error = consoleErrorSpy
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Wait for any pending promises to settle before cleanup
+    await act(async () => {
+      // Advance timers slightly to allow effects to settle
+      await getClock().tickAsync(50)
+    })
     // Cleanup rendered components before resetting store to prevent errors during unmount
     cleanup()
     // Reset store state after each test
     resetStore()
-    consoleErrorSpy?.mockRestore()
   })
 
   it('should trigger regenerate when all conditions are met', async () => {
@@ -54,7 +52,7 @@ describe('useChatAutomation', () => {
 
     // Wait for useEffect to run
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
@@ -87,7 +85,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -113,7 +111,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -146,7 +144,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
@@ -180,7 +178,7 @@ describe('useChatAutomation', () => {
 
     // First render - should trigger
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalledTimes(1)
@@ -188,7 +186,7 @@ describe('useChatAutomation', () => {
     // Re-render - should not trigger again
     rerender()
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     // Should still be called only once
@@ -220,18 +218,26 @@ describe('useChatAutomation', () => {
       triggerData: null,
     })
 
+    // Create local spy just for this test to verify error logging
+    const consoleErrorSpy = mock(() => {})
+    const originalConsoleError = console.error
+    console.error = consoleErrorSpy
+
     renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
       wrapper: createQueryTestWrapper(),
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     // Should have attempted to regenerate
     expect(regenerateError).toHaveBeenCalled()
     // Should have logged the error
     expect(consoleErrorSpy).toHaveBeenCalledWith('Auto regenerate error', expect.any(Error))
+
+    // Restore console.error after test
+    console.error = originalConsoleError
   })
 
   it('should trigger when messages array has multiple messages and last is from user', async () => {
@@ -266,7 +272,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
@@ -304,7 +310,7 @@ describe('useChatAutomation', () => {
     })
 
     await act(async () => {
-      await getClock().tickAsync(10)
+      await getClock().runAllAsync()
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()

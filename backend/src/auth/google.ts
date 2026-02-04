@@ -1,4 +1,5 @@
 import { getSettings } from '@/config/settings'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
@@ -9,6 +10,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
  */
 export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/google' })
+    .onError(safeErrorHandler)
     .get('/config', async () => {
       const settings = getSettings()
 

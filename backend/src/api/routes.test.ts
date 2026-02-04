@@ -55,6 +55,7 @@ describe('Main Routes', () => {
       corsAllowHeaders:
         'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
       corsExposeHeaders: 'mcp-session-id',
+      waitlistEnabled: false,
     } satisfies Settings)
   })
 
@@ -242,8 +243,13 @@ describe('Main Routes', () => {
       const response = await app.handle(new Request('http://localhost/v1/units?country='))
       expect(response.status).toBe(400)
 
-      const data = await response.text()
-      expect(data).toBe('Country parameter is required')
+      // Error handler sanitizes internal error messages for security
+      const data = await response.json()
+      expect(data).toEqual({
+        success: false,
+        data: null,
+        error: 'Bad request',
+      })
     })
 
     it('should return units-options data', async () => {

@@ -67,8 +67,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         }
 
         if (message.role === 'assistant') {
-          // Hide the last assistant message only if it's the broken empty response
-          // that regenerate() will remove. Don't hide valid previous responses.
+          // Hide empty assistant messages during errors — these are broken responses
+          // that regenerate() will remove. Messages with parts are valid responses.
           if (hasError && !message.parts?.length) return null
 
           const isLastMessage = i === messages.length - 1

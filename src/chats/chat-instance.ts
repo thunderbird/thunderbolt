@@ -88,15 +88,23 @@ export const createChatInstance = (
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
+          if (!useChatStore.getState().sessions.has(id)) return
           originalRegenerate().catch((err) => {
             console.error('Auto-retry failed:', err)
-            useChatStore.getState().updateSession(id, { retriesExhausted: true })
+            if (useChatStore.getState().sessions.has(id)) {
+              useChatStore.getState().updateSession(id, { retriesExhausted: true })
+            }
           })
         }, getRetryDelay(retryCount))
       } else {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
       }
     },
+    // Retry logic lives in onFinish (the SDK's finally block), not here.
+    // Adding retries to onError caused infinite loops in earlier iterations
+    // because onFinish resets state that onError depends on. If onFinish
+    // somehow doesn't fire, chatError is set by the SDK and retryCount
+    // stays at 0, so the UI shows the Retry button immediately.
     onError: (error) => {
       console.error('Chat error:', error)
     },

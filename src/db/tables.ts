@@ -165,15 +165,16 @@ export const triggersTable = sqliteTable(
 export const modesTable = sqliteTable(
   'modes',
   {
-    id: text('id').primaryKey().notNull().unique(),
-    name: text('name').notNull(),
-    label: text('label').notNull(),
-    icon: text('icon').notNull(),
+    id: text('id').primaryKey(),
+    name: text('name'),
+    label: text('label'),
+    icon: text('icon'),
     systemPrompt: text('system_prompt'),
     isDefault: integer('is_default').default(0),
     order: integer('order').default(0),
     defaultHash: text('default_hash'),
     deletedAt: integer('deleted_at'),
+    userId: text('user_id'),
   },
   (table) => [
     index('idx_modes_active')

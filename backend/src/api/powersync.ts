@@ -17,6 +17,7 @@ const VALID_TABLES = new Set([
   'mcp_servers',
   'prompts',
   'triggers',
+  'modes',
 ])
 
 /**

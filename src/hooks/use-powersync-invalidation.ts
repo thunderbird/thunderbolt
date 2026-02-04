@@ -17,6 +17,7 @@ const TABLE_TO_QUERY_KEYS: Record<string, string[][]> = {
   mcp_servers: [['mcp-servers']],
   prompts: [['prompts']],
   triggers: [['triggers']],
+  modes: [['modes']],
 }
 
 /**

@@ -58,6 +58,19 @@ CREATE TABLE "models" (
 	"user_id" text
 );
 --> statement-breakpoint
+CREATE TABLE "modes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text,
+	"label" text,
+	"icon" text,
+	"system_prompt" text,
+	"is_default" integer DEFAULT 0,
+	"order" integer DEFAULT 0,
+	"default_hash" text,
+	"deleted_at" integer,
+	"user_id" text
+);
+--> statement-breakpoint
 CREATE TABLE "prompts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"title" text,
@@ -96,10 +109,19 @@ CREATE TABLE "triggers" (
 	"user_id" text
 );
 --> statement-breakpoint
+CREATE TABLE "users" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "users_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"name" varchar(255) NOT NULL,
+	"age" integer NOT NULL,
+	"email" varchar(255) NOT NULL,
+	CONSTRAINT "users_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
 CREATE INDEX "idx_chat_messages_active" ON "chat_messages" USING btree ("chat_thread_id") WHERE "chat_messages"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_chat_threads_active" ON "chat_threads" USING btree ("id") WHERE "chat_threads"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_mcp_servers_active" ON "mcp_servers" USING btree ("id") WHERE "mcp_servers"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_models_active" ON "models" USING btree ("id") WHERE "models"."deleted_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "idx_modes_active" ON "modes" USING btree ("id") WHERE "modes"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_prompts_active" ON "prompts" USING btree ("id") WHERE "prompts"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_tasks_active" ON "tasks" USING btree ("id") WHERE "tasks"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "idx_triggers_active" ON "triggers" USING btree ("prompt_id") WHERE "triggers"."deleted_at" IS NULL;

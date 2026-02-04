@@ -175,3 +175,24 @@ export const triggersTable = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+export const modesTable = pgTable(
+  'modes',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    label: text('label'),
+    icon: text('icon'),
+    systemPrompt: text('system_prompt'),
+    isDefault: integer('is_default').default(0),
+    order: integer('order').default(0),
+    defaultHash: text('default_hash'),
+    deletedAt: integer('deleted_at'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_modes_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)

@@ -14,6 +14,7 @@ export const drizzleSchema = {
   mcpServers: tables.mcpServersTable,
   prompts: tables.promptsTable,
   triggers: tables.triggersTable,
+  modes: tables.modesTable,
 }
 
 /**

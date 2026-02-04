@@ -24,6 +24,7 @@ sync_rules:
           - SELECT * FROM mcp_servers WHERE mcp_servers.user_id = bucket.user_id
           - SELECT * FROM prompts WHERE prompts.user_id = bucket.user_id
           - SELECT * FROM triggers WHERE triggers.user_id = bucket.user_id
+          - SELECT * FROM modes WHERE modes.user_id = bucket.user_id
 
 client_auth:
   supabase: false

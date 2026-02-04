@@ -3,9 +3,10 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
+import { privacyPolicyUrl } from '@/lib/constants'
+import { extractCountryFromLocation } from '@/lib/country-utils'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
-import { extractCountryFromLocation } from '@/lib/country-utils'
 import type { CountryUnitsData } from '@/types'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useReducer, useRef, useState } from 'react'
@@ -716,11 +717,7 @@ export default function PreferencesSettingsPage() {
             <p className="text-sm text-muted-foreground">
               Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
               personal data is collected or stored. Read more about our{' '}
-              <a
-                className="text-primary underline-offset-4 hover:underline"
-                href="https://www.thunderbird.net/en-US/privacy/"
-                target="_blank"
-              >
+              <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
                 privacy policy
               </a>
               .

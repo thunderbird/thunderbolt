@@ -1,4 +1,3 @@
-import { maxRetries } from '@/chats/chat-instance'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ErrorMessage } from './error-message'
 
@@ -9,8 +8,7 @@ const meta = {
     layout: 'padded',
     docs: {
       description: {
-        component:
-          'Two-phase error banner shown during chat failures. Displays a yellow "retrying" state with a spinner during auto-retries, then a red error state with a manual Retry button when all attempts are exhausted.',
+        component: 'Error banner displayed when a chat message fails.',
       },
     },
   },
@@ -26,63 +24,28 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Retrying: Story = {
+export const Default: Story = {
   args: {
-    retryCount: 1,
-    retriesExhausted: false,
+    message: 'Failed to connect to the server. Please check your connection and try again.',
+  },
+}
+
+export const NullMessage: Story = {
+  args: {
+    message: null,
   },
   parameters: {
     docs: {
       description: {
-        story: 'Yellow banner with spinner shown while auto-retries are in progress.',
+        story: 'When message is null, a default error message is displayed.',
       },
     },
   },
 }
 
-export const RetryingSecondAttempt: Story = {
+export const LongMessage: Story = {
   args: {
-    retryCount: 2,
-    retriesExhausted: false,
-  },
-}
-
-export const RetryingFinalAttempt: Story = {
-  args: {
-    retryCount: maxRetries,
-    retriesExhausted: false,
-  },
-}
-
-export const RetriesExhausted: Story = {
-  args: {
-    retryCount: maxRetries,
-    retriesExhausted: true,
-    onRetry: () => {
-      console.log('Retry clicked')
-      // In real usage, the component will show "Retrying..." state
-    },
-  },
-  parameters: {
-    docs: {
-      description: {
-        story:
-          'Red banner with manual Retry button shown after all auto-retries have failed. Clicking the button shows a "Retrying..." state to prevent double-clicks.',
-      },
-    },
-  },
-}
-
-export const RetriesExhaustedNoRetryHandler: Story = {
-  args: {
-    retryCount: maxRetries,
-    retriesExhausted: true,
-  },
-  parameters: {
-    docs: {
-      description: {
-        story: 'Red banner without Retry button when no onRetry handler is provided.',
-      },
-    },
+    message:
+      'The request timed out after waiting for a response from the server. This could be due to network issues, server overload, or the request being too complex. Please try again with a simpler request or check your network connection.',
   },
 }

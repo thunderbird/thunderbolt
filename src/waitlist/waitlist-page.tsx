@@ -1,6 +1,7 @@
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { Loader2 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
@@ -114,7 +115,7 @@ export const WaitlistPage = () => {
           <p className="text-center text-xs text-muted-foreground">
             By continuing, you agree to our{' '}
             <a
-              href="https://www.mozilla.org/en-US/about/legal/terms/mozilla/"
+              href={termsOfServiceUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:no-underline"
@@ -123,7 +124,7 @@ export const WaitlistPage = () => {
             </a>{' '}
             and{' '}
             <a
-              href="https://www.thunderbird.net/en-US/privacy/"
+              href={privacyPolicyUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:no-underline"

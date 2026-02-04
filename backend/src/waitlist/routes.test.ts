@@ -188,5 +188,101 @@ describe('Waitlist API', () => {
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'existing@example.com'))
       expect(entries).toHaveLength(0)
     })
+
+    it('should auto-approve mozilla.org domain', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@mozilla.org' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      // Privacy: same response regardless of auto-approval
+      expect(result).toEqual({ success: true })
+
+      // Verify in database with approved status
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@mozilla.org'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+    })
+
+    it('should auto-approve thunderbird.net domain', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@thunderbird.net' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify in database with approved status
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@thunderbird.net'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+    })
+
+    it('should auto-approve with case-insensitive domain matching', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'TEST@MOZILLA.ORG' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify in database with approved status (email normalized to lowercase)
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@mozilla.org'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+    })
+
+    it('should not auto-approve non-whitelisted domains', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@other-domain.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify in database with pending status
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@other-domain.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('pending')
+    })
+
+    it('should not auto-approve similar but different domains', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@fake-mozilla.org.evil.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result).toEqual({ success: true })
+
+      // Verify in database with pending status (not auto-approved)
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@fake-mozilla.org.evil.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('pending')
+    })
   })
 })

@@ -5,9 +5,18 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { autoApprovedDomains } from '@/lib/constants'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
+
+/**
+ * Check if an email domain is in the auto-approved list
+ */
+const isAutoApprovedDomain = (email: string): boolean => {
+  const domain = email.split('@')[1]?.toLowerCase()
+  return domain ? autoApprovedDomains.includes(domain) : false
+}
 
 /**
  * Trigger Better Auth's OTP flow for approved users.
@@ -70,19 +79,33 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
         return { success: true }
       }
 
+      // Check if email domain is auto-approved
+      const isAutoApproved = isAutoApprovedDomain(email)
+
       // Add new entry to waitlist
       await database.insert(waitlist).values({
         id: crypto.randomUUID(),
         email,
-        status: 'pending',
+        status: isAutoApproved ? 'approved' : 'pending',
       })
 
-      try {
-        await sendWaitlistJoinedEmail({ email })
-      } catch (error) {
-        console.error('Failed to send waitlist joined email', {
-          error: error instanceof Error ? error.message : String(error),
-        })
+      // Send appropriate email based on auto-approval status
+      if (isAutoApproved) {
+        try {
+          await sendApprovedMagicLinkEmail(auth, email)
+        } catch (error) {
+          console.error('Failed to send magic link email', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      } else {
+        try {
+          await sendWaitlistJoinedEmail({ email })
+        } catch (error) {
+          console.error('Failed to send waitlist joined email', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
       }
       return { success: true }
     },

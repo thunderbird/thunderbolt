@@ -2,8 +2,8 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
-import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
 
 describe('Waitlist API', () => {
   let app: Awaited<ReturnType<typeof createApp>>

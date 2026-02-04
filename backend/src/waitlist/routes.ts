@@ -1,5 +1,5 @@
 import type { Auth } from '@/auth/auth'
-import { markWaitlistApproved } from '@/auth/utils'
+import { clearWaitlistApproved, markWaitlistApproved } from '@/auth/utils'
 import type { db } from '@/db/client'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
@@ -11,20 +11,28 @@ import { Elysia, t } from 'elysia'
 import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
 
 /**
- * Check if an email domain is in the auto-approved list
+ * Check if an email domain is in the auto-approved list.
+ * Uses the last @ character to handle edge-case RFC 5321 addresses with quoted local parts.
  */
 const isAutoApprovedDomain = (email: string): boolean => {
-  const domain = email.split('@')[1]?.toLowerCase()
+  const parts = email.split('@')
+  const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
   return domain ? autoApprovedDomains.includes(domain) : false
 }
 
 /**
  * Trigger Better Auth's OTP flow for approved users.
  * Marks the email first so the callback uses the 'waitlist-approved' template.
+ * Clears the flag if OTP send fails to prevent incorrect template on future sends.
  */
 const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<void> => {
   markWaitlistApproved(email)
-  await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+  try {
+    await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+  } catch (error) {
+    clearWaitlistApproved(email)
+    throw error
+  }
 }
 
 export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>

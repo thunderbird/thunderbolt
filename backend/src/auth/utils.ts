@@ -11,6 +11,11 @@ export const markWaitlistApproved = (email: string): void => {
   waitlistApprovedEmails.add(email.toLowerCase())
 }
 
+/** Clear the waitlist-approved flag for an email (e.g., on OTP send failure) */
+export const clearWaitlistApproved = (email: string): void => {
+  waitlistApprovedEmails.delete(email.toLowerCase())
+}
+
 /** Check and consume the waitlist-approved flag for an email */
 export const consumeWaitlistApproved = (email: string): boolean => {
   const normalized = email.toLowerCase()

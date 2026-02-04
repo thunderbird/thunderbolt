@@ -38,7 +38,7 @@ describe('Waitlist API - Email Failure Handling', () => {
   })
 
   describe('POST /v1/waitlist/join', () => {
-    it('should return success even if joined email fails to send', async () => {
+    it('should return 500 if joined email fails to send', async () => {
       const response = await app.handle(
         new Request('http://localhost/v1/waitlist/join', {
           method: 'POST',
@@ -47,24 +47,21 @@ describe('Waitlist API - Email Failure Handling', () => {
         }),
       )
 
-      expect(response.status).toBe(200)
-      // Privacy: response doesn't reveal approval status
-      expect(await response.json()).toEqual({ success: true })
+      expect(response.status).toBe(500)
+      expect(mockSendJoinedEmail).toHaveBeenCalledTimes(1)
 
-      // DB entry should exist despite email failure
+      // DB entry should still exist (inserted before email send)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'email-fail-new@example.com'))
       expect(entries).toHaveLength(1)
-      expect(mockSendJoinedEmail).toHaveBeenCalledTimes(1)
     })
 
-    it('should return success even if reminder email fails to send', async () => {
+    it('should return 500 if reminder email fails to send', async () => {
       await db.insert(waitlist).values({
         id: crypto.randomUUID(),
         email: 'email-fail-duplicate@example.com',
         status: 'pending',
       })
 
-      // Duplicate submission triggers reminder email
       const response = await app.handle(
         new Request('http://localhost/v1/waitlist/join', {
           method: 'POST',
@@ -73,13 +70,7 @@ describe('Waitlist API - Email Failure Handling', () => {
         }),
       )
 
-      expect(response.status).toBe(200)
-      // Privacy: response doesn't reveal approval status
-      expect(await response.json()).toEqual({ success: true })
-
-      // No duplicate entry created
-      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'email-fail-duplicate@example.com'))
-      expect(entries).toHaveLength(1)
+      expect(response.status).toBe(500)
       expect(mockSendReminderEmail).toHaveBeenCalledTimes(1)
     })
   })

@@ -5,8 +5,7 @@ type SendWaitlistEmailParams = {
 }
 
 /**
- * Send email when user joins the waitlist
- * Uses a simple template saying "Thanks for signing up! We'll let you know when it's ready."
+ * Send email when user joins the waitlist.
  */
 export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending joined waitlist email')
@@ -17,13 +16,11 @@ export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams
   }
 
   const data = await sendEmail({ to: email, templateId: 'waitlist-joined' })
-
   console.info(`✅ Joined waitlist email sent successfully. ID: ${data?.id}`)
 }
 
 /**
- * Send waitlist reminder email for users already on the waitlist
- * Reminds them they're on the waitlist and we'll notify them when invited
+ * Send waitlist reminder email for users already on the waitlist.
  */
 export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending waitlist reminder email')
@@ -34,13 +31,11 @@ export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailPara
   }
 
   const data = await sendEmail({ to: email, templateId: 'waitlist-reminder' })
-
   console.info(`✅ Waitlist reminder sent successfully. ID: ${data?.id}`)
 }
 
 /**
- * Send "not ready yet" email when a pending waitlist user tries to sign in
- * Lets them know they're still on the waitlist and we'll notify them when approved
+ * Send "not ready yet" email when a pending waitlist user tries to sign in.
  */
 export const sendWaitlistNotReadyEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending waitlist not-ready email')
@@ -51,6 +46,5 @@ export const sendWaitlistNotReadyEmail = async ({ email }: SendWaitlistEmailPara
   }
 
   const data = await sendEmail({ to: email, templateId: 'waitlist-not-ready' })
-
   console.info(`✅ Waitlist not-ready email sent successfully. ID: ${data?.id}`)
 }

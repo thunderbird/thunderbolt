@@ -45,14 +45,7 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
       const existingUser = await database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
 
       if (existingUser.length > 0) {
-        // Trigger OTP flow - sends magic link email for one-click sign-in
-        try {
-          await sendApprovedMagicLinkEmail(auth, email)
-        } catch (error) {
-          console.error('Failed to send magic link email', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
+        await sendApprovedMagicLinkEmail(auth, email)
         return { success: true }
       }
 
@@ -66,23 +59,9 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
       // If entry exists, send appropriate email based on status
       if (existing.length > 0) {
         if (existing[0].status === 'approved') {
-          // Trigger OTP flow - sends magic link email for one-click sign-in
-          try {
-            await sendApprovedMagicLinkEmail(auth, email)
-          } catch (error) {
-            console.error('Failed to send magic link email', {
-              error: error instanceof Error ? error.message : String(error),
-            })
-          }
+          await sendApprovedMagicLinkEmail(auth, email)
         } else {
-          // Send reminder email (pending status)
-          try {
-            await sendWaitlistReminderEmail({ email })
-          } catch (error) {
-            console.error('Failed to send waitlist reminder email', {
-              error: error instanceof Error ? error.message : String(error),
-            })
-          }
+          await sendWaitlistReminderEmail({ email })
         }
         return { success: true }
       }
@@ -99,21 +78,9 @@ export const createWaitlistRoutes = (database: typeof db, auth: Auth) =>
 
       // Send appropriate email based on auto-approval status
       if (isAutoApproved) {
-        try {
-          await sendApprovedMagicLinkEmail(auth, email)
-        } catch (error) {
-          console.error('Failed to send magic link email', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
+        await sendApprovedMagicLinkEmail(auth, email)
       } else {
-        try {
-          await sendWaitlistJoinedEmail({ email })
-        } catch (error) {
-          console.error('Failed to send waitlist joined email', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
+        await sendWaitlistJoinedEmail({ email })
       }
       return { success: true }
     },

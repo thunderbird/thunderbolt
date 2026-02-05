@@ -50,8 +50,8 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
   switch (op.op) {
     case 'PUT': {
       // INSERT or UPDATE - upsert the row
-      // Merge id and user_id into data (user_id always set to authenticated user)
-      const allData = { id: op.id, ...op.data, user_id: userId }
+      // Merge id and user_id into data; id and user_id must come after spread so client cannot override them
+      const allData = { ...op.data, id: op.id, user_id: userId }
       const columns = Object.keys(allData)
         .map((k) => `"${k}"`)
         .join(', ')

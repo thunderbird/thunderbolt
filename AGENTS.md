@@ -43,3 +43,9 @@
 - Consider refactoring into standalone functions for clarity
 - Remove unused variables and imports
 - Verify tests pass and no TypeScript errors exist
+
+## PowerSync and synced tables
+
+- **Requirements for PowerSync tables:** New synced tables must have a `user_id` column (sync rules and backend scope by `user_id`). Define the table in **both** frontend ([src/db/tables.ts](src/db/tables.ts), SQLite) and backend ([backend/src/db/powersync-schema.ts](backend/src/db/powersync-schema.ts), PostgreSQL).
+- **Adding a new synced table:** (1) Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` with `user_id`. (2) Register in [src/db/powersync/schema.ts](src/db/powersync/schema.ts) (`drizzleSchema`). (3) Add table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts). (4) Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml) sync rules `data:` list. (5) Run migrations for frontend and backend as needed.
+- **Before merging to production:** Deploy the new sync rules in the PowerSync Cloud dashboard (production uses PowerSync Cloud; local uses powersync-service config).

@@ -1,25 +1,8 @@
 import { DatabaseSingleton } from '@/db/singleton'
+import { type PowerSyncTableName, POWERSYNC_TABLE_TO_QUERY_KEYS } from '@shared/powersync-tables'
 import type { PowerSyncDatabase } from '@powersync/web'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-
-/**
- * Map of table names to their React Query keys that should be invalidated.
- * When a table changes (local write or sync), all associated query keys are invalidated.
- * Using prefix keys (e.g., ['settings']) will invalidate all queries starting with that prefix.
- */
-const TABLE_TO_QUERY_KEYS: Record<string, string[][]> = {
-  settings: [['settings']],
-  chat_threads: [['chatThreads']],
-  chat_messages: [['messages'], ['messageCache']],
-  tasks: [['tasks']],
-  models: [['models']],
-  mcp_servers: [['mcp-servers']],
-  prompts: [['prompts']],
-  triggers: [['triggers']],
-  modes: [['modes']],
-  devices: [['devices']],
-}
 
 /**
  * Get PowerSync instance from singleton if available.
@@ -65,12 +48,12 @@ export const usePowerSyncInvalidation = (tables?: string[]) => {
       return
     }
 
-    const tablesToWatch = tables ?? Object.keys(TABLE_TO_QUERY_KEYS)
+    const tablesToWatch = tables ?? Object.keys(POWERSYNC_TABLE_TO_QUERY_KEYS)
     const unsubscribes: (() => void)[] = []
 
     for (const tableName of tablesToWatch) {
-      const queryKeys = TABLE_TO_QUERY_KEYS[tableName]
-      if (!queryKeys) continue
+      if (!(tableName in POWERSYNC_TABLE_TO_QUERY_KEYS)) continue
+      const queryKeys = POWERSYNC_TABLE_TO_QUERY_KEYS[tableName as PowerSyncTableName]
 
       // Watch the table for any changes
       const abortController = new AbortController()

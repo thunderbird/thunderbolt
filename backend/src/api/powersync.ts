@@ -3,25 +3,12 @@ import type { Settings } from '@/config/settings'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { db } from '@/db/client'
 import { devicesTable } from '@/db/schema'
+import { POWERSYNC_TABLE_NAMES } from '@shared/powersync-tables'
 import { jwt } from '@elysiajs/jwt'
 import { eq, sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-/**
- * Valid table names for PowerSync sync
- */
-const VALID_TABLES = new Set([
-  'settings',
-  'chat_threads',
-  'chat_messages',
-  'tasks',
-  'models',
-  'mcp_servers',
-  'prompts',
-  'triggers',
-  'modes',
-  'devices',
-])
+const VALID_TABLES = new Set<string>(POWERSYNC_TABLE_NAMES)
 
 /**
  * PowerSync operation types from the upload queue

@@ -13,11 +13,13 @@
  * That's it! Everything else auto-wires.
  */
 
+import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as linkPreview from './link-preview'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
+export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
 export { WeatherForecastWidget } from './weather-forecast'
@@ -27,6 +29,10 @@ export { WeatherForecastWidget } from './weather-forecast'
  * This is the single source of truth for all widgets in the system
  */
 export const widgetRegistry = [
+  {
+    name: 'citation' as const,
+    module: citation,
+  },
   {
     name: 'connect-integration' as const,
     module: connectIntegration,
@@ -82,4 +88,8 @@ export const widgetComponents = Object.fromEntries(
  * Union type of all widget cache data - auto-generated from registry
  * This is used for the chat message cache field
  */
-export type WidgetCacheData = connectIntegration.CacheData | linkPreview.CacheData | weatherForecast.CacheData
+export type WidgetCacheData =
+  | connectIntegration.CacheData
+  | linkPreview.CacheData
+  | weatherForecast.CacheData
+  | citation.CacheData

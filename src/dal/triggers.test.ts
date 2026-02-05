@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createTrigger,
@@ -249,8 +249,11 @@ describe('Triggers DAL', () => {
       const triggersAfter = await getAllTriggersForPrompt(promptId)
       expect(triggersAfter).toHaveLength(0)
 
-      // But should still exist in database with deletedAt set
-      const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      // Should still exist in database with deletedAt set (select by id; promptId is cleared by soft delete)
+      const rawTriggers = await db
+        .select()
+        .from(triggersTable)
+        .where(inArray(triggersTable.id, [triggerId1, triggerId2]))
       expect(rawTriggers).toHaveLength(2)
       expect(rawTriggers.every((t) => t.deletedAt !== null)).toBe(true)
     })

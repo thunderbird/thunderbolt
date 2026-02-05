@@ -44,6 +44,12 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
         // No defaultHash - set it to the default hash to enable modification tracking
         await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
       } else if (currentHash === existing.defaultHash) {
+        // Skip update if default hasn't changed (prevents empty PATCH operations)
+        // TODO: needs more testing
+        if (existing.defaultHash === defaultHashValue) {
+          continue
+        }
+
         // Protect user-set values from being overwritten by null defaults.
         // This handles localization settings (distance_unit, etc.) where the user explicitly
         // set a value via recomputeHash, but the code default is null.
@@ -52,7 +58,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
         if (wouldOverwriteUserValue) continue
 
-        // Unmodified - safe to update to new default
+        // Unmodified and default has changed - safe to update to new default
         await db
           .update(table)
           .set({

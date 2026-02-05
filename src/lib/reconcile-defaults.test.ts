@@ -296,6 +296,7 @@ describe('reconcileDefaultsForTable', () => {
       value: 'default_value',
       updatedAt: null,
       defaultHash: null,
+      userId: null,
     }
 
     // Seed with this default
@@ -324,6 +325,7 @@ describe('reconcileDefaultsForTable', () => {
       value: userSetValue,
       updatedAt: null,
       defaultHash: null,
+      userId: null,
     }
 
     await db.insert(settingsTable).values({
@@ -343,6 +345,7 @@ describe('reconcileDefaultsForTable', () => {
       value: null,
       updatedAt: null,
       defaultHash: null,
+      userId: null,
     }
 
     // Run reconcile - this previously would overwrite user's "metric" with null
@@ -364,6 +367,7 @@ describe('reconcileDefaultsForTable', () => {
       value: null,
       updatedAt: null,
       defaultHash: null,
+      userId: null,
     }
 
     await db.insert(settingsTable).values({
@@ -377,6 +381,7 @@ describe('reconcileDefaultsForTable', () => {
       value: null,
       updatedAt: null,
       defaultHash: null,
+      userId: null,
     }
 
     // Run reconcile - should proceed (this is a no-op anyway)

@@ -47,6 +47,7 @@ export const defaultModelGptOss120b: Model = {
   defaultHash: null,
   vendor: 'openai',
   description: 'Fast and confidential',
+  userId: null,
 }
 
 export const defaultModelMistralMedium31: Model = {
@@ -67,6 +68,7 @@ export const defaultModelMistralMedium31: Model = {
   defaultHash: null,
   vendor: 'mistral',
   description: 'Balanced performance and efficiency',
+  userId: null,
 }
 
 export const defaultModelSonnet45: Model = {
@@ -87,6 +89,7 @@ export const defaultModelSonnet45: Model = {
   defaultHash: null,
   vendor: 'anthropic',
   description: 'Advanced reasoning and creativity',
+  userId: null,
 }
 
 /**

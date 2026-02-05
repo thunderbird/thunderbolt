@@ -95,6 +95,7 @@ export default function NewModelPage() {
       defaultHash: null, // User-created, not based on a default
       vendor: null,
       description: null,
+      userId: null,
     })
   }
 

@@ -125,12 +125,12 @@ describe('Link Preview Routes', () => {
       expect(body.data?.title).toBe('Page Title')
     })
 
-    it('should fallback to meta description if og:description is missing', async () => {
+    it('should fallback to meta description when social tags are present', async () => {
       const targetUrl = 'https://example.com/page'
       const html = `
         <html>
           <head>
-            <title>Page Title</title>
+            <meta property="og:title" content="OG Title" />
             <meta name="description" content="Regular meta description" />
           </head>
         </html>
@@ -144,6 +144,7 @@ describe('Link Preview Routes', () => {
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(true)
+      expect(body.data?.title).toBe('OG Title')
       expect(body.data?.description).toBe('Regular meta description')
     })
 
@@ -296,7 +297,7 @@ describe('Link Preview Routes', () => {
     it('should handle URL-encoded target URLs', async () => {
       const targetUrl = 'https://example.com/page?v=2'
       const encodedTargetUrl = encodeURIComponent(targetUrl)
-      const html = '<html><head><title>Test</title></head></html>'
+      const html = '<html><head><meta property="og:title" content="Test" /></head></html>'
 
       mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
 
@@ -374,9 +375,58 @@ describe('Link Preview Routes', () => {
       expect(body.error).toBe('Network connection failed')
     })
 
+    it('should return all nulls when page has no social tags (e.g. captcha page)', async () => {
+      const targetUrl = 'https://example.com/blocked'
+      const html = `
+        <html>
+          <head>
+            <title>Please verify you are human</title>
+            <meta name="description" content="Complete the captcha to continue" />
+          </head>
+        </html>
+      `
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+      const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(true)
+      expect(body.data).toEqual({
+        title: null,
+        description: null,
+        image: null,
+      })
+    })
+
+    it('should use title tag fallback when at least one social tag is present', async () => {
+      const targetUrl = 'https://example.com/page'
+      const html = `
+        <html>
+          <head>
+            <title>Page Title</title>
+            <meta property="og:image" content="https://example.com/img.jpg" />
+          </head>
+        </html>
+      `
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+      const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(true)
+      expect(body.data?.title).toBe('Page Title')
+      expect(body.data?.image).toBe('https://example.com/img.jpg')
+    })
+
     it('should send User-Agent header', async () => {
       const targetUrl = 'https://example.com/page'
-      const html = '<html><head><title>Test</title></head></html>'
+      const html = '<html><head><meta property="og:title" content="Test" /></head></html>'
 
       mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
 

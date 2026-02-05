@@ -1,4 +1,4 @@
-export { LinkPreview } from './display'
+export { LinkChip, LinkPreview } from './display'
 export { instructions } from './instructions'
 export { parse, schema } from './schema'
 export type { CacheData, LinkPreviewWidget as LinkPreviewWidgetType } from './schema'

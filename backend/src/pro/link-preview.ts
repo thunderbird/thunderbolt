@@ -30,37 +30,46 @@ const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
 }
 
 /**
- * Extracts Open Graph metadata from HTML content
+ * Extracts Open Graph metadata from HTML content.
+ * Only falls back to <title> and <meta description> when at least one social
+ * meta tag (og:* or twitter:image) is present — pages without any social tags
+ * (e.g. captcha/block pages) return all nulls instead of garbage fallback text.
  */
 const extractMetadata = (html: string, url: string) => {
-  // Extract og:image or fallback to any meta image
+  // Extract social meta tags
+  const ogTitleMatch =
+    html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["'][^>]*>/i)
+  const ogDescMatch =
+    html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["'][^>]*>/i)
   const imageMatch =
     html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["'][^>]*>/i) ||
     html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image["'][^>]*>/i)
+
+  const hasSocialTags = !!(ogTitleMatch || ogDescMatch || imageMatch)
+
+  // Only use non-social fallbacks when the page has at least one social tag
+  const titleMatch = hasSocialTags ? html.match(/<title[^>]*>([^<]+)<\/title>/i) : null
+  const metaDescMatch = hasSocialTags
+    ? html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
+      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i)
+    : null
+
   const rawImage = imageMatch?.[1] || null
   const image = rawImage ? resolveUrl(url, rawImage) : null
+  const rawTitle = ogTitleMatch?.[1] || titleMatch?.[1] || null
+  const rawDescription = ogDescMatch?.[1] || metaDescMatch?.[1] || null
 
-  // Extract og:title or fallback to title tag
-  const ogTitleMatch =
-    html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["'][^>]*>/i)
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-  const title = ogTitleMatch?.[1] || titleMatch?.[1] || null
-
-  // Extract og:description or fallback to meta description
-  const ogDescMatch =
-    html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["'][^>]*>/i)
-  const metaDescMatch =
-    html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["'][^>]*>/i)
-  const description = ogDescMatch?.[1] || metaDescMatch?.[1] || null
+  // Trim whitespace and decode HTML entities, return null if empty after trimming
+  const title = rawTitle?.trim() ? decodeHtmlEntities(rawTitle.trim()) : null
+  const description = rawDescription?.trim() ? decodeHtmlEntities(rawDescription.trim()) : null
 
   return {
-    title: title ? decodeHtmlEntities(title) : null,
-    description: description ? decodeHtmlEntities(description) : null,
+    title,
+    description,
     image,
   }
 }
@@ -98,7 +107,9 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
           error: 'Invalid URL encoding',
         }
       }
-      const targetUrl = pathOnly + url.search
+      // Only append query string if the decoded path doesn't already contain one
+      // This prevents double-adding query params if the original URL had them encoded in the path
+      const targetUrl = pathOnly.includes('?') ? pathOnly : pathOnly + url.search
 
       if (!targetUrl) {
         return {

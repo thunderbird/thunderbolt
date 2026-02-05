@@ -3,7 +3,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
-import { LinkPreview } from './display'
+import { LinkChip, LinkPreview } from './display'
+import { getHostname } from './utils'
 
 type LinkPreviewWidgetProps = {
   url: string
@@ -11,8 +12,8 @@ type LinkPreviewWidgetProps = {
 }
 
 type LinkPreviewMetadata = {
-  title: string
-  description: string
+  title: string | null
+  description: string | null
   image: string | null
 }
 
@@ -40,8 +41,8 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
     fetchFn: async () => {
       const preview = await fetchLinkPreview({ url })
       return {
-        title: preview.title || url,
-        description: preview.description || '',
+        title: preview.title,
+        description: preview.description,
         image: preview.image,
       }
     },
@@ -51,17 +52,19 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
     return <LinkPreviewSkeleton />
   }
 
-  // Show error state with error message as description
-  if (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to load preview'
-    return <LinkPreview title={url} description={errorMessage} url={url} image={null} />
+  if (error || !data) {
+    return <LinkChip url={url} />
   }
 
-  if (!data) {
-    return <LinkPreview title={url} description="Failed to load preview" url={url} image={null} />
+  const isEmpty = !data.title && !data.description && !data.image
+  if (isEmpty) {
+    return <LinkChip url={url} />
   }
 
+  // Proxy images through the backend to prevent leaking user IP/browser info to external servers
   const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}` : null
 
-  return <LinkPreview title={data.title} description={data.description} url={url} image={imageUrl} />
+  return (
+    <LinkPreview title={data.title || getHostname(url)} description={data.description} url={url} image={imageUrl} />
+  )
 }

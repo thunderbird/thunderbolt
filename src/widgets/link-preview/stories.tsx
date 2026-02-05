@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { LinkPreview } from './display'
+import { LinkChip, LinkPreview } from './display'
 import { LinkPreviewSkeleton } from './widget'
 
 const meta = {
@@ -189,6 +189,56 @@ export const ImageError: Story = {
     docs: {
       description: {
         story: 'Link preview with an image that fails to load - falls back to placeholder',
+      },
+    },
+  },
+}
+
+export const HostnameAsTitleFallback: Story = {
+  args: {
+    url: 'https://www.example.com/some/long/path',
+    title: 'example.com',
+    description: 'A page where the hostname is used as the title fallback instead of the full URL',
+    image: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'When no og:title is found, the hostname is used as the title instead of the full URL',
+      },
+    },
+  },
+}
+
+export const MinimalLinkChip: Story = {
+  args: {
+    url: 'https://blocked-site.example.com/captcha',
+    title: null,
+    description: null,
+    image: null,
+  },
+  render: (args) => <LinkChip url={args.url} />,
+  parameters: {
+    docs: {
+      description: {
+        story: 'Minimal link chip shown when no metadata was found (e.g., captcha pages)',
+      },
+    },
+  },
+}
+
+export const MinimalLinkChipLongHostname: Story = {
+  args: {
+    url: 'https://very-long-subdomain.deeply-nested.example.co.uk/path',
+    title: null,
+    description: null,
+    image: null,
+  },
+  render: (args) => <LinkChip url={args.url} />,
+  parameters: {
+    docs: {
+      description: {
+        story: 'Minimal link chip with a long hostname to verify truncation',
       },
     },
   },

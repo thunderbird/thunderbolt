@@ -1,8 +1,9 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { isDesktop as isTauriDesktop } from '@/lib/platform'
 import { usePreview } from '@/content-view/context'
-import { ImageIcon } from 'lucide-react'
+import { ExternalLink, ImageIcon } from 'lucide-react'
 import { useState } from 'react'
+import { getHostname } from './utils'
 
 type LinkPreviewProps = {
   url: string
@@ -62,8 +63,41 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
           <CardHeader className="flex-1 flex flex-col pl-4 py-4">
             <CardTitle className="line-clamp-1">{title}</CardTitle>
             {description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
+            <span className="text-xs text-muted-foreground truncate">{getHostname(url)}</span>
           </CardHeader>
         </Card>
+      </a>
+    </div>
+  )
+}
+
+type LinkChipProps = {
+  url: string
+}
+
+export const LinkChip = ({ url }: LinkChipProps) => {
+  const { showPreview } = usePreview()
+  const isDesktop = isTauriDesktop()
+
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isDesktop) {
+      e.preventDefault()
+      e.stopPropagation()
+      showPreview(url)
+    }
+  }
+
+  return (
+    <div className="my-4">
+      <a
+        href={isDesktop ? '#' : url}
+        target={isDesktop ? undefined : '_blank'}
+        rel={isDesktop ? undefined : 'noopener noreferrer'}
+        onClick={handleClick}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+      >
+        <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
+        <span className="truncate">{getHostname(url)}</span>
       </a>
     </div>
   )

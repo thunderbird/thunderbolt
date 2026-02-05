@@ -15,6 +15,7 @@ type LinkPreviewMetadata = {
   title: string | null
   description: string | null
   image: string | null
+  imageData?: string | null
 }
 
 export const LinkPreviewSkeleton = () => {
@@ -44,6 +45,7 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
         title: preview.title,
         description: preview.description,
         image: preview.image,
+        imageData: preview.imageData,
       }
     },
   })
@@ -61,8 +63,12 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
     return <LinkChip url={url} />
   }
 
-  // Proxy images through the backend to prevent leaking user IP/browser info to external servers
-  const imageUrl = data.image && cloudUrl.value ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}` : null
+  // Use inlined image data when available, otherwise proxy through the backend for privacy
+  const imageUrl = data.imageData
+    ? data.imageData
+    : data.image && cloudUrl.value
+      ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}`
+      : null
 
   return (
     <LinkPreview title={data.title || getHostname(url)} description={data.description} url={url} image={imageUrl} />

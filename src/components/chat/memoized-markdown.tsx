@@ -1,35 +1,43 @@
 import { marked } from 'marked'
 import { type CSSProperties, memo, useMemo } from 'react'
+import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { markdownComponents } from './markdown-utils'
+import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
 
-function parseMarkdownIntoBlocks(markdown: string): string[] {
+const parseMarkdownIntoBlocks = (markdown: string): string[] => {
   const tokens = marked.lexer(markdown)
   return tokens.map((token) => token.raw)
 }
 
 const MemoizedMarkdownBlock = memo(
-  ({ content }: { content: string }) => {
+  ({ content, components }: { content: string; components: Components }) => {
     return (
       <div className="overflow-x-scroll">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {content}
         </ReactMarkdown>
       </div>
     )
   },
-  (prevProps, nextProps) => {
-    if (prevProps.content !== nextProps.content) return false
-    return true
-  },
+  (prevProps, nextProps) => prevProps.content === nextProps.content && prevProps.components === nextProps.components,
 )
 
 MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock'
 
-export const MemoizedMarkdown = memo(({ content, id }: { content: string; id: string }) => {
+type MemoizedMarkdownProps = {
+  content: string
+  id: string
+  citations?: CitationMap
+}
+
+export const MemoizedMarkdown = memo(({ content, id, citations }: MemoizedMarkdownProps) => {
   const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content])
+  const components = useMemo(
+    () => (citations?.size ? createMarkdownComponents(citations) : markdownComponents),
+    [citations],
+  )
 
   return (
     <div
@@ -77,7 +85,7 @@ export const MemoizedMarkdown = memo(({ content, id }: { content: string; id: st
       }
     >
       {blocks.map((block, index) => (
-        <MemoizedMarkdownBlock content={block} key={`${id}-block_${index}`} />
+        <MemoizedMarkdownBlock content={block} components={components} key={`${id}-block_${index}`} />
       ))}
     </div>
   )

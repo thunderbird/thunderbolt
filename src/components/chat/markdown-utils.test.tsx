@@ -3,7 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { markdownComponents } from './markdown-utils'
+import type { CitationSource } from '@/types/citation'
+import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
+
+const makeSources = (name: string): CitationSource[] => [
+  { id: `src-${name}`, title: `${name} Article`, url: `https://${name}.com`, siteName: name, isPrimary: true },
+]
 
 describe('markdownComponents', () => {
   describe('basic <br> tag handling', () => {
@@ -181,5 +186,77 @@ describe('markdownComponents', () => {
       expect(container.querySelector('em')).toBeTruthy()
       expect(container.querySelectorAll('br')).toHaveLength(2)
     })
+  })
+})
+
+describe('createMarkdownComponents (citation placeholders)', () => {
+  const renderWithCitations = (content: string, citations: CitationMap) => {
+    const components = createMarkdownComponents(citations)
+    return render(
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>,
+    )
+  }
+
+  test('replaces single citation placeholder with CitationBadge', () => {
+    const citations: CitationMap = new Map([[0, makeSources('Nature')]])
+    const { container } = renderWithCitations('Climate change is real. {{CITE:0}}', citations)
+
+    const buttons = container.querySelectorAll('button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]?.textContent).toContain('Nature')
+    expect(container.querySelector('p')?.querySelector('button')).toBeTruthy()
+  })
+
+  test('replaces multiple citation placeholders in same paragraph', () => {
+    const citations: CitationMap = new Map([
+      [0, makeSources('Nature')],
+      [1, makeSources('NOAA')],
+    ])
+    const { container } = renderWithCitations(
+      'Ice caps are melting. {{CITE:0}} Oceans are rising. {{CITE:1}}',
+      citations,
+    )
+
+    const buttons = container.querySelectorAll('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]?.textContent).toContain('Nature')
+    expect(buttons[1]?.textContent).toContain('NOAA')
+  })
+
+  test('renders citation inside list item', () => {
+    const citations: CitationMap = new Map([[0, makeSources('Reuters')]])
+    const { container } = renderWithCitations('- Breaking news {{CITE:0}}', citations)
+
+    const li = container.querySelector('li')
+    expect(li?.querySelector('button')).toBeTruthy()
+    expect(li?.textContent).toContain('Reuters')
+  })
+
+  test('text without placeholders renders unchanged', () => {
+    const citations: CitationMap = new Map([[0, makeSources('Nature')]])
+    const { container } = renderWithCitations('No citations here.', citations)
+
+    expect(container.querySelectorAll('button')).toHaveLength(0)
+    expect(container.textContent).toBe('No citations here.')
+  })
+
+  test('works alongside <br> tag processing', () => {
+    const citations: CitationMap = new Map([[0, makeSources('Nature')]])
+    const { container } = renderWithCitations('Line 1<br>Line 2 {{CITE:0}}', citations)
+
+    expect(container.querySelectorAll('br')).toHaveLength(1)
+    expect(container.querySelectorAll('button')).toHaveLength(1)
+    expect(container.querySelector('button')?.textContent).toContain('Nature')
+  })
+
+  test('skips placeholder with missing citation data', () => {
+    const citations: CitationMap = new Map()
+    const { container } = renderWithCitations('Text {{CITE:99}} more text', citations)
+
+    expect(container.querySelectorAll('button')).toHaveLength(0)
+    expect(container.textContent).toContain('Text')
+    expect(container.textContent).toContain('more text')
   })
 })

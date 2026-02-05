@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CitationSource } from '@/types/citation'
+import { isSafeUrl } from '@/lib/citation-utils'
 import { cn } from '@/lib/utils'
 
 type SourceCardProps = {
@@ -19,7 +20,7 @@ const getBadgeColor = (siteName: string = '') => {
     'bg-[#8b5cf6]', // purple
     'bg-[#f59e0b]', // amber
   ]
-  const index = siteName.charCodeAt(0) % colors.length
+  const index = (siteName.charCodeAt(0) || 0) % colors.length
   return colors[index]
 }
 
@@ -32,22 +33,21 @@ export const SourceCard = ({ source, className }: SourceCardProps) => {
 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
-  const showFavicon = source.favicon && !faviconError
+  const safeUrl = isSafeUrl(source.url) ? source.url : '#'
+  const showFavicon = source.favicon && !faviconError && isSafeUrl(source.favicon)
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)
 
   return (
     <a
-      href={source.url}
+      href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
       className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
       role="listitem"
     >
-      {/* Title */}
       <p className="text-base text-foreground leading-6 whitespace-pre-wrap">{displayTitle}</p>
 
-      {/* Favicon Badge + Site Name */}
       <div className="flex items-center gap-1.5">
         {showFavicon ? (
           <img

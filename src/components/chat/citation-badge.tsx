@@ -48,7 +48,6 @@ export const CitationBadge = ({ sources }: CitationBadgeProps) => {
     </button>
   )
 
-  // Desktop: Use Popover
   if (!isMobile) {
     return (
       <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -60,7 +59,6 @@ export const CitationBadge = ({ sources }: CitationBadgeProps) => {
     )
   }
 
-  // Mobile: Use Sheet (bottom drawer)
   return (
     <>
       {badge}

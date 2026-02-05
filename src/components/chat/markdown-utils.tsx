@@ -19,7 +19,7 @@ const BR_SPLIT_REGEX = /<br\s*\/?>/gi
  * Regex to split on citation placeholders like {{CITE:0}}, {{CITE:1}}, etc.
  * The capturing group extracts the citation index number.
  */
-const CITATION_PLACEHOLDER_REGEX = /\{\{CITE:(\d+)\}\}/g
+const CITATION_PLACEHOLDER_REGEX = /\{\{CITE:(\d+)\}\}/
 
 /**
  * Processes text content to convert <br> tags into actual React <br /> elements.

@@ -10,7 +10,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal, Smartphone } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -66,6 +66,17 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
               >
                 <Plug className="size-4" />
                 <span>Integrations</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/devices')}
+                tooltip="Devices"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/devices'}
+              >
+                <Smartphone className="size-4" />
+                <span>Devices</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

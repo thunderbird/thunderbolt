@@ -251,7 +251,13 @@ describe('Settings DAL', () => {
         key: 'test_key',
         value: 'original',
         updatedAt: null,
-        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        defaultHash: hashSetting({
+          key: 'test_key',
+          value: 'original',
+          updatedAt: null,
+          defaultHash: null,
+          userId: null,
+        }),
       })
 
       // Update the value without recomputeHash
@@ -262,7 +268,7 @@ describe('Settings DAL', () => {
       // Value should be updated but hash should remain the same (pointing to original)
       expect(setting?.value).toBe('modified')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(true)
     })
@@ -275,7 +281,13 @@ describe('Settings DAL', () => {
         key: 'test_key',
         value: 'original',
         updatedAt: null,
-        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        defaultHash: hashSetting({
+          key: 'test_key',
+          value: 'original',
+          updatedAt: null,
+          defaultHash: null,
+          userId: null,
+        }),
       })
 
       // Update the value with recomputeHash: true
@@ -286,7 +298,7 @@ describe('Settings DAL', () => {
       // Value should be updated and hash should point to the new value
       expect(setting?.value).toBe('new_baseline')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(false)
     })
@@ -364,7 +376,7 @@ describe('Settings DAL', () => {
       setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
       expect(setting?.value).toBe('user_custom_value')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(true) // Still modified since value differs from new baseline
     })

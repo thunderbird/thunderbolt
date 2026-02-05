@@ -1,3 +1,4 @@
+import { useAuth } from '@/contexts'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
@@ -5,10 +6,12 @@ import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
+import { getAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { CountryUnitsData } from '@/types'
 import { ChevronsUpDown } from 'lucide-react'
+import ky from 'ky'
 import { useEffect, useReducer, useRef, useState } from 'react'
 
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -35,21 +38,25 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
 import { usePostHog } from 'posthog-js/react'
+import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 
 type PreferencesState = {
   isResetting: boolean
+  isDeletingAccount: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
 
 type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
+  | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
 
 const initialState: PreferencesState = {
   isResetting: false,
+  isDeletingAccount: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -58,6 +65,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
   switch (action.type) {
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
+    case 'SET_IS_DELETING_ACCOUNT':
+      return { ...state, isDeletingAccount: action.payload }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -71,8 +80,11 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { isResetting, localizationDialogOpen, pendingCountryUnits } = state
+  const { isResetting, isDeletingAccount, localizationDialogOpen, pendingCountryUnits } = state
   const locationSearch = useLocationSearch()
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const isAuthenticated = !!session?.user
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -98,6 +110,10 @@ export default function PreferencesSettingsPage() {
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
 
+  // Local state for sync enabled (PowerSync)
+  const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
+  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
+
   // Use our useSettings hook for all settings
   const {
     preferredName,
@@ -111,6 +127,7 @@ export default function PreferencesSettingsPage() {
     dateFormat,
     timeFormat,
     currency,
+    cloudUrl,
   } = useSettings({
     preferred_name: '',
     location_name: '',
@@ -123,6 +140,7 @@ export default function PreferencesSettingsPage() {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
+    cloud_url: 'http://localhost:8000/v1',
   })
 
   // Get units options and country units for localization
@@ -145,6 +163,17 @@ export default function PreferencesSettingsPage() {
   useEffect(() => {
     setNameInput(preferredName.value || '')
   }, [preferredName.value])
+
+  // Listen for external sync enabled changes
+  useEffect(() => {
+    const handleSyncEnabledChange = (event: Event) => {
+      const customEvent = event as CustomEvent<boolean>
+      setSyncEnabledState(customEvent.detail)
+    }
+
+    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+  }, [])
 
   // Auto-populate localization settings from country data if not set
   useEffect(() => {
@@ -242,6 +271,8 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
   }
 
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
+
   const handleResetDatabase = async () => {
     dispatch({ type: 'SET_IS_RESETTING', payload: true })
     try {
@@ -252,6 +283,32 @@ export default function PreferencesSettingsPage() {
     } catch (error) {
       console.error('Failed to reset database:', error)
       dispatch({ type: 'SET_IS_RESETTING', payload: false })
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleteAccountError(null)
+    dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
+    try {
+      await setSyncEnabled(false)
+      const token = getAuthToken()
+      if (!token) {
+        setDeleteAccountError('Not signed in.')
+        return
+      }
+      const baseUrl = cloudUrl.value ?? 'http://localhost:8000/v1'
+      await ky.delete('account', {
+        prefixUrl: baseUrl,
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'omit',
+      })
+      await clearAuthToken()
+      await resetAppDir()
+      window.location.reload()
+    } catch (error) {
+      console.error('Failed to delete account:', error)
+      setDeleteAccountError(error instanceof Error ? error.message : 'Failed to delete account.')
+      dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
   }
 
@@ -289,6 +346,23 @@ export default function PreferencesSettingsPage() {
     }
 
     trackEvent('settings_localization_reset')
+  }
+
+  const handleSyncToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      await setSyncEnabled(false)
+      setSyncEnabledState(false)
+      trackEvent('settings_sync_disabled')
+      return
+    }
+    setSyncEnableWarningOpen(true)
+  }
+
+  const handleConfirmEnableSync = async () => {
+    await setSyncEnabled(true)
+    setSyncEnabledState(true)
+    trackEvent('settings_sync_enabled')
+    setSyncEnableWarningOpen(false)
   }
 
   return (
@@ -729,36 +803,111 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Local Database">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="secondary" disabled={isResetting}>
-                {isResetting ? 'Resetting...' : 'Reset Database'}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete all of your local data including settings, chat history, and cached
-                  information. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleResetDatabase}
-                  className="bg-destructive text-white hover:bg-destructive/90"
-                >
-                  Reset Database
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+      <SectionCard title="Sync">
+        <div className="flex-row flex items-center gap-4">
+          <div>
+            <div className="mb-2">
+              <label className="text-sm font-medium">Cloud Sync</label>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Enable cloud synchronization to keep your data synced across devices. Your data is encrypted and securely
+              stored.
+            </p>
+          </div>
+          <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
         </div>
       </SectionCard>
+
+      <AlertDialog open={syncEnableWarningOpen} onOpenChange={(open) => !open && setSyncEnableWarningOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable sync?</AlertDialogTitle>
+            <AlertDialogDescription>
+              At this time, synced data is not encrypted. Enabling sync will store your data on our servers without
+              encryption. Do you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEnableSync}>Enable sync</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="h-6" />
+
+      {!isAuthenticated && (
+        <SectionCard title="Local Database">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="secondary" disabled={isResetting}>
+                  {isResetting ? 'Resetting...' : 'Reset Database'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all of your local data including settings, chat history, and cached
+                    information. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleResetDatabase}
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                  >
+                    Reset Database
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </SectionCard>
+      )}
+
+      {isAuthenticated && (
+        <SectionCard title="Account">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
+              Permanently delete your account and all data on our servers and this device. This action cannot be undone.
+            </p>
+            {deleteAccountError && (
+              <p className="text-sm text-destructive" role="alert">
+                {deleteAccountError}
+              </p>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isDeletingAccount}>
+                  {isDeletingAccount ? 'Deleting...' : 'Delete my account'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete your account and all of your data on our servers and on this device,
+                    including settings, chat history, and cached information. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteAccount}
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                  >
+                    Delete account
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </SectionCard>
+      )}
 
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 

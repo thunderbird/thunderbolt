@@ -1,48 +1,32 @@
 /**
- * Auth token storage for bearer authentication
+ * Auth token storage for bearer authentication.
  *
- * Stores the session token in the settings database and sends it via
- * Authorization: Bearer header. Used universally across all platforms
- * for consistent authentication behavior.
- *
- * Provides sync access (required by Better Auth's fetchOptions.auth.token)
- * while persisting to settings database for durability across app restarts.
+ * Token is stored in localStorage so getAuthToken() is sync (required by Better Auth).
+ * device_id is also in localStorage to identify this device (e.g. for PowerSync / devices list).
  */
 
-import { deleteSetting, getSettings, updateSettings } from '@/dal/settings'
+const DEVICE_ID_KEY = 'thunderbolt_device_id'
+const AUTH_TOKEN_KEY = 'thunderbolt_auth_token'
 
-const AUTH_TOKEN_SETTING_KEY = 'auth_bearer_token'
-
-let cachedToken: string | null = null
-
-/** Get the current auth token (sync) */
-export const getAuthToken = (): string | null => {
-  return cachedToken
-}
-
-/** Store the auth token (cache + persist to settings) */
-export const setAuthToken = async (token: string | null): Promise<void> => {
-  cachedToken = token
-
-  if (token) {
-    await updateSettings({ [AUTH_TOKEN_SETTING_KEY]: token })
-  } else {
-    await deleteSetting(AUTH_TOKEN_SETTING_KEY)
+/** Get or create device_id (from localStorage). */
+export const getDeviceId = (): string => {
+  let id = localStorage.getItem(DEVICE_ID_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(DEVICE_ID_KEY, id)
   }
+  return id
 }
 
-/** Load auth token from settings into cache (call on app init) */
-export const loadAuthToken = async (): Promise<void> => {
-  const settings = await getSettings({ [AUTH_TOKEN_SETTING_KEY]: String })
-  cachedToken = settings.authBearerToken
+/** Get the current auth token (sync, from localStorage). */
+export const getAuthToken = (): string | null => localStorage.getItem(AUTH_TOKEN_KEY)
+
+/** Store the auth token in localStorage. Use clearAuthToken() to remove. */
+export const setAuthToken = (token: string): void => {
+  localStorage.setItem(AUTH_TOKEN_KEY, token)
 }
 
-/** Clear the auth token (for sign-out) */
-export const clearAuthToken = async (): Promise<void> => {
-  await setAuthToken(null)
-}
-
-/** Reset the in-memory cache (for testing only) */
-export const _resetCacheForTesting = (): void => {
-  cachedToken = null
+/** Clear the auth token (for sign-out). Keeps device_id in localStorage. */
+export const clearAuthToken = (): void => {
+  localStorage.removeItem(AUTH_TOKEN_KEY)
 }

@@ -14,6 +14,7 @@ import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
+import DevicesSettingsPage from '@/settings/devices'
 import { default as Settings } from '@/settings/index'
 import IntegrationsPage from '@/settings/integrations'
 import McpServersPage from '@/settings/mcp-servers'
@@ -108,6 +109,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
             <Route index element={<Settings />} />
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
+            <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="dev-settings" element={<DevSettingsPage />} />

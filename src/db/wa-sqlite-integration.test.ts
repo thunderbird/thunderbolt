@@ -24,7 +24,7 @@ describe('wa-sqlite integration', () => {
 
   afterAll(async () => {
     await DatabaseSingleton.instance.close()
-    DatabaseSingleton.reset()
+    await DatabaseSingleton.reset()
     consoleSpies.restore()
   })
 

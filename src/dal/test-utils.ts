@@ -33,7 +33,7 @@ export const setupTestDatabase = async () => {
  * ```
  */
 export const teardownTestDatabase = async () => {
-  DatabaseSingleton.reset()
+  await DatabaseSingleton.reset()
 }
 
 /**

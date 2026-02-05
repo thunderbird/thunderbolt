@@ -1,5 +1,5 @@
 import { parseContentParts } from '@/ai/widget-parser'
-import type { CitationSource } from '@/types/citation'
+import { decodeCitationSources } from '@/lib/citation-utils'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
 import type { CitationMap } from './markdown-utils'
@@ -12,21 +12,6 @@ type TextPartProps = {
 }
 
 /**
- * Decodes a base64-encoded JSON string into CitationSource[].
- * Returns null if decoding fails or sources are empty.
- */
-const decodeCitationSources = (base64Sources: string): CitationSource[] | null => {
-  try {
-    const decoded = atob(base64Sources)
-    const parsed = JSON.parse(decoded)
-    const sources = Array.isArray(parsed) ? (parsed as CitationSource[]) : []
-    return sources.length > 0 ? sources : null
-  } catch {
-    return null
-  }
-}
-
-/**
  * Builds a single markdown string with {{CITE:N}} placeholders at the positions
  * where the AI placed citation widgets, and returns the citation data map.
  */
@@ -35,7 +20,6 @@ const buildTextWithCitationPlaceholders = (
 ): { fullText: string; citations: CitationMap } => {
   let fullText = ''
   const citations: CitationMap = new Map()
-  let citationIndex = 0
 
   for (const part of contentParts) {
     if (part.type === 'text') {
@@ -46,9 +30,8 @@ const buildTextWithCitationPlaceholders = (
     } else if (part.type === 'widget' && part.widget.widget === 'citation') {
       const sources = decodeCitationSources(part.widget.args.sources)
       if (sources) {
-        fullText = fullText.trimEnd() + ` {{CITE:${citationIndex}}}`
-        citations.set(citationIndex, sources)
-        citationIndex++
+        fullText = fullText.trimEnd() + ` {{CITE:${citations.size}}}`
+        citations.set(citations.size, sources)
       }
     }
   }
@@ -118,3 +101,5 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
     </>
   )
 })
+
+TextPart.displayName = 'TextPart'

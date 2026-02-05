@@ -2,6 +2,8 @@
 
 Self-hosted PowerSync Service stack for local development using Docker Compose.
 
+**Full documentation** (synced tables, adding tables, account/device flows, backend API): [docs/powersync-account-devices.md](../docs/powersync-account-devices.md).
+
 ## Prerequisites
 
 - Docker and Docker Compose
@@ -23,8 +25,6 @@ docker compose up -d
 
 ## Backend configuration
 
-Point the Thunderbolt backend at this instance and use the same JWT secret/kid as in `config/config.yaml`:
-
 1. **Use this Postgres for the backend** (so PowerSync and the app share one database):
 
    ```bash
@@ -32,25 +32,11 @@ Point the Thunderbolt backend at this instance and use the same JWT secret/kid a
    DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
    ```
 
-2. **Run migrations** against that Postgres (from repo root):
+2. **Run migrations** (from repo root): `cd backend && bun db generate && bun db migrate`
 
-   ```bash
-   cd backend && bun db generate && bun db migrate
-   ```
+3. **PowerSync env vars** in `backend/.env`: see [docs/powersync-account-devices.md](../docs/powersync-account-devices.md) (section 3). The config in `config/config.yaml` uses HS256 with the same secret/kid so backend-issued tokens are accepted.
 
-3. **PowerSync env vars** in `backend/.env`:
-
-   ```
-   POWERSYNC_URL=http://localhost:8080
-   POWERSYNC_JWT_SECRET=powersync-dev-secret-change-in-production
-   POWERSYNC_JWT_KID=powersync-dev
-   ```
-
-The config in `config/config.yaml` uses HS256 with that same secret (base64) and kid so tokens issued by the backend are accepted by the local PowerSync service.
-
-## Sync rules
-
-Sync rules in `config/config.yaml` mirror the backend PowerSync tables and scope data by `user_id` from the JWT `sub` claim. When you add or change backend tables used by PowerSync, update the `sync_rules.content` section and the backend `validTables` in `backend/src/api/powersync.ts`.
+When you add or change synced tables, update `config/config.yaml` sync rules and backend (see consolidated doc).
 
 ## Stopping
 

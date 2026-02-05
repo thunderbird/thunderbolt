@@ -142,99 +142,108 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 10_000)
 
-        const response = await fetchFn(targetUrl, {
-          method: 'GET',
-          headers: {
-            // Use a realistic user agent to avoid Forbidden errors
-            'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-          signal: controller.signal,
-        })
+        try {
+          const response = await fetchFn(targetUrl, {
+            method: 'GET',
+            headers: {
+              // Use a realistic user agent to avoid Forbidden errors
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+            signal: controller.signal,
+          })
 
-        clearTimeout(timeoutId)
-
-        if (!response.ok) {
-          return {
-            data: null,
-            success: false,
-            error: `Failed to fetch resource: ${response.statusText}`,
+          if (!response.ok) {
+            return {
+              data: null,
+              success: false,
+              error: `Failed to fetch resource: ${response.statusText}`,
+            }
           }
-        }
 
-        const html = await response.text()
-        const metadata = extractMetadata(html, targetUrl)
+          // Keep timeout active during body download - this protects against slow streaming
+          const html = await response.text()
+          const metadata = extractMetadata(html, targetUrl)
 
-        // Try to inline the image as a data URL to save a round trip.
-        // Uses a tight 2s timeout and 2MB size limit so slow/large images fall back to the proxy.
-        let imageData: string | null = null
-        if (metadata.image) {
-          try {
-            // Validate image URL protocol (http/https only)
-            const imageUrl = new URL(metadata.image)
-            if (!['http:', 'https:'].includes(imageUrl.protocol)) {
-              // Skip inlining for non-HTTP(S) URLs
-            } else {
-              const imgController = new AbortController()
-              const imgTimeout = setTimeout(() => imgController.abort(), 2000)
-              const imgResponse = await fetchFn(metadata.image, {
-                method: 'GET',
-                headers: {
-                  'User-Agent':
-                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                },
-                signal: imgController.signal,
-              })
-              clearTimeout(imgTimeout)
+          // Try to inline the image as a data URL to save a round trip.
+          // Uses a tight 2s timeout and 2MB size limit so slow/large images fall back to the proxy.
+          let imageData: string | null = null
+          if (metadata.image) {
+            try {
+              // Validate image URL protocol (http/https only)
+              const imageUrl = new URL(metadata.image)
+              if (!['http:', 'https:'].includes(imageUrl.protocol)) {
+                // Skip inlining for non-HTTP(S) URLs
+              } else {
+                const imgController = new AbortController()
+                const imgTimeout = setTimeout(() => imgController.abort(), 2000)
+                try {
+                  const imgResponse = await fetchFn(metadata.image, {
+                    method: 'GET',
+                    headers: {
+                      'User-Agent':
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    },
+                    signal: imgController.signal,
+                  })
 
-              if (imgResponse.ok) {
-                // Check Content-Length header to avoid downloading huge images
-                const contentLength = imgResponse.headers.get('content-length')
-                const maxSizeBytes = 2 * 1024 * 1024 // 2MB limit
-                const parsedLength = contentLength ? parseInt(contentLength, 10) : null
-                if (parsedLength !== null && !Number.isNaN(parsedLength) && parsedLength > maxSizeBytes) {
-                  // Image too large, skip inlining
-                } else {
-                  const buffer = await imgResponse.arrayBuffer()
-                  // Double-check actual size (in case Content-Length was missing/wrong)
-                  if (buffer.byteLength > maxSizeBytes) {
-                    // Image too large, skip inlining
-                  } else {
-                    // Infer content type from URL extension if header is missing or invalid
-                    const headerContentType = imgResponse.headers.get('content-type')
-                    let contentType = 'image/jpeg' // Default fallback
-
-                    // Use header content-type if it's a valid image type
-                    if (headerContentType && headerContentType.startsWith('image/')) {
-                      contentType = headerContentType
+                  if (imgResponse.ok) {
+                    // Check Content-Length header to avoid downloading huge images
+                    const contentLength = imgResponse.headers.get('content-length')
+                    const maxSizeBytes = 2 * 1024 * 1024 // 2MB limit
+                    const parsedLength = contentLength ? parseInt(contentLength, 10) : null
+                    if (parsedLength !== null && !Number.isNaN(parsedLength) && parsedLength > maxSizeBytes) {
+                      // Image too large, skip inlining
                     } else {
-                      // Header missing or invalid, try to infer from URL extension
-                      try {
-                        const url = new URL(metadata.image)
-                        const ext = url.pathname.split('.').pop()?.toLowerCase()
-                        if (ext === 'png') contentType = 'image/png'
-                        else if (ext === 'gif') contentType = 'image/gif'
-                        else if (ext === 'webp') contentType = 'image/webp'
-                        else if (ext === 'svg') contentType = 'image/svg+xml'
-                      } catch {
-                        // URL parsing failed, use default
+                      // Keep timeout active during body download - this protects against slow streaming
+                      const buffer = await imgResponse.arrayBuffer()
+                      // Double-check actual size (in case Content-Length was missing/wrong)
+                      if (buffer.byteLength > maxSizeBytes) {
+                        // Image too large, skip inlining
+                      } else {
+                        // Infer content type from URL extension if header is missing or invalid
+                        const headerContentType = imgResponse.headers.get('content-type')
+                        let contentType = 'image/jpeg' // Default fallback
+
+                        // Use header content-type if it's a valid image type
+                        if (headerContentType && headerContentType.startsWith('image/')) {
+                          contentType = headerContentType
+                        } else {
+                          // Header missing or invalid, try to infer from URL extension
+                          try {
+                            const url = new URL(metadata.image)
+                            const ext = url.pathname.split('.').pop()?.toLowerCase()
+                            if (ext === 'png') contentType = 'image/png'
+                            else if (ext === 'gif') contentType = 'image/gif'
+                            else if (ext === 'webp') contentType = 'image/webp'
+                            else if (ext === 'svg') contentType = 'image/svg+xml'
+                          } catch {
+                            // URL parsing failed, use default
+                          }
+                        }
+                        imageData = `data:${contentType};base64,${Buffer.from(buffer).toString('base64')}`
                       }
                     }
-                    imageData = `data:${contentType};base64,${Buffer.from(buffer).toString('base64')}`
                   }
+                } finally {
+                  // Always clear timeout after fetch and body download complete (or fail)
+                  clearTimeout(imgTimeout)
                 }
               }
+            } catch {
+              // Image fetch failed, timed out, or URL validation failed — client will fall back to proxy
             }
-          } catch {
-            // Image fetch failed, timed out, or URL validation failed — client will fall back to proxy
           }
-        }
 
-        return {
-          data: { ...metadata, imageData },
-          success: true,
+          return {
+            data: { ...metadata, imageData },
+            success: true,
+          }
+        } finally {
+          // Always clear timeout after fetch and body download complete (or fail)
+          clearTimeout(timeoutId)
         }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {

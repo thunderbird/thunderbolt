@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
-import { LinkChip, LinkPreview } from './display'
+import { LinkPreview } from './display'
 import { getHostname } from './utils'
 
 type LinkPreviewWidgetProps = {
@@ -54,13 +54,15 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
     return <LinkPreviewSkeleton />
   }
 
+  // Show minimal preview card when there's an error or no metadata
+  // This is more visually consistent than the tiny chip
   if (error || !data) {
-    return <LinkChip url={url} />
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
   const isEmpty = !data.title && !data.description && !data.image
   if (isEmpty) {
-    return <LinkChip url={url} />
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
   // Use inlined image data when available, otherwise proxy through the backend for privacy

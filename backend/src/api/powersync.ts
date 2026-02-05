@@ -5,7 +5,7 @@ import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
 import { powersyncTableNames } from '@shared/powersync-tables'
 import { jwt } from '@elysiajs/jwt'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
 const validTables = new Set<string>(powersyncTableNames)
@@ -145,7 +145,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           const deviceRow = await database
             .select({ revokedAt: devicesTable.revokedAt })
             .from(devicesTable)
-            .where(eq(devicesTable.id, deviceId))
+            .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, user.id)))
             .limit(1)
             .then((rows) => rows[0])
           if (deviceRow?.revokedAt != null) {
@@ -176,6 +176,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
             .onConflictDoUpdate({
               target: devicesTable.id,
               set: { lastSeen: now, name: deviceName },
+              where: eq(devicesTable.userId, user.id),
             })
         }
 

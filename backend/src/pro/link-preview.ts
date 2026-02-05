@@ -213,8 +213,8 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
                         } else {
                           // Header missing or invalid, try to infer from URL extension
                           try {
-                            const url = new URL(metadata.image)
-                            const ext = url.pathname.split('.').pop()?.toLowerCase()
+                            const imageUrl = new URL(metadata.image)
+                            const ext = imageUrl.pathname.split('.').pop()?.toLowerCase()
                             if (ext === 'png') contentType = 'image/png'
                             else if (ext === 'gif') contentType = 'image/gif'
                             else if (ext === 'webp') contentType = 'image/webp'

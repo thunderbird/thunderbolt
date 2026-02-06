@@ -32,20 +32,29 @@ describe('SourceCard', () => {
       expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
     })
 
-    it('should show initial badge when favicon is missing', () => {
+    it('should derive favicon from URL when favicon prop is missing', () => {
       const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
       render(<SourceCard source={sourceWithoutFavicon} />)
 
       const container = screen.getByRole('listitem')
 
-      // Should show initial badge with first letter
-      const badge = container.querySelector('[aria-hidden="true"]')
-      expect(badge).toBeInTheDocument()
-      expect(badge).toHaveTextContent('E')
-
-      // No img element should be present
+      // Without proxyBase, derives favicon directly from the domain origin
       const img = container.querySelector('img')
-      expect(img).toBeNull()
+      expect(img).toBeInTheDocument()
+      expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
+    })
+
+    it('should use proxied favicon URL when proxyBase is provided', () => {
+      const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
+      render(<SourceCard source={sourceWithoutFavicon} proxyBase="http://localhost:8000/v1" />)
+
+      const container = screen.getByRole('listitem')
+      const img = container.querySelector('img')
+      expect(img).toBeInTheDocument()
+      expect(img).toHaveAttribute(
+        'src',
+        'http://localhost:8000/v1/pro/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
+      )
     })
 
     it('should show initial badge when favicon fails to load', () => {
@@ -106,11 +115,17 @@ describe('SourceCard', () => {
       expect(img).toHaveAttribute('alt', '')
     })
 
-    it('should have aria-hidden on initial badge', () => {
+    it('should show initial badge with aria-hidden when derived favicon fails', () => {
       const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
       render(<SourceCard source={sourceWithoutFavicon} />)
 
       const link = screen.getByRole('listitem')
+      const img = link.querySelector('img')
+      expect(img).toBeInTheDocument()
+
+      // Trigger error on derived favicon
+      fireEvent.error(img!)
+
       const badge = link.querySelector('[aria-hidden="true"]')
       expect(badge).toBeInTheDocument()
     })
@@ -133,12 +148,15 @@ describe('SourceCard', () => {
       expect(link).toHaveClass('cursor-pointer')
     })
 
-    it('should display colored badge for different sites', () => {
+    it('should display colored badge when derived favicon fails to load', () => {
       const sourceWithoutFavicon = { ...mockSource, favicon: undefined, siteName: 'Apple' }
       const { container } = render(<SourceCard source={sourceWithoutFavicon} />)
-      const badge = container.querySelector('[aria-hidden="true"]')
 
-      // Badge should exist with a background color class
+      // Trigger favicon error to fall back to letter badge
+      const img = container.querySelector('img')
+      fireEvent.error(img!)
+
+      const badge = container.querySelector('[aria-hidden="true"]')
       expect(badge).toBeTruthy()
       expect(badge?.classList.toString()).toContain('bg-')
     })

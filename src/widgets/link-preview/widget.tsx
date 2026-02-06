@@ -15,7 +15,6 @@ type LinkPreviewMetadata = {
   title: string | null
   description: string | null
   image: string | null
-  imageData?: string | null
 }
 
 export const LinkPreviewSkeleton = () => {
@@ -45,7 +44,6 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
         title: preview.title,
         description: preview.description,
         image: preview.image,
-        imageData: preview.imageData,
       }
     },
   })
@@ -65,12 +63,9 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  // Use inlined image data when available, otherwise proxy through the backend for privacy
-  const imageUrl = data.imageData
-    ? data.imageData
-    : data.image && cloudUrl.value
-      ? `${cloudUrl.value}/pro/proxy/${encodeURIComponent(data.image)}`
-      : null
+  // Use dedicated image endpoint for parallel requests (returns image with proper mime type)
+  const imageUrl =
+    data.image && cloudUrl.value ? `${cloudUrl.value}/pro/link-preview/image/${encodeURIComponent(data.image)}` : null
 
   return (
     <LinkPreview title={data.title || getHostname(url)} description={data.description} url={url} image={imageUrl} />

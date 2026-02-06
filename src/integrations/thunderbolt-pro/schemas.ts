@@ -107,5 +107,4 @@ export type LinkPreviewData = {
   title: string | null
   description: string | null
   image: string | null
-  imageData?: string | null
 }

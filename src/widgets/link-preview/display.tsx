@@ -60,10 +60,9 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
               </>
             )}
           </div>
-          <CardHeader className="flex-1 flex flex-col gap-1.5 pl-4 pt-4 pb-2">
+          <CardHeader className="flex-1 flex flex-col gap-1.5 pl-4 pt-4 pb-4">
             <CardTitle className="line-clamp-1">{title}</CardTitle>
             {description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
-            <span className="text-xs text-muted-foreground truncate">{getHostname(url)}</span>
           </CardHeader>
         </Card>
       </a>

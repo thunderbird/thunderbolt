@@ -24,16 +24,19 @@ type WidgetSpec = {
 const widgetSpecs: WidgetSpec[] = widgetParsers
 
 /**
- * Parses attributes from a widget tag's attribute string
- * Example: 'location="Seattle" region="WA"' -> { location: 'Seattle', region: 'WA' }
+ * Parses attributes from a widget tag's attribute string.
+ * Supports both double-quoted and single-quoted values:
+ *   location="Seattle"  → { location: 'Seattle' }
+ *   sources='[{"id":"1"}]' → { sources: '[{"id":"1"}]' }
+ * Single quotes are needed for citation widgets where the value contains JSON with double quotes.
  */
 const parseAttributes = (attributesStr: string): Record<string, string> => {
   const attrs: Record<string, string> = {}
-  const attrRegex = /(\w+)="([^"]*)"/g
+  const attrRegex = /(\w+)=(?:"([^"]*)"|'([^']*)')/g
   let match
 
   while ((match = attrRegex.exec(attributesStr)) !== null) {
-    attrs[match[1]] = match[2]
+    attrs[match[1]] = match[2] ?? match[3]
   }
 
   return attrs
@@ -59,13 +62,20 @@ const createWidget = (tagName: string, attrs: Record<string, string>): Widget | 
 }
 
 /**
+ * Strips model-native citation formats that leak through prompt constraints.
+ * Removes OpenAI-style 【N†title】 brackets, orphan 【 brackets, and similar patterns.
+ */
+const stripBracketCitations = (text: string): string => text.replace(/\s*【[^】]*】/g, '').replace(/\s*【/g, '')
+
+/**
  * Parses custom widget tags from text and returns an ordered array of text and widget parts
  * This preserves the position where the LLM placed the widgets in the response
  *
  * Format: <namespace:widget-name attr="value" attr2="value2" />
  * Example: <widget:weather-forecast location="Seattle" region="Washington" country="USA" />
  */
-export const parseContentParts = (text: string): ContentPart[] => {
+export const parseContentParts = (rawText: string): ContentPart[] => {
+  const text = stripBracketCitations(rawText)
   const parts: ContentPart[] = []
 
   // Match any self-closing namespaced tag like widget:link-preview

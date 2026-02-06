@@ -35,7 +35,7 @@ export type { FetchContentParams, SearchLocationParams, SearchParams, SearchResu
 export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   {
     name: 'search',
-    description: `Search the web and return relevant links.`,
+    description: `Search the web and return relevant links. IMPORTANT: Every URL returned by this tool can be cited. ONLY cite URLs that appear in this tool's results.`,
     verb: 'searching for {query}',
     parameters: searchSchema,
     execute: (params: SearchParams) => search(params, httpClient),
@@ -43,7 +43,7 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   {
     name: 'fetch_content',
     description:
-      'Fetch and parse content from a PUBLIC webpage URL. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
+      'Fetch and parse content from a PUBLIC webpage URL. IMPORTANT: The URL you fetch can be cited. ONLY cite URLs you have fetched with this tool. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
     verb: 'fetching {url}',
     parameters: fetchContentSchema,
     execute: (params: FetchContentParams) => fetchContent(params, httpClient),

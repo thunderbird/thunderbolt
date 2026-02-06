@@ -1,12 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import '@/testing-library'
+import { render } from '@testing-library/react'
+import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationWidgetComponent } from './widget'
-
-// Clean up after each test
-afterEach(() => {
-  cleanup()
-})
 
 const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
 
@@ -23,9 +19,9 @@ describe('CitationWidgetComponent', () => {
         },
       ])
 
-      renderWithProviders(<CitationWidgetComponent sources={sources} />)
+      const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(screen.getByText('Example')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Example')
     })
 
     it('renders CitationBadge with base64-encoded sources (backward compat)', () => {
@@ -40,9 +36,9 @@ describe('CitationWidgetComponent', () => {
       ])
       const sources = btoa(json)
 
-      renderWithProviders(<CitationWidgetComponent sources={sources} />)
+      const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(screen.getByText('Example')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Example')
     })
 
     it('renders multiple sources correctly', () => {
@@ -61,12 +57,12 @@ describe('CitationWidgetComponent', () => {
           siteName: 'Second Site',
         },
       ])
-      const sources = btoa(json) // Base64 encode
+      const sources = btoa(json)
 
-      renderWithProviders(<CitationWidgetComponent sources={sources} />)
+      const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(screen.getByText('Primary Site')).toBeTruthy()
-      expect(screen.getByText('+1')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Primary Site')
+      expect(container.querySelector('button')?.textContent).toContain('+1')
     })
 
     it('returns null for malformed base64', () => {
@@ -78,7 +74,7 @@ describe('CitationWidgetComponent', () => {
     })
 
     it('returns null for empty sources array', () => {
-      const sources = btoa('[]') // Base64 encode empty array
+      const sources = btoa('[]')
 
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
@@ -86,7 +82,7 @@ describe('CitationWidgetComponent', () => {
     })
 
     it('returns null for non-array JSON', () => {
-      const sources = btoa('{"id":"1"}') // Base64 encode object
+      const sources = btoa('{"id":"1"}')
 
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
@@ -96,9 +92,8 @@ describe('CitationWidgetComponent', () => {
 
   describe('error handling', () => {
     it('handles JSON parse errors gracefully', () => {
-      const sources = btoa('{broken json') // Base64 encode invalid JSON
+      const sources = btoa('{broken json')
 
-      // Should not throw
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
       expect(container.firstChild).toBeNull()
@@ -112,12 +107,11 @@ describe('CitationWidgetComponent', () => {
           url: 'https://example.com',
         },
       ])
-      const sources = btoa(json) // Base64 encode
+      const sources = btoa(json)
 
-      renderWithProviders(<CitationWidgetComponent sources={sources} />)
+      const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      // Should still render even if optional fields are missing
-      expect(screen.getByText('Test')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Test')
     })
   })
 })

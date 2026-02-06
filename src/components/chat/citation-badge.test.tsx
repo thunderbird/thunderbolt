@@ -1,13 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import '@/testing-library'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import type { CitationSource } from '@/types/citation'
-
-// Clean up after each test
-afterEach(() => {
-  cleanup()
-})
 
 const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
 

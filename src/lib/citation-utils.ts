@@ -16,11 +16,8 @@ export const decodeCitationSources = (sourcesStr: string): CitationSource[] | nu
     }
   }
 
-  // Try raw JSON first (preferred — model outputs JSON directly)
   const trimmed = sourcesStr.trim()
-  if (trimmed.startsWith('[')) {
-    return parseJson(trimmed)
-  }
+  if (trimmed.startsWith('[')) return parseJson(trimmed)
 
   // Fallback: base64-encoded JSON (backward compatibility)
   try {

@@ -68,6 +68,7 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}
 
   android:
     name: Android Release
@@ -77,3 +78,4 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}

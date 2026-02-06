@@ -46,9 +46,7 @@ jobs:
         run: |
           echo "version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
 
-      # For nightly builds, skip creating a new release (version-bump.yml already created it)
-      # For regular releases, create a draft release candidate
-      - name: Create GitHub Release
+      - name: Create GitHub Release (Stable)
         if: ${{ !inputs.nightly }}
         uses: softprops/action-gh-release@v1
         with:
@@ -60,6 +58,23 @@ jobs:
             ## Release Candidate v${{ inputs.version }}
 
             This is a release candidate. The final release will be created after successful builds.
+
+            ### Downloads
+
+            Binaries will be attached to this release after successful builds.
+
+      - name: Create GitHub Release (Nightly)
+        if: ${{ inputs.nightly }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Nightly Build v${{ inputs.version }}
+          draft: true
+          prerelease: true
+          body: |
+            ## Nightly Build v${{ inputs.version }}
+
+            **Warning:** This is an automated nightly build and may be unstable. Use at your own risk.
 
             ### Downloads
 

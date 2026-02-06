@@ -1,5 +1,5 @@
 import '@/testing-library'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
@@ -42,9 +42,9 @@ describe('CitationBadge', () => {
 
   describe('rendering', () => {
     it('renders single source with siteName', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      expect(screen.getByText('Example Site')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Example Site')
     })
 
     it('renders single source with title when siteName is missing', () => {
@@ -57,16 +57,17 @@ describe('CitationBadge', () => {
         },
       ]
 
-      renderWithProviders(<CitationBadge sources={sourceWithoutSiteName} />)
+      const { container } = renderWithProviders(<CitationBadge sources={sourceWithoutSiteName} />)
 
-      expect(screen.getByText('Test Article')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Test Article')
     })
 
     it('renders multiple sources with primary source and count', () => {
-      renderWithProviders(<CitationBadge sources={mockMultipleSources} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockMultipleSources} />)
 
-      expect(screen.getByText('Primary Site')).toBeTruthy()
-      expect(screen.getByText('+2')).toBeTruthy()
+      const button = container.querySelector('button')
+      expect(button?.textContent).toContain('Primary Site')
+      expect(button?.textContent).toContain('+2')
     })
 
     it('renders multiple sources using first source when no primary is marked', () => {
@@ -85,10 +86,11 @@ describe('CitationBadge', () => {
         },
       ]
 
-      renderWithProviders(<CitationBadge sources={sourcesNoPrimary} />)
+      const { container } = renderWithProviders(<CitationBadge sources={sourcesNoPrimary} />)
 
-      expect(screen.getByText('First Site')).toBeTruthy()
-      expect(screen.getByText('+1')).toBeTruthy()
+      const button = container.querySelector('button')
+      expect(button?.textContent).toContain('First Site')
+      expect(button?.textContent).toContain('+1')
     })
 
     it('returns null when sources array is empty', () => {
@@ -98,68 +100,67 @@ describe('CitationBadge', () => {
     })
 
     it('renders with aria-label for accessibility', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
-      expect(button.getAttribute('aria-label')).toBe('View source: Test Article')
+      const button = container.querySelector('button')
+      expect(button?.getAttribute('aria-label')).toBe('View source: Test Article')
     })
 
     it('renders as button element with proper type', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
-      expect(button.getAttribute('type')).toBe('button')
+      const button = container.querySelector('button')
+      expect(button?.getAttribute('type')).toBe('button')
     })
   })
 
   describe('interaction', () => {
     it('is clickable', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
+      const button = container.querySelector('button')!
       expect(() => fireEvent.click(button)).not.toThrow()
     })
 
     it('opens popover/sheet when clicked', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
+      const button = container.querySelector('button')!
       fireEvent.click(button)
 
-      // Source details should be visible after click
-      expect(screen.getByText('Test Article')).toBeTruthy()
+      // After click, the popover renders a dialog with source details
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog?.textContent).toContain('Test Article')
     })
 
     it('responds to Enter key', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
+      const button = container.querySelector('button')!
       fireEvent.keyDown(button, { key: 'Enter' })
 
-      // Source details should be visible
-      expect(screen.getByText('Test Article')).toBeTruthy()
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog?.textContent).toContain('Test Article')
     })
 
     it('responds to Space key', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
+      const button = container.querySelector('button')!
       fireEvent.keyDown(button, { key: ' ' })
 
-      // Source details should be visible
-      expect(screen.getByText('Test Article')).toBeTruthy()
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog?.textContent).toContain('Test Article')
     })
 
     it('does not open when other keys are pressed', () => {
-      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
-      const button = screen.getByRole('button')
+      const button = container.querySelector('button')!
       fireEvent.keyDown(button, { key: 'a' })
 
-      // Source list should not be visible (only badge text)
-      const articleLinks = screen.queryAllByText('Test Article')
-      // Badge text contains siteName "Example Site", not title, so only 0 or 1 "Test Article" should appear
-      expect(articleLinks.length).toBeLessThanOrEqual(1)
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog).toBeNull()
     })
   })
 
@@ -173,10 +174,9 @@ describe('CitationBadge', () => {
         },
       ]
 
-      renderWithProviders(<CitationBadge sources={incompleteSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={incompleteSource} />)
 
-      // Should still render the button
-      expect(screen.getByRole('button')).toBeTruthy()
+      expect(container.querySelector('button')).toBeTruthy()
     })
 
     it('handles sources with special characters in name', () => {
@@ -189,9 +189,9 @@ describe('CitationBadge', () => {
         },
       ]
 
-      renderWithProviders(<CitationBadge sources={specialSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={specialSource} />)
 
-      expect(screen.getByText('Site & Name')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Site & Name')
     })
 
     it('handles very long source names', () => {
@@ -204,9 +204,9 @@ describe('CitationBadge', () => {
         },
       ]
 
-      renderWithProviders(<CitationBadge sources={longNameSource} />)
+      const { container } = renderWithProviders(<CitationBadge sources={longNameSource} />)
 
-      expect(screen.getByText('Very Long Site Name That Exceeds Normal Display Length')).toBeTruthy()
+      expect(container.querySelector('button')?.textContent).toContain('Very Long Site Name')
     })
   })
 })

@@ -202,11 +202,12 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
     .get('/image/*', async (ctx) => {
       const url = new URL(ctx.request.url)
 
-      // Extract the image URL from the path (everything after /link-preview/image/)
+      // Extract the page URL from the path (everything after /link-preview/image/)
+      // This endpoint fetches the page, extracts the image URL, fetches the image, and returns it
       const pathParts = url.pathname.split('/link-preview/image/')
       if (pathParts.length < 2 || !pathParts[pathParts.length - 1]) {
         ctx.set.status = 400
-        return new Response('No image URL provided', {
+        return new Response('No URL provided', {
           headers: { 'Content-Type': 'text/plain' },
         })
       }
@@ -222,18 +223,18 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
       }
 
       // Only append query string if the decoded path doesn't already contain one
-      const imageUrl = pathOnly.includes('?') ? pathOnly : pathOnly + url.search
+      const pageUrl = pathOnly.includes('?') ? pathOnly : pathOnly + url.search
 
-      if (!imageUrl || !imageUrl.trim()) {
+      if (!pageUrl || !pageUrl.trim()) {
         ctx.set.status = 400
-        return new Response('No image URL provided', {
+        return new Response('No URL provided', {
           headers: { 'Content-Type': 'text/plain' },
         })
       }
 
       // Validate that it's a valid URL with http/https protocol
       try {
-        const parsedUrl = new URL(imageUrl)
+        const parsedUrl = new URL(pageUrl)
         if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
           ctx.set.status = 400
           return new Response('Only HTTP and HTTPS URLs are supported', {
@@ -242,11 +243,66 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         }
       } catch {
         ctx.set.status = 400
-        return new Response('Invalid image URL provided', {
+        return new Response('Invalid URL provided', {
           headers: { 'Content-Type': 'text/plain' },
         })
       }
 
+      // Step 1: Fetch the page HTML to extract the image URL
+      let imageUrl: string | null = null
+      try {
+        const pageController = new AbortController()
+        const pageTimeoutId = setTimeout(() => pageController.abort(), 10_000)
+
+        try {
+          const pageResponse = await fetchFn(pageUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+            signal: pageController.signal,
+          })
+
+          if (!pageResponse.ok) {
+            ctx.set.status = pageResponse.status
+            const errorMessage = pageResponse.statusText || `HTTP ${pageResponse.status}`
+            return new Response(`Failed to fetch page: ${errorMessage}`, {
+              headers: { 'Content-Type': 'text/plain' },
+            })
+          }
+
+          const html = await pageResponse.text()
+          const metadata = extractMetadata(html, pageUrl)
+          imageUrl = metadata.image
+
+          if (!imageUrl) {
+            ctx.set.status = 404
+            return new Response('No image found on page', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
+          }
+        } finally {
+          clearTimeout(pageTimeoutId)
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          ctx.set.status = 408
+          return new Response('Page fetch timeout', {
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        }
+
+        console.error('Link preview image page fetch error:', error)
+        ctx.set.status = 500
+        return new Response('Failed to fetch page', {
+          headers: { 'Content-Type': 'text/plain' },
+        })
+      }
+
+      // Step 2: Fetch the actual image using the extracted image URL
       try {
         // Fetch image with tight timeout and size limits
         const controller = new AbortController()

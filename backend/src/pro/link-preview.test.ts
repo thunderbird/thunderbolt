@@ -430,12 +430,29 @@ describe('Link Preview Routes', () => {
         headers: { 'content-type': contentType },
       })
 
-    it('should return image with proper content type', async () => {
+    it('should fetch page, extract image URL, and return image with proper content type', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/image.jpg'
-      mockFetch.mockImplementation(() => Promise.resolve(createMockImageResponse('image/jpeg')))
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      // Mock: first call fetches page, second call fetches image
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(createMockImageResponse('image/jpeg'))
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(200)
@@ -445,18 +462,32 @@ describe('Link Preview Routes', () => {
     })
 
     it('should infer content type from URL extension when header is missing', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/image.png'
-      mockFetch.mockImplementation(() =>
-        Promise.resolve(
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(
           new Response(new Uint8Array(100), {
             status: 200,
             headers: {}, // No content-type header
           }),
-        ),
-      )
+        )
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(200)
@@ -464,18 +495,32 @@ describe('Link Preview Routes', () => {
     })
 
     it('should reject images larger than 2MB (Content-Length check)', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/huge.jpg'
-      mockFetch.mockImplementation(() =>
-        Promise.resolve(
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(
           new Response(new Uint8Array(100), {
             status: 200,
             headers: { 'content-type': 'image/jpeg', 'content-length': '3000000' }, // 3MB
           }),
-        ),
-      )
+        )
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(413)
@@ -483,35 +528,64 @@ describe('Link Preview Routes', () => {
     })
 
     it('should reject images larger than 2MB (actual size check)', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/huge.jpg'
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
       const largeBuffer = new Uint8Array(2 * 1024 * 1024 + 1024) // 2MB + 1KB
-      mockFetch.mockImplementation(() =>
-        Promise.resolve(
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(
           new Response(largeBuffer, {
             status: 200,
             headers: { 'content-type': 'image/jpeg' },
           }),
-        ),
-      )
+        )
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(413)
       expect(await response.text()).toBe('Image too large')
     })
 
-    it('should timeout after 2 seconds', async () => {
+    it('should timeout after 2 seconds when image fetch is slow', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/slow.jpg'
-      // Simulate abort - when the abort controller fires after 2s, fetch rejects with AbortError
-      const abortError = new Error('The operation was aborted')
-      abortError.name = 'AbortError'
-      // Mock rejects with AbortError (simulating what happens when abort fires at 2s)
-      mockFetch.mockImplementation(() => Promise.reject(abortError))
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        // Simulate abort - when the abort controller fires after 2s, fetch rejects with AbortError
+        const abortError = new Error('The operation was aborted')
+        abortError.name = 'AbortError'
+        return Promise.reject(abortError)
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(408)
@@ -526,21 +600,37 @@ describe('Link Preview Routes', () => {
     })
 
     it('should return 400 for non-HTTP(S) URLs', async () => {
-      const imageUrl = 'file:///etc/passwd'
+      const pageUrl = 'file:///etc/passwd'
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(400)
       expect(await response.text()).toBe('Only HTTP and HTTPS URLs are supported')
     })
 
-    it('should return 500 on fetch failure', async () => {
+    it('should return 500 on image fetch failure', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/broken.jpg'
-      mockFetch.mockImplementation(() => Promise.reject(new Error('Connection refused')))
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.reject(new Error('Connection refused'))
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(500)
@@ -548,17 +638,65 @@ describe('Link Preview Routes', () => {
     })
 
     it('should return error status when image fetch returns non-200', async () => {
+      const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/forbidden.jpg'
-      mockFetch.mockImplementation(() =>
-        Promise.resolve(new Response('Forbidden', { status: 403, statusText: 'Forbidden' })),
-      )
+      const html = `
+        <html>
+          <head>
+            <meta property="og:image" content="${imageUrl}" />
+          </head>
+        </html>
+      `
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(new Response('Forbidden', { status: 403, statusText: 'Forbidden' }))
+      })
 
       const response = await app.handle(
-        new Request(`http://localhost/link-preview/image/${imageUrl}`, { method: 'GET' }),
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
       )
 
       expect(response.status).toBe(403)
       expect(await response.text()).toBe('Failed to fetch image: Forbidden')
+    })
+
+    it('should return 404 when page has no image', async () => {
+      const pageUrl = 'https://example.com/page'
+      const html = `
+        <html>
+          <head>
+            <title>Page without image</title>
+          </head>
+        </html>
+      `
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(404)
+      expect(await response.text()).toBe('No image found on page')
+    })
+
+    it('should return 408 when page fetch times out', async () => {
+      const pageUrl = 'https://example.com/slow-page'
+      const abortError = new Error('The operation was aborted')
+      abortError.name = 'AbortError'
+      mockFetch.mockImplementation(() => Promise.reject(abortError))
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(408)
+      expect(await response.text()).toBe('Page fetch timeout')
     })
   })
 })

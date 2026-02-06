@@ -6,7 +6,7 @@ import { useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
-  title: string | null
+  title: string // Always a string (fallback to hostname if null)
   description: string | null
   image: string | null
 }

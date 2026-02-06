@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationSource } from '@/types/citation'
 import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
 
@@ -196,6 +197,7 @@ describe('createMarkdownComponents (citation placeholders)', () => {
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>,
+      { wrapper: createTestProvider() },
     )
   }
 

@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import type { CitationSource } from '@/types/citation'
 
@@ -7,6 +8,8 @@ import type { CitationSource } from '@/types/citation'
 afterEach(() => {
   cleanup()
 })
+
+const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
 
 describe('CitationBadge', () => {
   const mockSingleSource: CitationSource[] = [
@@ -43,7 +46,7 @@ describe('CitationBadge', () => {
 
   describe('rendering', () => {
     it('renders single source with siteName', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       expect(screen.getByText('Example Site')).toBeTruthy()
     })
@@ -58,13 +61,13 @@ describe('CitationBadge', () => {
         },
       ]
 
-      render(<CitationBadge sources={sourceWithoutSiteName} />)
+      renderWithProviders(<CitationBadge sources={sourceWithoutSiteName} />)
 
       expect(screen.getByText('Test Article')).toBeTruthy()
     })
 
     it('renders multiple sources with primary source and count', () => {
-      render(<CitationBadge sources={mockMultipleSources} />)
+      renderWithProviders(<CitationBadge sources={mockMultipleSources} />)
 
       expect(screen.getByText('Primary Site')).toBeTruthy()
       expect(screen.getByText('+2')).toBeTruthy()
@@ -86,27 +89,27 @@ describe('CitationBadge', () => {
         },
       ]
 
-      render(<CitationBadge sources={sourcesNoPrimary} />)
+      renderWithProviders(<CitationBadge sources={sourcesNoPrimary} />)
 
       expect(screen.getByText('First Site')).toBeTruthy()
       expect(screen.getByText('+1')).toBeTruthy()
     })
 
     it('returns null when sources array is empty', () => {
-      const { container } = render(<CitationBadge sources={[]} />)
+      const { container } = renderWithProviders(<CitationBadge sources={[]} />)
 
       expect(container.firstChild).toBeNull()
     })
 
     it('renders with aria-label for accessibility', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       expect(button.getAttribute('aria-label')).toBe('View source: Test Article')
     })
 
     it('renders as button element with proper type', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       expect(button.getAttribute('type')).toBe('button')
@@ -115,14 +118,14 @@ describe('CitationBadge', () => {
 
   describe('interaction', () => {
     it('is clickable', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       expect(() => fireEvent.click(button)).not.toThrow()
     })
 
     it('opens popover/sheet when clicked', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       fireEvent.click(button)
@@ -132,7 +135,7 @@ describe('CitationBadge', () => {
     })
 
     it('responds to Enter key', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       fireEvent.keyDown(button, { key: 'Enter' })
@@ -142,7 +145,7 @@ describe('CitationBadge', () => {
     })
 
     it('responds to Space key', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       fireEvent.keyDown(button, { key: ' ' })
@@ -152,7 +155,7 @@ describe('CitationBadge', () => {
     })
 
     it('does not open when other keys are pressed', () => {
-      render(<CitationBadge sources={mockSingleSource} />)
+      renderWithProviders(<CitationBadge sources={mockSingleSource} />)
 
       const button = screen.getByRole('button')
       fireEvent.keyDown(button, { key: 'a' })
@@ -174,7 +177,7 @@ describe('CitationBadge', () => {
         },
       ]
 
-      render(<CitationBadge sources={incompleteSource} />)
+      renderWithProviders(<CitationBadge sources={incompleteSource} />)
 
       // Should still render the button
       expect(screen.getByRole('button')).toBeTruthy()
@@ -190,7 +193,7 @@ describe('CitationBadge', () => {
         },
       ]
 
-      render(<CitationBadge sources={specialSource} />)
+      renderWithProviders(<CitationBadge sources={specialSource} />)
 
       expect(screen.getByText('Site & Name')).toBeTruthy()
     })
@@ -205,7 +208,7 @@ describe('CitationBadge', () => {
         },
       ]
 
-      render(<CitationBadge sources={longNameSource} />)
+      renderWithProviders(<CitationBadge sources={longNameSource} />)
 
       expect(screen.getByText('Very Long Site Name That Exceeds Normal Display Length')).toBeTruthy()
     })

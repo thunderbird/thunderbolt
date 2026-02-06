@@ -12,7 +12,23 @@ const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: cr
 
 describe('CitationWidgetComponent', () => {
   describe('rendering', () => {
-    it('renders CitationBadge with parsed sources', () => {
+    it('renders CitationBadge with raw JSON sources', () => {
+      const sources = JSON.stringify([
+        {
+          id: 'src-1',
+          title: 'Test Article',
+          url: 'https://example.com',
+          siteName: 'Example',
+          isPrimary: true,
+        },
+      ])
+
+      renderWithProviders(<CitationWidgetComponent sources={sources} />)
+
+      expect(screen.getByText('Example')).toBeTruthy()
+    })
+
+    it('renders CitationBadge with base64-encoded sources (backward compat)', () => {
       const json = JSON.stringify([
         {
           id: 'src-1',
@@ -22,7 +38,7 @@ describe('CitationWidgetComponent', () => {
           isPrimary: true,
         },
       ])
-      const sources = btoa(json) // Base64 encode
+      const sources = btoa(json)
 
       renderWithProviders(<CitationWidgetComponent sources={sources} />)
 

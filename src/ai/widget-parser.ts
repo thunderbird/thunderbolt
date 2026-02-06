@@ -63,9 +63,10 @@ const createWidget = (tagName: string, attrs: Record<string, string>): Widget | 
 
 /**
  * Strips model-native citation formats that leak through prompt constraints.
- * Removes OpenAI-style 【N†title】 brackets, orphan 【 brackets, and similar patterns.
+ * Only targets OpenAI-style patterns like 【2†title】 or 【6】 — preserves legitimate CJK brackets.
  */
-const stripBracketCitations = (text: string): string => text.replace(/\s*【[^】]*】/g, '').replace(/\s*【/g, '')
+const stripBracketCitations = (text: string): string =>
+  text.replace(/\s*【\d+[†\u2020][^】]*】/g, '').replace(/\s*【\d+】/g, '')
 
 /**
  * Parses custom widget tags from text and returns an ordered array of text and widget parts

@@ -685,25 +685,25 @@ describe('parseContentParts', () => {
       expect(result[1].type).toBe('widget')
     })
 
-    it('strips brackets with various content formats', () => {
-      const text = 'Fact【source_name】 and another【12】 and【title with spaces】.'
+    it('strips numbered bracket citations', () => {
+      const text = 'Fact【12】 and another【3】.'
       const result = parseContentParts(text)
 
-      expect(result).toEqual([{ type: 'text', content: 'Fact and another and.' }])
+      expect(result).toEqual([{ type: 'text', content: 'Fact and another.' }])
     })
 
-    it('strips bracket with trailing period', () => {
+    it('strips bracket with dagger and title', () => {
       const text = 'The EU passed the AI Act【6†title】.'
       const result = parseContentParts(text)
 
       expect(result).toEqual([{ type: 'text', content: 'The EU passed the AI Act.' }])
     })
 
-    it('strips orphan opening bracket without closing', () => {
-      const text = '$2,499 USD 【'
+    it('preserves legitimate CJK brackets', () => {
+      const text = '価格は【税込み】です'
       const result = parseContentParts(text)
 
-      expect(result).toEqual([{ type: 'text', content: '$2,499 USD' }])
+      expect(result).toEqual([{ type: 'text', content: '価格は【税込み】です' }])
     })
 
     it('preserves text when no bracket citations present', () => {

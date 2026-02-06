@@ -1,6 +1,9 @@
 import { CitationBadge } from '@/components/chat/citation-badge'
 import type { CitationSource } from '@/types/citation'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { createTestProvider } from '@/test-utils/test-provider'
+
+const TestProvider = createTestProvider()
 
 const meta = {
   title: 'Chat/CitationBadge',
@@ -16,13 +19,15 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div className="p-8 bg-background">
-        <div className="max-w-2xl">
-          <p className="text-sm leading-relaxed">
-            This is example text with a citation <Story /> that you can click to view source details.
-          </p>
+      <TestProvider>
+        <div className="p-8 bg-background">
+          <div className="max-w-2xl">
+            <p className="text-sm leading-relaxed">
+              This is example text with a citation <Story /> that you can click to view source details.
+            </p>
+          </div>
         </div>
-      </div>
+      </TestProvider>
     ),
   ],
 } satisfies Meta<typeof CitationBadge>
@@ -195,25 +200,27 @@ export const EmptySources: Story = {
 
 export const InteractiveDemo = {
   render: () => (
-    <div className="space-y-6 max-w-2xl">
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold">Different Citation Counts</h3>
-        <div className="space-y-2 text-sm">
-          <p>
-            Single source citation <CitationBadge sources={[sampleSources[0]]} /> shows just the name.
-          </p>
-          <p>
-            Two sources <CitationBadge sources={[sampleSources[0], sampleSources[1]]} /> displays with +1 count.
-          </p>
-          <p>
-            Multiple sources <CitationBadge sources={sampleSources.slice(0, 3)} /> shows +2 count.
-          </p>
-          <p>
-            Many sources <CitationBadge sources={sampleSources} /> can be clicked to view all in modal.
-          </p>
+    <TestProvider>
+      <div className="space-y-6 max-w-2xl">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Different Citation Counts</h3>
+          <div className="space-y-2 text-sm">
+            <p>
+              Single source citation <CitationBadge sources={[sampleSources[0]]} /> shows just the name.
+            </p>
+            <p>
+              Two sources <CitationBadge sources={[sampleSources[0], sampleSources[1]]} /> displays with +1 count.
+            </p>
+            <p>
+              Multiple sources <CitationBadge sources={sampleSources.slice(0, 3)} /> shows +2 count.
+            </p>
+            <p>
+              Many sources <CitationBadge sources={sampleSources} /> can be clicked to view all in modal.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </TestProvider>
   ),
   parameters: {
     docs: {

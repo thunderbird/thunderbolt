@@ -66,6 +66,7 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           ref: v${{ inputs.version }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
@@ -105,14 +106,13 @@ jobs:
           # period-separated integers. Strip any prerelease suffix for Apple fields.
           APPLE_VERSION="${VERSION%%-*}"
 
-          # CFBundleVersion must be unique per TestFlight upload. For prerelease
-          # builds, extract the numeric portion of the suffix (e.g.,
-          # "nightly.20260206" → "20260206"). Stable builds reuse the marketing version.
-          if [[ "$VERSION" == *-* ]]; then
-            APPLE_BUILD_VERSION="$(echo "${VERSION#*-}" | tr -cd '0-9')"
-          else
-            APPLE_BUILD_VERSION="$APPLE_VERSION"
-          fi
+          # CFBundleVersion must be unique per TestFlight upload and must
+          # monotonically increase within a marketing-version train. Using git
+          # commit count gives a single, consistent scheme for both nightly and
+          # stable builds — avoiding collisions where a nightly date integer
+          # (e.g., 20260206) would permanently block a stable build (e.g., 0.5.0)
+          # for the same CFBundleShortVersionString.
+          APPLE_BUILD_VERSION="$(git rev-list --count HEAD)"
 
           echo "🔧 Applying version $VERSION locally (Apple marketing: $APPLE_VERSION, build: $APPLE_BUILD_VERSION)"
 

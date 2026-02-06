@@ -67,9 +67,9 @@ export const shouldRetry = (
 /** Nudge messages used during the agentic loop */
 export const nudgeMessages = {
   finalStep:
-    'RESPOND NOW. Provide your answer using the information you have gathered. Cite sources using ONLY <widget:citation> tags with URLs from tool results—NEVER use brackets, footnotes, or [1] style citations. Do not ask questions—give your best response immediately.',
+    'RESPOND NOW. Provide your answer using the information you have gathered. Cite sources with <widget:citation>. Do not ask questions—give your best response immediately.',
   preventive:
-    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now. Include <widget:citation> tags (NOT brackets or footnotes) for all sourced claims, using ONLY URLs from your tool results.',
+    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now. Include <widget:citation> for all sourced claims.',
   retry:
-    'You called tools but did not provide a response. Please synthesize all the information you gathered and respond to me now. Include <widget:citation> tags for sourced claims using ONLY URLs from tool results—do NOT use brackets or footnotes. Do not call any more tools.',
+    'You called tools but did not provide a response. Please synthesize all the information you gathered and respond to me now. Include <widget:citation> for sourced claims. Do not call any more tools.',
 } as const

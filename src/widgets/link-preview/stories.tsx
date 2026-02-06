@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { LinkChip, LinkPreview } from './display'
+import { LinkPreview } from './display'
 import { LinkPreviewSkeleton } from './widget'
 
 const meta = {
@@ -210,35 +210,33 @@ export const HostnameAsTitleFallback: Story = {
   },
 }
 
-export const MinimalLinkChip: Story = {
+export const MinimalPreview: Story = {
   args: {
     url: 'https://blocked-site.example.com/captcha',
-    title: null,
+    title: 'blocked-site.example.com',
     description: null,
     image: null,
   },
-  render: (args) => <LinkChip url={args.url} />,
   parameters: {
     docs: {
       description: {
-        story: 'Minimal link chip shown when no metadata was found (e.g., captcha pages)',
+        story: 'Minimal preview card shown when no metadata was found (e.g., captcha pages) - uses hostname as title',
       },
     },
   },
 }
 
-export const MinimalLinkChipLongHostname: Story = {
+export const MinimalPreviewLongHostname: Story = {
   args: {
     url: 'https://very-long-subdomain.deeply-nested.example.co.uk/path',
-    title: null,
+    title: 'very-long-subdomain.deeply-nested.example.co.uk',
     description: null,
     image: null,
   },
-  render: (args) => <LinkChip url={args.url} />,
   parameters: {
     docs: {
       description: {
-        story: 'Minimal link chip with a long hostname to verify truncation',
+        story: 'Minimal preview card with a long hostname to verify truncation',
       },
     },
   },

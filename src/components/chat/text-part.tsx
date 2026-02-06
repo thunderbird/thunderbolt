@@ -12,6 +12,14 @@ type TextPartProps = {
 }
 
 /**
+ * Text fragments that should be appended directly without a paragraph break:
+ * - Punctuation/connectors between adjacent citations (e.g., ",", ".", ", and")
+ * - Table row continuations that start with | (internal \n is preserved by the parser)
+ */
+const shouldAppendInline = (text: string): boolean =>
+  /^[,;.·\s]*(and|or|,|;|\.)*\s*$/i.test(text) || text.trimStart().startsWith('|')
+
+/**
  * Builds a single markdown string with {{CITE:N}} placeholders at the positions
  * where the AI placed citation widgets, and returns the citation data map.
  */
@@ -23,10 +31,13 @@ const buildTextWithCitationPlaceholders = (
 
   for (const part of contentParts) {
     if (part.type === 'text') {
-      if (fullText.length > 0 && !fullText.endsWith('\n\n')) {
-        fullText += '\n\n'
+      if (fullText.length === 0 || shouldAppendInline(part.content)) {
+        fullText += part.content
+      } else if (!fullText.endsWith('\n\n')) {
+        fullText += '\n\n' + part.content
+      } else {
+        fullText += part.content
       }
-      fullText += part.content
     } else if (part.type === 'widget' && part.widget.widget === 'citation') {
       const sources = decodeCitationSources(part.widget.args.sources)
       if (sources) {

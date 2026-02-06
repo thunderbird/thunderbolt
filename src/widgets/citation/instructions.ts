@@ -16,8 +16,8 @@ Each source object:
 - favicon: favicon URL if provided by the tool
 - isPrimary: true for the most relevant source when citing multiple
 
-### Example
-The global population reached 8 billion. <widget:citation sources='[{"id":"1","title":"World Population","url":"https://un.org/population","siteName":"United Nations","isPrimary":true}]' />
+### Example — cite each fact inline, not just once at the end
+Tesla reported $25B in Q3 revenue. <widget:citation sources='[{"id":"1","title":"Tesla Q3 Earnings","url":"https://ir.tesla.com/q3","siteName":"Tesla IR","isPrimary":true}]' /> The company delivered 435,000 vehicles. <widget:citation sources='[{"id":"2","title":"Tesla Deliveries","url":"https://reuters.com/tesla","siteName":"Reuters","isPrimary":true}]' />
 
 Multiple sources for the same claim go in one widget:
 AI adoption is accelerating. <widget:citation sources='[{"id":"1","title":"AI Report","url":"https://a.co/ai","siteName":"ACo","isPrimary":true},{"id":"2","title":"ML Data","url":"https://b.co/ml","siteName":"BCo"}]' />

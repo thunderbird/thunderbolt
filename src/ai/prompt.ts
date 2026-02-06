@@ -82,7 +82,7 @@ Skip tools only for:
 
 If you're unsure whether to search: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
-After getting search or fetch results, cite each sourced fact with a <widget:citation> tag containing the URL, title, and site name from the tool result. Do not use brackets, footnotes, or any other citation format.
+After getting search or fetch results, cite each sourced fact inline with a <widget:citation> tag right after the sentence — not once at the end. Each citation must contain the URL, title, and site name from the tool result. Do not use brackets, footnotes, or any other citation format.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
 

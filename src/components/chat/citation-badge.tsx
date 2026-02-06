@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import type { CitationSource } from '@/types/citation'
 import { SourceList } from '@/components/chat/source-list'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSettings } from '@/hooks/use-settings'
 
 type CitationBadgeProps = {
   sources: CitationSource[]
@@ -21,6 +22,7 @@ type CitationBadgeProps = {
 export const CitationBadge = ({ sources }: CitationBadgeProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   if (!sources || sources.length === 0) {
     return null
@@ -53,7 +55,7 @@ export const CitationBadge = ({ sources }: CitationBadgeProps) => {
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>{badge}</PopoverTrigger>
         <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-          <SourceList sources={sources} />
+          <SourceList sources={sources} proxyBase={cloudUrl.value} />
         </PopoverContent>
       </Popover>
     )
@@ -71,7 +73,7 @@ export const CitationBadge = ({ sources }: CitationBadgeProps) => {
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} />
+          <SourceList sources={sources} proxyBase={cloudUrl.value} />
         </SheetContent>
       </Sheet>
     </>

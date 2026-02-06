@@ -28,10 +28,11 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  * 2. **Devices table (synced via PowerSync)** – We have a token and a device id (we consider
  *    ourselves a logged-in device). We watch the current device row:
  *    - **revokedAt set** – User revoked this device from another device; reset.
- *    - **Device row missing** – Account was deleted elsewhere; PowerSync synced and wiped
- *      user data (including devices). We only treat "missing" after the first fetch
- *      (isFetched) and when we have a token, so we don’t reset during initial load or for
- *      users who never signed in.
+ *    - **Device row missing** – Only reset if we had seen the device in this session and it
+ *      then disappeared (account deleted elsewhere; PowerSync synced and wiped user data).
+ *      We do not reset when the device is missing on first load: the local DB may not have
+ *      synced the devices table yet, so "missing" would incorrectly clear storage and log
+ *      the user out after a refresh.
  *
  * This hook must be called from AuthProvider (at the top, before the early return). When
  * the account is deleted, sync wipes the DB so settings/cloudUrl disappear, AuthProvider
@@ -42,12 +43,15 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  */
 export const usePowerSyncCredentialsInvalidListener = (): void => {
   const hasTriggeredRef = useRef(false)
+  const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
   const { data: device, isFetched } = useQuery({
     queryKey: ['devices', deviceId],
     queryFn: () => getDevice(deviceId),
   })
+
+  if (device != null) hadDeviceOnceRef.current = true
 
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
@@ -67,7 +71,9 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     if (hasTriggeredRef.current) return
     if (!isFetched || !hasToken || !deviceId) return
-    const shouldReset = !device || device?.revokedAt
+    const revoked = device?.revokedAt != null
+    const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
+    const shouldReset = revoked || missingAfterHavingDevice
     if (!shouldReset) return
     hasTriggeredRef.current = true
     void performCredentialsInvalidReset()

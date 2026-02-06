@@ -114,11 +114,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 5: HTTP client initialization (use provided client or create one)
   let client: HttpClient
+
   if (httpClient) {
     client = httpClient
   } else {
     try {
-      const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+      const { cloudUrl } = await getSettings({
+        cloud_url: 'http://localhost:8000/v1',
+      })
       client = ky.create({ prefixUrl: cloudUrl })
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
@@ -152,9 +155,15 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const url = new URL(window.location.href)
   const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
 
+  // Step 8: Get experimental feature tasks
+  const { experimentalFeatureTasks } = await getSettings({
+    experimental_feature_tasks: false,
+  })
+
   return {
     success: true,
     data: {
+      experimentalFeatureTasks,
       sideviewType,
       sideviewId,
       posthogClient,
@@ -177,6 +186,7 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
     setIsInitializing(true)
     try {
       const result = await executeInitializationSteps(httpClient)
+
       if (result.success) {
         setInitData(result.data)
         setInitError(undefined)

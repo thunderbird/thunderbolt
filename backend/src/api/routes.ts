@@ -1,3 +1,4 @@
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import unitsByCountryData from '../data/localization/units-by-country.json'
 import unitsOptionsData from '../data/localization/units-options.json'
@@ -16,6 +17,7 @@ export interface LocationResult {
  */
 export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia()
+    .onError(safeErrorHandler)
     .get('/health', () => ({
       status: 'ok',
     }))

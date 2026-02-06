@@ -24,36 +24,48 @@ describe('WaSQLiteDatabase', () => {
   })
 
   describe('initialization', () => {
-    it('should initialize successfully', async () => {
-      const testDb = new WaSQLiteDatabase()
-      await testDb.initialize(':memory:')
-      expect(testDb.db).toBeDefined()
-      await testDb.close()
-    })
+    it(
+      'should initialize successfully',
+      async () => {
+        const testDb = new WaSQLiteDatabase()
+        await testDb.initialize(':memory:')
+        expect(testDb.db).toBeDefined()
+        await testDb.close()
+      },
+      { timeout: 5000 },
+    )
 
-    it('should be idempotent - multiple initialize calls should not create new instances', async () => {
-      const testDb = new WaSQLiteDatabase()
-      await testDb.initialize(':memory:')
-      const firstDb = testDb.db
-      await testDb.initialize(':memory:')
-      const secondDb = testDb.db
-      expect(firstDb).toBe(secondDb)
-      await testDb.close()
-    })
+    it(
+      'should be idempotent - multiple initialize calls should not create new instances',
+      async () => {
+        const testDb = new WaSQLiteDatabase()
+        await testDb.initialize(':memory:')
+        const firstDb = testDb.db
+        await testDb.initialize(':memory:')
+        const secondDb = testDb.db
+        expect(firstDb).toBe(secondDb)
+        await testDb.close()
+      },
+      { timeout: 5000 },
+    )
 
     it('should throw error when accessing db before initialization', () => {
       const testDb = new WaSQLiteDatabase()
       expect(() => testDb.db).toThrow('WaSQLiteDatabase not initialized')
     })
 
-    it('should extract filename from path correctly', async () => {
-      const testDb = new WaSQLiteDatabase()
-      // In tests, only use :memory: since OPFS is not available in Node/Bun
-      // In production (browser), OPFS will be used for persistence
-      await testDb.initialize(':memory:')
-      expect(testDb.db).toBeDefined()
-      await testDb.close()
-    })
+    it(
+      'should extract filename from path correctly',
+      async () => {
+        const testDb = new WaSQLiteDatabase()
+        // In tests, only use :memory: since OPFS is not available in Node/Bun
+        // In production (browser), OPFS will be used for persistence
+        await testDb.initialize(':memory:')
+        expect(testDb.db).toBeDefined()
+        await testDb.close()
+      },
+      { timeout: 5000 },
+    )
   })
 
   describe('basic operations', () => {
@@ -264,17 +276,22 @@ describe('WaSQLiteDatabase', () => {
       expect(finalRows).toHaveLength(2)
     })
 
-    it('should handle rapid sequential operations', async () => {
-      // Test the operation queue by firing many operations quickly
-      for (let i = 1; i <= 50; i++) {
-        await db.db.run(sql`INSERT INTO test (id, name) VALUES (${i}, ${'User' + i})`)
-      }
+    it(
+      'should handle rapid sequential operations',
+      async () => {
+        // Test the operation queue by firing many operations quickly
+        for (let i = 1; i <= 50; i++) {
+          await db.db.run(sql`INSERT INTO test (id, name) VALUES (${i}, ${'User' + i})`)
+        }
 
-      const count = await db.db.all(sql`SELECT COUNT(*) as count FROM test`)
-      const firstRow = count[0] as unknown[] | undefined
-      const countValue = firstRow?.[0] as number | undefined
-      expect(countValue).toBe(50)
-    })
+        const count = await db.db.all(sql`SELECT COUNT(*) as count FROM test`)
+        const firstRow = count[0] as unknown[] | undefined
+        const countValue = firstRow?.[0] as number | undefined
+        expect(countValue).toBe(50)
+      },
+      // CI VMs have slower worker message-passing overhead
+      { timeout: 5000 },
+    )
   })
 
   describe('error handling', () => {
@@ -320,27 +337,36 @@ describe('WaSQLiteDatabase', () => {
   })
 
   describe('cleanup', () => {
-    it('should close cleanly', async () => {
-      const testDb = new WaSQLiteDatabase()
-      await testDb.initialize(':memory:')
-      await testDb.db.run(sql`
-        CREATE TABLE test (
-          id INTEGER PRIMARY KEY,
-          name TEXT NOT NULL
-        )
-      `)
+    it(
+      'should close cleanly',
+      async () => {
+        const testDb = new WaSQLiteDatabase()
+        await testDb.initialize(':memory:')
+        await testDb.db.run(sql`
+          CREATE TABLE test (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+          )
+        `)
 
-      await testDb.close()
+        await testDb.close()
 
-      // After close, db should throw error
-      expect(() => testDb.db).toThrow('WaSQLiteDatabase not initialized')
-    })
+        // After close, db should throw error
+        expect(() => testDb.db).toThrow('WaSQLiteDatabase not initialized')
+      },
+      // CI VMs have slower worker message-passing overhead
+      { timeout: 5000 },
+    )
 
-    it('should be safe to close multiple times', async () => {
-      const testDb = new WaSQLiteDatabase()
-      await testDb.initialize(':memory:')
-      await testDb.close()
-      await testDb.close() // Should not throw
-    })
+    it(
+      'should be safe to close multiple times',
+      async () => {
+        const testDb = new WaSQLiteDatabase()
+        await testDb.initialize(':memory:')
+        await testDb.close()
+        await testDb.close() // Should not throw
+      },
+      { timeout: 5000 },
+    )
   })
 })

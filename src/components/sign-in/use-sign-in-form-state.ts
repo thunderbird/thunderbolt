@@ -1,13 +1,14 @@
 import type { AuthClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
+import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
-type ModalStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
+type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
 
 type State = {
   email: string
   otp: string
-  status: ModalStatus
+  status: FormStatus
   errorMessage: string
 }
 
@@ -60,39 +61,65 @@ const reducer = (state: State, action: Action): State => {
   }
 }
 
-type UseSignInModalStateOptions = {
+type UseSignInFormStateOptions = {
   authClient: AuthClient
-  onClose: () => void
+  onCancel?: () => void
+  onEmailSent?: () => void
+  /** Pre-fill the email input (user still needs to click submit) */
+  initialEmail?: string
+  /** Initialize directly in OTP step (OTP must already be sent before mounting) */
+  skipToOtp?: boolean
 }
 
 /**
- * State hook for SignInModal
- * Separates computation/logic from display for easier testing
+ * State hook for the sign-in form.
+ * Separates computation/logic from display for easier testing and reuse.
  */
-export const useSignInModalState = ({ authClient, onClose }: UseSignInModalStateOptions) => {
-  const [state, dispatch] = useReducer(reducer, initialState)
+export const useSignInFormState = ({
+  authClient,
+  onCancel,
+  onEmailSent,
+  initialEmail,
+  skipToOtp,
+}: UseSignInFormStateOptions) => {
+  // If skipToOtp is requested without an email, fall back to idle state instead of crashing
+  const canSkipToOtp = skipToOtp && !!initialEmail?.trim()
+
+  const [state, dispatch] = useReducer(reducer, {
+    ...initialState,
+    email: initialEmail ?? '',
+    status: canSkipToOtp ? 'sent' : 'idle',
+  })
+
+  const isValidEmail = isValidEmailFormat(state.email.trim())
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
     const trimmedEmail = state.email.trim()
-    if (!trimmedEmail) return
+    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) return
 
     dispatch({ type: 'START_SENDING' })
 
-    // Send OTP via emailOtp plugin
-    // This stores the OTP in the database and sends an email with both OTP and magic link
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email: trimmedEmail,
-      type: 'sign-in',
-    })
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: trimmedEmail,
+        type: 'sign-in',
+      })
 
-    if (error) {
-      dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
+      if (error) {
+        dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
+        return
+      }
+
+      dispatch({ type: 'SEND_SUCCESS' })
+    } catch (error) {
+      console.error('Failed to send verification OTP:', error)
+      dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
       return
     }
 
-    dispatch({ type: 'SEND_SUCCESS' })
+    onEmailSent?.()
   }
 
   const handleOtpComplete = async (value: string) => {
@@ -118,19 +145,16 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
       }
 
       // Sign-in successful - show success state
-      // The session will be updated on next render/navigation
       dispatch({ type: 'VERIFY_SUCCESS' })
-    } catch (err) {
-      console.error('OTP verification error:', err)
+    } catch (error) {
+      console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
     }
   }
 
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      dispatch({ type: 'RESET' })
-      onClose()
-    }
+  const handleCancel = () => {
+    dispatch({ type: 'RESET' })
+    onCancel?.()
   }
 
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
@@ -145,27 +169,34 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
     // Clear any previous error
     dispatch({ type: 'SET_ERROR', payload: '' })
 
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email: trimmedEmail,
-      type: 'sign-in',
-    })
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: trimmedEmail,
+        type: 'sign-in',
+      })
 
-    if (error) {
-      dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
+      if (error) {
+        dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
+        return false
+      }
+
+      // Clear OTP input for fresh entry
+      dispatch({ type: 'SET_OTP', payload: '' })
+      return true
+    } catch (error) {
+      console.error('Failed to resend verification OTP:', error)
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to resend verification code. Please check your connection.' })
       return false
     }
-
-    // Clear OTP input for fresh entry
-    dispatch({ type: 'SET_OTP', payload: '' })
-    return true
   }
 
   return {
     state,
+    isValidEmail,
     actions: {
       handleSubmit,
       handleOtpComplete,
-      handleOpenChange,
+      handleCancel,
       handleResend,
       goBack,
       setEmail,
@@ -173,3 +204,5 @@ export const useSignInModalState = ({ authClient, onClose }: UseSignInModalState
     },
   }
 }
+
+export type { FormStatus, State as SignInFormState }

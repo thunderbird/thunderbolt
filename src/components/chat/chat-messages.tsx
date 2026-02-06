@@ -6,6 +6,7 @@ import { ErrorMessage } from './error-message'
 import { useMemo } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -63,11 +64,15 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         }
 
         if (message.role === 'assistant') {
+          const isLastMessage = i === messages.length - 1
+          // Only apply viewport positioning from second message onwards
+          const shouldApplyViewport = isLastMessage && shouldUseViewportPositioning(messages.length)
           return (
             <AssistantMessage
               key={message.id}
               message={message}
-              isStreaming={isStreaming && i === messages.length - 1}
+              isStreaming={isStreaming && isLastMessage}
+              isLastMessage={shouldApplyViewport}
             />
           )
         } else if (message.role === 'user') {

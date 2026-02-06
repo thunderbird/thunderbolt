@@ -13,10 +13,14 @@ import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 
-interface AssistantMessageProps {
+type AssistantMessageProps = {
   message: ThunderboltUIMessage
   isStreaming: boolean
+  isLastMessage?: boolean
 }
+
+// Viewport positioning constant - ensures enough space for scrolling user message to top
+const lastMessageMinHeight = '72dvh'
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
@@ -71,7 +75,7 @@ export const mountMessageParts = (
   return partElements
 }
 
-export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessageProps) => {
+export const AssistantMessage = memo(({ message, isStreaming, isLastMessage = false }: AssistantMessageProps) => {
   const filteredParts = filterMessageParts(message.parts) as GroupableUIPart[]
 
   const groupedParts = groupMessageParts(filteredParts)
@@ -84,7 +88,7 @@ export const AssistantMessage = memo(({ message, isStreaming }: AssistantMessage
   )
 
   return (
-    <div>
+    <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>
       {partElements.map((partElement, index) => (
         // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
         // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption

@@ -76,6 +76,7 @@ jobs:
   build:
     name: Build ${{ matrix.build_name }}
     needs: draft
+    environment: thunderbolt_release
 
     strategy:
       fail-fast: false
@@ -128,7 +129,78 @@ jobs:
             ${{ runner.os }}-cargo-release-${{ inputs.version }}-
             ${{ runner.os }}-cargo-release-
 
-      - name: install Linux dependencies
+      - name: Setup macOS code signing and notarization
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_DEVELOPER_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE }}
+          APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Validate required secrets
+          if [ -z "$APPLE_DEVELOPER_CERTIFICATE" ] || [ -z "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" ]; then
+            echo "Required secrets are not set"
+            exit 1
+          fi
+
+          # Decode certificate (matching iOS workflow exactly)
+          CLEAN_CERT=$(echo "$APPLE_DEVELOPER_CERTIFICATE" | tr -d '\n\r\t ' | tr -d '[:space:]')
+          echo "$CLEAN_CERT" | base64 --decode > certificate.p12
+
+          if [ ! -s certificate.p12 ]; then
+            echo "Failed to decode certificate"
+            exit 1
+          fi
+
+          # Create and configure keychain
+          security create-keychain -p "build" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "build" build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
+
+          # Convert certificate to macOS-compatible format (using older encryption algorithms)
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+
+          # Import the converted certificate
+          security import macos_certificate.p12 -k build.keychain -P "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+
+          # Clean up temporary files
+          rm temp_cert.pem temp_key.pem macos_certificate.p12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "build" build.keychain
+
+          # Clean up certificate
+          rm certificate.p12
+
+          # Auto-detect signing identity from imported certificate
+          DETECTED_IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+
+          if [ -z "$DETECTED_IDENTITY" ]; then
+            echo "No valid signing identity found in keychain"
+            exit 1
+          fi
+
+          # Setup App Store Connect API key
+          mkdir -p ~/private_keys
+          if echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8 2>/dev/null; then
+            echo "Decoded base64 API key"
+          else
+            echo "$APP_STORE_CONNECT_API_KEY" > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+          fi
+          chmod 600 ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+
+          # Export notarization env vars for subsequent steps (use detected identity)
+          echo "APPLE_SIGNING_IDENTITY=$DETECTED_IDENTITY" >> $GITHUB_ENV
+          echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_ISSUER_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY=$APP_STORE_CONNECT_API_KEY_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
+
+      - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update

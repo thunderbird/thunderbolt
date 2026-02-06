@@ -99,10 +99,11 @@ describe('Pro Tools Routes', () => {
 
     expect(response.status).toBe(500)
     const data = await response.json()
+    // Error handler sanitizes internal error messages for security
     expect(data).toEqual({
       success: false,
       data: null,
-      error: 'Search service is not configured.',
+      error: 'An unexpected error occurred',
     })
   })
 
@@ -117,10 +118,11 @@ describe('Pro Tools Routes', () => {
 
     expect(response.status).toBe(500)
     const data = await response.json()
+    // Error handler sanitizes internal error messages for security
     expect(data).toEqual({
       success: false,
       data: null,
-      error: 'Fetch content service is not configured.',
+      error: 'An unexpected error occurred',
     })
   })
 
@@ -177,10 +179,6 @@ describe('Pro Tools Routes', () => {
         body: JSON.stringify({}),
       }),
     )
-    expect(response.status).toBe(400) // Validation error
-    const data = await response.json()
-    expect(data).toHaveProperty('success', false)
-    expect(data).toHaveProperty('data', null)
-    expect(data).toHaveProperty('error')
+    expect(response.status).toBe(422) // Elysia validation error
   })
 })

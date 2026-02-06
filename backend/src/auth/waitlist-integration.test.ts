@@ -5,6 +5,7 @@ import * as waitlistUtils from '@/waitlist/utils'
 // Mock only the email-sending functions, preserve all other exports
 const mockSendSignInEmail = mock(() => Promise.resolve())
 const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
+const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
 
 mock.module('@/auth/utils', () => ({
   ...authUtils,
@@ -14,7 +15,7 @@ mock.module('@/auth/utils', () => ({
 mock.module('@/waitlist/utils', () => ({
   ...waitlistUtils,
   sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
-  sendWaitlistJoinedEmail: mock(() => Promise.resolve()),
+  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
   sendWaitlistReminderEmail: mock(() => Promise.resolve()),
 }))
 
@@ -35,6 +36,7 @@ describe('Auth Waitlist Integration', () => {
   beforeEach(async () => {
     mockSendSignInEmail.mockClear()
     mockSendWaitlistNotReadyEmail.mockClear()
+    mockSendWaitlistJoinedEmail.mockClear()
 
     const testEnv = await createTestDb()
     db = testEnv.db
@@ -62,29 +64,38 @@ describe('Auth Waitlist Integration', () => {
       expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
     })
 
-    it('should block pending waitlist user and send not-ready email', async () => {
+    it('should send not-ready email to pending user (without revealing status)', async () => {
       await db.insert(waitlist).values({
         id: crypto.randomUUID(),
         email: 'pending@example.com',
         status: 'pending',
       })
 
+      // Should succeed (not throw) to prevent revealing waitlist status
       await auth.api.sendVerificationOTP({
         body: { email: 'pending@example.com', type: 'sign-in' },
       })
 
+      // User receives "not ready" email instead of OTP
       expect(mockSendSignInEmail).toHaveBeenCalledTimes(0)
       expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(1)
     })
 
-    it('should block user not on waitlist with no email sent', async () => {
+    it('should add unknown user to waitlist and send joined email (without revealing status)', async () => {
+      // Should succeed (not throw) to prevent revealing whether email exists
       await auth.api.sendVerificationOTP({
         body: { email: 'unknown@example.com', type: 'sign-in' },
       })
 
-      // No emails sent - prevents email enumeration
+      // User added to waitlist and receives joined email (not OTP)
       expect(mockSendSignInEmail).toHaveBeenCalledTimes(0)
       expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+      expect(mockSendWaitlistJoinedEmail).toHaveBeenCalledTimes(1)
+
+      // Verify user was added to waitlist
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'unknown@example.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('pending')
     })
 
     it('should allow existing user to sign in regardless of waitlist', async () => {

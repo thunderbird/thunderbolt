@@ -51,7 +51,7 @@ concurrency:
 jobs:
   build_and_deploy_ios:
     if: ${{ !inputs.skip_build }}
-    runs-on: macos-14
+    runs-on: macos-26
     environment: thunderbolt_release
     outputs:
       build_version: ${{ steps.determine_version.outputs.build_version }}
@@ -134,10 +134,10 @@ jobs:
           rustup target add aarch64-apple-ios-sim
           rustup target add x86_64-apple-ios
 
-      - name: Xcode Select Version
+      - name: Select Xcode 26.2
         uses: mobiledevops/xcode-select-version-action@a58204ef24b6e61857940e51c0e11b0368065b94 # v1
         with:
-          xcode-select-version: '16.2'
+          xcode-select-version: '26.2'
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@cf7216d52fba1017929b4d7162fabe2b30af5b49 # v1.262.0
@@ -261,6 +261,7 @@ jobs:
 
           # Create export options plist to work around Fastlane Xcode 16 bug
           # See: https://github.com/fastlane/fastlane/issues/29256
+          # Keeping for Xcode 26 until compatibility is confirmed
           cd src-tauri/gen/apple
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>

@@ -1,5 +1,6 @@
 import { getSettings } from '@/config/settings'
 import { memoize } from '@/lib/memoize'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { Exa } from 'exa-js'
 import type { FetchContentResponse, SearchResponse } from './types'
@@ -19,6 +20,7 @@ const getExaClient = memoize(() => {
  * Elysia plugin that provides Exa client in state
  */
 export const exaPlugin = new Elysia({ name: 'exa' })
+  .onError(safeErrorHandler)
   .state('exaClient', getExaClient())
   .post(
     '/search',

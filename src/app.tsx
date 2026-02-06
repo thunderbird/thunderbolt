@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
@@ -20,9 +20,11 @@ import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
 import TasksPage from '@/tasks'
+import { WaitlistLayout, WaitlistPage, WaitlistSignInPage } from '@/waitlist'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
+import { AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { UpdateNotification } from './components/update-notification'
@@ -30,13 +32,13 @@ import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
-import { useSettings } from './hooks/use-settings'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
+import { useSettings } from './hooks/use-settings'
 
 const queryClient = new QueryClient()
 
@@ -49,50 +51,70 @@ function AppContent({ initData }: { initData: InitData }) {
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
-      <OnboardingDialog />
       <UpdateNotification />
     </BrowserRouter>
   )
 }
 
-function AppRoutes(_: { initData: InitData }) {
+function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
   useDeepLinkListener()
 
   const { experimentalFeatureTasks } = useSettings({
-    experimental_feature_tasks: Boolean,
+    experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
+
+  const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true'
 
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
-        {/* Home routes with HomeLayout */}
-        <Route element={<ChatLayout />}>
-          <Route index element={<Navigate to="/chats/new" replace />} />
-          <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-          {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-          <Route path="automations" element={<AutomationsPage />} />
-          <Route path="message-simulator" element={<MessageSimulatorPage />} />
-        </Route>
+      {/* Auth flow routes - NO guards (must work during auth) */}
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+      <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-        {/* Settings routes with SettingsLayout */}
-        <Route path="settings" element={<SettingsLayout />}>
-          <Route index element={<Settings />} />
-          <Route path="preferences" element={<PreferencesSettingsPage />} />
-          <Route path="models" element={<ModelsPage />} />
-          <Route path="mcp-servers" element={<McpServersPage />} />
-          <Route path="integrations" element={<IntegrationsPage />} />
-          <Route path="dev-settings" element={<DevSettingsPage />} />
+      {/* Waitlist routes - unauthenticated only (skip when bypass is enabled) */}
+      {!bypassWaitlist && (
+        <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
+          <Route path="waitlist" element={<WaitlistLayout />}>
+            <Route index element={<WaitlistPage />} />
+            <Route path="signin" element={<WaitlistSignInPage />} />
+          </Route>
         </Route>
+      )}
 
-        {/* Magic link verification - shows modal over app */}
-        <Route path="auth/verify" element={<MagicLinkVerify />} />
+      {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
+      <Route element={bypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
+        <Route
+          path="/"
+          element={
+            <>
+              <Layout />
+              <OnboardingDialog />
+            </>
+          }
+        >
+          {/* Home routes with HomeLayout */}
+          <Route element={<ChatLayout />}>
+            <Route index element={<Navigate to="/chats/new" replace />} />
+            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+            {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+            <Route path="automations" element={<AutomationsPage />} />
+            <Route path="message-simulator" element={<MessageSimulatorPage />} />
+          </Route>
+
+          {/* Settings routes with SettingsLayout */}
+          <Route path="settings" element={<SettingsLayout />}>
+            <Route index element={<Settings />} />
+            <Route path="preferences" element={<PreferencesSettingsPage />} />
+            <Route path="models" element={<ModelsPage />} />
+            <Route path="mcp-servers" element={<McpServersPage />} />
+            <Route path="integrations" element={<IntegrationsPage />} />
+            <Route path="dev-settings" element={<DevSettingsPage />} />
+          </Route>
+        </Route>
       </Route>
 
-      {/* OAuth callback route */}
-      <Route path="/oauth/callback" element={<OAuthCallback />} />
-
-      {/* 404 catch-all */}
+      {/* Fallback routes - no guards */}
       <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/not-found" replace />} />
     </Routes>

@@ -23,13 +23,13 @@ describe('wa-sqlite integration', () => {
     // Run migrations
     const db = DatabaseSingleton.instance.db
     await migrate(db)
-  }, 10000) // Increase timeout for worker initialization under load
+  })
 
   afterAll(async () => {
     await DatabaseSingleton.instance.close()
     DatabaseSingleton.reset()
     consoleSpies.restore()
-  }, 10000) // Increase timeout for cleanup
+  })
 
   describe('basic CRUD operations', () => {
     it('should insert and select records', async () => {

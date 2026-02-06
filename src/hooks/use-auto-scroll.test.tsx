@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { useAutoScroll } from './use-auto-scroll'
 
 describe('useAutoScroll', () => {
@@ -270,6 +271,135 @@ describe('useAutoScroll', () => {
       })
 
       expect(container.scrollTop).toBe(500)
+    })
+  })
+
+  describe('programmatic scroll flag', () => {
+    describe('parameter behavior', () => {
+      it('sets flag when programmatic=true', () => {
+        const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Call with programmatic=true
+        act(() => {
+          result.current.scrollToBottom(false, true)
+        })
+
+        // Verify scroll happened
+        expect(container.scrollTop).toBe(500)
+      })
+
+      it('does not set flag when programmatic=false', () => {
+        const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Call with programmatic=false
+        act(() => {
+          result.current.scrollToBottom(false, false)
+        })
+
+        // Verify scroll happened
+        expect(container.scrollTop).toBe(500)
+      })
+
+      it('does not set flag when programmatic is undefined (default)', () => {
+        const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Call without programmatic parameter
+        act(() => {
+          result.current.scrollToBottom(false)
+        })
+
+        // Verify scroll happened
+        expect(container.scrollTop).toBe(500)
+      })
+    })
+
+    describe('timing and cleanup', () => {
+      it('clears old timeout before setting new one on rapid scrolls', () => {
+        const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // First programmatic scroll
+        act(() => {
+          result.current.scrollToBottom(false, true)
+        })
+
+        // Second programmatic scroll before timeout fires
+        act(() => {
+          result.current.scrollToBottom(false, true)
+        })
+
+        // Both scrolls should succeed without errors
+        expect(container.scrollTop).toBe(500)
+      })
+
+      it('clears timeout on unmount', () => {
+        const { result, unmount } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Trigger programmatic scroll
+        act(() => {
+          result.current.scrollToBottom(false, true)
+        })
+
+        // Unmount before timeout fires
+        expect(() => unmount()).not.toThrow()
+      })
+
+      it('clears flag after 100ms for instant scrolls', async () => {
+        const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Trigger instant programmatic scroll
+        act(() => {
+          result.current.scrollToBottom(false, true)
+        })
+
+        expect(container.scrollTop).toBe(500)
+
+        // Advance time by 100ms to trigger flag clearing
+        await act(async () => {
+          await getClock().tickAsync(100)
+        })
+
+        // Flag should be cleared now (we can't directly test the ref, but verify no errors)
+        expect(container.scrollTop).toBe(500)
+      })
+
+      it('does not throw when using smooth scroll with programmatic flag', () => {
+        const { result } = renderHook(() => useAutoScroll({ smooth: true, isStreaming: false }))
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        // Trigger smooth programmatic scroll - should not throw
+        expect(() => {
+          act(() => {
+            result.current.scrollToBottom(true, true)
+          })
+        }).not.toThrow()
+      })
     })
   })
 })

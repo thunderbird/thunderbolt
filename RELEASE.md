@@ -346,7 +346,7 @@ Common issues:
 
 - **Signing certificates expired**: Update secrets in GitHub repository settings
 - **Provisioning profile issues**: Regenerate and update `APP_STORE_PROVISIONING_PROFILE` secret
-- **Xcode version**: Workflow uses Xcode 16.2
+- **Xcode version**: Workflow uses Xcode 26.2 (iOS 26 SDK)
 
 ### Manual Workflow Trigger
 

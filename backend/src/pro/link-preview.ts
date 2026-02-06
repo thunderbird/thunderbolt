@@ -1,4 +1,5 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import type { LinkPreviewResponse } from './types'
@@ -74,6 +75,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
   return new Elysia({
     prefix: '/link-preview',
   })
+    .onError(safeErrorHandler)
     .use(
       cors({
         origin: getCorsOrigins(settings),

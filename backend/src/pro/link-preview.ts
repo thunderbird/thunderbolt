@@ -32,7 +32,7 @@ const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
 /**
  * Extracts Open Graph metadata from HTML content.
  * Only falls back to <title> and <meta description> when at least one social
- * meta tag (og:* or twitter:image) is present — pages without any social tags
+ * meta tag (og:*) is present — pages without any social tags
  * (e.g. captcha/block pages) return all nulls instead of garbage fallback text.
  */
 const extractMetadata = (html: string, url: string) => {
@@ -45,9 +45,7 @@ const extractMetadata = (html: string, url: string) => {
     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["'][^>]*>/i)
   const imageMatch =
     html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["'][^>]*>/i) ||
-    html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image["'][^>]*>/i)
+    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["'][^>]*>/i)
 
   const hasSocialTags = !!(ogTitleMatch || ogDescMatch || imageMatch)
 
@@ -97,6 +95,14 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
 
       // Extract the target URL from the path (everything after /link-preview/)
       const pathParts = url.pathname.split('/link-preview/')
+      if (pathParts.length < 2 || !pathParts[pathParts.length - 1]) {
+        return {
+          data: null,
+          success: false,
+          error: 'No URL provided',
+        }
+      }
+
       let pathOnly: string
       try {
         pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
@@ -107,11 +113,12 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
           error: 'Invalid URL encoding',
         }
       }
+
       // Only append query string if the decoded path doesn't already contain one
       // This prevents double-adding query params if the original URL had them encoded in the path
       const targetUrl = pathOnly.includes('?') ? pathOnly : pathOnly + url.search
 
-      if (!targetUrl) {
+      if (!targetUrl || !targetUrl.trim()) {
         return {
           data: null,
           success: false,
@@ -197,6 +204,13 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
 
       // Extract the image URL from the path (everything after /link-preview/image/)
       const pathParts = url.pathname.split('/link-preview/image/')
+      if (pathParts.length < 2 || !pathParts[pathParts.length - 1]) {
+        ctx.set.status = 400
+        return new Response('No image URL provided', {
+          headers: { 'Content-Type': 'text/plain' },
+        })
+      }
+
       let pathOnly: string
       try {
         pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
@@ -206,10 +220,11 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
           headers: { 'Content-Type': 'text/plain' },
         })
       }
+
       // Only append query string if the decoded path doesn't already contain one
       const imageUrl = pathOnly.includes('?') ? pathOnly : pathOnly + url.search
 
-      if (!imageUrl) {
+      if (!imageUrl || !imageUrl.trim()) {
         ctx.set.status = 400
         return new Response('No image URL provided', {
           headers: { 'Content-Type': 'text/plain' },
@@ -302,6 +317,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
             headers: {
               'Content-Type': contentType,
               'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+              'Cross-Origin-Resource-Policy': 'cross-origin', // Allow cross-origin access
             },
           })
         } finally {

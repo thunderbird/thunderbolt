@@ -1,12 +1,23 @@
 /** Extracts a clean hostname from a URL (strips "www." prefix) */
 export const getHostname = (url: string): string => {
+  if (!url || !url.trim()) {
+    return 'Unknown'
+  }
+
   try {
     const parsed = new URL(url)
-    return parsed.hostname.replace(/^www\./, '')
+    const hostname = parsed.hostname.replace(/^www\./, '')
+    return hostname || 'Unknown'
   } catch {
     // If URL parsing fails, try to extract hostname-like string from the input
     // This handles edge cases like malformed URLs while still providing some value
     const match = url.match(/^(?:https?:\/\/)?([^/\s?#]+)/i)
-    return match ? match[1].replace(/^www\./, '') : url
+    if (match && match[1]) {
+      const hostname = match[1].replace(/^www\./, '')
+      // Truncate very long hostnames to prevent UI issues
+      return hostname.length > 50 ? `${hostname.slice(0, 47)}...` : hostname
+    }
+    // Fallback: return truncated original URL if no hostname can be extracted
+    return url.length > 50 ? `${url.slice(0, 47)}...` : url
   }
 }

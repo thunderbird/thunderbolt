@@ -64,10 +64,15 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
   }
 
   // Use dedicated image endpoint for parallel requests (returns image with proper mime type)
+  // The <img> tag will automatically fetch this when rendered, allowing parallel requests
+  // Validate that both image URL and cloudUrl are non-empty strings
   const imageUrl =
-    data.image && cloudUrl.value ? `${cloudUrl.value}/pro/link-preview/image/${encodeURIComponent(data.image)}` : null
+    data.image && data.image.trim() && cloudUrl.value && cloudUrl.value.trim()
+      ? `${cloudUrl.value}/pro/link-preview/image/${encodeURIComponent(data.image)}`
+      : null
 
-  return (
-    <LinkPreview title={data.title || getHostname(url)} description={data.description} url={url} image={imageUrl} />
-  )
+  // Ensure title is never null for CardTitle component
+  const displayTitle = data.title || getHostname(url)
+
+  return <LinkPreview title={displayTitle} description={data.description} url={url} image={imageUrl} />
 }

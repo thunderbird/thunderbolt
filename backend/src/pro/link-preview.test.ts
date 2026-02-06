@@ -146,28 +146,6 @@ describe('Link Preview Routes', () => {
       expect(body.data?.description).toBe('Regular meta description')
     })
 
-    it('should handle twitter:image fallback', async () => {
-      const targetUrl = 'https://example.com/page'
-      const html = `
-        <html>
-          <head>
-            <title>Page Title</title>
-            <meta name="twitter:image" content="https://example.com/twitter-image.jpg" />
-          </head>
-        </html>
-      `
-
-      mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
-
-      const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
-
-      expect(response.status).toBe(200)
-
-      const body = (await response.json()) as LinkPreviewResponse
-      expect(body.success).toBe(true)
-      expect(body.data?.image).toBe('https://example.com/twitter-image.jpg')
-    })
-
     it('should convert relative image URLs to absolute URLs', async () => {
       const targetUrl = 'https://www.thunderbird.net/en-US/'
       const html = `

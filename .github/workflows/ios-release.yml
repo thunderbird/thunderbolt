@@ -97,21 +97,44 @@ jobs:
       - name: Set build version locally for TestFlight
         run: |
           VERSION="$BUILD_VERSION"
-          echo "🔧 Applying version $VERSION locally for the build"
+
+          # Apple requires CFBundleShortVersionString and CFBundleVersion to be
+          # period-separated integers. Strip any prerelease suffix for Apple fields.
+          APPLE_VERSION="${VERSION%%-*}"
+
+          # CFBundleVersion must be unique per TestFlight upload. For prerelease
+          # builds, extract the numeric portion of the suffix (e.g.,
+          # "nightly.20260206" → "20260206"). Stable builds reuse the marketing version.
+          if [[ "$VERSION" == *-* ]]; then
+            APPLE_BUILD_VERSION="$(echo "${VERSION#*-}" | tr -cd '0-9')"
+          else
+            APPLE_BUILD_VERSION="$APPLE_VERSION"
+          fi
+
+          echo "🔧 Applying version $VERSION locally (Apple marketing: $APPLE_VERSION, build: $APPLE_BUILD_VERSION)"
+
+          # package.json keeps the full version; tauri.conf.json uses the Apple-
+          # compatible version so Tauri doesn't regenerate project files with
+          # the prerelease suffix.
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = process.env.VERSION;
+            pkg.version = '${VERSION}';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = '${APPLE_VERSION}';
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
           "
+
           # macOS sed requires an empty backup suffix
           sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
           # Update iOS project.yml version if it exists
           if [ -f "src-tauri/gen/apple/project.yml" ]; then
-            sed -i '' "s/CFBundleShortVersionString: .*/CFBundleShortVersionString: $VERSION/" src-tauri/gen/apple/project.yml
-            sed -i '' "s/CFBundleVersion: .*/CFBundleVersion: \"$VERSION\"/" src-tauri/gen/apple/project.yml
-            echo "✅ Updated iOS project.yml to $VERSION"
+            sed -i '' "s/CFBundleShortVersionString: .*/CFBundleShortVersionString: $APPLE_VERSION/" src-tauri/gen/apple/project.yml
+            sed -i '' "s/CFBundleVersion: .*/CFBundleVersion: \"$APPLE_BUILD_VERSION\"/" src-tauri/gen/apple/project.yml
+            echo "✅ Updated iOS project.yml to $APPLE_VERSION (build: $APPLE_BUILD_VERSION)"
           fi
 
       - name: Install Rust stable toolchain

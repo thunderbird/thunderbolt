@@ -1,5 +1,5 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { type PowerSyncTableName, POWERSYNC_TABLE_TO_QUERY_KEYS } from '@shared/powersync-tables'
+import { type PowerSyncTableName, powersyncTableToQueryKeys } from '@shared/powersync-tables'
 import type { PowerSyncDatabase } from '@powersync/web'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
@@ -48,12 +48,12 @@ export const usePowerSyncInvalidation = (tables?: string[]) => {
       return
     }
 
-    const tablesToWatch = tables ?? Object.keys(POWERSYNC_TABLE_TO_QUERY_KEYS)
+    const tablesToWatch = tables ?? Object.keys(powersyncTableToQueryKeys)
     const unsubscribes: (() => void)[] = []
 
     for (const tableName of tablesToWatch) {
-      if (!(tableName in POWERSYNC_TABLE_TO_QUERY_KEYS)) continue
-      const queryKeys = POWERSYNC_TABLE_TO_QUERY_KEYS[tableName as PowerSyncTableName]
+      if (!(tableName in powersyncTableToQueryKeys)) continue
+      const queryKeys = powersyncTableToQueryKeys[tableName as PowerSyncTableName]
 
       // Watch the table for any changes
       const abortController = new AbortController()

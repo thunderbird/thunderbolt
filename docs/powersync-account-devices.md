@@ -33,7 +33,7 @@ Defined in [shared/powersync-tables.ts](shared/powersync-tables.ts):
 
 1. Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` (include `user_id`).
 2. Register in [src/db/powersync/schema.ts](src/db/powersync/schema.ts) (`drizzleSchema`).
-3. Add the table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `POWERSYNC_TABLE_TO_QUERY_KEYS`).
+3. Add the table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
 4. Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
 5. Run migrations for frontend and backend as needed.
 
@@ -148,9 +148,9 @@ After revoke, the Settings > Devices list is updated by invalidating `['devices'
 
 ## 8. Summary
 
-| Action         | Where       | Backend / sync behavior                       | Other device behavior                                                          |
-| -------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
-| Delete account | Preferences | User and data deleted; 410 on token refresh    | Reset when 410 received or when sync reflects deletion                         |
-| Revoke device  | Devices     | Set `revoked_at`; 403 on that device’s refresh  | Revoked device resets when it sees `revoked_at` (useQuery) or gets 403 on refresh |
+| Action         | Where       | Backend / sync behavior                        | Other device behavior                                                             |
+| -------------- | ----------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| Delete account | Preferences | User and data deleted; 410 on token refresh    | Reset when 410 received or when sync reflects deletion                            |
+| Revoke device  | Devices     | Set `revoked_at`; 403 on that device’s refresh | Revoked device resets when it sees `revoked_at` (useQuery) or gets 403 on refresh |
 
 Both paths use the same reset: disable sync, clear localStorage, reset app dir, reload.

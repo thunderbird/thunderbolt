@@ -64,7 +64,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
   // Handle device revoked or device row missing (account deleted) from synced devices table.
   useEffect(() => {
     const hasToken = Boolean(getAuthToken())
-    console.log('DEBUG: usePowerSyncCredentialsInvalidListener', { isFetched, hasToken, deviceId, device })
+
     if (hasTriggeredRef.current) return
     if (!isFetched || !hasToken || !deviceId) return
     const shouldReset = !device || device?.revokedAt

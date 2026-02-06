@@ -24,19 +24,52 @@ type WidgetSpec = {
 const widgetSpecs: WidgetSpec[] = widgetParsers
 
 /**
- * Parses attributes from a widget tag's attribute string.
- * Supports both double-quoted and single-quoted values:
- *   location="Seattle"  → { location: 'Seattle' }
- *   sources='[{"id":"1"}]' → { sources: '[{"id":"1"}]' }
- * Single quotes are needed for citation widgets where the value contains JSON with double quotes.
+ * Extracts a single-quoted value containing JSON with apostrophes (e.g., "NASA's Mission").
+ * Tracks bracket depth and "..." boundaries so only a ' outside JSON content closes the value.
  */
+const extractSingleQuotedValue = (str: string, start: number): string | null => {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i]
+    if (inString) {
+      if (ch === '\\') {
+        i++
+        continue
+      }
+      if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '[' || ch === '{') depth++
+    else if (ch === ']' || ch === '}') depth--
+    else if (ch === "'" && depth <= 0) return str.slice(start, i)
+  }
+  return null
+}
+
+/** Parses widget tag attributes. Double quotes use indexOf; single quotes use a depth-aware scanner. */
 const parseAttributes = (attributesStr: string): Record<string, string> => {
   const attrs: Record<string, string> = {}
-  const attrRegex = /(\w+)=(?:"([^"]*)"|'([^']*)')/g
+  const attrStart = /(\w+)=(['"])/g
   let match
 
-  while ((match = attrRegex.exec(attributesStr)) !== null) {
-    attrs[match[1]] = match[2] ?? match[3]
+  while ((match = attrStart.exec(attributesStr)) !== null) {
+    const key = match[1]
+    const quote = match[2]
+    const valueStart = match.index + match[0].length
+
+    if (quote === '"') {
+      const end = attributesStr.indexOf('"', valueStart)
+      if (end === -1) continue
+      attrs[key] = attributesStr.slice(valueStart, end)
+      attrStart.lastIndex = end + 1
+    } else {
+      const value = extractSingleQuotedValue(attributesStr, valueStart)
+      if (!value) continue
+      attrs[key] = value
+      attrStart.lastIndex = valueStart + value.length + 1
+    }
   }
 
   return attrs

@@ -658,6 +658,42 @@ describe('parseContentParts', () => {
       expect(result[2]).toEqual({ type: 'text', content: 'Fact.' })
       expect((result[3] as { type: 'widget'; widget: { widget: string } }).widget.widget).toBe('citation')
     })
+
+    it("handles apostrophe in JSON title (NASA's Mission)", () => {
+      const json = `[{"id":"1","title":"NASA's Mission","url":"https://nasa.gov","siteName":"NASA"}]`
+      const text = `Space exploration advances. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(2)
+      expect(result[1]).toEqual({
+        type: 'widget',
+        widget: { widget: 'citation', args: { sources: json } },
+      })
+    })
+
+    it("handles multiple apostrophes in JSON (Rock 'n' Roll)", () => {
+      const json = `[{"id":"1","title":"Rock 'n' Roll History","url":"https://music.com","siteName":"Music DB"}]`
+      const text = `Music evolved. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(2)
+      expect(result[1]).toEqual({
+        type: 'widget',
+        widget: { widget: 'citation', args: { sources: json } },
+      })
+    })
+
+    it("handles apostrophe in siteName (McDonald's)", () => {
+      const json = `[{"id":"1","title":"Earnings Report","url":"https://mcdonalds.com","siteName":"McDonald's"}]`
+      const text = `Revenue grew. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(2)
+      expect(result[1]).toEqual({
+        type: 'widget',
+        widget: { widget: 'citation', args: { sources: json } },
+      })
+    })
   })
 
   describe('bracket citation stripping', () => {

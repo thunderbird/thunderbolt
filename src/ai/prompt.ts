@@ -91,7 +91,6 @@ Don't mention tool names unless asked.
 • Always link to individual item pages, not review sites
 • For products: link to official manufacturer pages
 
-# Widget Components
 ${widgetPrompts}
 ${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}` : ''}`
 }

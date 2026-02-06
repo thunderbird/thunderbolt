@@ -70,6 +70,9 @@ jobs:
 
       - name: Display version information
         run: |
+          if [ "${{ inputs.nightly }}" == "true" ]; then
+            echo "🌙 Nightly build"
+          fi
           if [ -n "${{ inputs.version }}" ]; then
             echo "🏷️ Using specified version: ${{ inputs.version }}"
           else

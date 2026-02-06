@@ -77,6 +77,9 @@ jobs:
 
       - name: Display version information
         run: |
+          if [ "${{ inputs.nightly }}" == "true" ]; then
+            echo "🌙 Nightly build"
+          fi
           if [ -n "${{ inputs.version }}" ]; then
             echo "🏷️ Using specified version: ${{ inputs.version }}"
           else
@@ -112,6 +115,12 @@ jobs:
           fi
 
           echo "🔧 Applying version $VERSION locally (Apple marketing: $APPLE_VERSION, build: $APPLE_BUILD_VERSION)"
+
+          # Validate Apple version is three period-separated integers
+          if ! [[ "$APPLE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ APPLE_VERSION '$APPLE_VERSION' is not valid for Apple (expected X.Y.Z)"
+            exit 1
+          fi
 
           # package.json keeps the full version; tauri.conf.json uses the Apple-
           # compatible version so Tauri doesn't regenerate project files with

@@ -16,6 +16,7 @@ import {
 } from './models'
 import { getAllPrompts, getPrompt } from './prompts'
 import { updateSettings } from './settings'
+import { nowIso } from '@/lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { getAllEnabledTriggers } from './triggers'
 
@@ -530,10 +531,10 @@ describe('Models DAL', () => {
       expect(modelsAfter).toHaveLength(0)
     })
 
-    it('should preserve original deletedAt timestamp for already-deleted model', async () => {
+    it('should preserve original deletedAt datetime for already-deleted model', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(modelsTable).values({
         id: modelId,
@@ -782,7 +783,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateModel(modelId, { deletedAt: Date.now() })
+      await updateModel(modelId, { deletedAt: nowIso() })
 
       // Model should no longer be returned by getModel
       const model = await getModel(modelId)

@@ -1,7 +1,7 @@
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread } from '@/types'
 import { getModel } from './models'
 
@@ -111,13 +111,13 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 }
 
 /**
- * Soft deletes a specific chat thread by ID (sets deletedAt timestamp)
+ * Soft deletes a specific chat thread by ID (sets deletedAt datetime)
  * Also soft-deletes all associated messages that haven't been deleted yet
  * Scrubs all nullable columns for privacy
  */
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const deletedAt = Date.now()
+  const deletedAt = nowIso()
   await db
     .update(chatMessagesTable)
     .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
@@ -129,14 +129,14 @@ export const deleteChatThread = async (id: string): Promise<void> => {
 }
 
 /**
- * Soft deletes all chat threads (sets deletedAt timestamp)
+ * Soft deletes all chat threads (sets deletedAt datetime)
  * Also soft-deletes all associated messages
  * Scrubs all nullable columns for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteAllChatThreads = async (): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const deletedAt = Date.now()
+  const deletedAt = nowIso()
   await db
     .update(chatMessagesTable)
     .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })

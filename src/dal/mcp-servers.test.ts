@@ -195,10 +195,10 @@ describe('MCP Servers DAL', () => {
       expect(serversAfter).toHaveLength(0)
     })
 
-    it('should preserve original deletedAt timestamp for already-deleted server', async () => {
+    it('should preserve original deletedAt datetime for already-deleted server', async () => {
       const db = DatabaseSingleton.instance.db
       const serverId = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(mcpServersTable).values({
         id: serverId,

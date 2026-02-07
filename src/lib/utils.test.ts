@@ -284,7 +284,7 @@ describe('utils', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
         name: text('name'),
-        deletedAt: integer('deleted_at'),
+        deletedAt: text('deleted_at'),
       })
 
       const result = clearNullableColumns(testTable)

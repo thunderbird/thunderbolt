@@ -221,10 +221,10 @@ describe('Tasks DAL', () => {
       expect(tasksAfter).toHaveLength(0)
     })
 
-    it('should preserve original deletedAt timestamp for already-deleted task', async () => {
+    it('should preserve original deletedAt datetime for already-deleted task', async () => {
       const db = DatabaseSingleton.instance.db
       const taskId = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(tasksTable).values({
         id: taskId,
@@ -298,12 +298,12 @@ describe('Tasks DAL', () => {
       await expect(deleteTasks(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
     })
 
-    it('should preserve original deletedAt timestamps for already-deleted tasks', async () => {
+    it('should preserve original deletedAt datetimes for already-deleted tasks', async () => {
       const db = DatabaseSingleton.instance.db
       const taskId1 = uuidv7()
       const taskId2 = uuidv7()
       const taskId3 = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(tasksTable).values([
         { id: taskId1, item: 'Already deleted', isComplete: 0, order: 1, deletedAt: originalDeletedAt },

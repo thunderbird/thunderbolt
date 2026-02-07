@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import type { AutomationRun, Prompt } from '../types'
-import { clearNullableColumns, convertUIMessageToDbChatMessage } from '../lib/utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
@@ -81,9 +81,9 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
 }
 
 /**
- * Soft deletes an automation and its associated triggers (sets deletedAt timestamp)
+ * Soft deletes an automation and its associated triggers (sets deletedAt datetime)
  * Scrubs all nullable columns for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
@@ -92,12 +92,12 @@ export const deleteAutomation = async (id: string): Promise<void> => {
   // Soft delete with data scrubbing
   await db
     .update(promptsTable)
-    .set({ ...clearNullableColumns(promptsTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
     .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
 }
 
 /**
- * Soft deletes all prompts that reference a model (sets deletedAt timestamp)
+ * Soft deletes all prompts that reference a model (sets deletedAt datetime)
  * Also soft-deletes all associated triggers for each prompt
  * Scrubs all nullable columns for privacy
  * This replaces the cascade behavior that no longer fires with soft deletes
@@ -119,7 +119,7 @@ export const deletePromptsForModel = async (modelId: string): Promise<void> => {
   // Soft-delete all prompts for this model with data scrubbing
   await db
     .update(promptsTable)
-    .set({ ...clearNullableColumns(promptsTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 }
 

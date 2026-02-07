@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { clearNullableColumns, convertUIMessageToDbChatMessage } from '../lib/utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -159,7 +159,7 @@ export const deleteChatMessageAndDescendants = async (messageId: string): Promis
   const idsToSoftDelete = await getMessageAndDescendantIds(messageId)
   if (idsToSoftDelete.length === 0) return
 
-  const deletedAt = Date.now()
+  const deletedAt = nowIso()
   await db
     .update(chatMessagesTable)
     .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })

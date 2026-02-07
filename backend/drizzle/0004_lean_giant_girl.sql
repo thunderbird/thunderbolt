@@ -8,7 +8,7 @@ CREATE TABLE "chat_messages" (
 	"parent_id" text,
 	"cache" text,
 	"metadata" text,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint
@@ -19,7 +19,7 @@ CREATE TABLE "chat_threads" (
 	"triggered_by" text,
 	"was_triggered_by_automation" integer DEFAULT 0,
 	"context_size" integer,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint
@@ -42,7 +42,7 @@ CREATE TABLE "mcp_servers" (
 	"enabled" integer DEFAULT 1,
 	"created_at" integer DEFAULT extract(epoch from now())::integer,
 	"updated_at" integer DEFAULT extract(epoch from now())::integer,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint
@@ -60,7 +60,7 @@ CREATE TABLE "models" (
 	"start_with_reasoning" integer DEFAULT 0,
 	"supports_parallel_tool_calls" integer DEFAULT 1,
 	"context_window" integer,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"default_hash" text,
 	"vendor" text,
 	"description" text,
@@ -76,7 +76,7 @@ CREATE TABLE "modes" (
 	"is_default" integer DEFAULT 0,
 	"order" integer DEFAULT 0,
 	"default_hash" text,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint
@@ -85,7 +85,7 @@ CREATE TABLE "prompts" (
 	"title" text,
 	"prompt" text,
 	"model_id" text,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"default_hash" text,
 	"user_id" text
 );
@@ -104,7 +104,7 @@ CREATE TABLE "tasks" (
 	"order" integer DEFAULT 0,
 	"is_complete" integer DEFAULT 0,
 	"default_hash" text,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint
@@ -114,7 +114,7 @@ CREATE TABLE "triggers" (
 	"trigger_time" text,
 	"prompt_id" text,
 	"is_enabled" integer DEFAULT 1,
-	"deleted_at" integer,
+	"deleted_at" text,
 	"user_id" text
 );
 --> statement-breakpoint

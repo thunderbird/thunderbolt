@@ -3,8 +3,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
-import { ImageIcon } from 'lucide-react'
-import { useState } from 'react'
 import { LinkPreview } from './display'
 import { getHostname } from './utils'
 
@@ -35,10 +33,8 @@ export const LinkPreviewSkeleton = () => {
 
 export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) => {
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
-  const [imageError, setImageError] = useState(false)
 
-  // Fetch metadata and image in parallel using separate queries
-  // The image URL is constructed immediately so the <img> tag can start fetching in parallel
+  // Fetch metadata which includes the extracted image URL
   const metadataQuery = useMessageCache<LinkPreviewMetadata>({
     messageId,
     cacheKey: ['linkPreview', url],
@@ -54,56 +50,15 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
 
   const { data, isLoading, error } = metadataQuery
 
-  // Construct image URL immediately (before early returns) so we can render <img> tag
-  // This allows the image request to start in parallel with the metadata request
-  // The image endpoint fetches the page, extracts image URL, fetches image, and returns it
+  // Construct image URL from metadata when available (uses optimized proxy-image endpoint)
+  // This eliminates duplicate page fetches - the metadata endpoint already extracted the image URL
   const imageUrl =
-    cloudUrl.value && cloudUrl.value.trim()
-      ? `${cloudUrl.value}/pro/link-preview/image/${encodeURIComponent(url)}`
+    data?.image && cloudUrl.value && cloudUrl.value.trim()
+      ? `${cloudUrl.value}/pro/link-preview/proxy-image/${encodeURIComponent(data.image)}`
       : null
 
-  const placeholder = (
-    <div className="h-full w-full bg-secondary/60 dark:bg-secondary/40 flex items-center justify-center">
-      <ImageIcon className="h-8 w-8 text-secondary-foreground/20" />
-    </div>
-  )
-
-  // Render image immediately (even while metadata loads) to enable parallel requests
-  // The <img> tag will start fetching as soon as it renders, in parallel with metadata fetch
   if (isLoading) {
-    // Show skeleton for text content, but render image immediately for parallel loading
-    return (
-      <div className="my-4">
-        <Card className="flex-row flex p-0 gap-0 rounded-lg overflow-hidden">
-          <div className="h-24 w-24 flex-shrink-0 grid">
-            {imageUrl ? (
-              imageError ? (
-                placeholder
-              ) : (
-                <>
-                  <div className="col-start-1 row-start-1">{placeholder}</div>
-                  <img
-                    src={imageUrl}
-                    alt=""
-                    className="col-start-1 row-start-1 h-full w-full object-cover opacity-0 transition-opacity"
-                    onLoad={(e) => {
-                      e.currentTarget.style.opacity = '1'
-                    }}
-                    onError={() => setImageError(true)}
-                  />
-                </>
-              )
-            ) : (
-              <Skeleton className="h-24 w-24 rounded-none" />
-            )}
-          </div>
-          <CardHeader className="flex-1 flex flex-col pl-4 py-4">
-            <Skeleton className="h-5 w-3/4 mb-2" />
-            <Skeleton className="h-2 w-full" />
-          </CardHeader>
-        </Card>
-      </div>
-    )
+    return <LinkPreviewSkeleton />
   }
 
   // Show minimal preview card when there's an error or no metadata
@@ -120,6 +75,5 @@ export const LinkPreviewWidget = ({ url, messageId }: LinkPreviewWidgetProps) =>
   // Ensure title is never null for CardTitle component
   const displayTitle = data.title || getHostname(url)
 
-  // imageUrl is already constructed above (before early returns) to enable parallel fetching
   return <LinkPreview title={displayTitle} description={data.description} url={url} image={imageUrl} />
 }

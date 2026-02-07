@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { isSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { cn } from '@/lib/utils'
-import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
+import { Cloud, CloudOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
@@ -15,7 +15,7 @@ export const PowerSyncStatus = () => {
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
 
-  const { connectionStatus, isUploading, isDownloading, hasSynced, lastSyncedAt } = usePowerSyncStatus()
+  const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled)
 
   // Listen for external sync enabled changes (e.g., from sign-in flow)
@@ -29,7 +29,6 @@ export const PowerSyncStatus = () => {
     return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
   }, [])
 
-  const isSyncing = isUploading || isDownloading
   const isConnected = connectionStatus === 'connected'
   const isConnecting = connectionStatus === 'connecting'
 
@@ -37,11 +36,6 @@ export const PowerSyncStatus = () => {
     if (!syncEnabled) return 'Sync disabled'
     if (isConnecting) return 'Connecting...'
     if (!isConnected) return 'Offline'
-    if (isSyncing) {
-      if (isUploading && isDownloading) return 'Syncing...'
-      if (isUploading) return 'Uploading...'
-      return 'Downloading...'
-    }
     if (hasSynced && lastSyncedAt) {
       const seconds = Math.floor((Date.now() - lastSyncedAt.getTime()) / 1000)
       if (seconds < 60) return 'Just synced'
@@ -62,9 +56,6 @@ export const PowerSyncStatus = () => {
     }
     if (!isConnected) {
       return <CloudOff className="h-4 w-4 text-muted-foreground" />
-    }
-    if (isSyncing) {
-      return <RefreshCw className="h-4 w-4 animate-spin text-primary" />
     }
     return <Cloud className="h-4 w-4 text-green-500" />
   }

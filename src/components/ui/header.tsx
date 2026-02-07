@@ -68,13 +68,13 @@ export const Header = () => {
         <div className="flex items-center justify-center flex-1">{modelSelector}</div>
 
         <div className="flex items-center gap-1 justify-end">
-          <PowerSyncStatus />
           {showNewChatButton && (
             <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={handleNewChat}>
               <MessageCirclePlus className="h-5 w-5" />
               <span className="sr-only">New Chat</span>
             </Button>
           )}
+          <PowerSyncStatus />
         </div>
       </header>
     )

@@ -829,7 +829,12 @@ export default function PreferencesSettingsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmEnableSync}>Enable sync</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleConfirmEnableSync}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Enable sync without encryption
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -698,5 +698,175 @@ describe('Link Preview Routes', () => {
       expect(response.status).toBe(408)
       expect(await response.text()).toBe('Page fetch timeout')
     })
+
+    describe('SSRF protection', () => {
+      it('should reject file:// protocol in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="file:///etc/passwd" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Only HTTP and HTTPS URLs are supported')
+      })
+
+      it('should reject localhost in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://localhost/admin" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should reject 127.0.0.1 in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://127.0.0.1/admin" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should reject private IP ranges (10.x.x.x) in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://10.0.0.1/admin" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should reject private IP ranges (172.16.x.x) in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://172.16.0.1/admin" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should reject private IP ranges (192.168.x.x) in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://192.168.1.1/admin" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should reject cloud metadata endpoint (169.254.169.254) in image URL', async () => {
+        const pageUrl = 'https://example.com/page'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="http://169.254.169.254/latest/meta-data/" />
+            </head>
+          </html>
+        `
+
+        mockFetch.mockImplementation(() => Promise.resolve(createMockHtmlResponse(html)))
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.text()).toBe('Internal URLs are not allowed')
+      })
+
+      it('should allow valid external image URLs', async () => {
+        const pageUrl = 'https://example.com/page'
+        const imageUrl = 'https://example.com/image.jpg'
+        const html = `
+          <html>
+            <head>
+              <meta property="og:image" content="${imageUrl}" />
+            </head>
+          </html>
+        `
+
+        let callCount = 0
+        mockFetch.mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve(createMockHtmlResponse(html))
+          }
+          return Promise.resolve(createMockImageResponse('image/jpeg'))
+        })
+
+        const response = await app.handle(
+          new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+        )
+
+        expect(response.status).toBe(200)
+        expect(response.headers.get('content-type')).toBe('image/jpeg')
+      })
+    })
   })
 })

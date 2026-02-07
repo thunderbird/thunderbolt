@@ -30,6 +30,48 @@ const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
 }
 
 /**
+ * Validates that an image URL is safe to fetch (prevents SSRF attacks).
+ * Only allows http/https protocols and blocks internal/private IP addresses.
+ */
+const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
+  try {
+    const parsed = new URL(url)
+
+    // Only allow http and https protocols
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
+    }
+
+    // Block localhost and loopback addresses
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return { valid: false, error: 'Internal URLs are not allowed' }
+    }
+
+    // Block private IP ranges (RFC 1918) and link-local addresses
+    // IPv4 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    // IPv4 link-local: 169.254.0.0/16
+    // IPv6 link-local: fe80::/10
+    const ipv4Regex =
+      /^(?:(?:10|127)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|192\.168\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|169\.254\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$/
+    const ipv6LinkLocalRegex = /^[fF][eE][89aAbB][0-9a-fA-F]:/
+
+    if (ipv4Regex.test(hostname) || ipv6LinkLocalRegex.test(hostname)) {
+      return { valid: false, error: 'Internal URLs are not allowed' }
+    }
+
+    // Block cloud metadata endpoints (common SSRF targets)
+    if (hostname.includes('metadata') || hostname.includes('169.254.169.254')) {
+      return { valid: false, error: 'Internal URLs are not allowed' }
+    }
+
+    return { valid: true }
+  } catch {
+    return { valid: false, error: 'Invalid image URL' }
+  }
+}
+
+/**
  * Extracts Open Graph metadata from HTML content.
  * Only falls back to <title> and <meta description> when at least one social
  * meta tag (og:*) is present — pages without any social tags
@@ -281,6 +323,15 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
           if (!imageUrl) {
             ctx.set.status = 404
             return new Response('No image found on page', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
+          }
+
+          // Validate image URL to prevent SSRF attacks
+          const validation = validateImageUrl(imageUrl)
+          if (!validation.valid) {
+            ctx.set.status = 400
+            return new Response(validation.error || 'Invalid image URL', {
               headers: { 'Content-Type': 'text/plain' },
             })
           }

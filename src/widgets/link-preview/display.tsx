@@ -6,7 +6,7 @@ import { useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
-  title: string // Always a string (fallback to hostname if null)
+  title: string // Required: parent component must provide hostname fallback if backend returns null
   description: string | null
   image: string | null
 }

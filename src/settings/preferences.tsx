@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -804,40 +805,24 @@ export default function PreferencesSettingsPage() {
       <div className="h-6" />
 
       <SectionCard title="Sync">
-        <div className="flex-row flex items-center gap-4">
+        <div className="flex-row flex items-center gap-4 justify-between">
           <div>
             <div className="mb-2">
               <label className="text-sm font-medium">Cloud Sync</label>
             </div>
             <p className="text-sm text-muted-foreground">
-              Enable cloud synchronization to keep your data synced across devices. Your data is encrypted and securely
-              stored.
+              Enable cloud synchronization to keep your data synced across devices.
             </p>
           </div>
           <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
         </div>
       </SectionCard>
 
-      <AlertDialog open={syncEnableWarningOpen} onOpenChange={(open) => !open && setSyncEnableWarningOpen(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Enable sync?</AlertDialogTitle>
-            <AlertDialogDescription>
-              At this time, synced data is not encrypted. Enabling sync will store your data on our servers without
-              encryption. Do you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmEnableSync}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Enable sync without encryption
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SyncEnableWarningDialog
+        open={syncEnableWarningOpen}
+        onOpenChange={setSyncEnableWarningOpen}
+        onConfirm={handleConfirmEnableSync}
+      />
 
       <div className="h-6" />
 

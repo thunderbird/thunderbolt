@@ -1,10 +1,13 @@
 import { useAuth } from '@/contexts/auth-context'
-import { isSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
+import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Switch } from '@/components/ui/switch'
 
 /**
  * PowerSync status indicator that shows sync state in the header.
@@ -17,6 +20,7 @@ export const PowerSyncStatus = () => {
 
   const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled)
+  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
 
   // Listen for external sync enabled changes (e.g., from sign-in flow)
   useEffect(() => {
@@ -28,6 +32,23 @@ export const PowerSyncStatus = () => {
     window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
     return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
   }, [])
+
+  const handleSyncToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      await setSyncEnabled(false)
+      setSyncEnabledState(false)
+      trackEvent('settings_sync_disabled')
+      return
+    }
+    setSyncEnableWarningOpen(true)
+  }
+
+  const handleConfirmEnableSync = async () => {
+    await setSyncEnabled(true)
+    setSyncEnabledState(true)
+    trackEvent('settings_sync_enabled')
+    setSyncEnableWarningOpen(false)
+  }
 
   const isConnected = connectionStatus === 'connected'
   const isConnecting = connectionStatus === 'connecting'
@@ -60,35 +81,57 @@ export const PowerSyncStatus = () => {
     return <Cloud className="h-4 w-4 text-green-500" />
   }
 
+  const statusNote = !isAuthenticated
+    ? 'Sign in to enable sync'
+    : syncEnabled && !isConnected && connectionStatus !== 'connecting'
+      ? 'Changes will sync when back online'
+      : null
+
   return (
-    <TooltipProvider>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <div
+    <>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors',
-              'hover:bg-accent cursor-default select-none',
+              'hover:bg-accent cursor-pointer select-none outline-none',
             )}
+            aria-label="Sync status"
+            aria-haspopup="dialog"
           >
             {getIcon()}
             <span className="text-xs text-muted-foreground hidden sm:inline">{getStatusText()}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="end">
-          <div className="text-sm">
-            <div className="font-medium">Multi-device Sync</div>
-            <div className="text-muted-foreground text-xs">
-              {!isAuthenticated ? (
-                'Sign in to enable sync'
-              ) : syncEnabled ? (
-                <>{!isConnected && connectionStatus !== 'connecting' && 'Changes will sync when back online'}</>
-              ) : (
-                'Enable to sync data across devices'
-              )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" side="bottom">
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="flex flex-row items-center justify-between mb-2">
+                <label className="text-sm font-medium" htmlFor="sync-toggle">
+                  Cloud Sync
+                </label>
+                <Switch
+                  id="sync-toggle"
+                  checked={syncEnabled}
+                  onCheckedChange={handleSyncToggle}
+                  disabled={!isAuthenticated}
+                  aria-label="Enable cloud sync"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Enable cloud synchronization to keep your data synced across devices.
+              </p>
+              {statusNote && <p className="text-xs text-muted-foreground mt-1">{statusNote}</p>}
             </div>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        </PopoverContent>
+      </Popover>
+      <SyncEnableWarningDialog
+        open={syncEnableWarningOpen}
+        onOpenChange={setSyncEnableWarningOpen}
+        onConfirm={handleConfirmEnableSync}
+      />
+    </>
   )
 }

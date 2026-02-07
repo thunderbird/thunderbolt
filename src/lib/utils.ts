@@ -162,8 +162,14 @@ export function camelCasedPropertiesDeep<T extends Record<string, any>>(obj: T):
   return result as CamelCasedPropertiesDeep<T>
 }
 
-export function formatDate(timestamp: number): string {
-  const d = dayjs(timestamp)
+/** Current UTC datetime as ISO 8601 string (e.g. for deletedAt). */
+export const nowIso = (): string => new Date().toISOString()
+
+/**
+ * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
+ */
+export function formatDate(value: number | string): string {
+  const d = dayjs(value)
   const now = dayjs()
 
   if (d.isSame(now, 'day')) {
@@ -278,7 +284,7 @@ export const truncateText = (text: string, maxLength = 4000): string => {
  *
  * @example
  * await db.update(usersTable)
- *   .set({ ...clearNullableColumns(usersTable), deletedAt: Date.now() })
+ *   .set({ ...clearNullableColumns(usersTable), deletedAt: nowIso() })
  *   .where(eq(usersTable.id, userId))
  */
 export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(table: T): Partial<T['$inferInsert']> => {
@@ -297,7 +303,7 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
 
   for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
     if (!column?.dataType) continue
-    // Skip deletedAt (handled separately by caller with new timestamp)
+    // Skip deletedAt (handled separately by caller with new datetime)
     if (name === 'deletedAt') continue
     // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
     if (column.primary || pkColumnNames.has(column.name)) continue

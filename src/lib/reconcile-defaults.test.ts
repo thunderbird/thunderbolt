@@ -7,6 +7,7 @@ import { modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
+import { nowIso } from './utils'
 import { reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, Prompt } from '@/types'
 
@@ -86,10 +87,7 @@ describe('seedModels', () => {
 
     // Scenario 2: Model 1 stays unmodified
     // Scenario 3: Model 2 is deleted (soft delete)
-    await db
-      .update(modelsTable)
-      .set({ deletedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(modelsTable.id, defaultModels[2]?.id))
+    await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[2]?.id))
 
     // Seed again
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -118,7 +116,7 @@ describe('seedModels', () => {
     expect(modelsBefore.length).toBe(defaultModels.length)
 
     // Soft delete a model
-    await db.update(modelsTable).set({ deletedAt: Date.now() }).where(eq(modelsTable.id, defaultModels[0].id))
+    await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[0].id))
 
     // Get all models after deletion - should not include soft-deleted model
     const modelsAfter = await getAllModels()

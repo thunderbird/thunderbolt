@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Model, ModelRow } from '../types'
 import { getSettings } from './settings'
 import { getLastMessage } from './chat-messages'
@@ -139,10 +139,10 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 }
 
 /**
- * Soft deletes a model by ID (sets deletedAt timestamp)
+ * Soft deletes a model by ID (sets deletedAt datetime)
  * Also soft-deletes all prompts referencing this model (and their triggers)
  * Scrubs all non-enum data for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteModel = async (id: string): Promise<void> => {
   // Import locally to avoid circular dependency
@@ -154,7 +154,7 @@ export const deleteModel = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(modelsTable)
-    .set({ ...clearNullableColumns(modelsTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(modelsTable), deletedAt: nowIso() })
     .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 }
 

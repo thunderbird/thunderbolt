@@ -383,13 +383,13 @@ describe('Triggers DAL', () => {
       expect(enabledAfter).toHaveLength(0)
     })
 
-    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+    it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId1 = uuidv7()
       const triggerId2 = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(modelsTable).values({
         id: modelId,
@@ -498,14 +498,14 @@ describe('Triggers DAL', () => {
       await expect(deleteTriggersForPrompts(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
     })
 
-    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+    it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
       const triggerId1 = uuidv7()
       const triggerId2 = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(modelsTable).values({
         id: modelId,

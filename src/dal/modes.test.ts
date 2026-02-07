@@ -2,6 +2,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { modesTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
+import { nowIso } from '@/lib/utils'
 import { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'
 import { updateSettings } from './settings'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -55,7 +56,7 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 0,
         order: 0,
-        deletedAt: Date.now(),
+        deletedAt: nowIso(),
       })
 
       const mode = await getMode(modeId)
@@ -98,7 +99,7 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 1,
         order: 0,
-        deletedAt: Date.now(),
+        deletedAt: nowIso(),
       })
 
       const mode = await getDefaultMode()
@@ -140,7 +141,7 @@ describe('Modes DAL', () => {
           icon: 'trash',
           isDefault: 0,
           order: 1,
-          deletedAt: Date.now(),
+          deletedAt: nowIso(),
         },
       ])
 

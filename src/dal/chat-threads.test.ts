@@ -16,6 +16,7 @@ import {
 } from './chat-threads'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { nowIso } from '@/lib/utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -201,7 +202,7 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Deleted Thread',
         isEncrypted: 0,
-        deletedAt: Date.now(),
+        deletedAt: nowIso(),
       })
 
       const isDeleted = await isChatThreadDeleted(threadId)
@@ -215,7 +216,7 @@ describe('Chat Threads DAL', () => {
 
       await db.insert(chatThreadsTable).values([
         { id: activeThreadId, title: 'Active', isEncrypted: 0 },
-        { id: deletedThreadId, title: 'Deleted', isEncrypted: 0, deletedAt: Date.now() },
+        { id: deletedThreadId, title: 'Deleted', isEncrypted: 0, deletedAt: nowIso() },
       ])
 
       expect(await isChatThreadDeleted(activeThreadId)).toBe(false)
@@ -624,10 +625,11 @@ describe('Chat Threads DAL', () => {
       expect(rawMessages.every((m) => m.deletedAt !== null)).toBe(true)
     })
 
-    it('should preserve original deletedAt timestamps for already soft-deleted threads', async () => {
+    it('should preserve original deletedAt datetimes for already soft-deleted threads', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
       const db = DatabaseSingleton.instance.db
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       // Create two threads
       await db.insert(chatThreadsTable).values([
@@ -635,23 +637,19 @@ describe('Chat Threads DAL', () => {
         { id: threadId2, title: 'Thread 2', isEncrypted: 0 },
       ])
 
-      // Soft delete thread 1 with an older timestamp (1 day ago)
-      const originalDeletionTime = Date.now() - 86400000
-      await db
-        .update(chatThreadsTable)
-        .set({ deletedAt: originalDeletionTime })
-        .where(eq(chatThreadsTable.id, threadId1))
+      // Soft delete thread 1 with an older datetime
+      await db.update(chatThreadsTable).set({ deletedAt: originalDeletedAt }).where(eq(chatThreadsTable.id, threadId1))
 
       // Now call deleteAllChatThreads - should only update thread 2
       await deleteAllChatThreads()
 
-      // Thread 1 should still have its original deletion timestamp
+      // Thread 1 should still have its original deletion datetime
       const rawThreads = await db.select().from(chatThreadsTable)
       const thread1 = rawThreads.find((t) => t.id === threadId1)
       const thread2 = rawThreads.find((t) => t.id === threadId2)
 
-      expect(thread1?.deletedAt).toBe(originalDeletionTime)
-      expect(thread2?.deletedAt).not.toBe(originalDeletionTime)
+      expect(thread1?.deletedAt).toBe(originalDeletedAt)
+      expect(thread2?.deletedAt).not.toBe(originalDeletedAt)
       expect(thread2?.deletedAt).not.toBeNull()
     })
   })

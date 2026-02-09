@@ -1,8 +1,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { db as DbType } from '@/db/client'
 import { user } from '@/db/auth-schema'
-import { devicesTable, powersyncTablesByName } from '@/db/schema'
-import { powersyncTableNames } from '@shared/powersync-tables'
+import { devicesTable } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 

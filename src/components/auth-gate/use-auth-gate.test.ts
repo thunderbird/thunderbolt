@@ -1,3 +1,4 @@
+import type { AuthClient } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { describe, expect, it } from 'bun:test'
@@ -68,7 +69,7 @@ describe('useAuthGate', () => {
           error: null,
           refetch: async () => {},
         }),
-      }
+      } as AuthClient
       const wrapper = createTestProvider({ authClient })
       const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
 
@@ -91,7 +92,7 @@ describe('useAuthGate', () => {
           error: null,
           refetch: async () => {},
         }),
-      }
+      } as AuthClient
       const wrapper = createTestProvider({ authClient })
       const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
 
@@ -114,7 +115,7 @@ describe('useAuthGate', () => {
           error: null,
           refetch: async () => {},
         }),
-      }
+      } as AuthClient
       const wrapper = createTestProvider({ authClient })
       const { result, rerender } = renderHook(() => useAuthGate('unauthenticated'), { wrapper })
 

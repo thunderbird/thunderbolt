@@ -126,4 +126,110 @@ describe('useAuthGate', () => {
       expect(result.current).toEqual({ status: 'allowed' })
     })
   })
+
+  describe('auth state changes after resolve', () => {
+    it('returns redirect when user logs out in another tab (session becomes null, isPending false)', () => {
+      const sessionRef = { current: sessionWithUser as typeof sessionWithUser | null }
+      const isPendingRef = { current: false }
+      const authClient = {
+        ...createMockAuthClient(),
+        useSession: () => ({
+          data: sessionRef.current,
+          isPending: isPendingRef.current,
+          isRefetching: false,
+          error: null,
+          refetch: async () => {},
+        }),
+      } as AuthClient
+      const wrapper = createTestProvider({ authClient })
+      const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+      expect(result.current).toEqual({ status: 'allowed' })
+
+      sessionRef.current = null
+      rerender()
+      expect(result.current).toEqual({ status: 'redirect' })
+    })
+
+    it('returns allowed when user logs in in another tab (session appears, isPending false)', () => {
+      const sessionRef = { current: null as typeof sessionWithUser | null }
+      const isPendingRef = { current: false }
+      const authClient = {
+        ...createMockAuthClient(),
+        useSession: () => ({
+          data: sessionRef.current,
+          isPending: isPendingRef.current,
+          isRefetching: false,
+          error: null,
+          refetch: async () => {},
+        }),
+      } as AuthClient
+      const wrapper = createTestProvider({ authClient })
+      const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+      expect(result.current).toEqual({ status: 'redirect' })
+
+      sessionRef.current = sessionWithUser
+      rerender()
+      expect(result.current).toEqual({ status: 'allowed' })
+    })
+  })
+
+  describe('refetch completes with different auth state', () => {
+    it('updates cache to redirect when refetch completes with session expired (was allowed)', () => {
+      const sessionRef = { current: sessionWithUser as typeof sessionWithUser | null }
+      const isPendingRef = { current: false }
+      const authClient = {
+        ...createMockAuthClient(),
+        useSession: () => ({
+          data: sessionRef.current,
+          isPending: isPendingRef.current,
+          isRefetching: false,
+          error: null,
+          refetch: async () => {},
+        }),
+      } as AuthClient
+      const wrapper = createTestProvider({ authClient })
+      const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+      expect(result.current).toEqual({ status: 'allowed' })
+
+      isPendingRef.current = true
+      rerender()
+      expect(result.current).toEqual({ status: 'allowed' })
+
+      sessionRef.current = null
+      isPendingRef.current = false
+      rerender()
+      expect(result.current).toEqual({ status: 'redirect' })
+    })
+
+    it('updates cache to allowed when refetch completes with session (was redirect)', () => {
+      const sessionRef = { current: null as typeof sessionWithUser | null }
+      const isPendingRef = { current: false }
+      const authClient = {
+        ...createMockAuthClient(),
+        useSession: () => ({
+          data: sessionRef.current,
+          isPending: isPendingRef.current,
+          isRefetching: false,
+          error: null,
+          refetch: async () => {},
+        }),
+      } as AuthClient
+      const wrapper = createTestProvider({ authClient })
+      const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+      expect(result.current).toEqual({ status: 'redirect' })
+
+      isPendingRef.current = true
+      rerender()
+      expect(result.current).toEqual({ status: 'redirect' })
+
+      sessionRef.current = sessionWithUser
+      isPendingRef.current = false
+      rerender()
+      expect(result.current).toEqual({ status: 'allowed' })
+    })
+  })
 })

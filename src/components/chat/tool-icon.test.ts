@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { extractFaviconUrl, getProxiedFaviconUrl } from './tool-icon'
+import { getProxiedFaviconUrl } from '@/lib/url-utils'
+import { extractFaviconUrl } from './tool-icon'
 
 describe('tool-icon helpers', () => {
   describe('extractFaviconUrl', () => {

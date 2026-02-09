@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { decodeCitationSources, isSafeUrl } from './citation-utils'
+import { decodeCitationSources } from './citation-utils'
 
 describe('decodeCitationSources', () => {
   const validSources = [{ id: '1', title: 'Test', url: 'https://example.com', siteName: 'Example' }]
@@ -82,27 +82,5 @@ describe('decodeCitationSources', () => {
 
       expect(result).toEqual(validSources)
     })
-  })
-})
-
-describe('isSafeUrl', () => {
-  it('accepts http URLs', () => {
-    expect(isSafeUrl('http://example.com')).toBe(true)
-  })
-
-  it('accepts https URLs', () => {
-    expect(isSafeUrl('https://example.com')).toBe(true)
-  })
-
-  it('rejects javascript: URLs', () => {
-    expect(isSafeUrl('javascript:alert(1)')).toBe(false)
-  })
-
-  it('rejects data: URLs', () => {
-    expect(isSafeUrl('data:text/html,<h1>hi</h1>')).toBe(false)
-  })
-
-  it('rejects invalid URLs', () => {
-    expect(isSafeUrl('not a url')).toBe(false)
   })
 })

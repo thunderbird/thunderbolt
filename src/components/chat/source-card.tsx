@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CitationSource } from '@/types/citation'
-import { isSafeUrl } from '@/lib/citation-utils'
+import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
 type SourceCardProps = {
@@ -13,28 +13,11 @@ type SourceCardProps = {
 /**
  * Generates a color for the initial badge based on the site name
  */
-const getBadgeColor = (siteName: string = '') => {
-  const colors = [
-    'bg-[#7b8fff]', // blue
-    'bg-[#f60]', // orange
-    'bg-[#19ab78]', // green
-    'bg-[#e11d48]', // red
-    'bg-[#8b5cf6]', // purple
-    'bg-[#f59e0b]', // amber
-  ]
-  const index = (siteName.charCodeAt(0) || 0) % colors.length
-  return colors[index]
-}
+const badgeColors = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5']
 
-/** Derives a favicon URL from the source domain, proxied through the backend to bypass COEP */
-const getFaviconUrl = (pageUrl: string, proxyBase?: string): string | null => {
-  try {
-    const { origin } = new URL(pageUrl)
-    const faviconUrl = `${origin}/favicon.ico`
-    return proxyBase ? `${proxyBase}/pro/proxy/${encodeURIComponent(faviconUrl)}` : faviconUrl
-  } catch {
-    return null
-  }
+const getBadgeColor = (siteName: string = '') => {
+  const index = (siteName.charCodeAt(0) || 0) % badgeColors.length
+  return badgeColors[index]
 }
 
 /**
@@ -48,7 +31,7 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   const displaySiteName = source.siteName || 'Unknown'
   const safeUrl = isSafeUrl(source.url) ? source.url : '#'
   const explicitFavicon = source.favicon && isSafeUrl(source.favicon) ? source.favicon : null
-  const faviconUrl = explicitFavicon || getFaviconUrl(source.url, proxyBase)
+  const faviconUrl = explicitFavicon || deriveFaviconUrl(source.url, proxyBase)
   const showFavicon = faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)

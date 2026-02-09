@@ -1,4 +1,5 @@
 import { useSettings } from '@/hooks/use-settings'
+import { getProxiedFaviconUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
@@ -30,14 +31,6 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
   }
 
   return parsedOutput?.favicon || null
-}
-
-/**
- * Returns proxied favicon URL to avoid CORS issues
- */
-export const getProxiedFaviconUrl = (faviconUrl: string, cloudUrl: string): string => {
-  if (!cloudUrl) return faviconUrl
-  return `${cloudUrl}/pro/proxy/${encodeURIComponent(faviconUrl)}`
 }
 
 /**

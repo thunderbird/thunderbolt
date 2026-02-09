@@ -2,6 +2,8 @@
 
 This document describes how account deletion and device revoke work, and how other devices are reset gracefully when the user deletes their account or revokes a device from elsewhere.
 
+**Policy**: Per project rules (see AGENTS.md / CLAUDE.md), the frontend never hard deletes; the backend uses hard delete only where required. Account deletion is one of those cases—the backend permanently removes the user and related data; the frontend only triggers it via `DELETE /v1/account`.
+
 ## Overview
 
 - **Delete account**: The user can permanently delete their account from **Settings > Preferences**. All data is removed on the backend. Other signed-in devices must reset locally so they don’t crash when PowerSync syncs empty data.

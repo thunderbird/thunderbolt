@@ -4,7 +4,7 @@ import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
+import { markdownComponents } from './markdown-utils'
 
 const parseMarkdownIntoBlocks = (markdown: string): string[] => {
   const tokens = marked.lexer(markdown)
@@ -29,15 +29,12 @@ MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock'
 type MemoizedMarkdownProps = {
   content: string
   id: string
-  citations?: CitationMap
+  components?: Components
 }
 
-export const MemoizedMarkdown = memo(({ content, id, citations }: MemoizedMarkdownProps) => {
+export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkdownProps) => {
   const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content])
-  const components = useMemo(
-    () => (citations?.size ? createMarkdownComponents(citations) : markdownComponents),
-    [citations],
-  )
+  const resolvedComponents = components ?? markdownComponents
 
   return (
     <div
@@ -85,7 +82,7 @@ export const MemoizedMarkdown = memo(({ content, id, citations }: MemoizedMarkdo
       }
     >
       {blocks.map((block, index) => (
-        <MemoizedMarkdownBlock content={block} components={components} key={`${id}-block_${index}`} />
+        <MemoizedMarkdownBlock content={block} components={resolvedComponents} key={`${id}-block_${index}`} />
       ))}
     </div>
   )

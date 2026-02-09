@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
+import { isSafeUrl } from '@/lib/url-utils'
 import type { CitationSource } from '@/types/citation'
 
 /**
@@ -121,7 +122,17 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * Custom ReactMarkdown component overrides that handle <br> tags in rendered output.
  * Ensures line breaks work correctly in tables, lists, and paragraphs.
  */
+const SafeLink = ({ href, children, ...props }: React.ComponentProps<'a'>) => {
+  const safeHref = href && isSafeUrl(href) ? href : undefined
+  return (
+    <a {...props} href={safeHref} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  )
+}
+
 export const markdownComponents: Components = {
+  a: SafeLink,
   p: ({ children }) => <p>{processTextContent(children)}</p>,
   td: ({ children }) => <td>{processTextContent(children)}</td>,
   th: ({ children }) => <th>{processTextContent(children)}</th>,
@@ -133,6 +144,7 @@ export const markdownComponents: Components = {
  * components inline, in addition to the standard <br> tag handling.
  */
 export const createMarkdownComponents = (citations: CitationMap): Components => ({
+  a: SafeLink,
   p: ({ children }) => <p>{processChildren(children, citations)}</p>,
   td: ({ children }) => <td>{processChildren(children, citations)}</td>,
   th: ({ children }) => <th>{processChildren(children, citations)}</th>,

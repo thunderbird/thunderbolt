@@ -1,8 +1,9 @@
 import { parseContentParts } from '@/ai/widget-parser'
 import { decodeCitationSources } from '@/lib/citation-utils'
 import { type TextUIPart } from 'ai'
-import { memo, useMemo } from 'react'
-import type { CitationMap } from './markdown-utils'
+import { memo, useRef, useMemo } from 'react'
+import type { Components } from 'react-markdown'
+import { type CitationMap, createMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
 
@@ -28,8 +29,10 @@ const buildTextWithCitationPlaceholders = (
 ): { fullText: string; citations: CitationMap } => {
   let fullText = ''
   const citations: CitationMap = new Map()
+  const parts = [...contentParts]
 
-  for (const part of contentParts) {
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
     if (part.type === 'text') {
       if (fullText.length === 0 || shouldAppendInline(part.content)) {
         fullText += part.content
@@ -41,6 +44,13 @@ const buildTextWithCitationPlaceholders = (
     } else if (part.type === 'widget' && part.widget.widget === 'citation') {
       const sources = decodeCitationSources(part.widget.args.sources)
       if (sources) {
+        // Consume a leading period from the next text part so the citation
+        // renders after the sentence end: "sentence. [Source]"
+        const next = parts[i + 1]
+        if (next?.type === 'text' && next.content.startsWith('.')) {
+          fullText = fullText.trimEnd() + '.'
+          parts[i + 1] = { ...next, content: next.content.slice(1) }
+        }
         fullText = fullText.trimEnd() + ` {{CITE:${citations.size}}}`
         citations.set(citations.size, sources)
       }
@@ -81,13 +91,28 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
     }
   }, [part.text])
 
+  // Stabilize the components reference so completed markdown blocks stay memoized
+  // during streaming. Only recreate when citation count changes (a new citation was parsed),
+  // not on every text chunk.
+  const citationCountRef = useRef(0)
+  const componentsRef = useRef<Components | undefined>(undefined)
+  if (citations.size !== citationCountRef.current) {
+    citationCountRef.current = citations.size
+    componentsRef.current = citations.size > 0 ? createMarkdownComponents(citations) : undefined
+  }
+
   if (!part.text) return null
 
   // Citations are rendered inline within the markdown text via {{CITE:N}} placeholders
   if (hasCitations && hasText) {
     return (
       <div className="p-4 rounded-md my-2">
-        <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={fullText} citations={citations} />
+        <MemoizedMarkdown
+          key={`${messageId}-text`}
+          id={messageId}
+          content={fullText}
+          components={componentsRef.current}
+        />
       </div>
     )
   }

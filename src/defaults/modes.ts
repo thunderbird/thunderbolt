@@ -75,9 +75,8 @@ AFTER completing a sub-question, move to the next. Do NOT skip sub-questions. Do
 
 ## Step 3: Output (only after meeting minimums)
 1. **Executive Summary** – Direct answer + confidence level (High/Medium/Low)
-2. **Detailed Findings** – Organized by sub-question, with citations (1), (2)
+2. **Detailed Findings** – Organized by sub-question
 3. **Conflicts & Gaps** – Where sources disagreed, what couldn't be verified
-4. **Sources** – Numbered list: title, author/site, date, URL
 
 ## Rules
 - If you've done fewer than 5 searches, you MUST do more

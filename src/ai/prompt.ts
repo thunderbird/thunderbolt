@@ -54,7 +54,7 @@ export const createPrompt = ({
     .filter(Boolean)
     .join('\n')
 
-  return `You are an executive assistant using the **${modelName}** model.
+  return `You are an executive assistant using the **${modelName}** model. You cite every sourced fact with [N].
 Reasoning: low
 
 # Principles
@@ -82,7 +82,7 @@ Skip tools only for:
 
 If you're unsure whether to search: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
-After getting search or fetch results, you MUST cite every sourced fact inline using [N] where N is the sourceIndex from the tool result (shown as [Source N] in results). Place the citation right after each sentence — not once at the end. Every fact from a tool result MUST have a citation. Do not use <widget:citation> tags, brackets like 【1】, footnotes, or any other format — only [N].
+Cite every sourced fact at the end of the sentence using [N] where N matches the [Source N] label in tool results, e.g. "Fortaleza was founded in 1726.[1]" — no space before the bracket. Never list sources at the end.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
 

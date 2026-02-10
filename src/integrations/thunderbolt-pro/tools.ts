@@ -43,8 +43,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
   return [
     {
       name: 'search',
-      description:
-        'Search the web and return relevant links. Each result includes a sourceIndex. Cite results in your response using [N] where N is the sourceIndex.',
+      description: 'Search the web. Each result has a [Source N] label. Cite with [N] at end of sentence.',
       verb: 'searching for {query}',
       parameters: searchSchema,
       execute: async (params: SearchParams) => {
@@ -84,7 +83,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
     {
       name: 'fetch_content',
       description:
-        'Fetch and parse content from a PUBLIC webpage URL. The result includes a sourceIndex. Cite the fetched content using [N] where N is the sourceIndex. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
+        'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
       verb: 'fetching {url}',
       parameters: fetchContentSchema,
       execute: async (params: FetchContentParams) => {

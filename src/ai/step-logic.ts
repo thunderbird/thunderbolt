@@ -66,10 +66,7 @@ export const shouldRetry = (
 
 /** Nudge messages used during the agentic loop */
 export const nudgeMessages = {
-  finalStep:
-    'RESPOND NOW. Provide your answer using the information you have gathered. Cite sources with [N] where N is the sourceIndex. Do not ask questions--give your best response immediately.',
-  preventive:
-    'You have gathered information from multiple tool calls. Please synthesize the results and provide your response to the user now. Cite sourced claims with [N] where N is the sourceIndex.',
-  retry:
-    'You called tools but did not provide a response. Please synthesize all the information you gathered and respond to me now. Cite sourced claims with [N] where N is the sourceIndex. Do not call any more tools.',
+  finalStep: 'RESPOND NOW with the information gathered. Cite with [N] at end of sentence. Do not ask questions.',
+  preventive: 'Synthesize your tool results and respond now. Cite with [N] at end of sentence.',
+  retry: 'Respond now with the information gathered. Cite with [N] at end of sentence. No more tools.',
 } as const

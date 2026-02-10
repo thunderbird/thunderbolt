@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationSource } from '@/types/citation'
+import { CitationPopoverProvider } from './citation-popover'
 import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
 
 const makeSources = (name: string): CitationSource[] => [
@@ -193,11 +194,18 @@ describe('markdownComponents', () => {
 describe('createMarkdownComponents (citation placeholders)', () => {
   const renderWithCitations = (content: string, citations: CitationMap) => {
     const components = createMarkdownComponents(citations)
+    const TestProvider = createTestProvider()
     return render(
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>,
-      { wrapper: createTestProvider() },
+      {
+        wrapper: ({ children }) => (
+          <TestProvider>
+            <CitationPopoverProvider>{children}</CitationPopoverProvider>
+          </TestProvider>
+        ),
+      },
     )
   }
 

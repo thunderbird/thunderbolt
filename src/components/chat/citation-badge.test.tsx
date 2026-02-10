@@ -3,19 +3,33 @@ import { render } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
+import { CitationPopoverProvider } from './citation-popover'
 import type { CitationSource } from '@/types/citation'
 
-const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
+// Standalone mode (no provider) — CitationBadge owns its Popover/Sheet
+const renderStandalone = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
+
+// Managed mode (with provider) — CitationBadge is just a trigger
+const renderManaged = (ui: React.ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <CitationPopoverProvider>{children}</CitationPopoverProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 describe('CitationBadge', () => {
   it('returns null when sources array is empty', () => {
-    const { container } = renderWithProviders(<CitationBadge sources={[]} />)
+    const { container } = renderStandalone(<CitationBadge sources={[]} />)
 
     expect(container.firstChild).toBeNull()
   })
 
-  it('displays siteName as badge text', () => {
-    const { container } = renderWithProviders(
+  it('displays siteName as badge text (standalone)', () => {
+    const { container } = renderStandalone(
       <CitationBadge
         sources={[{ id: '1', title: 'Article', url: 'https://a.com', siteName: 'Reuters', isPrimary: true }]}
       />,
@@ -24,8 +38,19 @@ describe('CitationBadge', () => {
     expect(container.querySelector('button')?.textContent).toContain('Reuters')
   })
 
+  it('displays siteName as badge text (managed)', () => {
+    const { container } = renderManaged(
+      <CitationBadge
+        sources={[{ id: '1', title: 'Article', url: 'https://a.com', siteName: 'Reuters', isPrimary: true }]}
+        citationId={0}
+      />,
+    )
+
+    expect(container.querySelector('button')?.textContent).toContain('Reuters')
+  })
+
   it('falls back to title when siteName is missing', () => {
-    const { container } = renderWithProviders(
+    const { container } = renderStandalone(
       <CitationBadge sources={[{ id: '1', title: 'Some Article', url: 'https://a.com', isPrimary: true }]} />,
     )
 
@@ -39,7 +64,7 @@ describe('CitationBadge', () => {
       { id: '3', title: 'C', url: 'https://c.com', siteName: 'Third' },
     ]
 
-    const { container } = renderWithProviders(<CitationBadge sources={sources} />)
+    const { container } = renderStandalone(<CitationBadge sources={sources} />)
 
     const button = container.querySelector('button')
     expect(button?.textContent).toContain('Second')
@@ -52,7 +77,7 @@ describe('CitationBadge', () => {
       { id: '2', title: 'Second', url: 'https://b.com', siteName: 'Second Site' },
     ]
 
-    const { container } = renderWithProviders(<CitationBadge sources={sources} />)
+    const { container } = renderStandalone(<CitationBadge sources={sources} />)
 
     expect(container.querySelector('button')?.textContent).toContain('First Site')
   })

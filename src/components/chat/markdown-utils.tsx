@@ -75,8 +75,9 @@ const processCitationPlaceholders = (children: ReactNode, citations: CitationMap
     return parts
       .map((part, i) => {
         if (i % 2 === 1) {
-          const sources = citations.get(parseInt(part, 10))
-          return sources ? <CitationBadge key={`cite-${part}`} sources={sources} /> : null
+          const citationId = parseInt(part, 10)
+          const sources = citations.get(citationId)
+          return sources ? <CitationBadge key={`cite-${part}`} sources={sources} citationId={citationId} /> : null
         }
         return part || null
       })
@@ -93,8 +94,11 @@ const processCitationPlaceholders = (children: ReactNode, citations: CitationMap
           return parts
             .map((part, j) => {
               if (j % 2 === 1) {
-                const sources = citations.get(parseInt(part, 10))
-                return sources ? <CitationBadge key={`cite-${i}-${part}`} sources={sources} /> : null
+                const citationId = parseInt(part, 10)
+                const sources = citations.get(citationId)
+                return sources ? (
+                  <CitationBadge key={`cite-${i}-${part}`} sources={sources} citationId={citationId} />
+                ) : null
               }
               return part || null
             })

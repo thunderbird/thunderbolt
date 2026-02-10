@@ -3,6 +3,7 @@ import { decodeCitationSources } from '@/lib/citation-utils'
 import { type TextUIPart } from 'ai'
 import { memo, useRef, useMemo } from 'react'
 import type { Components } from 'react-markdown'
+import { CitationPopoverProvider } from './citation-popover'
 import { type CitationMap, createMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
@@ -103,16 +104,17 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
 
   if (!part.text) return null
 
-  // Citations are rendered inline within the markdown text via {{CITE:N}} placeholders
   if (hasCitations && hasText) {
     return (
       <div className="p-4 rounded-md my-2">
-        <MemoizedMarkdown
-          key={`${messageId}-text`}
-          id={messageId}
-          content={fullText}
-          components={componentsRef.current}
-        />
+        <CitationPopoverProvider>
+          <MemoizedMarkdown
+            key={`${messageId}-text`}
+            id={messageId}
+            content={fullText}
+            components={componentsRef.current}
+          />
+        </CitationPopoverProvider>
       </div>
     )
   }

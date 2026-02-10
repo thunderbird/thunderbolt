@@ -1,4 +1,5 @@
 import { CitationBadge } from '@/components/chat/citation-badge'
+import { CitationPopoverProvider } from '@/components/chat/citation-popover'
 import type { CitationSource } from '@/types/citation'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -20,13 +21,15 @@ const meta = {
   decorators: [
     (Story) => (
       <TestProvider>
-        <div className="p-8 bg-background">
-          <div className="max-w-2xl">
-            <p className="text-sm leading-relaxed">
-              This is example text with a citation <Story /> that you can click to view source details.
-            </p>
+        <CitationPopoverProvider>
+          <div className="p-8 bg-background">
+            <div className="max-w-2xl">
+              <p className="text-sm leading-relaxed">
+                This is example text with a citation <Story /> that you can click to view source details.
+              </p>
+            </div>
           </div>
-        </div>
+        </CitationPopoverProvider>
       </TestProvider>
     ),
   ],
@@ -77,6 +80,7 @@ const sampleSources: CitationSource[] = [
 export const SingleSource: Story = {
   args: {
     sources: [sampleSources[0]],
+    citationId: 0,
   },
   parameters: {
     docs: {
@@ -90,6 +94,7 @@ export const SingleSource: Story = {
 export const TwoSources: Story = {
   args: {
     sources: [sampleSources[0], sampleSources[1]],
+    citationId: 1,
   },
   parameters: {
     docs: {
@@ -103,6 +108,7 @@ export const TwoSources: Story = {
 export const MultipleSources: Story = {
   args: {
     sources: [sampleSources[0], sampleSources[1], sampleSources[2]],
+    citationId: 2,
   },
   parameters: {
     docs: {
@@ -116,6 +122,7 @@ export const MultipleSources: Story = {
 export const ManySources: Story = {
   args: {
     sources: sampleSources,
+    citationId: 3,
   },
   parameters: {
     docs: {
@@ -138,6 +145,7 @@ export const LongSourceName: Story = {
         isPrimary: true,
       },
     ],
+    citationId: 4,
   },
   parameters: {
     docs: {
@@ -155,6 +163,7 @@ export const NoPrimarySources: Story = {
       { ...sampleSources[2], isPrimary: false },
       { ...sampleSources[3], isPrimary: false },
     ],
+    citationId: 5,
   },
   parameters: {
     docs: {
@@ -175,6 +184,7 @@ export const MissingSiteName: Story = {
         isPrimary: true,
       },
     ],
+    citationId: 6,
   },
   parameters: {
     docs: {
@@ -188,6 +198,7 @@ export const MissingSiteName: Story = {
 export const EmptySources: Story = {
   args: {
     sources: [],
+    citationId: 7,
   },
   parameters: {
     docs: {
@@ -201,25 +212,30 @@ export const EmptySources: Story = {
 export const InteractiveDemo = {
   render: () => (
     <TestProvider>
-      <div className="space-y-6 max-w-2xl">
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Different Citation Counts</h3>
-          <div className="space-y-2 text-sm">
-            <p>
-              Single source citation <CitationBadge sources={[sampleSources[0]]} /> shows just the name.
-            </p>
-            <p>
-              Two sources <CitationBadge sources={[sampleSources[0], sampleSources[1]]} /> displays with +1 count.
-            </p>
-            <p>
-              Multiple sources <CitationBadge sources={sampleSources.slice(0, 3)} /> shows +2 count.
-            </p>
-            <p>
-              Many sources <CitationBadge sources={sampleSources} /> can be clicked to view all in modal.
-            </p>
+      <CitationPopoverProvider>
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Different Citation Counts</h3>
+            <div className="space-y-2 text-sm">
+              <p>
+                Single source citation <CitationBadge sources={[sampleSources[0]]} citationId={0} /> shows just the
+                name.
+              </p>
+              <p>
+                Two sources <CitationBadge sources={[sampleSources[0], sampleSources[1]]} citationId={1} /> displays
+                with +1 count.
+              </p>
+              <p>
+                Multiple sources <CitationBadge sources={sampleSources.slice(0, 3)} citationId={2} /> shows +2 count.
+              </p>
+              <p>
+                Many sources <CitationBadge sources={sampleSources} citationId={3} /> can be clicked to view all in
+                modal.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      </CitationPopoverProvider>
     </TestProvider>
   ),
   parameters: {

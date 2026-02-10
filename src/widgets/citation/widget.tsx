@@ -8,6 +8,9 @@ type CitationWidgetProps = {
 /**
  * Citation widget component - wrapper that receives parsed widget data
  * and renders CitationBadge with deserialized sources.
+ *
+ * Rendered outside a CitationPopoverProvider, so CitationBadge uses its
+ * self-contained Popover/Sheet (no streaming re-render concerns here).
  */
 export const CitationWidgetComponent = ({ sources: sourcesJson }: CitationWidgetProps) => {
   const sources = decodeCitationSources(sourcesJson)

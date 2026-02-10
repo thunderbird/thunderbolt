@@ -1,48 +1,97 @@
-import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import type { CitationSource } from '@/types/citation'
-import { SourceList } from '@/components/chat/source-list'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
+import type { CitationSource } from '@/types/citation'
+import { useState } from 'react'
+import { useCitationPopover } from './citation-popover'
+import { SourceList } from './source-list'
 
 type CitationBadgeProps = {
   sources: CitationSource[]
+  citationId?: number
 }
 
 /**
- * CitationBadge component displays an inline citation badge that opens source details.
- *
- * Single source displays as: Source Name
- * Multiple sources displays as: Primary Source +N
- *
- * Desktop: Opens a popover anchored to the badge
- * Mobile: Opens a bottom sheet drawer
+ * When inside a CitationPopoverProvider, acts as a lightweight trigger (overlay rendered externally).
+ * When standalone (block-level widget), owns its own Popover/Sheet.
  */
-export const CitationBadge = ({ sources }: CitationBadgeProps) => {
-  const [isOpen, setIsOpen] = useState(false)
-  const { isMobile } = useIsMobile()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+export const CitationBadge = ({ sources, citationId }: CitationBadgeProps) => {
+  const ctx = useCitationPopover()
 
-  if (!sources || sources.length === 0) {
-    return null
+  if (!sources || sources.length === 0) return null
+
+  if (ctx && citationId !== undefined) {
+    return <ManagedBadge sources={sources} citationId={citationId} />
   }
 
-  const primarySource = sources.find((s) => s.isPrimary) || sources[0]
-  const displayName = primarySource.siteName || primarySource.title
-  const additionalCount = sources.length > 1 ? `+${sources.length - 1}` : null
+  return <StandaloneBadge sources={sources} />
+}
 
-  const badge = (
+const badgeClass =
+  'inline-flex max-w-48 items-center gap-1 px-2 pt-0.5 pb-1 text-xs font-normal rounded-full bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'
+
+const getBadgeLabel = (sources: CitationSource[]) => {
+  const primary = sources.find((s) => s.isPrimary) || sources[0]
+  return {
+    displayName: primary.siteName || primary.title,
+    additionalCount: sources.length > 1 ? `+${sources.length - 1}` : null,
+    ariaLabel: `View source: ${primary.title}`,
+  }
+}
+
+// --- Context-managed variant (inline in streaming markdown) ---
+
+const ManagedBadge = ({ sources, citationId }: { sources: CitationSource[]; citationId: number }) => {
+  const ctx = useCitationPopover()!
+  const isOpen = ctx.openCitationId === citationId
+  const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
+
+  const toggle = (rect: DOMRect) => {
+    if (isOpen) ctx.close()
+    else ctx.open(citationId, sources, rect)
+  }
+
+  return (
     <button
-      onClick={() => setIsOpen(true)}
+      onClick={(e) => toggle(e.currentTarget.getBoundingClientRect())}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          setIsOpen(true)
+          toggle(e.currentTarget.getBoundingClientRect())
         }
       }}
-      className="inline-flex max-w-48 items-center gap-1 px-2 pt-0.5 pb-1 text-xs font-normal rounded-full bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-      aria-label={`View source: ${primarySource.title}`}
+      className={badgeClass}
+      aria-label={ariaLabel}
+      aria-expanded={isOpen}
+      type="button"
+    >
+      <span className="truncate">{displayName}</span>
+      {additionalCount && <span className="shrink-0">{additionalCount}</span>}
+    </button>
+  )
+}
+
+// --- Standalone variant (block-level widget, no streaming concerns) ---
+
+const StandaloneBadge = ({ sources }: { sources: CitationSource[] }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const { isMobile } = useIsMobile()
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
+
+  const badge = (
+    <button
+      onClick={() => setIsOpen(!isOpen)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setIsOpen(!isOpen)
+        }
+      }}
+      className={badgeClass}
+      aria-label={ariaLabel}
+      aria-expanded={isOpen}
       type="button"
     >
       <span className="truncate">{displayName}</span>

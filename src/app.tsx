@@ -39,6 +39,7 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
+import { isPrPreview } from './lib/platform'
 
 const queryClient = new QueryClient()
 
@@ -64,7 +65,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
-  const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true'
+  const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
     <Routes>

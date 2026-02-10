@@ -4,7 +4,7 @@ import type { DatabaseType } from '../db/singleton'
 import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
-export const PR_PREVIEW_HOST_REGEX = /^thunderbolt-pr-\d+\.onrender\.com$/
+export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
 
 /**
  * Returns true when the frontend is running on a Render PR preview deployment
@@ -12,7 +12,7 @@ export const PR_PREVIEW_HOST_REGEX = /^thunderbolt-pr-\d+\.onrender\.com$/
  */
 export const isPrPreview = (): boolean => {
   if (typeof window === 'undefined') return false
-  return PR_PREVIEW_HOST_REGEX.test(window.location.hostname)
+  return prPreviewHostRegex.test(window.location.hostname)
 }
 
 /**

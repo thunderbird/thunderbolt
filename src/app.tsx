@@ -65,7 +65,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
-  const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
+  const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
     <Routes>
@@ -74,7 +74,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
       {/* Waitlist routes - unauthenticated only (skip when bypass is enabled) */}
-      {!bypassWaitlist && (
+      {!shouldBypassWaitlist && (
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
@@ -84,7 +84,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
       )}
 
       {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
-      <Route element={bypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
+      <Route element={shouldBypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
         <Route
           path="/"
           element={

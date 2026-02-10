@@ -1,19 +1,19 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { PR_PREVIEW_HOST_REGEX, isPrPreview } from './platform'
+import { isPrPreview, prPreviewHostRegex } from './platform'
 
-describe('PR_PREVIEW_HOST_REGEX', () => {
+describe('prPreviewHostRegex', () => {
   it('matches thunderbolt-pr-{number}.onrender.com hostnames', () => {
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt-pr-368.onrender.com')).toBe(true)
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt-pr-1.onrender.com')).toBe(true)
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt-pr-9999.onrender.com')).toBe(true)
+    expect(prPreviewHostRegex.test('thunderbolt-pr-368.onrender.com')).toBe(true)
+    expect(prPreviewHostRegex.test('thunderbolt-pr-1.onrender.com')).toBe(true)
+    expect(prPreviewHostRegex.test('thunderbolt-pr-9999.onrender.com')).toBe(true)
   })
 
   it('rejects non-matching hostnames', () => {
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt.onrender.com')).toBe(false)
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt-pr.onrender.com')).toBe(false)
-    expect(PR_PREVIEW_HOST_REGEX.test('thunderbolt-pr-368x.onrender.com')).toBe(false)
-    expect(PR_PREVIEW_HOST_REGEX.test('localhost')).toBe(false)
-    expect(PR_PREVIEW_HOST_REGEX.test('')).toBe(false)
+    expect(prPreviewHostRegex.test('thunderbolt.onrender.com')).toBe(false)
+    expect(prPreviewHostRegex.test('thunderbolt-pr.onrender.com')).toBe(false)
+    expect(prPreviewHostRegex.test('thunderbolt-pr-368x.onrender.com')).toBe(false)
+    expect(prPreviewHostRegex.test('localhost')).toBe(false)
+    expect(prPreviewHostRegex.test('')).toBe(false)
   })
 })
 

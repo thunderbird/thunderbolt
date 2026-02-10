@@ -2,7 +2,9 @@
  * AI Instructions for the link-preview widget
  */
 export const instructions = `## Link Preview
-<widget:link-preview url="https://example.com" />
+<widget:link-preview source="N" url="https://example.com" />
+
+When the page was fetched via search or fetch_content, include the sourceIndex as the source attribute. Always include the url attribute as well.
 
 ### CRITICAL: Only Link to Individual Item Pages
 NEVER show link previews for aggregate/list/index pages. Each preview must be ONE specific item.

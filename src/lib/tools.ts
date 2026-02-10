@@ -6,9 +6,13 @@ import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsof
 import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import type { ToolConfig } from '@/types'
+import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-export const getAvailableTools = async (httpClient: HttpClient): Promise<ToolConfig[]> => {
+export const getAvailableTools = async (
+  httpClient: HttpClient,
+  sourceCollector?: SourceMetadata[],
+): Promise<ToolConfig[]> => {
   // Check Thunderbolt Pro access and integration enabled state
   const proEnabled = await hasProAccess()
   const {
@@ -28,7 +32,7 @@ export const getAvailableTools = async (httpClient: HttpClient): Promise<ToolCon
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 
   if (shouldIncludeProTools) {
-    baseTools.push(...createProConfigs(httpClient))
+    baseTools.push(...createProConfigs(httpClient, sourceCollector))
   }
 
   if (integrationsGoogleIsEnabled) {

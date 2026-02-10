@@ -11,6 +11,7 @@ import { getModel, getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
@@ -149,11 +150,13 @@ export const aiFetchStreamingResponse = async ({
 
   const supportsTools = model.toolUsage !== 0
 
+  const sourceCollector: SourceMetadata[] = []
+
   let toolset: Record<string, Tool> = {}
   if (supportsTools) {
     // Use provided httpClient for tests, otherwise use plain ky for external APIs
     const toolsHttpClient = httpClient || ky
-    const availableTools = await getAvailableTools(toolsHttpClient)
+    const availableTools = await getAvailableTools(toolsHttpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
     for (const mcpClient of mcpClients || []) {
@@ -319,7 +322,7 @@ export const aiFetchStreamingResponse = async ({
 
         while (attemptNumber <= maxAttempts) {
           const result = runStreamText(currentMessages)
-          const messageMetadata = createMessageMetadata(modelId)
+          const messageMetadata = createMessageMetadata(modelId, sourceCollector)
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

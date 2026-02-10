@@ -17,19 +17,20 @@ export const createParser = <T extends z.ZodObject<any>>(
   // Extract widget name from schema (literal values are stored as an array)
   const widgetName = schema.shape.widget._def.values[0] as string
 
-  // Extract args keys from schema
+  // Extract args keys from schema, separating required from optional
   const argsSchema = schema.shape.args as z.ZodObject<any>
   const argsKeys = Object.keys(argsSchema.shape)
+  const requiredKeys = argsKeys.filter((key) => !argsSchema.shape[key].isOptional())
 
   return (attrs: Record<string, string>): z.infer<T> | null => {
-    // Quick check: ensure all required args are present (but allow empty strings as valid values)
-    const hasAllArgs = argsKeys.every((key) => attrs[key] !== undefined)
-    if (!hasAllArgs) {
+    // Quick check: ensure all required args are present (optional args may be absent)
+    const hasRequiredArgs = requiredKeys.every((key) => attrs[key] !== undefined)
+    if (!hasRequiredArgs) {
       return null
     }
 
-    // Build the widget object from attrs
-    const args = Object.fromEntries(argsKeys.map((key) => [key, attrs[key]]))
+    // Build the widget object from attrs (only include keys that are present)
+    const args = Object.fromEntries(argsKeys.filter((key) => attrs[key] !== undefined).map((key) => [key, attrs[key]]))
 
     // Validate with schema
     const result = schema.safeParse({

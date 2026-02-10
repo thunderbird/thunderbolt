@@ -1,5 +1,7 @@
 import { parseContentParts } from '@/ai/widget-parser'
 import { decodeCitationSources } from '@/lib/citation-utils'
+import { sourceToCitation } from '@/lib/source-utils'
+import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useRef, useMemo } from 'react'
 import type { Components } from 'react-markdown'
@@ -11,6 +13,7 @@ import { WidgetRenderer } from './widget-renderer'
 type TextPartProps = {
   part: TextUIPart
   messageId: string
+  sources?: SourceMetadata[]
 }
 
 /**
@@ -20,6 +23,38 @@ type TextPartProps = {
  */
 const shouldAppendInline = (text: string): boolean =>
   /^[,;.·\s]*(and|or|,|;|\.)*\s*$/i.test(text) || text.trimStart().startsWith('|')
+
+/**
+ * Regex matching `[N]` source citation patterns (1-based).
+ * Negative lookahead prevents matching markdown links like `[text](url)`.
+ */
+const SOURCE_CITATION_REGEX = /\[(\d+)\](?!\()/g
+
+/**
+ * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
+ * Each `[N]` where `N-1` is a valid index into `sources` becomes a `{{CITE:mapKey}}` placeholder.
+ * Out-of-range references are left as-is in the text.
+ * @returns fullText with placeholders, and the corresponding CitationMap
+ */
+export const buildSourceCitationPlaceholders = (
+  text: string,
+  sources: SourceMetadata[],
+): { fullText: string; citations: CitationMap } => {
+  const citations: CitationMap = new Map()
+  let nextKey = 0
+
+  const fullText = text.replace(SOURCE_CITATION_REGEX, (match, numStr: string) => {
+    const n = parseInt(numStr, 10)
+    const source = sources[n - 1]
+    if (!source) return match
+
+    const key = nextKey++
+    citations.set(key, [sourceToCitation(source)])
+    return `{{CITE:${key}}}`
+  })
+
+  return { fullText, citations }
+}
 
 /**
  * Builds a single markdown string with {{CITE:N}} placeholders at the positions
@@ -61,7 +96,9 @@ const buildTextWithCitationPlaceholders = (
   return { fullText, citations }
 }
 
-export const TextPart = memo(({ part, messageId }: TextPartProps) => {
+export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
+  const hasNewSources = !!sources && sources.length > 0
+
   // Build citation data upfront so the hook is always called in the same order
   const { contentParts, fullText, citations, hasCitations, hasText } = useMemo(() => {
     if (!part.text) {
@@ -75,8 +112,30 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
     }
 
     const parts = parseContentParts(part.text)
+
+    // Path A: new [N] format — sources metadata exists
+    if (hasNewSources) {
+      const textContent = parts
+        .filter((p) => p.type === 'text')
+        .map((p) => p.content)
+        .join('\n\n')
+
+      const result = buildSourceCitationPlaceholders(textContent, sources)
+      const hasCit = result.citations.size > 0
+      if (hasCit) {
+        console.info(
+          `[SourceRegistry] render: Path A — detected ${result.citations.size} [N] citations from ${sources.length} sources`,
+        )
+      }
+      return { contentParts: parts, ...result, hasCitations: hasCit, hasText: textContent.length > 0 }
+    }
+
+    // Path B: old <widget:citation> format (backward compat)
     const hasCit = parts.some((p) => p.type === 'widget' && p.widget.widget === 'citation')
     const hasTxt = parts.some((p) => p.type === 'text')
+    if (hasCit) {
+      console.info('[SourceRegistry] render: Path B — legacy <widget:citation> format (no metadata.sources)')
+    }
 
     if (hasCit && hasTxt) {
       const result = buildTextWithCitationPlaceholders(parts)
@@ -90,7 +149,7 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
       hasCitations: hasCit,
       hasText: hasTxt,
     }
-  }, [part.text])
+  }, [part.text, hasNewSources, sources])
 
   // Stabilize the components reference so completed markdown blocks stay memoized
   // during streaming. Only recreate when citation count changes (a new citation was parsed),
@@ -132,7 +191,7 @@ export const TextPart = memo(({ part, messageId }: TextPartProps) => {
         }
         return (
           <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
-            <WidgetRenderer widget={contentPart.widget} messageId={messageId} />
+            <WidgetRenderer widget={contentPart.widget} messageId={messageId} sources={sources} />
           </div>
         )
       })}

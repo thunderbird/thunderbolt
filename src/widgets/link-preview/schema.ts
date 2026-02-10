@@ -9,6 +9,7 @@ export const schema = z.object({
   widget: z.literal('link-preview'),
   args: z.object({
     url: z.string().url('Invalid URL').min(1, 'URL is required'),
+    source: z.string().optional(),
   }),
 })
 

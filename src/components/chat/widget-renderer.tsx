@@ -6,6 +6,7 @@
  */
 
 import type { Widget } from '@/ai/widget-types'
+import type { SourceMetadata } from '@/types/source'
 import { widgetRegistry } from '@/widgets'
 import { createElement, memo } from 'react'
 import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-hidden-state'
@@ -13,6 +14,7 @@ import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-h
 type WidgetRendererProps = {
   widget: Widget
   messageId: string
+  sources?: SourceMetadata[]
 }
 
 /**
@@ -22,7 +24,7 @@ type WidgetRendererProps = {
  * Components are auto-loaded from the widget registry
  * Filters out widgets marked as hidden via message cache
  */
-export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) => {
+export const WidgetRenderer = memo(({ widget, messageId, sources }: WidgetRendererProps) => {
   const isHidden = useWidgetHiddenState(messageId, widget.widget)
 
   if (widget.widget === 'connect-integration' && isHidden) {
@@ -41,6 +43,7 @@ export const WidgetRenderer = memo(({ widget, messageId }: WidgetRendererProps) 
     {
       ...widget.args,
       messageId,
+      sources,
     },
   )
 })

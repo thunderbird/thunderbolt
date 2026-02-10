@@ -80,6 +80,7 @@ export type SearchResultData = {
   publishedDate: string | null
   score?: number
   id: string
+  sourceIndex?: number
 }
 
 /**
@@ -98,6 +99,7 @@ export type FetchContentData = {
   image: string | null
   author: string | null
   published_date: string | null
+  sourceIndex?: number
 } | null
 
 /**

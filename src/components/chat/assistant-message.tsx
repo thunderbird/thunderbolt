@@ -7,6 +7,7 @@ import {
 } from '@/lib/assistant-message'
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
+import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, type ReactNode } from 'react'
 import { ReasoningGroup } from './reasoning-group'
@@ -35,6 +36,7 @@ export const mountMessageParts = (
   isStreaming: boolean,
   messageId: string,
   reasoningTime: Record<string, number>,
+  sources?: SourceMetadata[],
 ) => {
   const partElements: ReactNode[] = []
 
@@ -67,7 +69,7 @@ export const mountMessageParts = (
         break
       }
       case 'text':
-        partElements.push(<TextPart part={part as TextUIPart} messageId={messageId} />)
+        partElements.push(<TextPart part={part as TextUIPart} messageId={messageId} sources={sources} />)
         break
     }
   })
@@ -85,6 +87,7 @@ export const AssistantMessage = memo(({ message, isStreaming, isLastMessage = fa
     isStreaming,
     message.id,
     message.metadata?.reasoningTime ?? {},
+    message.metadata?.sources,
   )
 
   return (

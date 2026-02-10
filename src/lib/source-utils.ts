@@ -1,0 +1,30 @@
+import type { CitationSource } from '@/types/citation'
+import type { SourceMetadata } from '@/types/source'
+
+/**
+ * Converts a SourceMetadata entry to a CitationSource for the rendering pipeline.
+ * Maps index to id (as string), preserves url/title/siteName/favicon.
+ * Sets isPrimary to true since each [N] citation references a single source.
+ */
+export const sourceToCitation = (source: SourceMetadata): CitationSource => ({
+  id: String(source.index),
+  title: source.title,
+  url: source.url,
+  siteName: source.siteName,
+  favicon: source.favicon ?? undefined,
+  isPrimary: true,
+})
+
+/**
+ * Derives a site name from a URL's hostname.
+ * Strips "www." prefix and returns the remaining hostname.
+ * Returns undefined if the URL is invalid.
+ */
+export const deriveSiteName = (url: string): string | undefined => {
+  try {
+    const hostname = new URL(url).hostname
+    return hostname.startsWith('www.') ? hostname.slice(4) : hostname
+  } catch {
+    return undefined
+  }
+}

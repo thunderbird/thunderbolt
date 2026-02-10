@@ -1,5 +1,6 @@
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
 import type { UIMessageMetadata } from '@/types'
+import type { SourceMetadata } from '@/types/source'
 
 type StreamPart = {
   type: string
@@ -13,17 +14,26 @@ type StreamPart = {
  * Start times are tracked locally; only duration is emitted on completion.
  *
  * @param modelId - The model ID to include in metadata
+ * @param sourceCollector - Optional shared array populated by tool execution with source metadata
  * @returns A function that processes stream parts and returns appropriate metadata
  */
-export const createMessageMetadata = (modelId: string) => {
+export const createMessageMetadata = (modelId: string, sourceCollector?: SourceMetadata[]) => {
   const startTimes = new Map<string, number>()
   const reasoningStack: string[] = []
   let reasoningIdCounter = 0
 
+  const getSourcesMetadata = (): Pick<UIMessageMetadata, 'sources'> => {
+    if (sourceCollector && sourceCollector.length > 0) {
+      console.info(`[SourceRegistry] metadata: emitting ${sourceCollector.length} sources to message metadata`)
+      return { sources: [...sourceCollector] }
+    }
+    return {}
+  }
+
   return ({ part }: { part: StreamPart }): UIMessageMetadata => {
     switch (part.type) {
       case 'finish-step':
-        return { modelId, usage: part.usage }
+        return { modelId, usage: part.usage, ...getSourcesMetadata() }
 
       case 'tool-call': {
         const id = part.toolCallId ?? part.id ?? 'unknown'
@@ -42,7 +52,10 @@ export const createMessageMetadata = (modelId: string) => {
         const id = part.toolCallId ?? part.id ?? 'unknown'
         const startTime = startTimes.get(id)
         const duration = startTime ? Date.now() - startTime : undefined
-        return duration ? { reasoningTime: { [id]: duration } } : { modelId }
+        return {
+          ...(duration ? { reasoningTime: { [id]: duration } } : { modelId }),
+          ...getSourcesMetadata(),
+        }
       }
 
       // The AI SDK keeps the reasoning part stream open until the text part stream ends,

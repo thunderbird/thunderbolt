@@ -1,5 +1,6 @@
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
 import type { TrayIcon } from '@tauri-apps/api/tray'
+import type { SourceMetadata } from './types/source'
 import type { Window } from '@tauri-apps/api/window'
 import type { UIDataTypes, UIMessage, UITools } from 'ai'
 import type { InferSelectModel } from 'drizzle-orm'
@@ -81,6 +82,7 @@ export type UIMessageMetadata = {
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
   reasoningTime?: Record<string, number>
+  sources?: SourceMetadata[]
 }
 
 export type SideviewType = 'message' | 'thread' | 'imap'

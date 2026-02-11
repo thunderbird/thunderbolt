@@ -14,13 +14,13 @@ export type CitationMap = Map<number, CitationSource[]>
 /**
  * Regex to split on <br> tags (case-insensitive, global)
  */
-const BR_SPLIT_REGEX = /<br\s*\/?>/gi
+const brSplitRegex = /<br\s*\/?>/gi
 
 /**
  * Regex to split on citation placeholders like {{CITE:0}}, {{CITE:1}}, etc.
  * The capturing group extracts the citation index number.
  */
-const CITATION_PLACEHOLDER_REGEX = /\{\{CITE:(\d+)\}\}/
+const citationPlaceholderRegex = /\{\{CITE:(\d+)\}\}/
 
 /**
  * Processes text content to convert <br> tags into actual React <br /> elements.
@@ -28,7 +28,7 @@ const CITATION_PLACEHOLDER_REGEX = /\{\{CITE:(\d+)\}\}/
  */
 const processTextContent = (children: ReactNode): ReactNode => {
   if (typeof children === 'string') {
-    const parts = children.split(BR_SPLIT_REGEX)
+    const parts = children.split(brSplitRegex)
     if (parts.length === 1) return children
 
     return parts.map((part, i) => (
@@ -43,7 +43,7 @@ const processTextContent = (children: ReactNode): ReactNode => {
     let hasChanges = false
     const processed = children.flatMap((child, i) => {
       if (typeof child === 'string') {
-        const parts = child.split(BR_SPLIT_REGEX)
+        const parts = child.split(brSplitRegex)
         if (parts.length > 1) {
           hasChanges = true
           return parts.map((part, j) => (
@@ -69,7 +69,7 @@ const processTextContent = (children: ReactNode): ReactNode => {
  */
 const processCitationPlaceholders = (children: ReactNode, citations: CitationMap): ReactNode => {
   if (typeof children === 'string') {
-    const parts = children.split(CITATION_PLACEHOLDER_REGEX)
+    const parts = children.split(citationPlaceholderRegex)
     if (parts.length === 1) return children
 
     return parts
@@ -88,7 +88,7 @@ const processCitationPlaceholders = (children: ReactNode, citations: CitationMap
     let hasChanges = false
     const processed = children.flatMap((child, i) => {
       if (typeof child === 'string') {
-        const parts = child.split(CITATION_PLACEHOLDER_REGEX)
+        const parts = child.split(citationPlaceholderRegex)
         if (parts.length > 1) {
           hasChanges = true
           return parts

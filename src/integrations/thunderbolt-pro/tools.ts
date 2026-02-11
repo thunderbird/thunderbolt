@@ -30,7 +30,7 @@ export {
 }
 export type { FetchContentParams, SearchLocationParams, SearchParams, SearchResultData, WeatherParams }
 
-const SOURCE_REGISTRY_CAP = 50
+const sourceRegistryCap = 50
 
 /**
  * Thunderbolt Pro Tools Configuration Factory
@@ -53,7 +53,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           const existingSource = sourceCollector?.find((s) => s.url === result.url)
           const sourceIndex = existingSource ? existingSource.index : nextIndex
 
-          if (!existingSource && sourceCollector && sourceCollector.length < SOURCE_REGISTRY_CAP) {
+          if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
             sourceCollector.push({
               index: sourceIndex,
               url: result.url,
@@ -89,7 +89,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
         const existingSource = sourceCollector?.find((s) => s.url === result.url)
         const sourceIndex = existingSource ? existingSource.index : nextIndex
 
-        if (!existingSource && sourceCollector && sourceCollector.length < SOURCE_REGISTRY_CAP) {
+        if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
           sourceCollector.push({
             index: sourceIndex,
             url: result.url,

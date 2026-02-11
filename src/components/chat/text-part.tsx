@@ -28,7 +28,7 @@ const shouldAppendInline = (text: string): boolean =>
  * Regex matching `[N]` source citation patterns (1-based).
  * Negative lookahead prevents matching markdown links like `[text](url)`.
  */
-const SOURCE_CITATION_REGEX = /\[(\d+)\](?!\()/g
+const sourceCitationRegex = /\[(\d+)\](?!\()/g
 
 /**
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
@@ -43,7 +43,7 @@ export const buildSourceCitationPlaceholders = (
   const citations: CitationMap = new Map()
   let nextKey = 0
 
-  const fullText = text.replace(SOURCE_CITATION_REGEX, (match, numStr: string) => {
+  const fullText = text.replace(sourceCitationRegex, (match, numStr: string) => {
     const n = parseInt(numStr, 10)
     const source = sources[n - 1]
     if (!source) return match

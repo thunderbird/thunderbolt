@@ -148,6 +148,8 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   // not on every text chunk.
   const citationCountRef = useRef(0)
   const componentsRef = useRef<Components | undefined>(undefined)
+
+  // Only recreate components when citation count changes, not on every text update
   if (citations.size !== citationCountRef.current) {
     citationCountRef.current = citations.size
     componentsRef.current = citations.size > 0 ? createMarkdownComponents(citations) : undefined

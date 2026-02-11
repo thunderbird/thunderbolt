@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useCitationPopover } from './citation-popover'
 import { SourceList } from './source-list'
 
@@ -15,8 +15,9 @@ type CitationBadgeProps = {
 /**
  * When inside a CitationPopoverProvider, acts as a lightweight trigger (overlay rendered externally).
  * When standalone (block-level widget), owns its own Popover/Sheet.
+ * Memoized to prevent unnecessary re-renders during streaming.
  */
-export const CitationBadge = ({ sources, citationId }: CitationBadgeProps) => {
+export const CitationBadge = memo(({ sources, citationId }: CitationBadgeProps) => {
   const ctx = useCitationPopover()
 
   if (!sources || sources.length === 0) return null
@@ -26,7 +27,9 @@ export const CitationBadge = ({ sources, citationId }: CitationBadgeProps) => {
   }
 
   return <StandaloneBadge sources={sources} />
-}
+})
+
+CitationBadge.displayName = 'CitationBadge'
 
 const badgeClass =
   'inline-flex max-w-48 items-center gap-1 px-2 pt-0.5 pb-1 text-xs font-normal rounded-full bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'
@@ -42,7 +45,7 @@ const getBadgeLabel = (sources: CitationSource[]) => {
 
 // --- Context-managed variant (inline in streaming markdown) ---
 
-const ManagedBadge = ({ sources, citationId }: { sources: CitationSource[]; citationId: number }) => {
+const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[]; citationId: number }) => {
   const ctx = useCitationPopover()!
   const isOpen = ctx.openCitationId === citationId
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
@@ -70,11 +73,13 @@ const ManagedBadge = ({ sources, citationId }: { sources: CitationSource[]; cita
       {additionalCount && <span className="shrink-0">{additionalCount}</span>}
     </button>
   )
-}
+})
+
+ManagedBadge.displayName = 'ManagedBadge'
 
 // --- Standalone variant (block-level widget, no streaming concerns) ---
 
-const StandaloneBadge = ({ sources }: { sources: CitationSource[] }) => {
+const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
@@ -127,4 +132,6 @@ const StandaloneBadge = ({ sources }: { sources: CitationSource[] }) => {
       </Sheet>
     </>
   )
-}
+})
+
+StandaloneBadge.displayName = 'StandaloneBadge'

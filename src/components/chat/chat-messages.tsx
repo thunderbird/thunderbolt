@@ -26,12 +26,12 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
   const isStreaming = status === 'streaming'
 
+  const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
+
   const hasError = useMemo(() => {
     if (chatError) return true
-
-    const lastMessage = messages[messages.length - 1]
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
-  }, [chatError, messages, isStreaming])
+  }, [chatError, lastMessage, isStreaming])
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
@@ -71,15 +71,16 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
           // that regenerate() will remove. Messages with parts are valid responses.
           if (hasError && !message.parts?.length) return null
 
-          const isLastMessage = i === messages.length - 1
+          // Memoize last message check to avoid recalculating on every iteration
+          const isLast = message === lastMessage
           // Only apply viewport positioning from second message onwards
-          const shouldApplyViewport = isLastMessage && shouldUseViewportPositioning(messages.length)
+          const shouldApplyViewport = isLast && shouldUseViewportPositioning(messages.length)
 
           return (
             <AssistantMessage
               key={message.id}
               message={message}
-              isStreaming={isStreaming && isLastMessage}
+              isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
             />
           )

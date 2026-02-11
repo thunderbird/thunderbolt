@@ -1,5 +1,6 @@
 import type { AuthClient } from '@/contexts'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { updateSettings } from '@/dal'
 import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
@@ -84,6 +85,10 @@ const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
   try {
     const database = DatabaseSingleton.instance.database
     if ('clearPendingCrudOperations' in database) {
+      // on sign in (existing user), set user_has_completed_onboarding to true
+      // we consider that an existing user has completed onboarding since they have signed in previously
+      // this is necessary because sync is disabled by default - so we don't have a way to know if they have actually completed onboarding
+      await updateSettings({ user_has_completed_onboarding: true })
       await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
     }
   } catch (error) {

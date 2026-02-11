@@ -122,20 +122,12 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
       const result = buildSourceCitationPlaceholders(textContent, sources)
       const hasCit = result.citations.size > 0
-      if (hasCit) {
-        console.info(
-          `[SourceRegistry] render: Path A — detected ${result.citations.size} [N] citations from ${sources.length} sources`,
-        )
-      }
       return { contentParts: parts, ...result, hasCitations: hasCit, hasText: textContent.length > 0 }
     }
 
     // Path B: old <widget:citation> format (backward compat)
     const hasCit = parts.some((p) => p.type === 'widget' && p.widget.widget === 'citation')
     const hasTxt = parts.some((p) => p.type === 'text')
-    if (hasCit) {
-      console.info('[SourceRegistry] render: Path B — legacy <widget:citation> format (no metadata.sources)')
-    }
 
     if (hasCit && hasTxt) {
       const result = buildTextWithCitationPlaceholders(parts)

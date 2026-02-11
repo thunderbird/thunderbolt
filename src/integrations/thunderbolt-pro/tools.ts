@@ -67,12 +67,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
               toolName: 'search',
             })
             nextIndex++
-            console.info(
-              `[SourceRegistry] search: registered [Source ${sourceIndex}] "${result.title}" → ${result.url}`,
-            )
-          } else if (existingSource) {
-            console.info(`[SourceRegistry] search: dedup hit [Source ${sourceIndex}] → ${result.url}`)
-          } else {
+          } else if (!existingSource) {
             nextIndex++
           }
 
@@ -108,9 +103,6 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             toolName: 'fetch_content',
           })
           nextIndex++
-          console.info(
-            `[SourceRegistry] fetch_content: registered [Source ${sourceIndex}] "${result.title}" → ${result.url}`,
-          )
         } else if (existingSource) {
           // fetch_content has the authoritative page title — update the existing entry
           if (result.title) existingSource.title = result.title
@@ -119,9 +111,6 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           if (result.favicon) existingSource.favicon = result.favicon
           if (result.author) existingSource.author = result.author
           if (result.published_date) existingSource.publishedDate = result.published_date
-          console.info(
-            `[SourceRegistry] fetch_content: dedup hit [Source ${sourceIndex}] — updated metadata with page title "${result.title}"`,
-          )
         } else {
           nextIndex++
         }

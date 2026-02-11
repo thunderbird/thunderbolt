@@ -55,15 +55,11 @@ export const LinkPreviewWidget = ({ url, source, sources, messageId }: LinkPrevi
     const sourceIndex = parseInt(source, 10)
     const sourceData = sources[sourceIndex - 1]
     if (sourceData && sourceData.title) {
-      console.info(
-        `[SourceRegistry] link-preview: instant render [Source ${sourceIndex}] "${sourceData.title}" — 0 network requests`,
-      )
       return <InstantLinkPreview sourceData={sourceData} cloudUrl={cloudUrl.value} />
     }
   }
 
   // Fallback: existing fetch-based path
-  console.info(`[SourceRegistry] link-preview: fallback fetch for ${url}`)
   return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl.value} />
 }
 

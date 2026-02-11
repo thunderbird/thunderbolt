@@ -22,13 +22,8 @@ export const createMessageMetadata = (modelId: string, sourceCollector?: SourceM
   const reasoningStack: string[] = []
   let reasoningIdCounter = 0
 
-  const getSourcesMetadata = (): Pick<UIMessageMetadata, 'sources'> => {
-    if (sourceCollector && sourceCollector.length > 0) {
-      console.info(`[SourceRegistry] metadata: emitting ${sourceCollector.length} sources to message metadata`)
-      return { sources: [...sourceCollector] }
-    }
-    return {}
-  }
+  const getSourcesMetadata = (): Pick<UIMessageMetadata, 'sources'> =>
+    sourceCollector && sourceCollector.length > 0 ? { sources: [...sourceCollector] } : {}
 
   return ({ part }: { part: StreamPart }): UIMessageMetadata => {
     switch (part.type) {

@@ -122,6 +122,7 @@ export const AssistantMessage = memo(
     return (
       prevProps.message.id === nextProps.message.id &&
       prevProps.message.parts === nextProps.message.parts &&
+      prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage
     )

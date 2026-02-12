@@ -138,16 +138,16 @@ const SafeLink = memo(({ href, children, ...props }: React.ComponentProps<'a'>) 
 
 SafeLink.displayName = 'SafeLink'
 
-const MemoizedParagraph = memo(({ children }: { children: ReactNode }) => <p>{processTextContent(children)}</p>)
+const MemoizedParagraph = memo(({ children }: { children?: ReactNode }) => <p>{processTextContent(children)}</p>)
 MemoizedParagraph.displayName = 'MemoizedParagraph'
 
-const MemoizedTableData = memo(({ children }: { children: ReactNode }) => <td>{processTextContent(children)}</td>)
+const MemoizedTableData = memo(({ children }: { children?: ReactNode }) => <td>{processTextContent(children)}</td>)
 MemoizedTableData.displayName = 'MemoizedTableData'
 
-const MemoizedTableHeader = memo(({ children }: { children: ReactNode }) => <th>{processTextContent(children)}</th>)
+const MemoizedTableHeader = memo(({ children }: { children?: ReactNode }) => <th>{processTextContent(children)}</th>)
 MemoizedTableHeader.displayName = 'MemoizedTableHeader'
 
-const MemoizedListItem = memo(({ children }: { children: ReactNode }) => <li>{processTextContent(children)}</li>)
+const MemoizedListItem = memo(({ children }: { children?: ReactNode }) => <li>{processTextContent(children)}</li>)
 MemoizedListItem.displayName = 'MemoizedListItem'
 
 export const markdownComponents: Components = {
@@ -199,22 +199,22 @@ MemoizedListItemWithCitations.displayName = 'MemoizedListItemWithCitations'
 export const createMarkdownComponents = (citations: CitationMap): Components => {
   // Create memoized wrapper functions that pass citations as props to inner memoized components
   // This two-level memoization ensures stable component references while allowing citation updates
-  const ParagraphWrapper = memo(({ children }: { children: ReactNode }) => (
+  const ParagraphWrapper = memo(({ children }: { children?: ReactNode }) => (
     <MemoizedParagraphWithCitations citations={citations}>{children}</MemoizedParagraphWithCitations>
   ))
   ParagraphWrapper.displayName = 'ParagraphWrapper'
 
-  const TableDataWrapper = memo(({ children }: { children: ReactNode }) => (
+  const TableDataWrapper = memo(({ children }: { children?: ReactNode }) => (
     <MemoizedTableDataWithCitations citations={citations}>{children}</MemoizedTableDataWithCitations>
   ))
   TableDataWrapper.displayName = 'TableDataWrapper'
 
-  const TableHeaderWrapper = memo(({ children }: { children: ReactNode }) => (
+  const TableHeaderWrapper = memo(({ children }: { children?: ReactNode }) => (
     <MemoizedTableHeaderWithCitations citations={citations}>{children}</MemoizedTableHeaderWithCitations>
   ))
   TableHeaderWrapper.displayName = 'TableHeaderWrapper'
 
-  const ListItemWrapper = memo(({ children }: { children: ReactNode }) => (
+  const ListItemWrapper = memo(({ children }: { children?: ReactNode }) => (
     <MemoizedListItemWithCitations citations={citations}>{children}</MemoizedListItemWithCitations>
   ))
   ListItemWrapper.displayName = 'ListItemWrapper'

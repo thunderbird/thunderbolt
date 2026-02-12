@@ -68,5 +68,20 @@ export const shouldRetry = (
 export const nudgeMessages = {
   finalStep: 'RESPOND NOW with the information gathered. Cite with [N] at end of sentence. Do not ask questions.',
   preventive: 'Synthesize your tool results and respond now. Cite with [N] at end of sentence.',
-  retry: 'Respond now with the information gathered. Cite with [N] at end of sentence. No more tools.',
+  retry:
+    'Respond now with the information gathered. Every sourced fact must have [N] at end of sentence. No more tools.',
+  afterTools:
+    'Every fact from tool results MUST have [N] at end of sentence. Example: "The population is 14 million.[1] The area spans 2,194 km².[2]"',
 } as const
+
+/** Mode-specific nudge overrides */
+export const searchModeNudges = {
+  finalStep:
+    'RESPOND NOW with link preview widgets for each result. Use <widget:link-preview> tags. Do not ask questions.',
+  preventive: 'You have enough results. Respond now with <widget:link-preview> widgets for each result.',
+  retry: 'Respond now with <widget:link-preview> widgets. No more tools.',
+  afterTools: 'Remember: respond with <widget:link-preview source="N" url="..."> tags for each result.',
+} as const
+
+/** Get the appropriate nudge messages for a mode */
+export const getNudgeMessages = (modeName?: string) => (modeName === 'search' ? searchModeNudges : nudgeMessages)

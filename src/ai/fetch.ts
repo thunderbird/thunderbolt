@@ -1,9 +1,9 @@
 import { createPrompt } from '@/ai/prompt'
 import {
   extractTextFromMessages,
+  getNudgeMessages,
   hasToolCalls,
   isFinalStep,
-  nudgeMessages,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
@@ -205,6 +205,8 @@ export const aiFetchStreamingResponse = async ({
     modeSystemPrompt,
   })
 
+  const activeNudges = getNudgeMessages(modeSystemPrompt?.includes('SEARCH MODE') ? 'search' : undefined)
+
   try {
     const baseModel = await createModel(model)
 
@@ -249,14 +251,24 @@ export const aiFetchStreamingResponse = async ({
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
               activeTools: [],
-              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.finalStep }],
+              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.finalStep }],
             }
           }
 
           // Nudge after many tool calls (but not on final step)
           if (shouldShowPreventiveNudge(steps)) {
             return {
-              messages: [...stepMessages, { role: 'user' as const, content: nudgeMessages.preventive }],
+              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.preventive }],
+            }
+          }
+
+          // After the first few tool calls, remind about citation/widget format.
+          // Limited to 2 to avoid overwhelming reasoning models in Research mode (causes "acknowledgment trap").
+          const lastStep = steps[steps.length - 1]
+          const toolCallCount = steps.filter((s) => s.finishReason === 'tool-calls').length
+          if (lastStep?.finishReason === 'tool-calls' && toolCallCount <= 2) {
+            return {
+              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.afterTools }],
             }
           }
         },
@@ -352,7 +364,7 @@ export const aiFetchStreamingResponse = async ({
               currentMessages = [
                 ...currentMessages,
                 ...response.messages,
-                { role: 'user' as const, content: nudgeMessages.retry },
+                { role: 'user' as const, content: activeNudges.retry },
               ]
 
               isRetry = true

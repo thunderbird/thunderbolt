@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import {
   extractTextFromMessages,
+  getNudgeMessages,
   hasToolCalls,
   isFinalStep,
   nudgeMessages,
+  searchModeNudges,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from './step-logic'
@@ -223,5 +225,35 @@ describe('nudgeMessages', () => {
   test('retry message is defined and non-empty', () => {
     expect(nudgeMessages.retry).toBeTruthy()
     expect(nudgeMessages.retry.length).toBeGreaterThan(0)
+  })
+})
+
+describe('searchModeNudges', () => {
+  test('all messages mention widget:link-preview', () => {
+    expect(searchModeNudges.finalStep).toContain('widget:link-preview')
+    expect(searchModeNudges.preventive).toContain('widget:link-preview')
+    expect(searchModeNudges.retry).toContain('widget:link-preview')
+  })
+
+  test('messages do not mention citation [N]', () => {
+    expect(searchModeNudges.finalStep).not.toContain('[N]')
+    expect(searchModeNudges.preventive).not.toContain('[N]')
+    expect(searchModeNudges.retry).not.toContain('[N]')
+  })
+})
+
+describe('getNudgeMessages', () => {
+  test('returns default nudges when no mode specified', () => {
+    expect(getNudgeMessages()).toBe(nudgeMessages)
+    expect(getNudgeMessages(undefined)).toBe(nudgeMessages)
+  })
+
+  test('returns search nudges for search mode', () => {
+    expect(getNudgeMessages('search')).toBe(searchModeNudges)
+  })
+
+  test('returns default nudges for non-search modes', () => {
+    expect(getNudgeMessages('chat')).toBe(nudgeMessages)
+    expect(getNudgeMessages('research')).toBe(nudgeMessages)
   })
 })

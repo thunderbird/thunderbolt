@@ -1,10 +1,13 @@
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import type { SourceMetadata } from '@/types/source'
 import type { WeatherForecastData } from '@/widgets/weather-forecast'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import ky, { type KyInstance } from 'ky'
+import * as api from './api'
+import type { SearchResultData } from './schemas'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
-import { fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
+import { createConfigs, fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
 // Test utilities
 const createMockHttpClient = (response: unknown): KyInstance => {
@@ -320,5 +323,197 @@ describe('Thunderbolt Pro Tools', () => {
       const httpClient = createMockHttpClient(mockResponse)
       await expect(searchLocations(params, httpClient)).rejects.toThrow('No locations found')
     })
+  })
+})
+
+describe('createConfigs source collector', () => {
+  const dummyHttpClient = {} as unknown as KyInstance
+  let searchSpy: ReturnType<typeof spyOn>
+  let fetchContentSpy: ReturnType<typeof spyOn>
+
+  const mockSearchResults: SearchResultData[] = [
+    {
+      id: 'r1',
+      url: 'https://a.com/article',
+      title: 'Article A',
+      summary: 'Summary A',
+      favicon: 'https://a.com/favicon.ico',
+      image: 'https://a.com/image.jpg',
+      author: 'Author A',
+      publishedDate: '2024-01-01',
+    },
+    {
+      id: 'r2',
+      url: 'https://b.com/article',
+      title: 'Article B',
+      summary: 'Summary B',
+      favicon: null,
+      image: null,
+      author: null,
+      publishedDate: null,
+    },
+  ]
+
+  beforeEach(() => {
+    searchSpy = spyOn(api, 'search')
+    fetchContentSpy = spyOn(api, 'fetchContent')
+  })
+
+  afterEach(() => {
+    searchSpy.mockRestore()
+    fetchContentSpy.mockRestore()
+  })
+
+  const getSearchTool = (configs: ReturnType<typeof createConfigs>) => configs.find((c) => c.name === 'search')!
+  const getFetchTool = (configs: ReturnType<typeof createConfigs>) => configs.find((c) => c.name === 'fetch_content')!
+
+  it('accumulates sources from search results', async () => {
+    searchSpy.mockResolvedValue(mockSearchResults)
+    const sourceCollector: SourceMetadata[] = []
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+    expect(sourceCollector).toHaveLength(2)
+    expect(sourceCollector[0].index).toBe(1)
+    expect(sourceCollector[0].url).toBe('https://a.com/article')
+    expect(sourceCollector[0].title).toBe('Article A')
+    expect(sourceCollector[0].toolName).toBe('search')
+    expect(sourceCollector[1].index).toBe(2)
+    expect(sourceCollector[1].url).toBe('https://b.com/article')
+  })
+
+  it('deduplicates sources by URL', async () => {
+    searchSpy.mockResolvedValue([mockSearchResults[0], mockSearchResults[0]])
+    const sourceCollector: SourceMetadata[] = []
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+    expect(sourceCollector).toHaveLength(1)
+    expect(sourceCollector[0].index).toBe(1)
+  })
+
+  it('continues index from pre-existing sources', async () => {
+    searchSpy.mockResolvedValue([mockSearchResults[0]])
+    const existingSources: SourceMetadata[] = [
+      { index: 1, url: 'https://pre-existing.com', title: 'Pre-existing', toolName: 'search' },
+    ]
+    const configs = createConfigs(dummyHttpClient, existingSources)
+
+    await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+    expect(existingSources).toHaveLength(2)
+    expect(existingSources[1].index).toBe(2)
+  })
+
+  it('caps source registry at 50 entries', async () => {
+    const bulkResults: SearchResultData[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `bulk-${i}`,
+      url: `https://site-${i}.com`,
+      title: `Site ${i}`,
+      favicon: null,
+      image: null,
+      author: null,
+      publishedDate: null,
+    }))
+    searchSpy.mockResolvedValue(bulkResults)
+
+    const sourceCollector: SourceMetadata[] = Array.from({ length: 48 }, (_, i) => ({
+      index: i + 1,
+      url: `https://existing-${i}.com`,
+      title: `Existing ${i}`,
+      toolName: 'search' as const,
+    }))
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+    expect(sourceCollector).toHaveLength(50)
+  })
+
+  it('fetch_content creates new source entry', async () => {
+    fetchContentSpy.mockResolvedValue({
+      url: 'https://example.com/page',
+      title: 'Example Page',
+      text: 'Page content text here',
+      favicon: 'https://example.com/fav.ico',
+      image: null,
+      author: 'Jane Doe',
+      published_date: '2024-06-15',
+    })
+    const sourceCollector: SourceMetadata[] = []
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getFetchTool(configs).execute({ url: 'https://example.com/page' })
+
+    expect(sourceCollector).toHaveLength(1)
+    expect(sourceCollector[0].index).toBe(1)
+    expect(sourceCollector[0].title).toBe('Example Page')
+    expect(sourceCollector[0].toolName).toBe('fetch_content')
+  })
+
+  it('fetch_content updates existing source with authoritative data', async () => {
+    const sourceCollector: SourceMetadata[] = [
+      {
+        index: 1,
+        url: 'https://example.com/page',
+        title: 'https://example.com/page',
+        toolName: 'search',
+      },
+    ]
+    fetchContentSpy.mockResolvedValue({
+      url: 'https://example.com/page',
+      title: 'Real Page Title',
+      text: 'Full page content for the article...',
+      favicon: 'https://example.com/fav.ico',
+      image: 'https://example.com/hero.jpg',
+      author: 'Jane Doe',
+      published_date: '2024-06-15',
+    })
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getFetchTool(configs).execute({ url: 'https://example.com/page' })
+
+    expect(sourceCollector).toHaveLength(1)
+    expect(sourceCollector[0].title).toBe('Real Page Title')
+    expect(sourceCollector[0].description).toBe('Full page content for the article...'.slice(0, 200))
+    expect(sourceCollector[0].favicon).toBe('https://example.com/fav.ico')
+    expect(sourceCollector[0].image).toBe('https://example.com/hero.jpg')
+    expect(sourceCollector[0].author).toBe('Jane Doe')
+    expect(sourceCollector[0].publishedDate).toBe('2024-06-15')
+  })
+
+  it('assigns consistent indices across search and fetch_content', async () => {
+    searchSpy.mockResolvedValue([mockSearchResults[0]])
+    fetchContentSpy.mockResolvedValue({
+      url: 'https://new-page.com',
+      title: 'New Page',
+      text: 'Content',
+      favicon: null,
+      image: null,
+      author: null,
+      published_date: null,
+    })
+    const sourceCollector: SourceMetadata[] = []
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+
+    await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+    await getFetchTool(configs).execute({ url: 'https://new-page.com' })
+
+    expect(sourceCollector).toHaveLength(2)
+    expect(sourceCollector[0].index).toBe(1)
+    expect(sourceCollector[1].index).toBe(2)
+  })
+
+  it('works without sourceCollector', async () => {
+    searchSpy.mockResolvedValue(mockSearchResults)
+    const configs = createConfigs(dummyHttpClient)
+
+    const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+    expect(result).toHaveLength(2)
+    expect(result[0].sourceIndex).toBe(1)
+    expect(result[1].sourceIndex).toBe(2)
   })
 })

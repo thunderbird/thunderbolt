@@ -1,4 +1,5 @@
 import type { AuthClient } from '@/contexts'
+import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -135,7 +136,7 @@ export const useSignInFormState = ({
       })
 
       if (result.error) {
-        dispatch({ type: 'VERIFY_ERROR', payload: result.error.message || 'Invalid code. Please try again.' })
+        dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
         return
       }
 

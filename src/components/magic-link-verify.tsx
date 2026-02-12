@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/contexts'
+import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
@@ -47,14 +48,7 @@ export const MagicLinkVerify = () => {
         })
 
         if (result.error) {
-          // Handle specific error codes from Better Auth
-          if (result.error.code === 'TOO_MANY_ATTEMPTS') {
-            setState({ status: 'error', message: 'Too many attempts. Please request a new code.' })
-          } else if (result.error.code === 'INVALID_OTP') {
-            setState({ status: 'error', message: 'The link has expired or is invalid. Please request a new one.' })
-          } else {
-            setState({ status: 'error', message: result.error.message || 'Verification failed. Please try again.' })
-          }
+          setState({ status: 'error', message: getOtpErrorMessage(result.error, 'link') })
           return
         }
 

@@ -1,12 +1,12 @@
 import { parseContentParts } from '@/ai/widget-parser'
 import { decodeCitationSources } from '@/lib/citation-utils'
 import { sourceToCitation } from '@/lib/source-utils'
+import type { CitationMap } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useRef, useMemo } from 'react'
-import type { Components } from 'react-markdown'
 import { CitationPopoverProvider } from './citation-popover'
-import { type CitationMap, createMarkdownComponents } from './markdown-utils'
+import { CitationContext, citationMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
 
@@ -143,16 +143,12 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     }
   }, [part.text, hasNewSources, sources])
 
-  // Stabilize the components reference so completed markdown blocks stay memoized
-  // during streaming. Only recreate when citation count changes (a new citation was parsed),
-  // not on every text chunk.
-  const citationCountRef = useRef(0)
-  const componentsRef = useRef<Components | undefined>(undefined)
-
-  // Only recreate components when citation count changes, not on every text update
-  if (citations.size !== citationCountRef.current) {
-    citationCountRef.current = citations.size
-    componentsRef.current = citations.size > 0 ? createMarkdownComponents(citations) : undefined
+  // Stabilize citation context value — only update when citation count changes,
+  // not on every streaming text chunk. This prevents unnecessary re-renders of
+  // citation-aware markdown components during streaming.
+  const citationsRef = useRef<CitationMap>(new Map())
+  if (citations.size !== citationsRef.current.size) {
+    citationsRef.current = citations
   }
 
   if (!part.text) return null
@@ -161,12 +157,14 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     return (
       <div className="p-4 rounded-md my-2">
         <CitationPopoverProvider>
-          <MemoizedMarkdown
-            key={`${messageId}-text`}
-            id={messageId}
-            content={fullText}
-            components={componentsRef.current}
-          />
+          <CitationContext.Provider value={citationsRef.current}>
+            <MemoizedMarkdown
+              key={`${messageId}-text`}
+              id={messageId}
+              content={fullText}
+              components={citationMarkdownComponents}
+            />
+          </CitationContext.Provider>
         </CitationPopoverProvider>
       </div>
     )

@@ -4,9 +4,9 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { createTestProvider } from '@/test-utils/test-provider'
-import type { CitationSource } from '@/types/citation'
+import type { CitationMap, CitationSource } from '@/types/citation'
 import { CitationPopoverProvider } from './citation-popover'
-import { type CitationMap, createMarkdownComponents, markdownComponents } from './markdown-utils'
+import { CitationContext, citationMarkdownComponents, markdownComponents } from './markdown-utils'
 
 const makeSources = (name: string): CitationSource[] => [
   { id: `src-${name}`, title: `${name} Article`, url: `https://${name}.com`, siteName: name, isPrimary: true },
@@ -191,14 +191,15 @@ describe('markdownComponents', () => {
   })
 })
 
-describe('createMarkdownComponents (citation placeholders)', () => {
+describe('citationMarkdownComponents (citation placeholders via context)', () => {
   const renderWithCitations = (content: string, citations: CitationMap) => {
-    const components = createMarkdownComponents(citations)
     const TestProvider = createTestProvider()
     return render(
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {content}
-      </ReactMarkdown>,
+      <CitationContext.Provider value={citations}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={citationMarkdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </CitationContext.Provider>,
       {
         wrapper: ({ children }) => (
           <TestProvider>

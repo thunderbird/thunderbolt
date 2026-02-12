@@ -1,15 +1,19 @@
-import { Fragment, memo, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useContext, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { isSafeUrl } from '@/lib/url-utils'
-import type { CitationSource } from '@/types/citation'
+import type { CitationMap } from '@/types/citation'
+
+// Re-export for consumers that import CitationMap from here
+export type { CitationMap }
 
 /**
- * Map of citation placeholder indices to their decoded sources.
- * Used to replace {{CITE:N}} placeholders with inline CitationBadge components.
+ * Context for passing citation data to markdown components without creating
+ * new component types on each render. Components read from this context
+ * to render inline CitationBadge elements.
  */
-export type CitationMap = Map<number, CitationSource[]>
+export const CitationContext = createContext<CitationMap | undefined>(undefined)
 
 /**
  * Regex to split on <br> tags (case-insensitive, global)
@@ -158,72 +162,42 @@ export const markdownComponents: Components = {
   li: MemoizedListItem,
 }
 
-/**
- * Memoized components for citation-enabled markdown rendering.
- * These are created once and reused across renders to prevent unnecessary re-renders.
- */
-const MemoizedParagraphWithCitations = memo(
-  ({ children, citations }: { children: ReactNode; citations: CitationMap }) => (
-    <p>{processChildren(children, citations)}</p>
-  ),
-)
-MemoizedParagraphWithCitations.displayName = 'MemoizedParagraphWithCitations'
+// --- Citation-aware components (read from CitationContext) ---
 
-const MemoizedTableDataWithCitations = memo(
-  ({ children, citations }: { children: ReactNode; citations: CitationMap }) => (
-    <td>{processChildren(children, citations)}</td>
-  ),
-)
-MemoizedTableDataWithCitations.displayName = 'MemoizedTableDataWithCitations'
+const CitationParagraph = memo(({ children }: { children?: ReactNode }) => {
+  const citations = useContext(CitationContext)
+  return <p>{citations ? processChildren(children, citations) : processTextContent(children)}</p>
+})
+CitationParagraph.displayName = 'CitationParagraph'
 
-const MemoizedTableHeaderWithCitations = memo(
-  ({ children, citations }: { children: ReactNode; citations: CitationMap }) => (
-    <th>{processChildren(children, citations)}</th>
-  ),
-)
-MemoizedTableHeaderWithCitations.displayName = 'MemoizedTableHeaderWithCitations'
+const CitationTableData = memo(({ children }: { children?: ReactNode }) => {
+  const citations = useContext(CitationContext)
+  return <td>{citations ? processChildren(children, citations) : processTextContent(children)}</td>
+})
+CitationTableData.displayName = 'CitationTableData'
 
-const MemoizedListItemWithCitations = memo(
-  ({ children, citations }: { children: ReactNode; citations: CitationMap }) => (
-    <li>{processChildren(children, citations)}</li>
-  ),
-)
-MemoizedListItemWithCitations.displayName = 'MemoizedListItemWithCitations'
+const CitationTableHeader = memo(({ children }: { children?: ReactNode }) => {
+  const citations = useContext(CitationContext)
+  return <th>{citations ? processChildren(children, citations) : processTextContent(children)}</th>
+})
+CitationTableHeader.displayName = 'CitationTableHeader'
+
+const CitationListItem = memo(({ children }: { children?: ReactNode }) => {
+  const citations = useContext(CitationContext)
+  return <li>{citations ? processChildren(children, citations) : processTextContent(children)}</li>
+})
+CitationListItem.displayName = 'CitationListItem'
 
 /**
- * Creates markdown components that replace {{CITE:N}} placeholders with CitationBadge
- * components inline, in addition to the standard <br> tag handling.
- * Wrapper components are memoized to prevent unnecessary re-renders during streaming.
- * The citations Map is passed as a prop to inner memoized components for stability.
+ * Stable markdown component overrides for citation-enabled rendering.
+ * These are module-level constants — React never unmounts/remounts them.
+ * Citation data flows through CitationContext, which correctly triggers
+ * re-renders only when citations change.
  */
-export const createMarkdownComponents = (citations: CitationMap): Components => {
-  // Create memoized wrapper functions that pass citations as props to inner memoized components
-  // This two-level memoization ensures stable component references while allowing citation updates
-  const ParagraphWrapper = memo(({ children }: { children?: ReactNode }) => (
-    <MemoizedParagraphWithCitations citations={citations}>{children}</MemoizedParagraphWithCitations>
-  ))
-  ParagraphWrapper.displayName = 'ParagraphWrapper'
-
-  const TableDataWrapper = memo(({ children }: { children?: ReactNode }) => (
-    <MemoizedTableDataWithCitations citations={citations}>{children}</MemoizedTableDataWithCitations>
-  ))
-  TableDataWrapper.displayName = 'TableDataWrapper'
-
-  const TableHeaderWrapper = memo(({ children }: { children?: ReactNode }) => (
-    <MemoizedTableHeaderWithCitations citations={citations}>{children}</MemoizedTableHeaderWithCitations>
-  ))
-  TableHeaderWrapper.displayName = 'TableHeaderWrapper'
-
-  const ListItemWrapper = memo(({ children }: { children?: ReactNode }) => (
-    <MemoizedListItemWithCitations citations={citations}>{children}</MemoizedListItemWithCitations>
-  ))
-  ListItemWrapper.displayName = 'ListItemWrapper'
-
-  return {
-    a: SafeLink,
-    p: ParagraphWrapper,
-    td: TableDataWrapper,
-    th: TableHeaderWrapper,
-    li: ListItemWrapper,
-  }
+export const citationMarkdownComponents: Components = {
+  a: SafeLink,
+  p: CitationParagraph,
+  td: CitationTableData,
+  th: CitationTableHeader,
+  li: CitationListItem,
 }

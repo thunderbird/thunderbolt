@@ -4,7 +4,7 @@ import { sourceToCitation } from '@/lib/source-utils'
 import type { CitationMap } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
-import { memo, useRef, useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
 import { CitationContext, citationMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
@@ -143,21 +143,13 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     }
   }, [part.text, hasNewSources, sources])
 
-  // Stabilize citation context value — only update when citation count changes,
-  // not on every streaming text chunk. This prevents unnecessary re-renders of
-  // citation-aware markdown components during streaming.
-  const citationsRef = useRef<CitationMap>(new Map())
-  if (citations.size !== citationsRef.current.size) {
-    citationsRef.current = citations
-  }
-
   if (!part.text) return null
 
   if (hasCitations && hasText) {
     return (
       <div className="p-4 rounded-md my-2">
         <CitationPopoverProvider>
-          <CitationContext.Provider value={citationsRef.current}>
+          <CitationContext.Provider value={citations}>
             <MemoizedMarkdown
               key={`${messageId}-text`}
               id={messageId}

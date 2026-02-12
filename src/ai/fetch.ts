@@ -231,12 +231,11 @@ export const aiFetchStreamingResponse = async ({
     // backend recognizes vendor-specific options. Falls back to provider for user-created models.
     // See: https://github.com/vllm-project/vllm/issues/9019
     const providerOptionsKey = model.vendor ?? model.provider
-    const providerOptions = {
-      [providerOptionsKey]: {
-        ...(model.supportsParallelToolCalls === 0 && { parallelToolCalls: false }),
-        ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
-      },
+    const rawOptions = {
+      ...(model.supportsParallelToolCalls === 0 && { parallelToolCalls: false }),
+      ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
     }
+    const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
 
     /**
      * Run a single streamText attempt and return the result along with metadata

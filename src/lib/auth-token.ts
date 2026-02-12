@@ -26,7 +26,7 @@ export const setAuthToken = (token: string): void => {
   localStorage.setItem(AUTH_TOKEN_KEY, token)
 }
 
-/** Clear the auth token (for sign-out). Keeps device_id in localStorage. */
+/** Clear the auth token (for sign-out). */
 export const clearAuthToken = (): void => {
   localStorage.removeItem(AUTH_TOKEN_KEY)
 }

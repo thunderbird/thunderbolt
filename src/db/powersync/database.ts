@@ -9,14 +9,27 @@ import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 
-/** Maximum time to wait for initial sync (10 seconds) */
-const INITIAL_SYNC_TIMEOUT_MS = 10_000
-
 /** LocalStorage key for sync enabled flag */
 const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
 
 /** Custom event name for sync enabled changes */
 export const SYNC_ENABLED_CHANGE_EVENT = 'powersync_sync_enabled_change'
+
+/**
+ * Get PowerSync instance from singleton if available.
+ * Returns null if not using PowerSync or not initialized.
+ */
+export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
+  try {
+    const database = DatabaseSingleton.instance.database
+    if ('powerSyncInstance' in database) {
+      return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
+    }
+  } catch {
+    // Not initialized or not PowerSync
+  }
+  return null
+}
 
 /**
  * Check if sync is enabled by user preference
@@ -170,7 +183,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   /**
    * Wait for PowerSync to complete its initial sync.
    * This ensures data from the cloud is available before reconciling defaults.
-   * Times out after INITIAL_SYNC_TIMEOUT_MS to avoid blocking forever.
    */
   async waitForInitialSync(): Promise<void> {
     // Skip if sync is disabled or not connected
@@ -193,13 +205,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
           }
         },
       })
-
-      // Timeout after INITIAL_SYNC_TIMEOUT_MS to avoid blocking forever
-      setTimeout(() => {
-        unsubscribe?.()
-        console.warn('PowerSync initial sync timed out, continuing with local data')
-        resolve()
-      }, INITIAL_SYNC_TIMEOUT_MS)
     })
   }
 

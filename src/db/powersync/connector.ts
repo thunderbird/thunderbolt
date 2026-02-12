@@ -45,6 +45,10 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const hadToken = Boolean(getAuthToken())
     try {
+      if (!hadToken) {
+        return null
+      }
+
       const response = await fetch(`${this.backendUrl}/powersync/token`, {
         headers: buildHeaders(),
       })
@@ -58,7 +62,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         const isResetSignal = status === 410 || (status === 403 && body.code === 'DEVICE_DISCONNECTED')
-        if (isResetSignal && hadToken) {
+        if (isResetSignal) {
           window.dispatchEvent(new CustomEvent(POWERSYNC_CREDENTIALS_INVALID))
         }
         if (status !== 401) {

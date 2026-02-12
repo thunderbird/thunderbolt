@@ -13,8 +13,8 @@ import { useEffect, useRef } from 'react'
  */
 const performCredentialsInvalidReset = async (): Promise<void> => {
   await setSyncEnabled(false)
-  localStorage.clear()
   await resetAppDir()
+  localStorage.clear()
   window.location.reload()
 }
 
@@ -51,8 +51,6 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
     queryFn: () => getDevice(deviceId),
   })
 
-  if (device != null) hadDeviceOnceRef.current = true
-
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
     const handler = () => {
@@ -67,6 +65,8 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
   // Handle device revoked or device row missing (account deleted) from synced devices table.
   useEffect(() => {
+    if (device != null) hadDeviceOnceRef.current = true
+
     const hasToken = Boolean(getAuthToken())
 
     if (hasTriggeredRef.current) return

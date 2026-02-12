@@ -290,6 +290,7 @@ export default function PreferencesSettingsPage() {
   const handleDeleteAccount = async () => {
     setDeleteAccountError(null)
     dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
+
     try {
       await setSyncEnabled(false)
       const token = getAuthToken()
@@ -309,6 +310,8 @@ export default function PreferencesSettingsPage() {
     } catch (error) {
       console.error('Failed to delete account:', error)
       setDeleteAccountError(error instanceof Error ? error.message : 'Failed to delete account.')
+      dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
+    } finally {
       dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
   }

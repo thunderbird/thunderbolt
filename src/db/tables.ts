@@ -22,7 +22,7 @@ export const chatThreadsTable = sqliteTable(
     triggeredBy: text('triggered_by'),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
-    modeId: text('mode_id').references(() => modesTable.id, { onDelete: 'set null' }),
+    modeId: text('mode_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },

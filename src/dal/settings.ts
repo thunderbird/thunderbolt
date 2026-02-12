@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
+import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
 import { serializeValue } from '../lib/serialization'
@@ -301,7 +302,8 @@ export const updateSettings = async (
 
     try {
       await db.insert(settingsTable).values(row)
-    } catch {
+    } catch (err) {
+      if (!isInsertConflictError(err)) throw err
       const updateData = options.recomputeHash
         ? { value: row.value, defaultHash: row.defaultHash }
         : { value: row.value }

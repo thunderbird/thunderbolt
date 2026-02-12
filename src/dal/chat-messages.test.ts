@@ -299,6 +299,42 @@ describe('Chat Messages DAL', () => {
       expect(msg3?.parentId).toBe(messageId2)
     })
 
+    it('should fall back to update when message id already exists (insert-first pattern for PowerSync)', async () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      // Insert message directly to simulate race: another caller already saved it
+      await db.insert(chatMessagesTable).values({
+        id: messageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Original content',
+        parentId: null,
+      })
+
+      // saveMessagesWithContextUpdate tries insert first, gets PRIMARY KEY constraint, falls back to update
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: messageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Updated content' }],
+        },
+      ]
+
+      await saveMessagesWithContextUpdate(threadId, messages)
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+      expect(saved?.content).toBe('Updated content')
+      expect(saved?.role).toBe('assistant')
+    })
+
     it('should update context size from message metadata', async () => {
       const threadId = uuidv7()
       const messageId = uuidv7()

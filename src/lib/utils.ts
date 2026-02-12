@@ -305,6 +305,8 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
     if (!column?.dataType) continue
     // Skip deletedAt (handled separately by caller with new datetime)
     if (name === 'deletedAt') continue
+    // although the BE ensures that the userId is always present, we gonna keep it for now for backwards compatibility
+    if (name === 'userId') continue
     // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
     if (column.primary || pkColumnNames.has(column.name)) continue
     // Skip foreign key columns (to maintain referential integrity)

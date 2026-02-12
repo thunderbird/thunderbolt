@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
+import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
@@ -84,7 +85,8 @@ export const saveMessagesWithContextUpdate = async (
   for (const msg of dbChatMessages) {
     try {
       await db.insert(chatMessagesTable).values(msg)
-    } catch {
+    } catch (err) {
+      if (!isInsertConflictError(err)) throw err
       await db
         .update(chatMessagesTable)
         .set({

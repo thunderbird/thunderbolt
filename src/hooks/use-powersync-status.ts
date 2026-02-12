@@ -1,5 +1,5 @@
-import { DatabaseSingleton } from '@/db/singleton'
-import type { PowerSyncDatabase, SyncStatus } from '@powersync/web'
+import { getPowerSyncInstance } from '@/db/powersync'
+import type { SyncStatus } from '@powersync/web'
 import { useEffect, useState } from 'react'
 
 export type PowerSyncConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'not-configured'
@@ -17,21 +17,6 @@ export type PowerSyncStatusInfo = {
   hasSynced: boolean
   /** Last sync timestamp */
   lastSyncedAt: Date | null
-}
-
-/**
- * Get PowerSync instance from singleton if available.
- */
-const getPowerSyncInstance = (): PowerSyncDatabase | null => {
-  try {
-    const database = DatabaseSingleton.instance.database
-    if ('powerSyncInstance' in database) {
-      return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
-    }
-  } catch {
-    // Not initialized or not PowerSync
-  }
-  return null
 }
 
 /**

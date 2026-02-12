@@ -197,6 +197,25 @@ describe('Settings DAL', () => {
       expect(records['hash_key_two'].defaultHash).toBe(expectedHash2)
     })
 
+    it('should fall back to update when key already exists (insert-first pattern for PowerSync)', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Insert row directly to simulate race: another caller already created it
+      await db.insert(settingsTable).values({
+        key: 'race_key',
+        value: 'original',
+        updatedAt: null,
+        defaultHash: null,
+        userId: null,
+      })
+
+      // updateSettings tries insert first, gets UNIQUE constraint, falls back to update
+      await updateSettings({ race_key: 'updated_via_fallback' })
+
+      const settings = await getSettings({ race_key: String })
+      expect(settings.raceKey).toBe('updated_via_fallback')
+    })
+
     it('should handle deeply nested JSON structures', async () => {
       // Test that the JsonValue type properly accepts complex nested structures
       const complexCredentials = {

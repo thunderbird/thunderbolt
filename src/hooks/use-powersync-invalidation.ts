@@ -1,25 +1,7 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getPowerSyncInstance } from '@/db/powersync'
 import { type PowerSyncTableName, powersyncTableToQueryKeys } from '@shared/powersync-tables'
-import type { PowerSyncDatabase } from '@powersync/web'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-
-/**
- * Get PowerSync instance from singleton if available.
- * Returns null if not using PowerSync or not initialized.
- */
-const getPowerSyncInstance = (): PowerSyncDatabase | null => {
-  try {
-    const database = DatabaseSingleton.instance.database
-    // Check if it's a PowerSync database with the powerSyncInstance getter
-    if ('powerSyncInstance' in database) {
-      return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
-    }
-  } catch {
-    // Not initialized or not PowerSync
-  }
-  return null
-}
 
 /**
  * Hook that watches PowerSync tables for changes and invalidates React Query cache.

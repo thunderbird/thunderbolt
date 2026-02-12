@@ -15,3 +15,9 @@ export type CitationSource = {
   /** Whether this is the primary source (first/most relevant) */
   isPrimary?: boolean
 }
+
+/**
+ * Map of citation placeholder indices to their decoded sources.
+ * Used to replace {{CITE:N}} placeholders with inline CitationBadge components.
+ */
+export type CitationMap = Map<number, CitationSource[]>

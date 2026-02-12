@@ -64,24 +64,31 @@ export const shouldRetry = (
   maxAttempts: number,
 ): boolean => totalText.trim().length === 0 && hadToolCalls && attemptNumber < maxAttempts
 
+/** Keys for agentic loop nudge messages */
+type NudgeKey = 'finalStep' | 'preventive' | 'retry' | 'afterTools'
+
+/** Shape for a complete set of nudge messages — adding a new key requires all sets to update */
+export type NudgeMessages = Readonly<Record<NudgeKey, string>>
+
 /** Nudge messages used during the agentic loop */
-export const nudgeMessages = {
+export const nudgeMessages: NudgeMessages = {
   finalStep: 'RESPOND NOW with the information gathered. Cite with [N] at end of sentence. Do not ask questions.',
   preventive: 'Synthesize your tool results and respond now. Cite with [N] at end of sentence.',
   retry:
     'Respond now with the information gathered. Every sourced fact must have [N] at end of sentence. No more tools.',
   afterTools:
     'Every fact from tool results MUST have [N] at end of sentence. Example: "The population is 14 million.[1] The area spans 2,194 km².[2]"',
-} as const
+}
 
 /** Mode-specific nudge overrides */
-export const searchModeNudges = {
+export const searchModeNudges: NudgeMessages = {
   finalStep:
     'RESPOND NOW with link preview widgets for each result. Use <widget:link-preview> tags. Do not ask questions.',
   preventive: 'You have enough results. Respond now with <widget:link-preview> widgets for each result.',
   retry: 'Respond now with <widget:link-preview> widgets. No more tools.',
   afterTools: 'Remember: respond with <widget:link-preview source="N" url="..."> tags for each result.',
-} as const
+}
 
 /** Get the appropriate nudge messages for a mode */
-export const getNudgeMessages = (modeName?: string) => (modeName === 'search' ? searchModeNudges : nudgeMessages)
+export const getNudgeMessages = (modeName?: string): NudgeMessages =>
+  modeName === 'search' ? searchModeNudges : nudgeMessages

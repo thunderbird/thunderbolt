@@ -47,7 +47,7 @@ CREATE TABLE "mcp_servers" (
 );
 --> statement-breakpoint
 CREATE TABLE "models" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"provider" text,
 	"name" text,
 	"model" text,
@@ -64,11 +64,12 @@ CREATE TABLE "models" (
 	"default_hash" text,
 	"vendor" text,
 	"description" text,
-	"user_id" text NOT NULL
+	"user_id" text NOT NULL,
+	CONSTRAINT "models_id_user_id_pk" PRIMARY KEY("id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "modes" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"name" text,
 	"label" text,
 	"icon" text,
@@ -77,17 +78,19 @@ CREATE TABLE "modes" (
 	"order" integer DEFAULT 0,
 	"default_hash" text,
 	"deleted_at" text,
-	"user_id" text NOT NULL
+	"user_id" text NOT NULL,
+	CONSTRAINT "modes_id_user_id_pk" PRIMARY KEY("id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "prompts" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"title" text,
 	"prompt" text,
 	"model_id" text,
 	"deleted_at" text,
 	"default_hash" text,
-	"user_id" text NOT NULL
+	"user_id" text NOT NULL,
+	CONSTRAINT "prompts_id_user_id_pk" PRIMARY KEY("id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "settings" (
@@ -100,13 +103,14 @@ CREATE TABLE "settings" (
 );
 --> statement-breakpoint
 CREATE TABLE "tasks" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"item" text,
 	"order" integer DEFAULT 0,
 	"is_complete" integer DEFAULT 0,
 	"default_hash" text,
 	"deleted_at" text,
-	"user_id" text NOT NULL
+	"user_id" text NOT NULL,
+	CONSTRAINT "tasks_id_user_id_pk" PRIMARY KEY("id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "triggers" (

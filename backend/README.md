@@ -52,6 +52,8 @@ bun run db:dev
 
 The project uses Drizzle with PGLite for development and tests (files in .pglite/data) and Postgres in production.
 
+PowerSync tables that hold default data (settings, models, modes, tasks, prompts) use composite primary keys `(id/key, user_id)` so each user can have their own row with the same default ID. See [composite-primary-keys-and-default-data.md](../docs/composite-primary-keys-and-default-data.md).
+
 ```bash
 # Run Postgres via PGLite (serves data from .pglite/data)
 bun run db:dev

@@ -250,17 +250,18 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
 
 /**
  * Conflict target for each PowerSync table (for INSERT ON CONFLICT).
- * Settings use (id, user_id) so each user can have their own row per setting key.
+ * Tables with default data (settings, models, modes, tasks, prompts) use composite primary keys (id/key + user_id)
+ * so each user can have their own row with the same default ID. See docs/composite-primary-keys-and-default-data.md.
  */
 export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> = {
   settings: [settingsTable.key, settingsTable.userId],
   chat_threads: [chatThreadsTable.id],
   chat_messages: [chatMessagesTable.id],
-  tasks: [tasksTable.id],
-  models: [modelsTable.id],
+  tasks: [tasksTable.id, tasksTable.userId],
+  models: [modelsTable.id, modelsTable.userId],
   mcp_servers: [mcpServersTable.id],
-  prompts: [promptsTable.id],
+  prompts: [promptsTable.id, promptsTable.userId],
   triggers: [triggersTable.id],
-  modes: [modesTable.id],
+  modes: [modesTable.id, modesTable.userId],
   devices: [devicesTable.id],
 }

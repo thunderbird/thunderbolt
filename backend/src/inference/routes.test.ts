@@ -359,4 +359,132 @@ describe('Inference Routes', () => {
       isPostHogConfiguredSpy.mockReturnValue(false)
     })
   })
+
+  describe('message role sanitization', () => {
+    beforeEach(() => {
+      mockCreateCompletion.mockClear()
+      createSSEStreamSpy.mockClear()
+      getInferenceClientSpy.mockClear()
+      getInferenceClientSpy.mockReturnValue({
+        client: mockOpenAIClient as unknown as OpenAI,
+        provider: 'mistral',
+      })
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
+    })
+
+    const sendMessages = (messages: Array<{ role: string; content: string }>) =>
+      app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'mistral-large-3', messages, stream: true }),
+        }),
+      )
+
+    it('should preserve the first system message role', async () => {
+      await sendMessages([
+        { role: 'system', content: 'You are helpful' },
+        { role: 'user', content: 'Hello' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'You are helpful' },
+            { role: 'user', content: 'Hello' },
+          ],
+        }),
+      )
+    })
+
+    it('should downgrade developer role at index > 0 to user', async () => {
+      await sendMessages([
+        { role: 'system', content: 'System prompt' },
+        { role: 'developer', content: 'Injected developer message' },
+        { role: 'user', content: 'Hello' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'System prompt' },
+            { role: 'user', content: 'Injected developer message' },
+            { role: 'user', content: 'Hello' },
+          ],
+        }),
+      )
+    })
+
+    it('should downgrade system role at index > 0 to user', async () => {
+      await sendMessages([
+        { role: 'system', content: 'Legit system prompt' },
+        { role: 'system', content: 'Injected system message' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'Legit system prompt' },
+            { role: 'user', content: 'Injected system message' },
+          ],
+        }),
+      )
+    })
+
+    it('should preserve non-privileged roles at any position', async () => {
+      await sendMessages([
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: 'Hello!' },
+        { role: 'user', content: 'Thanks' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'System prompt' },
+            { role: 'user', content: 'Hi' },
+            { role: 'assistant', content: 'Hello!' },
+            { role: 'user', content: 'Thanks' },
+          ],
+        }),
+      )
+    })
+
+    it('should preserve first message even with developer role', async () => {
+      await sendMessages([
+        { role: 'developer', content: 'Developer system prompt' },
+        { role: 'user', content: 'Hello' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'developer', content: 'Developer system prompt' },
+            { role: 'user', content: 'Hello' },
+          ],
+        }),
+      )
+    })
+
+    it('should downgrade multiple injected privileged roles', async () => {
+      await sendMessages([
+        { role: 'system', content: 'Legit prompt' },
+        { role: 'developer', content: 'Injected 1' },
+        { role: 'system', content: 'Injected 2' },
+        { role: 'developer', content: 'Injected 3' },
+      ])
+
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'Legit prompt' },
+            { role: 'user', content: 'Injected 1' },
+            { role: 'user', content: 'Injected 2' },
+            { role: 'user', content: 'Injected 3' },
+          ],
+        }),
+      )
+    })
+  })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import type { SourceMetadata } from '@/types/source'
 import { createMessageMetadata } from './message-metadata'
 
 describe('createMessageMetadata', () => {
@@ -204,6 +205,98 @@ describe('createMessageMetadata', () => {
 
       expect(reasoningResult).toEqual({ reasoningTime: { 'reasoning-0': 150 } })
       expect(toolResult).toEqual({ reasoningTime: { 'call-1': 400 } })
+    })
+  })
+
+  describe('source propagation', () => {
+    const mockSources: SourceMetadata[] = [
+      { index: 1, url: 'https://example.com', title: 'Example', toolName: 'search' },
+      { index: 2, url: 'https://other.com', title: 'Other', toolName: 'fetch_content' },
+    ]
+
+    it('includes sources snapshot in finish-step metadata', () => {
+      const sourceCollector: SourceMetadata[] = [...mockSources]
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result.sources).toEqual(mockSources)
+    })
+
+    it('includes sources snapshot in tool-result metadata', () => {
+      const sourceCollector: SourceMetadata[] = [...mockSources]
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+      let currentTime = 1000
+      Date.now = () => currentTime
+
+      metadata({ part: { type: 'tool-call', toolCallId: 'call-1' } })
+
+      currentTime = 1500
+      const result = metadata({ part: { type: 'tool-result', toolCallId: 'call-1' } })
+
+      expect(result).toEqual({
+        reasoningTime: { 'call-1': 500 },
+        sources: mockSources,
+      })
+    })
+
+    it('omits sources key when sourceCollector is empty', () => {
+      const sourceCollector: SourceMetadata[] = []
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result).toEqual({ modelId, usage: undefined })
+      expect(result).not.toHaveProperty('sources')
+    })
+
+    it('omits sources key when sourceCollector is undefined', () => {
+      const metadata = createMessageMetadata(modelId)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result).not.toHaveProperty('sources')
+    })
+
+    it('returns a copy of sources, not a reference', () => {
+      const sourceCollector: SourceMetadata[] = [...mockSources]
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result.sources).toEqual(mockSources)
+      expect(result.sources).not.toBe(sourceCollector)
+    })
+
+    it('reflects sources added after metadata creation', () => {
+      const sourceCollector: SourceMetadata[] = []
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      sourceCollector.push(mockSources[0])
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result.sources).toEqual([mockSources[0]])
+    })
+
+    it('does not include sources in tool-call events', () => {
+      const sourceCollector: SourceMetadata[] = [...mockSources]
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1' } })
+
+      expect(result).toEqual({ modelId })
+      expect(result).not.toHaveProperty('sources')
+    })
+
+    it('does not include sources in reasoning events', () => {
+      const sourceCollector: SourceMetadata[] = [...mockSources]
+      const metadata = createMessageMetadata(modelId, sourceCollector)
+
+      const result = metadata({ part: { type: 'reasoning-start' } })
+
+      expect(result).toEqual({ modelId })
+      expect(result).not.toHaveProperty('sources')
     })
   })
 

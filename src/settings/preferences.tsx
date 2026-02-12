@@ -39,7 +39,9 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
 import { usePostHog } from 'posthog-js/react'
-import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { setSyncEnabled } from '@/db/powersync'
+import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
+import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 
 type PreferencesState = {
   isResetting: boolean
@@ -111,9 +113,10 @@ export default function PreferencesSettingsPage() {
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
 
-  // Local state for sync enabled (PowerSync)
-  const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
-  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
+  const { syncEnabled, syncEnableWarningOpen, setSyncEnableWarningOpen, handleSyncToggle, handleConfirmEnableSync } =
+    useSyncEnabledToggle()
+  const { connectionStatus } = usePowerSyncStatus()
+  const isConnecting = connectionStatus === 'connecting'
 
   // Use our useSettings hook for all settings
   const {
@@ -164,17 +167,6 @@ export default function PreferencesSettingsPage() {
   useEffect(() => {
     setNameInput(preferredName.value || '')
   }, [preferredName.value])
-
-  // Listen for external sync enabled changes
-  useEffect(() => {
-    const handleSyncEnabledChange = (event: Event) => {
-      const customEvent = event as CustomEvent<boolean>
-      setSyncEnabledState(customEvent.detail)
-    }
-
-    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
-    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
-  }, [])
 
   // Auto-populate localization settings from country data if not set
   useEffect(() => {
@@ -350,23 +342,6 @@ export default function PreferencesSettingsPage() {
     }
 
     trackEvent('settings_localization_reset')
-  }
-
-  const handleSyncToggle = async (enabled: boolean) => {
-    if (!enabled) {
-      await setSyncEnabled(false)
-      setSyncEnabledState(false)
-      trackEvent('settings_sync_disabled')
-      return
-    }
-    setSyncEnableWarningOpen(true)
-  }
-
-  const handleConfirmEnableSync = async () => {
-    await setSyncEnabled(true)
-    setSyncEnabledState(true)
-    trackEvent('settings_sync_enabled')
-    setSyncEnableWarningOpen(false)
   }
 
   return (
@@ -817,7 +792,7 @@ export default function PreferencesSettingsPage() {
               Enable cloud synchronization to keep your data synced across devices.
             </p>
           </div>
-          <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} />
+          <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
         </div>
       </SectionCard>
 

@@ -1,10 +1,8 @@
 import { useAuth } from '@/contexts/auth-context'
-import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
-import { trackEvent } from '@/lib/posthog'
+import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
@@ -19,36 +17,8 @@ export const PowerSyncStatus = () => {
   const isAuthenticated = !!session?.user
 
   const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
-  const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled)
-  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
-
-  // Listen for external sync enabled changes (e.g., from sign-in flow)
-  useEffect(() => {
-    const handleSyncEnabledChange = (event: Event) => {
-      const customEvent = event as CustomEvent<boolean>
-      setSyncEnabledState(customEvent.detail)
-    }
-
-    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
-    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
-  }, [])
-
-  const handleSyncToggle = async (enabled: boolean) => {
-    if (!enabled) {
-      await setSyncEnabled(false)
-      setSyncEnabledState(false)
-      trackEvent('settings_sync_disabled')
-      return
-    }
-    setSyncEnableWarningOpen(true)
-  }
-
-  const handleConfirmEnableSync = async () => {
-    await setSyncEnabled(true)
-    setSyncEnabledState(true)
-    trackEvent('settings_sync_enabled')
-    setSyncEnableWarningOpen(false)
-  }
+  const { syncEnabled, syncEnableWarningOpen, setSyncEnableWarningOpen, handleSyncToggle, handleConfirmEnableSync } =
+    useSyncEnabledToggle()
 
   const isConnected = connectionStatus === 'connected'
   const isConnecting = connectionStatus === 'connecting'
@@ -115,7 +85,7 @@ export const PowerSyncStatus = () => {
                   id="sync-toggle"
                   checked={syncEnabled}
                   onCheckedChange={handleSyncToggle}
-                  disabled={!isAuthenticated}
+                  disabled={!isAuthenticated || isConnecting}
                   aria-label="Enable cloud sync"
                 />
               </div>

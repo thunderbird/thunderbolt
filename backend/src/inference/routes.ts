@@ -6,6 +6,14 @@ import { Elysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import { getInferenceClient, type InferenceProvider } from './client'
 
+type Message = { role: string; content: unknown }
+
+const privilegedRoles = new Set(['developer', 'system'])
+
+/** Downgrade developer/system roles to user for all messages except the first (the legitimate system prompt). */
+const sanitizeMessageRoles = (messages: Message[]): Message[] =>
+  messages.map((msg, i) => (i > 0 && privilegedRoles.has(msg.role) ? { ...msg, role: 'user' } : msg))
+
 type ModelConfig = {
   provider: InferenceProvider
   internalName: string
@@ -59,7 +67,7 @@ export const createInferenceRoutes = () => {
       try {
         const completion = await (client as PostHogOpenAI).chat.completions.create({
           model: internalName,
-          messages: body.messages,
+          messages: sanitizeMessageRoles(body.messages),
           temperature: body.temperature,
           tools: body.tools,
           tool_choice: body.tool_choice,

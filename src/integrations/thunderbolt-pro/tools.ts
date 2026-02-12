@@ -71,7 +71,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             nextIndex++
           }
 
-          return { sourceLabel: `[Source ${sourceIndex}]`, sourceIndex, ...result }
+          return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
         })
       },
     },
@@ -115,7 +115,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           nextIndex++
         }
 
-        return { sourceLabel: `[Source ${sourceIndex}]`, sourceIndex, ...result }
+        return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
       },
     },
   ]

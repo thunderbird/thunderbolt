@@ -59,12 +59,14 @@ export const createModel = async (modelConfig: Model) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
-      const openaiCompatible = createOpenAICompatible({
-        name: 'thunderbolt',
-        baseURL: cloudUrl,
-        fetch,
-      })
-      return openaiCompatible(modelConfig.model)
+      // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
+      // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
+      if (modelConfig.vendor === 'openai') {
+        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: 'thunderbolt', fetch })
+        return provider.chat(modelConfig.model)
+      }
+      const provider = createOpenAICompatible({ name: 'thunderbolt', baseURL: cloudUrl, fetch })
+      return provider(modelConfig.model)
     }
     case 'anthropic': {
       const anthropic = createAnthropic({
@@ -229,8 +231,12 @@ export const aiFetchStreamingResponse = async ({
     // backend recognizes vendor-specific options. Falls back to provider for user-created models.
     // See: https://github.com/vllm-project/vllm/issues/9019
     const providerOptionsKey = model.vendor ?? model.provider
-    const providerOptions =
-      model.supportsParallelToolCalls === 0 ? { [providerOptionsKey]: { parallelToolCalls: false } } : undefined
+    const providerOptions = {
+      [providerOptionsKey]: {
+        ...(model.supportsParallelToolCalls === 0 && { parallelToolCalls: false }),
+        ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
+      },
+    }
 
     /**
      * Run a single streamText attempt and return the result along with metadata

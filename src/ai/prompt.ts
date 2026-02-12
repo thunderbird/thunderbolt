@@ -82,7 +82,6 @@ Skip tools only for:
 
 If you're unsure whether to search: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
-Cite every sourced fact at the end of the sentence using [N] where N matches the [Source N] label in tool results, e.g. "Fortaleza was founded in 1726.[1]" — no space before the bracket. Never list sources at the end.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
 
@@ -95,7 +94,9 @@ ${widgetPrompts}
 
 # Output Format
 Format sourced facts as: statement.[N] — where N matches the [Source N] from tool results.
+Place [N] inline right after each sentence — not in a separate column or list.
 Correct: "Tokyo has 14 million residents.[1] The metro area has 37 million.[2]"
 Wrong: "Tokyo has 14 million residents." (missing [N])
+Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 ${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}` : ''}`
 }

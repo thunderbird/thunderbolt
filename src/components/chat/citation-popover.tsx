@@ -6,10 +6,14 @@ import type { CitationSource } from '@/types/citation'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { SourceList } from './source-list'
 
+type PopoverData = {
+  citationId: number
+  sources: CitationSource[]
+  anchorRect: DOMRect
+}
+
 type CitationPopoverState = {
-  openCitationId: number | null
-  openSources: CitationSource[] | null
-  anchorRect: DOMRect | null
+  popover: PopoverData | null
   open: (id: number, sources: CitationSource[], rect: DOMRect) => void
   close: () => void
 }
@@ -24,54 +28,33 @@ export const useCitationPopover = () => useContext(CitationPopoverContext)
  * outside the markdown tree so streaming re-renders don't destroy it.
  */
 export const CitationPopoverProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<{
-    id: number | null
-    sources: CitationSource[] | null
-    rect: DOMRect | null
-  }>({ id: null, sources: null, rect: null })
+  const [popover, setPopover] = useState<PopoverData | null>(null)
 
   const open = useCallback((id: number, sources: CitationSource[], rect: DOMRect) => {
-    setState({ id, sources, rect })
+    setPopover({ citationId: id, sources, anchorRect: rect })
   }, [])
 
-  const close = useCallback(() => {
-    setState({ id: null, sources: null, rect: null })
-  }, [])
+  const close = useCallback(() => setPopover(null), [])
 
-  const value = useMemo(
-    () => ({
-      openCitationId: state.id,
-      openSources: state.sources,
-      anchorRect: state.rect,
-      open,
-      close,
-    }),
-    [state, open, close],
-  )
+  const value = useMemo(() => ({ popover, open, close }), [popover, open, close])
 
   return (
     <CitationPopoverContext.Provider value={value}>
       {children}
-      <CitationOverlay sources={state.sources} anchorRect={state.rect} close={close} />
+      <CitationOverlay popover={popover} close={close} />
     </CitationPopoverContext.Provider>
   )
 }
 
 // --- Overlay (rendered automatically by the provider, outside the markdown tree) ---
 
-const CitationOverlay = ({
-  sources,
-  anchorRect,
-  close,
-}: {
-  sources: CitationSource[] | null
-  anchorRect: DOMRect | null
-  close: () => void
-}) => {
+const CitationOverlay = ({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
-  if (!sources || !anchorRect) return null
+  if (!popover) return null
+
+  const { sources, anchorRect } = popover
 
   if (isMobile) {
     return (

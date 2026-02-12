@@ -47,7 +47,7 @@ const getBadgeLabel = (sources: CitationSource[]) => {
 
 const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[]; citationId: number }) => {
   const ctx = useCitationPopover()!
-  const isOpen = ctx.openCitationId === citationId
+  const isOpen = ctx.popover?.citationId === citationId
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
   const toggle = (rect: DOMRect) => {

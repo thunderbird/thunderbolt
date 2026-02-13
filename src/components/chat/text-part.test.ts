@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import type { ContentPart } from '@/ai/widget-parser'
 import type { SourceMetadata } from '@/types/source'
-import { buildSourceCitationPlaceholders } from './text-part'
+import { buildSourceCitationPlaceholders, deduplicateLinkPreviews } from './text-part'
 
 const makeSource = (index: number, title = `Source ${index}`): SourceMetadata => ({
   index,
@@ -112,5 +113,84 @@ describe('buildSourceCitationPlaceholders', () => {
     const { fullText } = buildSourceCitationPlaceholders('**Bold** text [1] and `code` [2] here.', sources)
 
     expect(fullText).toBe('**Bold** text {{CITE:0}} and `code` {{CITE:1}} here.')
+  })
+})
+
+const makeLinkPreview = (url: string): ContentPart => ({
+  type: 'widget',
+  widget: { widget: 'link-preview', args: { url } },
+})
+
+const makeText = (content: string): ContentPart => ({
+  type: 'text',
+  content,
+})
+
+describe('deduplicateLinkPreviews', () => {
+  test('removes duplicate link-preview URLs', () => {
+    const parts = [makeLinkPreview('https://apnews.com/'), makeLinkPreview('https://apnews.com/')]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(1)
+  })
+
+  test('keeps unique link-preview URLs', () => {
+    const parts = [
+      makeLinkPreview('https://apnews.com/article/one'),
+      makeLinkPreview('https://bbc.com/news/two'),
+      makeLinkPreview('https://reuters.com/world/three'),
+    ]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(3)
+  })
+
+  test('normalizes trailing slashes for dedup', () => {
+    const parts = [makeLinkPreview('https://apnews.com'), makeLinkPreview('https://apnews.com/')]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(1)
+  })
+
+  test('normalizes host casing for dedup', () => {
+    const parts = [makeLinkPreview('https://APNews.com/article/one'), makeLinkPreview('https://apnews.com/article/one')]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(1)
+  })
+
+  test('preserves text parts untouched', () => {
+    const parts = [makeText('Hello'), makeLinkPreview('https://a.com/'), makeText('World')]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(3)
+  })
+
+  test('preserves non-link-preview widgets untouched', () => {
+    const weatherWidget: ContentPart = {
+      type: 'widget',
+      widget: { widget: 'weather-forecast', args: { location: 'Seattle' } } as ContentPart & {
+        type: 'widget'
+      } extends { widget: infer W }
+        ? W
+        : never,
+    }
+    const parts = [weatherWidget, weatherWidget]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(2)
+  })
+
+  test('keeps first occurrence when duplicates exist', () => {
+    const parts = [
+      makeLinkPreview('https://apnews.com/article/first'),
+      makeLinkPreview('https://bbc.com/news/second'),
+      makeLinkPreview('https://apnews.com/article/first'),
+    ]
+    const result = deduplicateLinkPreviews(parts)
+    expect(result).toHaveLength(2)
+    expect((result[0] as { type: 'widget'; widget: { args: { url: string } } }).widget.args.url).toBe(
+      'https://apnews.com/article/first',
+    )
+    expect((result[1] as { type: 'widget'; widget: { args: { url: string } } }).widget.args.url).toBe(
+      'https://bbc.com/news/second',
+    )
+  })
+
+  test('returns empty array for empty input', () => {
+    expect(deduplicateLinkPreviews([])).toHaveLength(0)
+  })
+
+  test('treats different paths as unique even for same domain', () => {
+    const parts = [makeLinkPreview('https://apnews.com/article/one'), makeLinkPreview('https://apnews.com/article/two')]
+    expect(deduplicateLinkPreviews(parts)).toHaveLength(2)
   })
 })

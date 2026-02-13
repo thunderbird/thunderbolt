@@ -1,4 +1,4 @@
-import { parseContentParts } from '@/ai/widget-parser'
+import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
 import { decodeCitationSources } from '@/lib/citation-utils'
 import { sourceToCitation } from '@/lib/source-utils'
 import type { CitationMap } from '@/types/citation'
@@ -29,6 +29,28 @@ const shouldAppendInline = (text: string): boolean =>
  * Negative lookahead prevents matching markdown links like `[text](url)`.
  */
 const sourceCitationRegex = /\[(\d+)\](?!\()/g
+
+/** Normalize URL for dedup: lowercase host, strip trailing slash */
+const normalizeUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.hostname.toLowerCase()}${parsed.pathname.replace(/\/$/, '')}${parsed.search}`
+  } catch {
+    return url.toLowerCase().replace(/\/$/, '')
+  }
+}
+
+/** Filter out duplicate link-preview widgets, keeping first occurrence */
+export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => {
+  const seen = new Set<string>()
+  return parts.filter((part) => {
+    if (part.type !== 'widget' || part.widget.widget !== 'link-preview') return true
+    const url = normalizeUrl((part.widget.args as { url: string }).url)
+    if (seen.has(url)) return false
+    seen.add(url)
+    return true
+  })
+}
 
 /**
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
@@ -165,7 +187,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   // Default behavior for block-level widgets or no citations
   return (
     <>
-      {contentParts.map((contentPart, index) => {
+      {deduplicateLinkPreviews(contentParts).map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
             <div key={`text-${index}`} className="p-4 rounded-md my-2">

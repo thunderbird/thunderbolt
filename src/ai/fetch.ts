@@ -266,16 +266,6 @@ export const aiFetchStreamingResponse = async ({
               messages: [...stepMessages, { role: 'user' as const, content: activeNudges.preventive }],
             }
           }
-
-          // After the first few tool calls, remind about citation/widget format.
-          // Limited to 2 to avoid overwhelming reasoning models in Research mode (causes "acknowledgment trap").
-          const lastStep = steps[steps.length - 1]
-          const toolCallCount = steps.filter((s) => s.finishReason === 'tool-calls').length
-          if (lastStep?.finishReason === 'tool-calls' && toolCallCount <= 2) {
-            return {
-              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.afterTools }],
-            }
-          }
         },
 
         abortSignal,

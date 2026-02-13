@@ -80,6 +80,7 @@ AFTER completing a sub-question, move to the next. Do NOT skip sub-questions. Do
 1. **Executive Summary** – Direct answer + confidence level (High/Medium/Low)
 2. **Detailed Findings** – Organized by sub-question. Cite with [N] at end of sentence.
 3. **Conflicts & Gaps** – Where sources disagreed, what couldn't be verified
+Do not add a Sources or References section at the end — inline [N] citations are sufficient.
 
 ## Rules
 - If you've done fewer than 5 searches, you MUST do more

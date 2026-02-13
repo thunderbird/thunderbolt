@@ -103,7 +103,7 @@ describe('Pro Tools Routes', () => {
     expect(data).toEqual({
       success: false,
       data: null,
-      error: 'An unexpected error occurred',
+      error: 'Internal Server Error',
     })
   })
 
@@ -122,7 +122,7 @@ describe('Pro Tools Routes', () => {
     expect(data).toEqual({
       success: false,
       data: null,
-      error: 'An unexpected error occurred',
+      error: 'Internal Server Error',
     })
   })
 

@@ -12,6 +12,7 @@
 - Prefer `type` over `interface`
 - Prefer arrow functions over `function` keyword
 - Prefer `const` over `let` - create helper functions with early return instead of setting `let` variables inside conditionals
+- Use camelCase for const and variable names
 - Prefer early return over long if statements and nested code
 - Use direct imports: `useEffect` not `React.useEffect`
 - Prefer async/await over .then/.catch

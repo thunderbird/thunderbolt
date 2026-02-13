@@ -1,6 +1,5 @@
-# Bun configuration for OpenTelemetry
-# The instrumentation file must be preloaded to ensure OpenTelemetry SDK
-# is initialized before any instrumented modules are imported
+# Preload instrumentation to ensure OpenTelemetry SDK initializes
+# before any instrumented modules are imported (when OTEL is configured)
 preload = ["./src/config/instrumentation.ts"]
 
 [test]

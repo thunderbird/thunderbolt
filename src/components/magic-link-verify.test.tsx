@@ -190,7 +190,19 @@ describe('MagicLinkVerify', () => {
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
-      expect(screen.getByText('The link has expired or is invalid. Please request a new one.')).toBeInTheDocument()
+      expect(screen.getByText('This link is invalid. Please request a new one.')).toBeInTheDocument()
+    })
+
+    it('shows specific error for OTP_EXPIRED', async () => {
+      mockSignInEmailOtp.mockResolvedValue({
+        error: { code: 'OTP_EXPIRED', message: 'OTP expired' },
+      })
+
+      renderComponent('user@example.com', '123456')
+      await waitForStateChange()
+
+      expect(screen.getByText('Verification Failed')).toBeInTheDocument()
+      expect(screen.getByText('This link has expired. Please request a new one.')).toBeInTheDocument()
     })
 
     it('shows error when signIn throws', async () => {

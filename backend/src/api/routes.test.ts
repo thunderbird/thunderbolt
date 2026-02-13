@@ -248,7 +248,7 @@ describe('Main Routes', () => {
       expect(data).toEqual({
         success: false,
         data: null,
-        error: 'Bad request',
+        error: 'Bad Request',
       })
     })
 

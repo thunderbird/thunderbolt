@@ -43,6 +43,10 @@ on:
         required: false
         type: string
         default: 'auto'
+      nightly:
+        required: false
+        type: boolean
+        default: false
     outputs:
       new_version:
         description: 'The new version that was created'
@@ -73,7 +77,9 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      # Regular releases: use existing create-release script
       - name: Run create-release script
+        if: ${{ !inputs.nightly }}
         run: |
           # Build arguments for the script
           ARGS="--push"
@@ -90,6 +96,36 @@ jobs:
 
           echo "Running: bun run scripts/create-release.ts $ARGS"
           bun run scripts/create-release.ts $ARGS
+
+      # Nightly: generate version and tag without committing to main
+      - name: Prepare nightly version
+        if: ${{ inputs.nightly }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d)"
+          NIGHTLY_TAG="v${NIGHTLY_VERSION}"
+
+          # Update version files locally
+          node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));p.version='$NIGHTLY_VERSION';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          sed -i "s/^version = \".*\"/version = \"$NIGHTLY_VERSION\"/" src-tauri/Cargo.toml
+          node -e "const fs=require('fs'),c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json'));c.version='$BASE_VERSION';fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
+
+          # If a nightly tag for today already exists (re-run / manual trigger),
+          # remove the old tag and its GitHub release so we can replace them.
+          if git ls-remote --tags origin | grep -q "refs/tags/${NIGHTLY_TAG}$"; then
+            echo "⚠️  Tag $NIGHTLY_TAG already exists — replacing it"
+            gh release delete "$NIGHTLY_TAG" --yes --cleanup-tag 2>/dev/null || true
+            git tag -d "$NIGHTLY_TAG" 2>/dev/null || true
+            git push origin ":refs/tags/${NIGHTLY_TAG}" 2>/dev/null || true
+          fi
+
+          # Create commit and tag (not pushed to main branch, only the tag)
+          git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git commit -m "chore: nightly build $NIGHTLY_VERSION"
+          git tag -a "$NIGHTLY_TAG" -m "Nightly build $NIGHTLY_VERSION"
+          git push origin "$NIGHTLY_TAG"
 
       - name: Extract outputs
         id: version
@@ -111,7 +147,7 @@ jobs:
           PLATFORM="${{ inputs.platform }}"
 
           # Determine tag name based on platform
-          if [ "$PLATFORM" == "all" ]; then
+          if [ "$PLATFORM" == "all" ] || [ -z "$PLATFORM" ]; then
             TAG_NAME="v$NEW_VERSION"
           else
             TAG_NAME="v$NEW_VERSION-$PLATFORM-rc"
@@ -121,6 +157,7 @@ jobs:
           echo "🏷️  Tag: $TAG_NAME"
 
       - name: Generate changelog
+        if: ${{ !inputs.nightly }}
         id: changelog
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
@@ -140,6 +177,7 @@ jobs:
           echo "changelog_b64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
+        if: ${{ !inputs.nightly }}
         run: |
           # Decode the changelog
           CHANGELOG=$(echo "${{ steps.changelog.outputs.changelog_b64 }}" | base64 -d)

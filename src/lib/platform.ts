@@ -3,6 +3,18 @@ import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/singleton'
 import { memoize } from './memoize'
 
+/** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
+export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
+
+/**
+ * Returns true when the frontend is running on a Render PR preview deployment
+ * (e.g. https://thunderbolt-pr-368.onrender.com/).
+ */
+export const isPrPreview = (): boolean => {
+  if (typeof window === 'undefined') return false
+  return prPreviewHostRegex.test(window.location.hostname)
+}
+
 /**
  * Detects if the app is running in a Tauri environment
  * @returns true if running in Tauri, false otherwise

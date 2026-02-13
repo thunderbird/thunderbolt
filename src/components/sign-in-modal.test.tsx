@@ -428,4 +428,31 @@ describe('SignInModal', () => {
       })
     })
   })
+
+  describe('back button on OTP step', () => {
+    it('returns to email step when back button is clicked', async () => {
+      renderModal()
+
+      const emailInput = await waitForModal()
+      fireEvent.change(emailInput, { target: { value: 'test@example.com' } })
+      fireEvent.submit(emailInput.closest('form')!)
+
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+
+      expect(screen.getByText('Or enter the 6-digit code')).toBeInTheDocument()
+      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+
+      const backButton = screen.getByRole('button', { name: 'Go back' })
+      fireEvent.click(backButton)
+
+      await act(async () => {})
+
+      expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Send Magic Link' })).toBeInTheDocument()
+      expect(screen.getByText('Unlock more features')).toBeInTheDocument()
+      expect(screen.queryByText('Or enter the 6-digit code')).not.toBeInTheDocument()
+    })
+  })
 })

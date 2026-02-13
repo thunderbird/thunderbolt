@@ -6,7 +6,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { SignInForm } from './sign-in'
 
 type SignInModalProps = {
@@ -20,13 +20,16 @@ type SignInModalProps = {
  */
 export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const [step, setStep] = useState<'email' | 'otp'>('email')
+  const goBackRef = useRef<(() => void) | null>(null)
 
   const handleClose = () => {
     onOpenChange(false)
     setStep('email')
   }
 
-  const handleGoBack = () => setStep('email')
+  const handleGoBack = () => {
+    goBackRef.current?.()
+  }
   const handleGoToOtp = () => setStep('otp')
 
   return (
@@ -52,8 +55,9 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
           variant="modal"
           onSuccess={handleClose}
           onCancel={handleClose}
-          onGoBack={handleGoBack}
+          onGoBack={() => setStep('email')}
           onEmailSent={handleGoToOtp}
+          goBackRef={goBackRef}
         />
       </ResponsiveModalContent>
     </ResponsiveModal>

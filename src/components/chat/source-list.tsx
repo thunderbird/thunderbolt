@@ -21,9 +21,8 @@ export const SourceList = ({ sources, className, proxyBase }: SourceListProps) =
 
   // Sort: primary source first, then others in original order
   const sortedSources = [...sources].sort((a, b) => {
-    if (a.isPrimary) return -1
-    if (b.isPrimary) return 1
-    return 0
+    if (a.isPrimary === b.isPrimary) return 0
+    return a.isPrimary ? -1 : 1
   })
 
   return (

@@ -43,7 +43,7 @@ const extractSingleQuotedValue = (str: string, start: number): string | null => 
     if (ch === '"') inString = true
     else if (ch === '[' || ch === '{') depth++
     else if (ch === ']' || ch === '}') depth--
-    else if (ch === "'" && depth <= 0) return str.slice(start, i)
+    else if (ch === "'" && depth === 0) return str.slice(start, i)
   }
   return null
 }

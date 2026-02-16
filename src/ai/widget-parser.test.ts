@@ -696,6 +696,58 @@ describe('parseContentParts', () => {
     })
   })
 
+  describe('single-quoted attributes security', () => {
+    it('rejects attribute with excess closing brackets (negative depth attack)', () => {
+      const json = `}}}}{"injected":"xss"}`
+      const text = `Fact. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({ type: 'text', content: 'Fact.' })
+    })
+
+    it('rejects attribute with unmatched opening brackets', () => {
+      const json = `[[[{"id":"1"}`
+      const text = `Fact. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({ type: 'text', content: 'Fact.' })
+    })
+
+    it('rejects attribute with mismatched brackets (more closes than opens)', () => {
+      const json = `}{"id":"1","title":"Test","url":"https://example.com"}`
+      const text = `Info. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({ type: 'text', content: 'Info.' })
+    })
+
+    it('accepts valid JSON with balanced brackets in single quotes', () => {
+      const json = `[{"id":"1","title":"Test","url":"https://example.com"}]`
+      const text = `Fact. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      expect(result).toHaveLength(2)
+      expect(result[0]).toEqual({ type: 'text', content: 'Fact.' })
+      expect(result[1]).toEqual({
+        type: 'widget',
+        widget: { widget: 'citation', args: { sources: json } },
+      })
+    })
+
+    it('rejects empty JSON array in single quotes', () => {
+      const json = `[]`
+      const text = `Data. <widget:citation sources='${json}' />`
+      const result = parseContentParts(text)
+
+      // Empty arrays are invalid (at least one source required)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({ type: 'text', content: 'Data.' })
+    })
+  })
+
   describe('bracket citation stripping', () => {
     it('strips OpenAI-style bracket citations', () => {
       const text = 'The AI Act was passed【2†title】.'

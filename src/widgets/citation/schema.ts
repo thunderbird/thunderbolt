@@ -1,5 +1,15 @@
 import { createParser } from '@/lib/create-parser'
+import { decodeCitationSources } from '@/lib/citation-utils'
 import { z } from 'zod'
+
+/**
+ * Validates that a sources string is valid JSON (raw or base64) with valid sources.
+ * Keeps the string format for widget args — parsing happens in the component.
+ */
+const validateSourcesString = (sources: string): boolean => {
+  const decoded = decodeCitationSources(sources)
+  return decoded !== null && decoded.length > 0
+}
 
 /**
  * Zod schema for citation widget
@@ -7,7 +17,13 @@ import { z } from 'zod'
 export const schema = z.object({
   widget: z.literal('citation'),
   args: z.object({
-    sources: z.string().min(1, 'Sources are required'),
+    sources: z
+      .string()
+      .min(1, 'Sources are required')
+      .refine(
+        validateSourcesString,
+        'Invalid citation sources: must be valid JSON with required id, title, and url fields',
+      ),
   }),
 })
 

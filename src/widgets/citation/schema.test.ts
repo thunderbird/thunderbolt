@@ -56,6 +56,7 @@ describe('citation widget schema', () => {
 
       expect(result).not.toBeNull()
       expect(result?.widget).toBe('citation')
+      expect(typeof result?.args.sources).toBe('string')
       expect(result?.args.sources).toBe(attrs.sources)
     })
 
@@ -70,6 +71,7 @@ describe('citation widget schema', () => {
       const result = parse(attrs)
 
       expect(result).not.toBeNull()
+      expect(typeof result?.args.sources).toBe('string')
       expect(result?.args.sources).toBe(attrs.sources)
     })
 
@@ -108,20 +110,149 @@ describe('citation widget schema', () => {
       const result = parse(attrs)
 
       expect(result).not.toBeNull()
+      expect(typeof result?.args.sources).toBe('string')
       expect(result?.args.sources).toBe(attrs.sources)
     })
+  })
 
-    it('accepts sources as string even if JSON is malformed (validation happens in widget component)', () => {
+  describe('security validation', () => {
+    it('rejects javascript: URLs at parse time', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'XSS', url: 'javascript:alert(1)' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects data: URLs at parse time', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'XSS', url: 'data:text/html,<script>alert(1)</script>' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects file: URLs at parse time', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'File Access', url: 'file:///etc/passwd' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects missing id field', () => {
+      const attrs = {
+        sources: JSON.stringify([{ title: 'Test', url: 'https://example.com' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects missing title field', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', url: 'https://example.com' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects missing url field', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'Test' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects empty id string', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '', title: 'Test', url: 'https://example.com' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects javascript: in favicon URL', () => {
+      const attrs = {
+        sources: JSON.stringify([
+          {
+            id: '1',
+            title: 'Test',
+            url: 'https://example.com',
+            favicon: 'javascript:alert(1)',
+          },
+        ]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('rejects malformed JSON', () => {
       const attrs = {
         sources: 'not-valid-json',
       }
 
       const result = parse(attrs)
 
-      // Schema only validates that sources is a non-empty string
-      // JSON parsing happens in the widget component
+      expect(result).toBeNull()
+    })
+
+    it('rejects empty array', () => {
+      const attrs = {
+        sources: '[]',
+      }
+
+      const result = parse(attrs)
+
+      expect(result).toBeNull()
+    })
+
+    it('accepts valid https URLs', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'Test', url: 'https://example.com' }]),
+      }
+
+      const result = parse(attrs)
+
       expect(result).not.toBeNull()
-      expect(result?.args.sources).toBe('not-valid-json')
+    })
+
+    it('accepts valid http URLs', () => {
+      const attrs = {
+        sources: JSON.stringify([{ id: '1', title: 'Test', url: 'http://example.com' }]),
+      }
+
+      const result = parse(attrs)
+
+      expect(result).not.toBeNull()
+    })
+
+    it('accepts base64-encoded JSON sources', () => {
+      const json = JSON.stringify([{ id: '1', title: 'Test', url: 'https://example.com' }])
+      const base64 = btoa(json)
+      const attrs = {
+        sources: base64,
+      }
+
+      const result = parse(attrs)
+
+      expect(result).not.toBeNull()
     })
   })
 })

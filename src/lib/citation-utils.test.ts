@@ -83,4 +83,100 @@ describe('decodeCitationSources', () => {
       expect(result).toEqual(validSources)
     })
   })
+
+  describe('security validation', () => {
+    it('rejects javascript: URLs', () => {
+      const sources = [{ id: '1', title: 'XSS', url: 'javascript:alert(1)' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects data: URLs', () => {
+      const sources = [{ id: '1', title: 'XSS', url: 'data:text/html,<script>alert(1)</script>' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects file: URLs', () => {
+      const sources = [{ id: '1', title: 'File Access', url: 'file:///etc/passwd' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects malformed URLs', () => {
+      const sources = [{ id: '1', title: 'Bad URL', url: 'not a url' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects missing required id field', () => {
+      const sources = [{ title: 'Test', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects missing required title field', () => {
+      const sources = [{ id: '1', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects missing required url field', () => {
+      const sources = [{ id: '1', title: 'Test' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects empty id string', () => {
+      const sources = [{ id: '', title: 'Test', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects empty title string', () => {
+      const sources = [{ id: '1', title: '', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects javascript: in favicon URL', () => {
+      const sources = [
+        {
+          id: '1',
+          title: 'Test',
+          url: 'https://example.com',
+          favicon: 'javascript:alert(1)',
+        },
+      ]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('rejects all-or-nothing validation: partial invalid sources', () => {
+      const sources = [
+        { id: '1', title: 'Valid', url: 'https://example.com' },
+        { id: '2', title: 'Invalid', url: 'javascript:alert(1)' },
+      ]
+      expect(decodeCitationSources(JSON.stringify(sources))).toBeNull()
+    })
+
+    it('accepts valid https URLs', () => {
+      const sources = [{ id: '1', title: 'Test', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toEqual(sources)
+    })
+
+    it('accepts valid http URLs', () => {
+      const sources = [{ id: '1', title: 'Test', url: 'http://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toEqual(sources)
+    })
+
+    it('accepts optional fields with valid values', () => {
+      const sources = [
+        {
+          id: '1',
+          title: 'Test',
+          url: 'https://example.com',
+          siteName: 'Example',
+          favicon: 'https://example.com/favicon.ico',
+          isPrimary: true,
+        },
+      ]
+      expect(decodeCitationSources(JSON.stringify(sources))).toEqual(sources)
+    })
+
+    it('accepts missing optional fields', () => {
+      const sources = [{ id: '1', title: 'Test', url: 'https://example.com' }]
+      expect(decodeCitationSources(JSON.stringify(sources))).toEqual(sources)
+    })
+  })
 })

@@ -1,8 +1,15 @@
+import { getPromptOverrides } from '@/ai/prompt-overrides'
 import { widgetPrompts } from '@/widgets'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
   modelName: string
+  /** Vendor identifier for model-specific prompt overrides (e.g. 'openai', 'mistral', 'anthropic') */
+  vendor: string | null
+  /** Model identifier for model-specific prompt overrides (e.g. 'gpt-oss-120b', 'mistral-medium-3.1') */
+  model: string | null
+  /** Mode name for mode-specific prompt overrides (e.g. 'chat', 'search', 'research') */
+  modeName: string | null
   preferredName: string
   location: {
     name?: string
@@ -27,12 +34,16 @@ export type PromptParams = {
  */
 export const createPrompt = ({
   modelName,
+  vendor,
+  model,
+  modeName,
   preferredName,
   location,
   localization,
   integrationStatus,
   modeSystemPrompt,
 }: PromptParams) => {
+  const overrides = getPromptOverrides(vendor, model, modeName)
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -85,20 +96,23 @@ If you're unsure whether to search: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
+${overrides?.tools ? `\n${overrides.tools}` : ''}
 
 ## Link Previews
 • Aggregate pages (listicles, "Top 10") are for DISCOVERY ONLY
 • Always link to individual item pages, not review sites
 • For products: link to official manufacturer pages
+${overrides?.linkPreviews ? `\n${overrides.linkPreviews}` : ''}
 
 ${widgetPrompts}
 
 # Output Format
-Cite sources with [N] after the period with a space, where N matches the [Source N] from tool results.
-Place each [N] once at the end of the last sentence using that source — do not repeat the same [N].
-Correct: "Tokyo has 14 million residents. The metro area has 37 million. [1] [2]"
+Cite sources with [N] INLINE at the end of the sentence, on the SAME LINE — never on a new line or separate paragraph.
+Place each [N] once after the period of the last sentence using that source.
+Correct: "The metro area has 37 million residents. [1] [2]"
+Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
-${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}` : ''}`
+${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${overrides?.modeAddendum ? `\n\n${overrides.modeAddendum}` : ''}` : ''}`
 }

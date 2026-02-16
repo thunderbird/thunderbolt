@@ -51,6 +51,7 @@ type AiFetchStreamingResponseOptions = {
   saveMessages: SaveMessagesFunction
   modelId: string
   modeSystemPrompt?: string
+  modeName?: string
   mcpClients?: MCPClient[]
   httpClient?: KyInstance
 }
@@ -118,6 +119,7 @@ export const aiFetchStreamingResponse = async ({
   saveMessages,
   modelId,
   modeSystemPrompt,
+  modeName,
   mcpClients,
   httpClient,
 }: AiFetchStreamingResponseOptions) => {
@@ -190,6 +192,9 @@ export const aiFetchStreamingResponse = async ({
 
   const systemPrompt = createPrompt({
     modelName: model.name,
+    vendor: model.vendor ?? null,
+    model: model.model,
+    modeName: modeName ?? null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -223,8 +228,13 @@ export const aiFetchStreamingResponse = async ({
       ],
     })
 
-    const maxSteps = 20
-    const maxAttempts = 2
+    // Vendor-aware agentic loop parameters — GPT-OSS needs tighter constraints
+    // to prevent the empty response bug (gets stuck in tool-calling loops)
+    const isGptOss = model.vendor === 'openai'
+    const maxSteps = isGptOss ? 12 : 20
+    const maxAttempts = isGptOss ? 3 : 2
+    const nudgeThreshold = isGptOss ? 3 : 6
+    const modelTemperature = isGptOss ? 0.4 : 0.2
 
     // Some models have issues with parallel tool calls - disable based on model configuration
     // Uses vendor (actual model maker like 'mistral') for provider options key since the
@@ -242,7 +252,7 @@ export const aiFetchStreamingResponse = async ({
      */
     const runStreamText = (inputMessages: Awaited<ReturnType<typeof convertToModelMessages>>) => {
       return streamText({
-        temperature: 0.2,
+        temperature: modelTemperature,
         model: wrappedModel,
         system: systemPrompt,
         messages: inputMessages,
@@ -261,7 +271,7 @@ export const aiFetchStreamingResponse = async ({
           }
 
           // Nudge after many tool calls (but not on final step)
-          if (shouldShowPreventiveNudge(steps)) {
+          if (shouldShowPreventiveNudge(steps, nudgeThreshold)) {
             return {
               messages: [...stepMessages, { role: 'user' as const, content: activeNudges.preventive }],
             }

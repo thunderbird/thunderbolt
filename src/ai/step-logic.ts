@@ -80,10 +80,11 @@ export const nudgeMessages: NudgeMessages = {
 /** Mode-specific nudge overrides */
 export const searchModeNudges: NudgeMessages = {
   finalStep:
-    'RESPOND NOW with link preview widgets. Each URL must be unique and point to a specific page (not a homepage). Use <widget:link-preview> tags.',
+    'RESPOND NOW with link preview widgets. Use this exact format: <widget:link-preview url="https://full-url-here" /> — each must have a url attribute with the full URL. No duplicate URLs. No homepages.',
   preventive:
-    'You have enough results. Before responding, verify: no duplicate URLs and no homepage URLs. Then respond with <widget:link-preview> widgets.',
-  retry: 'Respond now with <widget:link-preview> widgets. Each must have a unique, specific-page URL. No more tools.',
+    'You have enough results. Respond now with <widget:link-preview url="https://..." /> widgets. Each MUST include the url attribute with the full page URL.',
+  retry:
+    'Respond now. Output <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is REQUIRED — without it, nothing will render. No more tools.',
 }
 
 /** Get the appropriate nudge messages for a mode */

@@ -54,7 +54,7 @@ export const createPrompt = ({
     .filter(Boolean)
     .join('\n')
 
-  return `You are an executive assistant using the **${modelName}** model. You ALWAYS place [N] after every sourced fact — never state a fact from tools without [N].
+  return `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
 Reasoning: low
 
 # Principles
@@ -94,9 +94,10 @@ Don't mention tool names unless asked.
 ${widgetPrompts}
 
 # Output Format
-Format sourced facts as: statement.[N] — where N matches the [Source N] from tool results.
-Place [N] inline right after each sentence — not in a separate column or list.
-Correct: "Tokyo has 14 million residents.[1] The metro area has 37 million.[2]"
+Cite sources with [N] after the period with a space, where N matches the [Source N] from tool results.
+Place each [N] once at the end of the last sentence using that source — do not repeat the same [N].
+Correct: "Tokyo has 14 million residents. The metro area has 37 million. [1] [2]"
+Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 ${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}` : ''}`

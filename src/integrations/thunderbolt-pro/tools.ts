@@ -30,7 +30,7 @@ export {
 }
 export type { FetchContentParams, SearchLocationParams, SearchParams, SearchResultData, WeatherParams }
 
-const sourceRegistryCap = 50
+const sourceRegistryCap = 200
 
 /**
  * Thunderbolt Pro Tools Configuration Factory

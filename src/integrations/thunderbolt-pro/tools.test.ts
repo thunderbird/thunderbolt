@@ -407,7 +407,7 @@ describe('createConfigs source collector', () => {
     expect(existingSources[1].index).toBe(2)
   })
 
-  it('caps source registry at 50 entries', async () => {
+  it('caps source registry at 200 entries', async () => {
     const bulkResults: SearchResultData[] = Array.from({ length: 10 }, (_, i) => ({
       id: `bulk-${i}`,
       url: `https://site-${i}.com`,
@@ -419,7 +419,7 @@ describe('createConfigs source collector', () => {
     }))
     searchSpy.mockResolvedValue(bulkResults)
 
-    const sourceCollector: SourceMetadata[] = Array.from({ length: 48 }, (_, i) => ({
+    const sourceCollector: SourceMetadata[] = Array.from({ length: 198 }, (_, i) => ({
       index: i + 1,
       url: `https://existing-${i}.com`,
       title: `Existing ${i}`,
@@ -429,7 +429,7 @@ describe('createConfigs source collector', () => {
 
     await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
 
-    expect(sourceCollector).toHaveLength(50)
+    expect(sourceCollector).toHaveLength(200)
   })
 
   it('fetch_content creates new source entry', async () => {

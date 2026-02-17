@@ -20,6 +20,7 @@ export const isPrPreview = (): boolean => {
  * @returns true if running in Tauri, false otherwise
  */
 export const isTauri = (): boolean => {
+  if (typeof window === 'undefined') return false
   return 'isTauri' in window && isTauriCore()
 }
 
@@ -28,6 +29,7 @@ export const isTauri = (): boolean => {
  * @returns The platform string: 'linux', 'macos', 'ios', 'android', 'windows', etc.
  */
 export const getPlatform = (): 'web' | Platform => {
+  if (typeof window === 'undefined') return 'web'
   return 'isTauri' in window ? platform() : 'web'
 }
 

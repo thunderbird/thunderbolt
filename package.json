@@ -21,6 +21,7 @@
     "tauri:libsql": "tauri dev -- --features libsql",
     "analyze": "vite analyze",
     "db": "drizzle-kit",
+    "eval": "bun run src/ai/eval/run.ts",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",

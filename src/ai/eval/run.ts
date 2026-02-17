@@ -1,7 +1,7 @@
 import { generateReport } from './report'
 import { runSequential } from './runner'
 import { getScenarios } from './scenarios'
-import type { EvalResult } from './types'
+import { initLayout, printFooter, printModelSection, restoreConsole, silenceConsole, teardownLayout } from './ui'
 
 const groupBy = <T>(items: T[], key: (item: T) => string): Record<string, T[]> =>
   items.reduce(
@@ -30,42 +30,42 @@ const main = async () => {
     process.exit(1)
   }
 
-  console.log(`\nThunderbolt AI Eval Runner`)
-  console.log(`${'='.repeat(40)}`)
-  console.log(`Scenarios: ${scenarios.length}`)
-  console.log(`Models: ${[...new Set(scenarios.map((s) => s.modelName))].join(', ')}`)
-  console.log(`Modes: ${[...new Set(scenarios.map((s) => s.modeName))].join(', ')}`)
-  console.log(`Parallel: ${parallel} (one per model)`)
-  console.log(`Timeout: ${process.env.EVAL_TIMEOUT ?? '120000'}ms per scenario`)
-  if (verbose) console.log(`Verbose: ON`)
-  console.log(`${'='.repeat(40)}\n`)
+  // Suppress noisy console output from fetch.ts unless --verbose
+  if (!verbose) silenceConsole()
 
-  // Group scenarios by model for parallelization
+  // Initialize terminal layout with fixed bottom progress bar
+  initLayout(scenarios)
+
   const byModel = groupBy(scenarios, (s) => s.modelName)
   const modelGroups = Object.entries(byModel)
 
-  // Run model groups in parallel (up to `parallel` concurrent), scenarios within each model sequentially
-  const allResults: EvalResult[] = []
+  // Run model groups in parallel batches (up to `parallel` concurrent models)
+  const allResults: Awaited<ReturnType<typeof runSequential>>[] = []
 
   for (let i = 0; i < modelGroups.length; i += parallel) {
     const batch = modelGroups.slice(i, i + parallel)
 
-    console.log(`Starting batch: ${batch.map(([model]) => model).join(', ')}`)
-
     const batchResults = await Promise.all(
       batch.map(async ([model, modelScenarios]) => {
-        console.log(`\n--- ${model.toUpperCase()} (${modelScenarios.length} scenarios) ---`)
+        printModelSection(model, modelScenarios.length)
         return runSequential(modelScenarios)
       }),
     )
 
-    allResults.push(...batchResults.flat())
+    allResults.push(...batchResults)
   }
 
-  generateReport(allResults)
+  const flatResults = allResults.flat()
 
-  // Exit with non-zero if any failures
-  const failCount = allResults.filter((r) => !r.passed).length
+  printFooter()
+  teardownLayout()
+
+  // Restore console for report generation
+  restoreConsole()
+
+  generateReport(flatResults)
+
+  const failCount = flatResults.filter((r) => !r.passed).length
   if (failCount > 0) process.exit(1)
 }
 

@@ -94,11 +94,11 @@ export const writeMarkdownReport = (results: EvalResult[], summary: EvalSummary,
     '',
     '## Detailed Results',
     '',
-    '| Scenario | Status | Citations | Links | Steps | Time | Failures |',
-    '|----------|--------|-----------|-------|-------|------|----------|',
+    '| Scenario | Status | Citations | Widgets | Links | Steps | Chars | Time | Failures |',
+    '|----------|--------|-----------|---------|-------|-------|-------|------|----------|',
     ...results.map(
       (r) =>
-        `| ${r.scenario.id} | ${r.passed ? 'PASS' : 'FAIL'} | ${r.citations.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${(r.durationMs / 1000).toFixed(1)}s | ${r.failures.join('; ') || '-'} |`,
+        `| ${r.scenario.id} | ${r.passed ? 'PASS' : 'FAIL'} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s | ${r.failures.join('; ') || '-'} |`,
     ),
     '',
   ]

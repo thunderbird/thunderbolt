@@ -38,7 +38,9 @@ export type EvalResult = {
   passed: boolean
   failures: string[]
   responseText: string
+  responseLength: number
   citations: string[]
+  widgets: string[]
   linkPreviewUrls: string[]
   homepageUrls: string[]
   reviewSiteUrls: string[]

@@ -20,11 +20,50 @@ export const extractCitations = (text: string): string[] => {
 export const extractLinkPreviewUrls = (text: string): string[] =>
   [...text.matchAll(/url="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
 
-/** Check if a URL is a homepage or section page (not an individual article/product) */
+/** Extract all widget tags from the response (weather-forecast, link-preview, connect-integration) */
+export const extractWidgets = (text: string): string[] => [...text.matchAll(/<widget:([a-z-]+)/g)].map((m) => m[1])
+
+/**
+ * Known navigation-only path segments that indicate aggregate/section pages.
+ * Single-segment paths like /async-io-python/ are usually articles, NOT homepages.
+ */
+const SECTION_PATHS = new Set([
+  '/news',
+  '/news/',
+  '/ai',
+  '/ai/',
+  '/tech',
+  '/tech/',
+  '/technology',
+  '/technology/',
+  '/business',
+  '/business/',
+  '/science',
+  '/science/',
+  '/health',
+  '/health/',
+  '/sections',
+  '/hub',
+  '/category',
+  '/categories',
+  '/topics',
+  '/tags',
+])
+
+/**
+ * Check if a URL is a true homepage or navigation section page.
+ * A bare domain root (/) is always a homepage.
+ * Known section paths (/news/, /ai/, /technology/) are section pages.
+ * Single-segment slugs (/async-io-python/, /how-to-work-from-home) are typically articles.
+ */
 export const isHomepage = (url: string): boolean => {
   try {
-    const path = new URL(url).pathname
-    return path === '/' || /^\/[a-z-]+\/?$/.test(path)
+    const { pathname } = new URL(url)
+    // Bare root is always a homepage
+    if (pathname === '/') return true
+    // Check against known section paths
+    const normalized = pathname.toLowerCase().replace(/\/+$/, '')
+    return SECTION_PATHS.has(normalized) || SECTION_PATHS.has(normalized + '/')
   } catch {
     return false
   }
@@ -46,6 +85,7 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
   const failures: string[] = []
 
   const citations = extractCitations(parsed.text)
+  const widgets = extractWidgets(parsed.text)
   const linkPreviewUrls = extractLinkPreviewUrls(parsed.text)
   const homepageUrls = linkPreviewUrls.filter(isHomepage)
   const reviewSiteUrls = linkPreviewUrls.filter(isReviewSite)
@@ -61,7 +101,9 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     passed: failures.length === 0,
     failures,
     responseText: parsed.text,
+    responseLength: parsed.text.length,
     citations,
+    widgets,
     linkPreviewUrls,
     homepageUrls,
     reviewSiteUrls,

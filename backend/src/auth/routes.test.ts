@@ -7,7 +7,7 @@ import { createGoogleAuthRoutes } from './google'
 import { createMicrosoftAuthRoutes } from './microsoft'
 
 describe('Authentication Routes', () => {
-  let app: Elysia
+  let app: any // Use any to avoid Elysia complex type issues in tests
   let mockFetch: ReturnType<typeof mock>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies

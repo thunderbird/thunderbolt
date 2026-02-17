@@ -7,7 +7,7 @@ import type { LinkPreviewResponse } from './types'
 import * as settingsModule from '@/config/settings'
 
 describe('Link Preview Routes', () => {
-  let app: Elysia
+  let app: any // Use any to avoid Elysia complex type issues in tests
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>

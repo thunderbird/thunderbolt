@@ -9,7 +9,7 @@ import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
 
 describe('Inference Routes', () => {
-  let app: Elysia
+  let app: any // Use any to avoid Elysia complex type issues in tests
   let getInferenceClientSpy: ReturnType<typeof spyOn>
   let isPostHogConfiguredSpy: ReturnType<typeof spyOn>
   let createSSEStreamSpy: ReturnType<typeof spyOn>

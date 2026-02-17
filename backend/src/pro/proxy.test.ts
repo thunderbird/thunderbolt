@@ -6,7 +6,7 @@ import { createProxyRoutes } from './proxy'
 import * as settingsModule from '@/config/settings'
 
 describe('Proxy Routes', () => {
-  let app: Elysia
+  let app: any // Use any to avoid Elysia complex type issues in tests
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>

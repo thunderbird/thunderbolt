@@ -37,9 +37,9 @@ const badgeClass =
 const getBadgeLabel = (sources: CitationSource[]) => {
   const primary = sources.find((s) => s.isPrimary) || sources[0]
   return {
-    displayName: primary.title || primary.siteName,
+    displayName: primary.siteName || primary.title,
     additionalCount: sources.length > 1 ? `+${sources.length - 1}` : null,
-    ariaLabel: `View source: ${primary.title}`,
+    ariaLabel: `View source: ${primary.siteName || primary.title}`,
   }
 }
 

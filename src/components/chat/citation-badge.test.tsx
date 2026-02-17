@@ -28,17 +28,17 @@ describe('CitationBadge', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('displays title as badge text (standalone)', () => {
+  it('displays siteName as badge text (standalone)', () => {
     const { container } = renderStandalone(
       <CitationBadge
         sources={[{ id: '1', title: 'Article', url: 'https://a.com', siteName: 'Reuters', isPrimary: true }]}
       />,
     )
 
-    expect(container.querySelector('button')?.textContent).toContain('Article')
+    expect(container.querySelector('button')?.textContent).toContain('Reuters')
   })
 
-  it('displays title as badge text (managed)', () => {
+  it('displays siteName as badge text (managed)', () => {
     const { container } = renderManaged(
       <CitationBadge
         sources={[{ id: '1', title: 'Article', url: 'https://a.com', siteName: 'Reuters', isPrimary: true }]}
@@ -46,18 +46,28 @@ describe('CitationBadge', () => {
       />,
     )
 
-    expect(container.querySelector('button')?.textContent).toContain('Article')
-  })
-
-  it('falls back to siteName when title is empty', () => {
-    const { container } = renderStandalone(
-      <CitationBadge sources={[{ id: '1', title: '', url: 'https://a.com', siteName: 'Reuters', isPrimary: true }]} />,
-    )
-
     expect(container.querySelector('button')?.textContent).toContain('Reuters')
   })
 
-  it('shows primary source title with +N count for multiple sources', () => {
+  it('falls back to title when siteName is empty', () => {
+    const { container } = renderStandalone(
+      <CitationBadge
+        sources={[{ id: '1', title: 'Fallback Title', url: 'https://a.com', siteName: '', isPrimary: true }]}
+      />,
+    )
+
+    expect(container.querySelector('button')?.textContent).toContain('Fallback Title')
+  })
+
+  it('falls back to title when siteName is missing', () => {
+    const { container } = renderStandalone(
+      <CitationBadge sources={[{ id: '1', title: 'Only Title', url: 'https://a.com', isPrimary: true }]} />,
+    )
+
+    expect(container.querySelector('button')?.textContent).toContain('Only Title')
+  })
+
+  it('shows primary source siteName with +N count for multiple sources', () => {
     const sources: CitationSource[] = [
       { id: '1', title: 'First Article', url: 'https://a.com', siteName: 'Site A' },
       { id: '2', title: 'Primary Article', url: 'https://b.com', siteName: 'Site B', isPrimary: true },
@@ -67,7 +77,7 @@ describe('CitationBadge', () => {
     const { container } = renderStandalone(<CitationBadge sources={sources} />)
 
     const button = container.querySelector('button')
-    expect(button?.textContent).toContain('Primary Article')
+    expect(button?.textContent).toContain('Site B')
     expect(button?.textContent).toContain('+2')
   })
 
@@ -79,6 +89,6 @@ describe('CitationBadge', () => {
 
     const { container } = renderStandalone(<CitationBadge sources={sources} />)
 
-    expect(container.querySelector('button')?.textContent).toContain('First Article')
+    expect(container.querySelector('button')?.textContent).toContain('First Site')
   })
 })

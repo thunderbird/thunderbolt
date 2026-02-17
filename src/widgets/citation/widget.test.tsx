@@ -21,7 +21,7 @@ describe('CitationWidgetComponent', () => {
 
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(container.querySelector('button')?.textContent).toContain('Test Article')
+      expect(container.querySelector('button')?.textContent).toContain('Example')
     })
 
     it('renders CitationBadge with base64-encoded sources (backward compat)', () => {
@@ -38,7 +38,7 @@ describe('CitationWidgetComponent', () => {
 
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(container.querySelector('button')?.textContent).toContain('Test Article')
+      expect(container.querySelector('button')?.textContent).toContain('Example')
     })
 
     it('renders multiple sources correctly', () => {
@@ -61,7 +61,7 @@ describe('CitationWidgetComponent', () => {
 
       const { container } = renderWithProviders(<CitationWidgetComponent sources={sources} />)
 
-      expect(container.querySelector('button')?.textContent).toContain('Primary Article')
+      expect(container.querySelector('button')?.textContent).toContain('Primary Site')
       expect(container.querySelector('button')?.textContent).toContain('+1')
     })
 

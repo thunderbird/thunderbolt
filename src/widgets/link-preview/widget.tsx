@@ -11,6 +11,11 @@ type LinkPreviewWidgetProps = {
   source?: string
   sources?: SourceMetadata[]
   messageId: string
+  fetchPreviewFn?: (params: { url: string }) => Promise<{
+    title: string
+    description: string
+    image: string | null
+  }>
 }
 
 type LinkPreviewMetadata = {
@@ -47,7 +52,7 @@ const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetada
   )
 }
 
-export const LinkPreviewWidget = ({ url, source, sources, messageId }: LinkPreviewWidgetProps) => {
+export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   // Instant render path: resolve from source registry (O(1) index lookup)
@@ -60,7 +65,7 @@ export const LinkPreviewWidget = ({ url, source, sources, messageId }: LinkPrevi
   }
 
   // Fallback: existing fetch-based path
-  return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl.value} />
+  return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl.value} fetchPreviewFn={fetchPreviewFn} />
 }
 
 /** Fallback component that fetches link preview data via the message cache */
@@ -68,16 +73,23 @@ const FetchLinkPreview = ({
   url,
   messageId,
   cloudUrl,
+  fetchPreviewFn,
 }: {
   url: string
   messageId: string
   cloudUrl: string | null
+  fetchPreviewFn?: (params: { url: string }) => Promise<{
+    title: string
+    description: string
+    image: string | null
+  }>
 }) => {
+  const fetchFn = fetchPreviewFn ?? fetchLinkPreview
   const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({
     messageId,
     cacheKey: ['linkPreview', url],
     fetchFn: async () => {
-      const preview = await fetchLinkPreview({ url })
+      const preview = await fetchFn({ url })
       return {
         title: preview.title || url,
         description: preview.description || '',

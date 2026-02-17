@@ -1,30 +1,21 @@
 import '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
 import { render } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 
-// Mock useMessageCache to avoid actual DB/network calls in fallback path
-mock.module('@/hooks/use-message-cache', () => ({
-  useMessageCache: () => ({
-    data: { title: 'Fetched Title', description: 'Fetched description', image: null },
-    isLoading: false,
-    error: null,
-  }),
-}))
-
-// Mock usePreview used by the display component
-mock.module('@/content-view/context', () => ({
-  usePreview: () => ({ showPreview: () => {} }),
-}))
-
-// Mock platform check used by display component
-mock.module('@/lib/platform', () => ({
-  isDesktop: () => false,
-}))
-
-const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
+const renderWithProviders = (ui: React.ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <ContentViewProvider>{children}</ContentViewProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 const makeSource = (overrides: Partial<SourceMetadata> = {}): SourceMetadata => ({
   index: 1,
@@ -37,6 +28,9 @@ const makeSource = (overrides: Partial<SourceMetadata> = {}): SourceMetadata => 
   toolName: 'search',
   ...overrides,
 })
+
+/** Detects the loading skeleton rendered by the fallback (FetchLinkPreview) path */
+const hasSkeleton = (container: HTMLElement) => container.querySelector('[data-slot="skeleton"]') !== null
 
 describe('LinkPreviewWidget', () => {
   describe('instant render path (source + sources available)', () => {
@@ -99,39 +93,39 @@ describe('LinkPreviewWidget', () => {
     })
   })
 
-  describe('fallback path', () => {
+  describe('fallback path (renders loading skeleton, not instant preview)', () => {
     it('falls back to fetch when source is missing', () => {
-      const { getByText } = renderWithProviders(<LinkPreviewWidget url="https://example.com" messageId="msg-1" />)
+      const { container } = renderWithProviders(<LinkPreviewWidget url="https://example.com" messageId="msg-1" />)
 
-      expect(getByText('Fetched Title')).toBeTruthy()
+      expect(hasSkeleton(container)).toBe(true)
     })
 
     it('falls back to fetch when sources array is missing', () => {
-      const { getByText } = renderWithProviders(
+      const { container } = renderWithProviders(
         <LinkPreviewWidget url="https://example.com" source="1" messageId="msg-1" />,
       )
 
-      expect(getByText('Fetched Title')).toBeTruthy()
+      expect(hasSkeleton(container)).toBe(true)
     })
 
     it('falls back to fetch when source index is out of bounds', () => {
       const sources = [makeSource({ index: 1 })]
 
-      const { getByText } = renderWithProviders(
+      const { container } = renderWithProviders(
         <LinkPreviewWidget url="https://example.com" source="99" sources={sources} messageId="msg-1" />,
       )
 
-      expect(getByText('Fetched Title')).toBeTruthy()
+      expect(hasSkeleton(container)).toBe(true)
     })
 
     it('falls back to fetch when source data has no title', () => {
       const sources = [{ ...makeSource(), title: '' }]
 
-      const { getByText } = renderWithProviders(
+      const { container } = renderWithProviders(
         <LinkPreviewWidget url="https://example.com" source="1" sources={sources} messageId="msg-1" />,
       )
 
-      expect(getByText('Fetched Title')).toBeTruthy()
+      expect(hasSkeleton(container)).toBe(true)
     })
   })
 })

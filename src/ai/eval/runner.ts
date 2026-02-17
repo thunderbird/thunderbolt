@@ -136,7 +136,9 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
       passed: false,
       failures: [`Runtime error: ${err instanceof Error ? err.message : String(err)}`],
       responseText: '',
+      responseLength: 0,
       citations: [],
+      widgets: [],
       linkPreviewUrls: [],
       homepageUrls: [],
       reviewSiteUrls: [],
@@ -150,15 +152,16 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
   }
 }
 
-/** Run multiple scenarios sequentially (for same-model tests sharing a backend) */
+/** Run multiple scenarios sequentially, updating the terminal UI as each completes */
 export const runSequential = async (scenarios: EvalScenario[]): Promise<EvalResult[]> => {
+  const { startSpinner, stopSpinner, printResult } = await import('./ui')
+
   const results: EvalResult[] = []
   for (const scenario of scenarios) {
+    startSpinner(scenario)
     const result = await runScenario(scenario)
-    // Log progress immediately
-    const status = result.passed ? '\x1b[32mPASS\x1b[0m' : '\x1b[31mFAIL\x1b[0m'
-    const time = `${(result.durationMs / 1000).toFixed(1)}s`
-    console.log(`  ${status} ${scenario.id} (${time})${result.failures.length ? ` — ${result.failures[0]}` : ''}`)
+    stopSpinner()
+    printResult(result)
     results.push(result)
   }
   return results

@@ -40,7 +40,7 @@ const chatPrompts = [
     prompt: 'Compare the iPhone 16 Pro and Samsung Galaxy S25 Ultra',
     criteria: { ...chatCriteria, minCitations: 2 },
   },
-  { id: 'C5', prompt: "What's the weather forecast for Seattle this week?" },
+  { id: 'C5', prompt: "What's the weather forecast for Seattle this week?", criteria: { mustProduceOutput: true } },
   { id: 'C6', prompt: 'Best Thai restaurants in Portland' },
   { id: 'C7', prompt: 'Who won the Grammy for Album of the Year?' },
   { id: 'C8', prompt: 'What are the best hiking trails near Denver?' },
@@ -82,12 +82,18 @@ const chatPrompts = [
 // Search Mode Prompts (15)
 // ──────────────────────────────────────────────
 
+/** For local business queries, the business homepage IS the correct link (hours, menu, location) */
+const localSearchCriteria: EvalCriteria = {
+  mustProduceOutput: true,
+  mustUseLinkPreviews: true,
+}
+
 const searchPrompts = [
   { id: 'S1', prompt: 'latest AI news' },
-  { id: 'S2', prompt: 'best restaurants in Portland Oregon' },
+  { id: 'S2', prompt: 'best restaurants in Portland Oregon', criteria: localSearchCriteria },
   { id: 'S3', prompt: 'Python asyncio tutorial' },
   { id: 'S4', prompt: 'climate change latest research 2026' },
-  { id: 'S5', prompt: 'best pizza places in Brooklyn' },
+  { id: 'S5', prompt: 'best pizza places in Brooklyn', criteria: localSearchCriteria },
   { id: 'S6', prompt: 'React Server Components guide' },
   { id: 'S7', prompt: 'electric vehicle comparison 2026' },
   { id: 'S8', prompt: 'remote work productivity tips' },
@@ -101,7 +107,7 @@ const searchPrompts = [
     criteria: { ...searchCriteria, noReviewSites: true },
   },
   { id: 'S14', prompt: 'Europa mission NASA launch date 2026' },
-  { id: 'S15', prompt: 'independent bookstores near me Portland Oregon' },
+  { id: 'S15', prompt: 'independent bookstores near me Portland Oregon', criteria: localSearchCriteria },
 ]
 
 // ──────────────────────────────────────────────

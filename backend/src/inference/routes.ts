@@ -105,9 +105,9 @@ export const createInferenceRoutes = () => {
         const { getSettings } = await import('@/config/settings')
         const settings = getSettings()
 
-        if (!settings.tinfoilApiKey) {
-          throw new Error('Tinfoil API key not configured')
-        }
+if (!settings.tinfoilApiKey?.trim()) {
+  throw new Error('Tinfoil API key not configured')
+}
 
         if (!enclaveBaseUrl) {
           throw new Error('X-Tinfoil-Enclave-Url header missing')

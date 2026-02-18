@@ -6,9 +6,9 @@ export type Device = {
   id: string
   userId: string
   name: string
-  lastSeen: number | null
-  createdAt: number | null
-  revokedAt: number | null
+  lastSeen: string | null
+  createdAt: string | null
+  revokedAt: string | null
 }
 
 /**

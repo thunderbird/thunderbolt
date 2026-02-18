@@ -114,6 +114,7 @@ export const linkPreviewDataSchema = z.object({
   title: z.string().nullable(),
   description: z.string().nullable(),
   image: z.string().nullable(),
+  siteName: z.string().nullable(),
 })
 
 export const linkPreviewResponseSchema = baseApiResponseSchema(linkPreviewDataSchema)

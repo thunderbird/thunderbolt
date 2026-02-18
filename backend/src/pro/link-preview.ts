@@ -150,14 +150,6 @@ const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
       return { valid: false, error: 'Internal URLs are not allowed' }
     }
 
-    // Block IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
-    if (hostname.startsWith('::ffff:')) {
-      const ipv4Part = hostname.slice(7)
-      if (ipv4Part === '127.0.0.1' || ipv4Part === '0.0.0.0') {
-        return { valid: false, error: 'Internal URLs are not allowed' }
-      }
-    }
-
     const ipv4Regex =
       /^(?:(?:10|127)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|192\.168\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|169\.254\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$/
     const ipv6LinkLocalRegex = /^fe[89ab][0-9a-f]/
@@ -165,6 +157,22 @@ const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
 
     if (ipv4Regex.test(hostname) || ipv6LinkLocalRegex.test(hostname) || ipv6UniqueLocalRegex.test(hostname)) {
       return { valid: false, error: 'Internal URLs are not allowed' }
+    }
+
+    // Block IPv4-mapped IPv6 (::ffff:XXYY:ZZWW) — Bun normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1
+    if (hostname.startsWith('::ffff:')) {
+      const mapped = hostname.slice(7)
+      const hexParts = mapped.split(':')
+      if (hexParts.length === 2) {
+        const high = parseInt(hexParts[0], 16)
+        const low = parseInt(hexParts[1], 16)
+        if (!Number.isNaN(high) && !Number.isNaN(low)) {
+          const ipv4 = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`
+          if (ipv4Regex.test(ipv4)) {
+            return { valid: false, error: 'Internal URLs are not allowed' }
+          }
+        }
+      }
     }
 
     if (hostname.includes('metadata') || hostname.includes('169.254.169.254')) {

@@ -1067,6 +1067,45 @@ describe('Link Preview Routes', () => {
       expect(await response.text()).toBe('Internal URLs are not allowed')
     })
 
+    it('should reject IPv4-mapped IPv6 private addresses (::ffff:10.0.0.1)', async () => {
+      const imageUrl = 'http://[::ffff:10.0.0.1]/admin'
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`, {
+          method: 'GET',
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Internal URLs are not allowed')
+    })
+
+    it('should reject IPv4-mapped IPv6 loopback (::ffff:127.0.0.1)', async () => {
+      const imageUrl = 'http://[::ffff:127.0.0.1]/admin'
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`, {
+          method: 'GET',
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Internal URLs are not allowed')
+    })
+
+    it('should reject IPv4-mapped IPv6 metadata endpoint (::ffff:169.254.169.254)', async () => {
+      const imageUrl = 'http://[::ffff:169.254.169.254]/latest/meta-data/'
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`, {
+          method: 'GET',
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Internal URLs are not allowed')
+    })
+
     it('should handle URLs with query strings', async () => {
       const imageUrl = 'https://example.com/image.jpg?w=800&h=600'
 

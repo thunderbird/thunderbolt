@@ -62,6 +62,19 @@ describe('sourceToCitation', () => {
       isPrimary: true,
     })
   })
+
+  test('respects isPrimary override when set to false', () => {
+    const source: SourceMetadata = {
+      index: 2,
+      url: 'https://example.com',
+      title: 'Example',
+      toolName: 'search',
+    }
+
+    const citation = sourceToCitation(source, false)
+
+    expect(citation.isPrimary).toBe(false)
+  })
 })
 
 describe('deriveSiteName', () => {

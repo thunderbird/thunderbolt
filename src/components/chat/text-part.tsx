@@ -1,7 +1,7 @@
 import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
 import { decodeCitationSources } from '@/lib/citation-utils'
 import { sourceToCitation } from '@/lib/source-utils'
-import type { CitationMap } from '@/types/citation'
+import type { CitationMap, CitationSource } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
@@ -25,10 +25,13 @@ const shouldAppendInline = (text: string): boolean =>
   /^[,;.·\s]*(and|or|,|;|\.)*\s*$/i.test(text) || text.trimStart().startsWith('|')
 
 /**
- * Regex matching `[N]` source citation patterns (1-based).
- * Negative lookahead prevents matching markdown links like `[text](url)`.
+ * Matches one or more adjacent [N] citations separated by optional whitespace.
+ * Negative lookahead on each [N] prevents matching markdown links [text](url).
  */
-const sourceCitationRegex = /\[(\d+)\](?!\()/g
+const groupedCitationRegex = /\[\d+\](?!\()(?:\s*\[\d+\](?!\())*/g
+
+/** Extracts individual [N] numbers from a matched group */
+const individualCitationRegex = /\[(\d+)\]/g
 
 /** Normalize URL for dedup: lowercase host, strip trailing slash */
 const normalizeUrl = (url: string): string => {
@@ -65,13 +68,18 @@ export const buildSourceCitationPlaceholders = (
   const citations: CitationMap = new Map()
   let nextKey = 0
 
-  const fullText = text.replace(sourceCitationRegex, (match, numStr: string) => {
-    const n = parseInt(numStr, 10)
-    const source = sources[n - 1]
-    if (!source) return match
+  const fullText = text.replace(groupedCitationRegex, (match) => {
+    const validSources: CitationSource[] = []
+    for (const m of match.matchAll(individualCitationRegex)) {
+      const n = parseInt(m[1], 10)
+      const source = sources[n - 1]
+      if (source) validSources.push(sourceToCitation(source, validSources.length === 0))
+    }
+
+    if (validSources.length === 0) return match
 
     const key = nextKey++
-    citations.set(key, [sourceToCitation(source)])
+    citations.set(key, validSources)
     return `{{CITE:${key}}}`
   })
 

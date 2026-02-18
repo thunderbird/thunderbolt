@@ -4,15 +4,15 @@ import type { SourceMetadata } from '@/types/source'
 /**
  * Converts a SourceMetadata entry to a CitationSource for the rendering pipeline.
  * Maps index to id (as string), preserves url/title/siteName/favicon.
- * Sets isPrimary to true since each [N] citation references a single source.
+ * @param isPrimary - Whether this is the primary (displayed) source in a group. Defaults to true.
  */
-export const sourceToCitation = (source: SourceMetadata): CitationSource => ({
+export const sourceToCitation = (source: SourceMetadata, isPrimary = true): CitationSource => ({
   id: String(source.index),
   title: source.title,
   url: source.url,
   siteName: source.siteName,
   favicon: source.favicon ?? undefined,
-  isPrimary: true,
+  isPrimary,
 })
 
 /**

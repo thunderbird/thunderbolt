@@ -23,13 +23,17 @@ describe('buildSourceCitationPlaceholders', () => {
     expect(citations.get(0)?.[0].title).toBe('Source 1')
   })
 
-  test('replaces multiple adjacent citations [1][2]', () => {
+  test('groups adjacent citations [1][2] into a single map entry', () => {
     const { fullText, citations } = buildSourceCitationPlaceholders('Studies show [1][2] this.', sources)
 
-    expect(fullText).toBe('Studies show {{CITE:0}}{{CITE:1}} this.')
-    expect(citations.size).toBe(2)
-    expect(citations.get(0)?.[0].id).toBe('1')
-    expect(citations.get(1)?.[0].id).toBe('2')
+    expect(fullText).toBe('Studies show {{CITE:0}} this.')
+    expect(citations.size).toBe(1)
+    const entry = citations.get(0)!
+    expect(entry).toHaveLength(2)
+    expect(entry[0].id).toBe('1')
+    expect(entry[0].isPrimary).toBe(true)
+    expect(entry[1].id).toBe('2')
+    expect(entry[1].isPrimary).toBe(false)
   })
 
   test('replaces [1], [2], and [3] across text', () => {
@@ -113,6 +117,73 @@ describe('buildSourceCitationPlaceholders', () => {
     const { fullText } = buildSourceCitationPlaceholders('**Bold** text [1] and `code` [2] here.', sources)
 
     expect(fullText).toBe('**Bold** text {{CITE:0}} and `code` {{CITE:1}} here.')
+  })
+
+  test('groups three adjacent citations with spaces into 1 entry with 3 sources', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('Results [1] [2] [3] are clear.', sources)
+
+    expect(fullText).toBe('Results {{CITE:0}} are clear.')
+    expect(citations.size).toBe(1)
+    const entry = citations.get(0)!
+    expect(entry).toHaveLength(3)
+    expect(entry[0].isPrimary).toBe(true)
+    expect(entry[1].isPrimary).toBe(false)
+    expect(entry[2].isPrimary).toBe(false)
+  })
+
+  test('groups adjacent citations without spaces [1][2][3]', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('Results[1][2][3].', sources)
+
+    expect(fullText).toBe('Results{{CITE:0}}.')
+    expect(citations.size).toBe(1)
+    expect(citations.get(0)).toHaveLength(3)
+  })
+
+  test('groups mixed valid/invalid [1][99][2] keeping only valid sources', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('See [1][99][2].', sources)
+
+    expect(fullText).toBe('See {{CITE:0}}.')
+    expect(citations.size).toBe(1)
+    const entry = citations.get(0)!
+    expect(entry).toHaveLength(2)
+    expect(entry[0].id).toBe('1')
+    expect(entry[0].isPrimary).toBe(true)
+    expect(entry[1].id).toBe('2')
+    expect(entry[1].isPrimary).toBe(false)
+  })
+
+  test('all-invalid adjacent group [98][99] leaves text unchanged', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('See [98][99].', sources)
+
+    expect(fullText).toBe('See [98][99].')
+    expect(citations.size).toBe(0)
+  })
+
+  test('non-adjacent citations with text between them create separate entries', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('[1] some text [2]', sources)
+
+    expect(fullText).toBe('{{CITE:0}} some text {{CITE:1}}')
+    expect(citations.size).toBe(2)
+    expect(citations.get(0)).toHaveLength(1)
+    expect(citations.get(1)).toHaveLength(1)
+  })
+
+  test('adjacent group + separate non-adjacent creates 2 entries', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('First [1][2] then [3].', sources)
+
+    expect(fullText).toBe('First {{CITE:0}} then {{CITE:1}}.')
+    expect(citations.size).toBe(2)
+    expect(citations.get(0)).toHaveLength(2)
+    expect(citations.get(1)).toHaveLength(1)
+  })
+
+  test('does not group across markdown links [1][text](url)[2]', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('See [1][text](https://x.com)[2].', sources)
+
+    expect(citations.size).toBe(2)
+    expect(citations.get(0)).toHaveLength(1)
+    expect(citations.get(1)).toHaveLength(1)
+    expect(fullText).toContain('[text](https://x.com)')
   })
 })
 

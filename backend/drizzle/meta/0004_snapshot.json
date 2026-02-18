@@ -1,5 +1,5 @@
 {
-  "id": "32892bd9-39bd-41b9-87dc-14fdb3f0077b",
+  "id": "36757288-b804-4d46-971f-9c888d597e64",
   "prevId": "9187ccb1-e0ab-486a-9f1d-90641574ca41",
   "version": "7",
   "dialect": "postgresql",
@@ -496,7 +496,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -605,7 +605,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -815,7 +815,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -970,7 +970,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -1117,7 +1117,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -1220,7 +1220,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -1419,7 +1419,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -1529,7 +1529,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "text",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },

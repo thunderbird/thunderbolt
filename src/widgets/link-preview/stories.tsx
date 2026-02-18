@@ -193,3 +193,51 @@ export const ImageError: Story = {
     },
   },
 }
+
+export const HostnameAsTitleFallback: Story = {
+  args: {
+    url: 'https://www.example.com/some/long/path',
+    title: 'example.com',
+    description: 'A page where the hostname is used as the title fallback instead of the full URL',
+    image: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'When no og:title is found, the hostname is used as the title instead of the full URL',
+      },
+    },
+  },
+}
+
+export const MinimalPreview: Story = {
+  args: {
+    url: 'https://blocked-site.example.com/captcha',
+    title: 'blocked-site.example.com',
+    description: null,
+    image: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Minimal preview card shown when no metadata was found (e.g., captcha pages) - uses hostname as title',
+      },
+    },
+  },
+}
+
+export const MinimalPreviewLongHostname: Story = {
+  args: {
+    url: 'https://very-long-subdomain.deeply-nested.example.co.uk/path',
+    title: 'very-long-subdomain.deeply-nested.example.co.uk',
+    description: null,
+    image: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Minimal preview card with a long hostname to verify truncation',
+      },
+    },
+  },
+}

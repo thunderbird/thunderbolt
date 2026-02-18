@@ -5,6 +5,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
+import { getHostname } from './utils'
 
 type LinkPreviewWidgetProps = {
   url: string
@@ -12,16 +13,17 @@ type LinkPreviewWidgetProps = {
   sources?: SourceMetadata[]
   messageId: string
   fetchPreviewFn?: (params: { url: string }) => Promise<{
-    title: string
-    description: string
+    title: string | null
+    description: string | null
     image: string | null
   }>
 }
 
 type LinkPreviewMetadata = {
-  title: string
-  description: string
+  title: string | null
+  description: string | null
   image: string | null
+  siteName: string | null
 }
 
 export const LinkPreviewSkeleton = () => {
@@ -40,12 +42,15 @@ export const LinkPreviewSkeleton = () => {
 
 /** Renders a link preview instantly from source registry metadata */
 const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string | null }) => {
-  const imageUrl = sourceData.image && cloudUrl ? `${cloudUrl}/pro/proxy/${encodeURIComponent(sourceData.image)}` : null
+  const imageUrl =
+    sourceData.image && cloudUrl
+      ? `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(sourceData.image)}`
+      : null
 
   return (
     <LinkPreview
-      title={sourceData.title}
-      description={sourceData.description ?? ''}
+      title={sourceData.title || getHostname(sourceData.url)}
+      description={sourceData.description ?? null}
       url={sourceData.url}
       image={imageUrl}
     />
@@ -79,8 +84,8 @@ const FetchLinkPreview = ({
   messageId: string
   cloudUrl: string | null
   fetchPreviewFn?: (params: { url: string }) => Promise<{
-    title: string
-    description: string
+    title: string | null
+    description: string | null
     image: string | null
   }>
 }) => {
@@ -91,27 +96,34 @@ const FetchLinkPreview = ({
     fetchFn: async () => {
       const preview = await fetchFn({ url })
       return {
-        title: preview.title || url,
-        description: preview.description || '',
+        title: preview.title,
+        description: preview.description,
         image: preview.image,
+        siteName: 'siteName' in preview ? (preview.siteName as string | null) : null,
       }
     },
   })
+
+  const imageUrl =
+    data?.image && cloudUrl && cloudUrl.trim()
+      ? `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(data.image)}`
+      : null
 
   if (isLoading) {
     return <LinkPreviewSkeleton />
   }
 
-  if (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to load preview'
-    return <LinkPreview title={url} description={errorMessage} url={url} image={null} />
+  if (error || !data) {
+    if (error) console.warn('Link preview failed:', url)
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  if (!data) {
-    return <LinkPreview title={url} description="Failed to load preview" url={url} image={null} />
+  const isEmpty = !data.title && !data.description && !data.image
+  if (isEmpty) {
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  const imageUrl = data.image && cloudUrl ? `${cloudUrl}/pro/proxy/${encodeURIComponent(data.image)}` : null
+  const displayTitle = data.title || data.siteName || getHostname(url)
 
-  return <LinkPreview title={data.title} description={data.description} url={url} image={imageUrl} />
+  return <LinkPreview title={displayTitle} description={data.description} url={url} image={imageUrl} />
 }

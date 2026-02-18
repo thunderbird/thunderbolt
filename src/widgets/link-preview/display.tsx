@@ -6,7 +6,7 @@ import { useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
-  title: string | null
+  title: string // Required: parent component must provide hostname fallback if backend returns null
   description: string | null
   image: string | null
 }
@@ -59,7 +59,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
               </>
             )}
           </div>
-          <CardHeader className="flex-1 flex flex-col pl-4 py-4">
+          <CardHeader className="flex-1 flex flex-col gap-1.5 pl-4 pt-4 pb-4">
             <CardTitle className="line-clamp-1">{title}</CardTitle>
             {description && <CardDescription className="line-clamp-2">{description}</CardDescription>}
           </CardHeader>

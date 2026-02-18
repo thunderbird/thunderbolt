@@ -26,7 +26,7 @@ describe('Devices DAL', () => {
     it('returns device when it exists', async () => {
       const db = DatabaseSingleton.instance.db
       const deviceId = 'device-1'
-      const now = Math.floor(Date.now() / 1000)
+      const now = new Date().toISOString()
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -49,8 +49,8 @@ describe('Devices DAL', () => {
     it('returns device with revokedAt when set', async () => {
       const db = DatabaseSingleton.instance.db
       const deviceId = 'device-revoked'
-      const now = Math.floor(Date.now() / 1000)
-      const revokedAt = now + 60
+      const now = new Date().toISOString()
+      const revokedAt = new Date(Date.now() + 60 * 1000).toISOString()
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -74,29 +74,32 @@ describe('Devices DAL', () => {
 
     it('returns all devices ordered by lastSeen desc', async () => {
       const db = DatabaseSingleton.instance.db
-      const base = Math.floor(Date.now() / 1000)
+      const base = new Date()
+      const oldTs = new Date(base.getTime() - 200 * 1000).toISOString()
+      const newTs = new Date(base.getTime() + 100 * 1000).toISOString()
+      const midTs = new Date(base.getTime() - 50 * 1000).toISOString()
 
       await db.insert(devicesTable).values([
         {
           id: 'device-old',
           userId: 'user-1',
           name: 'Old device',
-          lastSeen: base,
-          createdAt: base,
+          lastSeen: oldTs,
+          createdAt: oldTs,
         },
         {
           id: 'device-new',
           userId: 'user-1',
           name: 'New device',
-          lastSeen: base + 100,
-          createdAt: base,
+          lastSeen: newTs,
+          createdAt: oldTs,
         },
         {
           id: 'device-mid',
           userId: 'user-1',
           name: 'Mid device',
-          lastSeen: base + 50,
-          createdAt: base,
+          lastSeen: midTs,
+          createdAt: oldTs,
         },
       ])
 

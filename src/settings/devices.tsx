@@ -19,9 +19,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-const formatLastSeen = (ts: number | null): string => {
+const formatLastSeen = (ts: string | null): string => {
   if (ts == null) return '—'
-  const date = new Date(ts * 1000)
+  const date = new Date(ts)
   const now = Date.now()
   const diffMs = now - date.getTime()
   const diffMins = Math.floor(diffMs / 60_000)

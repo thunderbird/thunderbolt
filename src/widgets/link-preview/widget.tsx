@@ -40,19 +40,20 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
+/** Builds a proxied image URL for the link preview image endpoint */
+const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
+  if (!imageUrl || !cloudUrl?.trim()) return null
+  return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
+}
+
 /** Renders a link preview instantly from source registry metadata */
 const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string | null }) => {
-  const imageUrl =
-    sourceData.image && cloudUrl
-      ? `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(sourceData.image)}`
-      : null
-
   return (
     <LinkPreview
       title={sourceData.title || getHostname(sourceData.url)}
       description={sourceData.description ?? null}
       url={sourceData.url}
-      image={imageUrl}
+      image={buildProxyImageUrl(sourceData.image, cloudUrl)}
     />
   )
 }
@@ -104,10 +105,7 @@ const FetchLinkPreview = ({
     },
   })
 
-  const imageUrl =
-    data?.image && cloudUrl && cloudUrl.trim()
-      ? `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(data.image)}`
-      : null
+  const imageUrl = buildProxyImageUrl(data?.image, cloudUrl)
 
   if (isLoading) {
     return <LinkPreviewSkeleton />
@@ -118,7 +116,7 @@ const FetchLinkPreview = ({
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  const isEmpty = !data.title && !data.description && !data.image
+  const isEmpty = !data.title && !data.description && !data.image && !data.siteName
   if (isEmpty) {
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }

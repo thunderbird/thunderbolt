@@ -175,10 +175,6 @@ const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
       }
     }
 
-    if (hostname.includes('metadata') || hostname.includes('169.254.169.254')) {
-      return { valid: false, error: 'Internal URLs are not allowed' }
-    }
-
     return { valid: true }
   } catch {
     return { valid: false, error: 'Invalid image URL' }

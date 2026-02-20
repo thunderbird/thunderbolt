@@ -1,5 +1,6 @@
 import { createPrompt } from '@/ai/prompt'
 import { getModelConfig } from '@/ai/prompts'
+import { mistralCitationReinforcement } from '@/ai/prompts/vendors/mistral/citation-reinforcement'
 import {
   extractTextFromMessages,
   getNudgeMessages,
@@ -259,10 +260,17 @@ export const aiFetchStreamingResponse = async ({
         providerOptions,
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
+          // Mistral citation reinforcement: after tool calls, strengthen the system prompt
+          // with citation format instructions (system prompt = highest authority for Mistral)
+          const isMistral = model.vendor === 'mistral'
+          const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
+          const citationSystem = isMistral && hadToolCallSteps ? systemPrompt + mistralCitationReinforcement : undefined
+
           // Final step: disable tools to force a response
           if (isFinalStep(steps.length, maxSteps)) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
             return {
+              ...(citationSystem && { system: citationSystem }),
               activeTools: [],
               messages: [...stepMessages, { role: 'user' as const, content: activeNudges.finalStep }],
             }
@@ -271,8 +279,14 @@ export const aiFetchStreamingResponse = async ({
           // Nudge after many tool calls (but not on final step)
           if (shouldShowPreventiveNudge(steps, nudgeThreshold)) {
             return {
+              ...(citationSystem && { system: citationSystem }),
               messages: [...stepMessages, { role: 'user' as const, content: activeNudges.preventive }],
             }
+          }
+
+          // For Mistral: reinforce citations via system prompt even without a nudge
+          if (citationSystem) {
+            return { system: citationSystem }
           }
         },
 

@@ -2,6 +2,25 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { EvalResult, EvalSummary } from './types'
 
+const rateEmoji = (rate: number) => (rate >= 80 ? '🟢' : rate >= 50 ? '🟡' : '🔴')
+
+const formatDate = (date: Date) =>
+  date.toLocaleString('en-US', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
+
+const timestamp = () => {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
 /** Generate summary statistics from results */
 export const summarize = (results: EvalResult[]): EvalSummary => {
   const total = results.length
@@ -57,7 +76,6 @@ export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) 
     console.log(`  ${color}${mode}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
   }
 
-  // Show failures
   const failures = results.filter((r) => !r.passed)
   if (failures.length > 0) {
     console.log(`\n${b}${r}Failures (${failures.length}):${reset}`)
@@ -72,36 +90,86 @@ export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) 
   console.log('\n' + '='.repeat(60))
 }
 
-/** Write a markdown report file */
-export const writeMarkdownReport = (results: EvalResult[], summary: EvalSummary, outputPath: string) => {
+/** Write a markdown report file. When `detailed` is true, includes a Failures section with prompts and reasons. */
+export const writeMarkdownReport = (
+  results: EvalResult[],
+  summary: EvalSummary,
+  outputPath: string,
+  detailed: boolean,
+) => {
+  const now = new Date()
+  const models = [...new Set(results.map((r) => r.scenario.modelName))].join(', ')
+  const modes = [...new Set(results.map((r) => r.scenario.modeName))].join(', ')
+  const totalDuration = results.reduce((sum, r) => sum + r.durationMs, 0)
+
   const lines: string[] = [
-    '# Eval Results',
+    `# ${rateEmoji(summary.passRate)} Eval Report — ${summary.passRate}% pass rate`,
     '',
-    `**Date**: ${new Date().toISOString()}`,
-    `**Total**: ${summary.total} scenarios | **Passed**: ${summary.passed} | **Failed**: ${summary.failed} | **Pass Rate**: ${summary.passRate}%`,
+    `> **${formatDate(now)}** | ${summary.total} scenarios | ${(totalDuration / 1000).toFixed(0)}s total`,
+    '>',
+    `> Models: \`${models}\` | Modes: \`${modes}\``,
     '',
-    '## By Model',
+    '---',
     '',
-    '| Model | Passed | Total | Rate |',
-    '|-------|--------|-------|------|',
-    ...Object.entries(summary.byModel).map(([model, s]) => `| ${model} | ${s.passed} | ${s.total} | ${s.passRate}% |`),
+    '## Overview',
     '',
-    '## By Mode',
+    `| | Passed | Failed | Total | Rate |`,
+    `|---|:---:|:---:|:---:|:---:|`,
+    `| **All** | ${summary.passed} | ${summary.failed} | ${summary.total} | ${rateEmoji(summary.passRate)} **${summary.passRate}%** |`,
     '',
-    '| Mode | Passed | Total | Rate |',
-    '|------|--------|-------|------|',
-    ...Object.entries(summary.byMode).map(([mode, s]) => `| ${mode} | ${s.passed} | ${s.total} | ${s.passRate}% |`),
+    '### By Model',
     '',
-    '## Detailed Results',
-    '',
-    '| Scenario | Status | Citations | Widgets | Links | Steps | Chars | Time | Failures |',
-    '|----------|--------|-----------|---------|-------|-------|-------|------|----------|',
-    ...results.map(
-      (r) =>
-        `| ${r.scenario.id} | ${r.passed ? 'PASS' : 'FAIL'} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s | ${r.failures.join('; ') || '-'} |`,
+    '| Model | Passed | Failed | Total | Rate |',
+    '|-------|:---:|:---:|:---:|:---:|',
+    ...Object.entries(summary.byModel).map(
+      ([model, s]) =>
+        `| ${model} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
     ),
     '',
+    '### By Mode',
+    '',
+    '| Mode | Passed | Failed | Total | Rate |',
+    '|------|:---:|:---:|:---:|:---:|',
+    ...Object.entries(summary.byMode).map(
+      ([mode, s]) =>
+        `| ${mode} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
+    ),
+    '',
+    '---',
+    '',
+    '## Results',
+    '',
+    '| | Scenario | Citations | Widgets | Links | Steps | Chars | Time |',
+    '|---|----------|:---:|:---:|:---:|:---:|:---:|---:|',
+    ...results.map((r) => {
+      const icon = r.passed ? '✅' : '❌'
+      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
+    }),
+    '',
   ]
+
+  if (detailed) {
+    const failures = results.filter((r) => !r.passed)
+    if (failures.length > 0) {
+      lines.push('---', '', '## Failures', '')
+      for (const f of failures) {
+        lines.push(
+          `### ❌ ${f.scenario.id}`,
+          '',
+          '| Field | Value |',
+          '|-------|-------|',
+          `| **Prompt** | ${f.scenario.prompt} |`,
+          `| **Duration** | ${(f.durationMs / 1000).toFixed(1)}s |`,
+          ...(f.error ? [`| **Error** | \`${f.error}\` |`] : []),
+          '',
+          '**Failure reasons:**',
+          '',
+          ...f.failures.map((reason) => `- ${reason}`),
+          '',
+        )
+      }
+    }
+  }
 
   mkdirSync(dirname(outputPath), { recursive: true })
   writeFileSync(outputPath, lines.join('\n'), 'utf-8')
@@ -109,10 +177,10 @@ export const writeMarkdownReport = (results: EvalResult[], summary: EvalSummary,
 }
 
 /** Generate both console and file reports */
-export const generateReport = (results: EvalResult[]) => {
+export const generateReport = (results: EvalResult[], detailed = false) => {
   const summary = summarize(results)
   printConsoleReport(results, summary)
 
-  const outputPath = process.env.EVAL_OUTPUT ?? '.team/eval-results.md'
-  writeMarkdownReport(results, summary, outputPath)
+  const outputPath = process.env.EVAL_OUTPUT ?? `.evals/eval-results-${timestamp()}.md`
+  writeMarkdownReport(results, summary, outputPath, detailed)
 }

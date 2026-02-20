@@ -33,7 +33,11 @@ const researchCriteria: EvalCriteria = {
 
 const chatPrompts = [
   { id: 'C1', prompt: 'What are the top 3 news stories today?' },
-  { id: 'C2', prompt: 'Best robot vacuums to buy right now', criteria: { ...chatCriteria, noHomepageLinks: true } },
+  {
+    id: 'C2',
+    prompt: 'Best robot vacuums to buy right now',
+    criteria: { ...chatCriteria, noHomepageLinks: true, noReviewSites: false },
+  },
   { id: 'C3', prompt: "What's the current price of Bitcoin?" },
   {
     id: 'C4',
@@ -103,7 +107,7 @@ const searchPrompts = [
   { id: 'S12', prompt: 'TypeScript 6.0 new features release notes' },
   {
     id: 'S13',
-    prompt: 'best noise-cancelling headphones under $300 reviews',
+    prompt: 'best noise-cancelling headphones under $300',
     criteria: { ...searchCriteria, noReviewSites: true },
   },
   { id: 'S14', prompt: 'Europa mission NASA launch date 2026' },
@@ -174,6 +178,106 @@ const researchPrompts = [
 ]
 
 // ──────────────────────────────────────────────
+// Validation Set — different prompts, same criteria philosophy
+// Used to verify 100% is real, not overfit to the original prompts
+// ──────────────────────────────────────────────
+
+const validationChatPrompts = [
+  { id: 'VC1', prompt: 'What are the most popular programming languages in 2026?' },
+  {
+    id: 'VC2',
+    prompt: 'Best wireless earbuds under $150',
+    criteria: { ...chatCriteria, noHomepageLinks: true, noReviewSites: false },
+  },
+  { id: 'VC3', prompt: "What's the current population of Tokyo?" },
+  {
+    id: 'VC4',
+    prompt: 'Compare Tesla Model 3 and BMW i4 for daily commuting',
+    criteria: { ...chatCriteria, minCitations: 2 },
+  },
+  { id: 'VC5', prompt: 'Best Italian restaurants in San Francisco' },
+  { id: 'VC6', prompt: 'Who won the most recent Super Bowl and what was the score?' },
+  { id: 'VC7', prompt: 'What are the side effects of melatonin supplements?' },
+  {
+    id: 'VC8',
+    prompt: 'Best budget laptops for college students 2026',
+    criteria: { ...chatCriteria, noReviewSites: false },
+  },
+  {
+    id: 'VC9',
+    prompt: 'Explain the differences between type 1 and type 2 diabetes — causes, symptoms, and treatment options',
+    criteria: { ...chatCriteria, minCitations: 2 },
+  },
+  {
+    id: 'VC10',
+    prompt: "What's happening with the war in Ukraine right now? Give me the latest developments.",
+    criteria: { ...chatCriteria, minCitations: 2 },
+  },
+]
+
+const validationSearchPrompts = [
+  { id: 'VS1', prompt: 'latest cybersecurity threats 2026' },
+  { id: 'VS2', prompt: 'best coffee shops in Seattle', criteria: localSearchCriteria },
+  { id: 'VS3', prompt: 'Kubernetes deployment best practices' },
+  { id: 'VS4', prompt: 'renewable energy breakthroughs 2026' },
+  { id: 'VS5', prompt: 'best board games for adults', criteria: localSearchCriteria },
+  { id: 'VS6', prompt: 'Svelte vs React comparison' },
+  { id: 'VS7', prompt: 'upcoming Marvel movies release dates', criteria: localSearchCriteria },
+  { id: 'VS8', prompt: 'beginner yoga routines for flexibility' },
+  { id: 'VS9', prompt: 'best budget smartphones 2026' },
+  { id: 'VS10', prompt: 'vegan meal prep ideas for the week' },
+]
+
+const validationResearchPrompts = [
+  {
+    id: 'VR1',
+    prompt:
+      'What is the current state of mRNA vaccine technology beyond COVID? Cover cancer vaccines, flu vaccines, and other applications in development.',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+  {
+    id: 'VR2',
+    prompt:
+      'Analyze the global semiconductor shortage — root causes, which industries were most affected, and what solutions have been implemented.',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+  {
+    id: 'VR3',
+    prompt:
+      'Compare the space programs of the US, China, and India — recent missions, planned missions, budgets, and international collaborations.',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+  {
+    id: 'VR4',
+    prompt: 'The impact of AI on employment — which jobs are being automated and which new jobs are emerging?',
+  },
+  { id: 'VR5', prompt: 'What are the latest developments in solid-state battery technology for electric vehicles?' },
+  {
+    id: 'VR6',
+    prompt:
+      'Investigate the effectiveness of four-day work week trials worldwide — which companies/countries have tried it and what were the measurable outcomes?',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+  {
+    id: 'VR7',
+    prompt:
+      'The global water crisis — which regions are most affected, what are the main causes, and what technological solutions exist?',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+  { id: 'VR8', prompt: 'How are central banks around the world approaching digital currencies (CBDCs)?' },
+  {
+    id: 'VR9',
+    prompt: 'The ethics and regulation of facial recognition technology — compare approaches in the US, EU, and China.',
+  },
+  {
+    id: 'VR10',
+    prompt:
+      'Analyze the rise of lab-grown meat — current products on the market, cost comparisons with traditional meat, and consumer acceptance data.',
+    criteria: { ...researchCriteria, minCitations: 5 },
+  },
+]
+
+// ──────────────────────────────────────────────
 // Scenario Generation
 // ──────────────────────────────────────────────
 
@@ -198,6 +302,9 @@ const allScenarios: EvalScenario[] = [
   ...buildScenarios(chatPrompts, 'chat', chatCriteria),
   ...buildScenarios(searchPrompts, 'search', searchCriteria),
   ...buildScenarios(researchPrompts, 'research', researchCriteria),
+  ...buildScenarios(validationChatPrompts, 'chat', chatCriteria),
+  ...buildScenarios(validationSearchPrompts, 'search', searchCriteria),
+  ...buildScenarios(validationResearchPrompts, 'research', researchCriteria),
 ]
 
 /** Get scenarios filtered by model names and mode names */

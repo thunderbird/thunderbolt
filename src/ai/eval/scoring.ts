@@ -50,17 +50,24 @@ const SECTION_PATHS = new Set([
   '/tags',
 ])
 
+const GENERIC_SUBDOMAINS = new Set(['www', 'm', 'mobile', 'app', 'api', 'cdn', 'static'])
+
 /**
  * Check if a URL is a true homepage or navigation section page.
- * A bare domain root (/) is always a homepage.
+ * A bare domain root (/) is a homepage UNLESS the subdomain is specific
+ * (e.g., server-components.epicreact.dev/ is a content app, not a homepage).
  * Known section paths (/news/, /ai/, /technology/) are section pages.
  * Single-segment slugs (/async-io-python/, /how-to-work-from-home) are typically articles.
  */
 export const isHomepage = (url: string): boolean => {
   try {
-    const { pathname } = new URL(url)
-    // Bare root is always a homepage
-    if (pathname === '/') return true
+    const { pathname, hostname } = new URL(url)
+    if (pathname === '/') {
+      // Specific subdomains (not www/m/app) are content apps, not homepages
+      const parts = hostname.split('.')
+      if (parts.length >= 3 && !GENERIC_SUBDOMAINS.has(parts[0])) return false
+      return true
+    }
     // Check against known section paths
     const normalized = pathname.toLowerCase().replace(/\/+$/, '')
     return SECTION_PATHS.has(normalized) || SECTION_PATHS.has(normalized + '/')

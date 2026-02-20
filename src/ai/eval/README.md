@@ -93,24 +93,43 @@ Failures (3):
 
 ============================================================
 
-Report saved to: .team/eval-results.md
+Report saved to: .evals/eval-results.md
 ```
 
 ## Environment Variables
 
-| Variable        | Default                 | Example           | Description               |
-| --------------- | ----------------------- | ----------------- | ------------------------- |
-| `EVAL_MODELS`   | all                     | `gpt-oss,mistral` | Which models to test      |
-| `EVAL_MODES`    | all                     | `chat,search`     | Which modes to test       |
-| `EVAL_PARALLEL` | `3`                     | `1`               | Concurrent model batches  |
-| `EVAL_TIMEOUT`  | `120000`                | `60000`           | Timeout per scenario (ms) |
-| `EVAL_OUTPUT`   | `.team/eval-results.md` | `reports/eval.md` | Report file path          |
+| Variable                 | Default                  | Example           | Description                     |
+| ------------------------ | ------------------------ | ----------------- | ------------------------------- |
+| `EVAL_MODELS`            | all                      | `gpt-oss,mistral` | Which models to test            |
+| `EVAL_MODES`             | all                      | `chat,search`     | Which modes to test             |
+| `EVAL_SCENARIO_PARALLEL` | `3`                      | `1`               | Concurrent scenarios per worker |
+| `EVAL_TIMEOUT`           | `120000`                 | `60000`           | Timeout per scenario (ms)       |
+| `EVAL_OUTPUT`            | `.evals/eval-results.md` | `reports/eval.md` | Report file path                |
 
 ### CLI Flags
 
-| Flag        | Description                                                           |
-| ----------- | --------------------------------------------------------------------- |
-| `--verbose` | Shows the full system prompt and raw model response for each scenario |
+| Flag         | Description                                                                      |
+| ------------ | -------------------------------------------------------------------------------- |
+| `--verbose`  | Shows the full system prompt and raw model response for each scenario            |
+| `--detailed` | Adds a Failures section to the markdown report with prompts, errors, and reasons |
+
+Example with detailed report:
+
+```
+$ EVAL_MODELS=gpt-oss EVAL_MODES=chat bun run eval -- --detailed
+
+# The markdown report at .evals/eval-results.md will include:
+## Failures
+
+### gpt-oss/chat/C4
+
+- **Prompt**: Compare the iPhone 16 Pro and Samsung Galaxy S25 Ultra
+- **Duration**: 60.0s
+- **Error**: Scenario timed out
+- **Reasons**:
+  - Empty response — no text output produced
+  - Insufficient citations: 0 found, 2 required
+```
 
 Example with verbose:
 

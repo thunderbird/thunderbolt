@@ -13,23 +13,17 @@ const esc = {
   cyan: '\x1b[36m',
   gray: '\x1b[90m',
   clearLine: '\x1b[2K',
-  saveCursor: '\x1b[s',
-  restoreCursor: '\x1b[u',
 }
 
 /** Move cursor to absolute row, col */
 const moveTo = (row: number, col = 1) => write(`\x1b[${row};${col}H`)
 
-/** Set scroll region (rows top..bottom scroll, rest is fixed) */
-const setScrollRegion = (top: number, bottom: number) => write(`\x1b[${top};${bottom}r`)
-
-/** Reset scroll region to full terminal */
-const resetScrollRegion = () => write('\x1b[r')
-
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-const FIXED_BOTTOM_LINES = 4 // separator + progress + stats + spinner
+const FIXED_BASE_LINES = 3 // separator + progress + stats
+const HEADER_LINES = 5 // title + separator + info + separator + blank
 const BAR_WIDTH = 30
 const PROMPT_MAX_WIDTH = 48
+const ID_WIDTH = 18
 
 const termRows = () => process.stdout.rows || 40
 const termCols = () => process.stdout.columns || 80
@@ -65,118 +59,143 @@ let failedCount = 0
 let evalStartTime = 0
 let spinnerInterval: ReturnType<typeof setInterval> | null = null
 let spinnerFrame = 0
-let spinnerStartTime = 0
-let currentSpinnerScenario: EvalScenario | null = null
+let maxSpinners = 1
+
+// Active spinners: scenario.id → { scenario, startTime }
+const activeSpinners = new Map<string, { scenario: EvalScenario; startTime: number }>()
+
+// Accumulated result lines for the middle area (rolling display)
+const resultLines: string[] = []
+
+const fixedBottomLines = () => FIXED_BASE_LINES + maxSpinners
+const resultsHeight = () => termRows() - HEADER_LINES - fixedBottomLines()
 
 // ── Layout setup ───────────────────────────────────────────
 
-/** Initialize the terminal layout: scrollable top area + fixed bottom */
-export const initLayout = (scenarios: EvalScenario[]) => {
+/** Initialize the terminal layout: fixed header, rolling results, fixed footer */
+export const initLayout = (scenarios: EvalScenario[], concurrency: number) => {
   totalScenarios = scenarios.length
   evalStartTime = performance.now()
+  maxSpinners = concurrency
 
-  const rows = termRows()
-  const scrollBottom = rows - FIXED_BOTTOM_LINES
-
-  // Clear screen and set scroll region
+  // Clear screen and render header
   write('\x1b[2J') // clear screen
+  write('\x1b[?25l') // hide cursor
   moveTo(1, 1)
 
-  // Print header in the scroll region
   write(`  ${esc.bold}Thunderbolt AI Eval${esc.reset}\n`)
   write(`  ${esc.gray}${'━'.repeat(Math.min(52, termCols() - 4))}${esc.reset}\n`)
 
   const models = [...new Set(scenarios.map((s) => s.modelName))].join(', ')
   const modes = [...new Set(scenarios.map((s) => s.modeName))].join(', ')
   write(`  ${esc.dim}Models: ${models} · Modes: ${modes} · ${scenarios.length} scenarios${esc.reset}\n`)
-  write(`  ${esc.gray}${'━'.repeat(Math.min(52, termCols() - 4))}${esc.reset}\n\n`)
+  write(`  ${esc.gray}${'━'.repeat(Math.min(52, termCols() - 4))}${esc.reset}\n`)
 
-  // Set scroll region (header + results area, excluding bottom fixed lines)
-  setScrollRegion(1, scrollBottom)
-
-  // Draw initial fixed bottom
-  renderFixedBottom()
+  // Draw initial footer
+  renderFooter()
 }
 
-/** Clean up: reset scroll region and move cursor to end */
+/** Clean up: show cursor and move to end */
 export const teardownLayout = () => {
-  stopSpinner()
-  resetScrollRegion()
-  const rows = termRows()
-  moveTo(rows, 1)
+  stopAllSpinners()
+  write('\x1b[?25h') // show cursor
+  moveTo(termRows(), 1)
   write('\n')
 }
 
-// ── Fixed bottom rendering ─────────────────────────────────
+// ── Results area (middle) ──────────────────────────────────
 
-const renderFixedBottom = () => {
+const renderResults = () => {
+  const height = resultsHeight()
+  const startRow = HEADER_LINES + 1
+  const visible = resultLines.slice(-height)
+
+  for (let i = 0; i < height; i++) {
+    moveTo(startRow + i, 1)
+    write(esc.clearLine)
+    if (i < visible.length) {
+      write(visible[i])
+    }
+  }
+}
+
+// ── Fixed footer rendering ─────────────────────────────────
+
+const renderFooter = () => {
   const rows = termRows()
   const cols = termCols()
   const pct = totalScenarios === 0 ? 0 : Math.round((completedCount / totalScenarios) * 100)
   const filled = totalScenarios === 0 ? 0 : Math.round((completedCount / totalScenarios) * BAR_WIDTH)
   const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
   const elapsed = ((performance.now() - evalStartTime) / 1000).toFixed(0)
-
-  // Save cursor position in scroll region
-  write(esc.saveCursor)
+  const baseRow = rows - fixedBottomLines() + 1
 
   // Row 1: separator
-  moveTo(rows - 3, 1)
+  moveTo(baseRow, 1)
   write(`${esc.clearLine}  ${esc.gray}${'─'.repeat(Math.min(52, cols - 4))}${esc.reset}`)
 
   // Row 2: progress bar
-  moveTo(rows - 2, 1)
+  moveTo(baseRow + 1, 1)
   write(`${esc.clearLine}  Progress ${esc.cyan}${bar}${esc.reset} ${pct}%  (${completedCount}/${totalScenarios})`)
 
   // Row 3: stats
-  moveTo(rows - 1, 1)
+  moveTo(baseRow + 2, 1)
   const failStr = failedCount > 0 ? `${esc.red}Failed: ${failedCount}${esc.reset}` : `${esc.dim}Failed: 0${esc.reset}`
   write(
     `${esc.clearLine}  ${esc.green}Passed: ${passedCount}${esc.reset}  ${failStr}  ${esc.gray}Elapsed: ${elapsed}s${esc.reset}`,
   )
 
-  // Row 4: spinner (current scenario)
-  moveTo(rows, 1)
-  if (currentSpinnerScenario) {
-    const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]
-    const id = currentSpinnerScenario.id.split('/').pop() ?? currentSpinnerScenario.id
-    const promptShort = truncate(currentSpinnerScenario.prompt, PROMPT_MAX_WIDTH)
-    const spinElapsed = ((performance.now() - spinnerStartTime) / 1000).toFixed(0)
-    write(
-      `${esc.clearLine}  ${esc.yellow}${frame}${esc.reset} ${esc.dim}${id}${esc.reset}  ${promptShort}  ${esc.gray}[${spinElapsed}s]${esc.reset}`,
-    )
-  } else {
-    write(esc.clearLine)
-  }
+  // Rows 4+: spinner rows
+  const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]
+  const activeList = [...activeSpinners.values()]
 
-  // Restore cursor to scroll region
-  write(esc.restoreCursor)
+  for (let i = 0; i < maxSpinners; i++) {
+    moveTo(baseRow + 3 + i, 1)
+    const entry = activeList[i]
+    if (entry) {
+      const idShort = truncate(entry.scenario.id, ID_WIDTH)
+      const promptShort = truncate(entry.scenario.prompt, PROMPT_MAX_WIDTH)
+      const spinElapsed = ((performance.now() - entry.startTime) / 1000).toFixed(0)
+      write(
+        `${esc.clearLine}  ${esc.yellow}${frame}${esc.reset} ${esc.dim}${idShort}${esc.reset}  ${promptShort}  ${esc.gray}[${spinElapsed}s]${esc.reset}`,
+      )
+    } else {
+      write(esc.clearLine)
+    }
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────
 
-export const printModelSection = (modelName: string, count: number) => {
-  write(`\n  ${esc.bold}${modelName.toUpperCase()}${esc.reset} ${esc.dim}(${count} scenarios)${esc.reset}\n\n`)
-}
-
 export const startSpinner = (scenario: EvalScenario) => {
-  currentSpinnerScenario = scenario
-  spinnerStartTime = performance.now()
-  spinnerFrame = 0
+  activeSpinners.set(scenario.id, { scenario, startTime: performance.now() })
 
-  renderFixedBottom()
-  spinnerInterval = setInterval(() => {
-    spinnerFrame++
-    renderFixedBottom()
-  }, 80)
+  if (!spinnerInterval) {
+    spinnerInterval = setInterval(() => {
+      spinnerFrame++
+      renderFooter()
+    }, 80)
+  }
+
+  renderFooter()
 }
 
-export const stopSpinner = () => {
+export const stopSpinner = (scenarioId: string) => {
+  activeSpinners.delete(scenarioId)
+
+  if (activeSpinners.size === 0 && spinnerInterval) {
+    clearInterval(spinnerInterval)
+    spinnerInterval = null
+    renderFooter()
+  }
+}
+
+const stopAllSpinners = () => {
   if (spinnerInterval) {
     clearInterval(spinnerInterval)
     spinnerInterval = null
   }
-  currentSpinnerScenario = null
+  activeSpinners.clear()
 }
 
 export const printResult = (result: EvalResult) => {
@@ -184,7 +203,7 @@ export const printResult = (result: EvalResult) => {
   if (result.passed) passedCount++
   else failedCount++
 
-  const id = result.scenario.id.split('/').pop() ?? result.scenario.id
+  const id = truncate(result.scenario.id, ID_WIDTH)
   const promptShort = truncate(result.scenario.prompt, PROMPT_MAX_WIDTH)
   const time = `${(result.durationMs / 1000).toFixed(1)}s`
 
@@ -198,26 +217,26 @@ export const printResult = (result: EvalResult) => {
   if (result.linkPreviewUrls.length > 0) metrics.push(`${result.linkPreviewUrls.length} links`)
   const metricsStr = metrics.length > 0 ? `  ${esc.dim}${metrics.join('  ')}${esc.reset}` : ''
 
-  // Print main result line
-  write(
-    `  ${icon} ${esc.dim}${id.padEnd(4)}${esc.reset} ${promptShort.padEnd(PROMPT_MAX_WIDTH)}  ${esc.gray}${time.padStart(6)}${esc.reset}${metricsStr}\n`,
+  // Push result line
+  resultLines.push(
+    `  ${icon} ${esc.dim}${id.padEnd(ID_WIDTH)}${esc.reset} ${promptShort.padEnd(PROMPT_MAX_WIDTH)}  ${esc.gray}${time.padStart(6)}${esc.reset}${metricsStr}`,
   )
 
-  // Print failure reasons on a separate indented line for readability
+  // Push failure lines
   if (!result.passed && result.failures.length > 0) {
     for (const failure of result.failures) {
-      write(`         ${esc.red}↳ ${failure}${esc.reset}\n`)
+      resultLines.push(`  ${' '.repeat(ID_WIDTH + 3)}${esc.red}↳ ${failure}${esc.reset}`)
     }
   }
 
-  // Update fixed bottom
-  renderFixedBottom()
+  // Re-render the results area and footer
+  renderResults()
+  renderFooter()
 }
 
 export const printFooter = () => {
-  // Final render of bottom with no spinner
-  stopSpinner()
-  renderFixedBottom()
+  stopAllSpinners()
+  renderFooter()
 }
 
 // ── Helpers ────────────────────────────────────────────────

@@ -66,15 +66,30 @@ export const createModel = async (modelConfig: Model) => {
 
         const secureClient = new SecureClient({
           baseURL: cloudUrl,
-          attestationBundleURL: cloudUrl,
+          attestationBundleURL: `${cloudUrl}/attestation`,
         })
-        await secureClient.ready()
+
+        // Add timeout to prevent indefinite hang if attestation service is unavailable
+        const ATTESTATION_TIMEOUT_MS = 10_000 // 10 seconds
+        const readyPromise = secureClient.ready()
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Attestation bundle fetch timeout')), ATTESTATION_TIMEOUT_MS)
+        })
+        await Promise.race([readyPromise, timeoutPromise])
+
+        // Wrap secureClient.fetch to add X-Requested-Model header for backend validation
+        // The body is encrypted, so backend needs this unencrypted header to validate the model
+        const wrappedFetch = (url: RequestInfo | URL, init?: RequestInit) => {
+          const headers = new Headers(init?.headers)
+          headers.set('X-Requested-Model', 'gpt-oss-120b')
+          return secureClient.fetch(url, { ...init, headers })
+        }
 
         const tinfoil = createOpenAICompatible({
           name: 'tinfoil',
           baseURL: cloudUrl,
           apiKey: 'browser-uses-proxy',
-          fetch: secureClient.fetch,
+          fetch: wrappedFetch,
         })
         return tinfoil('gpt-oss-120b')
       }

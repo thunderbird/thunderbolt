@@ -1,4 +1,4 @@
-import { getPromptOverrides } from '@/ai/prompt-overrides'
+import { getPromptOverrides } from '@/ai/prompts'
 import { widgetPrompts } from '@/widgets'
 
 /** Parameters to build the system prompt */

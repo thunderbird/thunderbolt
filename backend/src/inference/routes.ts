@@ -150,9 +150,9 @@ export const createInferenceRoutes = () => {
         const isHostnameAllowed = allowedHostnames.some((allowed) => allowed.toLowerCase() === hostname)
 
         if (!isHostnameAllowed) {
-          throw new Error(
-            `Hostname ${hostname} is not in the allowed list. Allowed hostnames: ${allowedHostnames.join(', ')}`,
-          )
+          // Log detailed error server-side but return generic error to client
+          console.error(`[EHBP] Rejected disallowed hostname: ${hostname}. Allowed: ${allowedHostnames.join(', ')}`)
+          throw new Error('Request to disallowed enclave hostname')
         }
 
         const upstreamUrl = `${enclaveBaseUrl}/v1/chat/completions`
@@ -267,10 +267,23 @@ export const createInferenceRoutes = () => {
           }, REQUEST_TIMEOUT_MS)
 
           req = https.request(options, (res) => {
-            // Clear timeout on response
+            // Replace connection timeout with stream activity timeout
+            // Ensures stalled streams are eventually cleaned up
             if (timeoutId !== null) {
               clearTimeout(timeoutId)
             }
+            const resetStreamTimeout = () => {
+              if (timeoutId !== null) {
+                clearTimeout(timeoutId)
+              }
+              timeoutId = setTimeout(() => {
+                if (req) {
+                  req.destroy()
+                }
+                rejectOnce(new Error('Stream timeout - no data received for 5 minutes'))
+              }, REQUEST_TIMEOUT_MS)
+            }
+            resetStreamTimeout() // Start stream timeout
 
             // Handle error status codes (consistent with standard provider error handling)
             // Buffer error responses to prevent leaking internal error details
@@ -311,6 +324,7 @@ export const createInferenceRoutes = () => {
 
             // Pipe response chunks
             res.on('data', async (chunk: Buffer) => {
+              resetStreamTimeout() // Reset timeout on each data chunk
               if (writerError) return // Don't write after error
               try {
                 await writer.write(new Uint8Array(chunk))
@@ -328,6 +342,10 @@ export const createInferenceRoutes = () => {
 
             // Capture trailers when response ends
             res.on('end', async () => {
+              // Clear stream timeout on successful completion
+              if (timeoutId !== null) {
+                clearTimeout(timeoutId)
+              }
               try {
                 const usageMetrics = res.trailers?.['x-tinfoil-usage-metrics']
 
@@ -400,17 +418,14 @@ export const createInferenceRoutes = () => {
               responseHeaders.set('Ehbp-Response-Nonce', ehbpResponseNonce)
             }
 
-            // Only resolve if writer hasn't errored
-            if (!writerError) {
-              resolveOnce(
-                new Response(readable, {
-                  status: res.statusCode || 200,
-                  headers: responseHeaders,
-                }),
-              )
-            } else {
-              rejectOnce(writerError)
-            }
+            // Resolve with streaming response
+            // Errors during streaming are handled by writer.abort() in stream event handlers
+            resolveOnce(
+              new Response(readable, {
+                status: res.statusCode || 200,
+                headers: responseHeaders,
+              }),
+            )
           })
 
           req.on('error', (error: Error) => {

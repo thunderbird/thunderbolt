@@ -35,11 +35,7 @@ export const createApp = async (deps?: AppDeps) => {
   const isBun = typeof Bun !== 'undefined'
 
   // Import Node adapter if running on Node.js
-  let nodeAdapter
-  if (!isBun) {
-    const { node } = await import('@elysiajs/node')
-    nodeAdapter = node()
-  }
+  const nodeAdapter = isBun ? undefined : (await import('@elysiajs/node')).node()
 
   const app = new Elysia({
     prefix: '/v1',

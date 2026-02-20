@@ -1,6 +1,5 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { createPrompt } from '@/ai/prompt'
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import type { SaveMessagesFunction } from '@/types'
@@ -78,14 +77,11 @@ const logVerboseResponse = async (scenario: EvalScenario, responseText: string) 
   console.log(`${yellow}--- END RESPONSE ---${reset}\n`)
 }
 
-/** Run a single evaluation scenario end-to-end */
+/** Run a single evaluation scenario end-to-end (assumes DB is already initialized) */
 export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> => {
   const start = performance.now()
 
   try {
-    // Fresh in-memory database for isolation
-    await setupTestDatabase()
-
     const modelId = getModelId(scenario.modelName)
 
     // Look up the mode by name to get the system prompt
@@ -147,22 +143,28 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
       durationMs: Math.round(durationMs),
       error: err instanceof Error ? err.message : String(err),
     }
-  } finally {
-    await teardownTestDatabase()
   }
 }
 
-/** Run multiple scenarios sequentially, updating the terminal UI as each completes */
-export const runSequential = async (scenarios: EvalScenario[]): Promise<EvalResult[]> => {
+/** Run scenarios with a worker pool — each slot immediately starts the next scenario when free */
+export const runPool = async (scenarios: EvalScenario[]): Promise<EvalResult[]> => {
   const { startSpinner, stopSpinner, printResult } = await import('./ui')
+  const concurrency = parseInt(process.env.EVAL_SCENARIO_PARALLEL ?? '3')
 
   const results: EvalResult[] = []
-  for (const scenario of scenarios) {
-    startSpinner(scenario)
-    const result = await runScenario(scenario)
-    stopSpinner()
-    printResult(result)
-    results.push(result)
+  const queue = [...scenarios]
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const scenario = queue.shift()!
+      startSpinner(scenario)
+      const result = await runScenario(scenario)
+      stopSpinner(scenario.id)
+      printResult(result)
+      results.push(result)
+    }
   }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, scenarios.length) }, () => worker()))
   return results
 }

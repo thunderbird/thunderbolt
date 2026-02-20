@@ -8,7 +8,7 @@ export const settingsTable = sqliteTable('settings', {
   // Column is named 'id' in DB for PowerSync compatibility, but accessed as 'key' in TypeScript
   key: text('id').primaryKey(),
   value: text('value'),
-  updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
   defaultHash: text('default_hash'),
   userId: text('user_id'),
 })
@@ -114,8 +114,8 @@ export const mcpServersTable = sqliteTable(
     command: text('command'),
     args: text('args'),
     enabled: integer('enabled').default(1),
-    createdAt: integer('created_at').default(sql`(unixepoch())`),
-    updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+    createdAt: text('created_at').default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },
@@ -157,7 +157,7 @@ export const triggersTable = sqliteTable(
   },
   (table) => [
     index('idx_triggers_active')
-      .on(table.promptId)
+      .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

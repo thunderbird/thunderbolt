@@ -22,6 +22,7 @@ PowerSync provides offline-first sync between the backend (PostgreSQL) and clien
 - Define the table in **both**:
   - Frontend: [src/db/tables.ts](src/db/tables.ts) (SQLite)
   - Backend: [backend/src/db/powersync-schema.ts](backend/src/db/powersync-schema.ts) (PostgreSQL)
+- **Backend schema uses minimal indexes**: Only primary keys and `user_id` indexes (see [Indexes and Foreign Keys](#indexes-and-foreign-keys) below).
 
 ### Current tables
 
@@ -29,13 +30,30 @@ Defined in [shared/powersync-tables.ts](shared/powersync-tables.ts):
 
 `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `devices`.
 
+### Indexes and foreign keys
+
+**Backend (PostgreSQL) uses a minimal index strategy:**
+
+- ✅ Primary keys (required)
+- ✅ Single `user_id` index on every table (required for PowerSync sync rules)
+- ❌ No composite foreign key constraints
+- ❌ No active indexes (`WHERE deletedAt IS NULL`)
+- ❌ No foreign key indexes
+
+**Rationale:** The backend is primarily a sync server, not a query engine. Complex queries and JOINs happen on the frontend (SQLite). With E2E encryption planned, backend indexes on encrypted data would be useless. Minimal indexes reduce storage overhead and improve write performance during sync operations.
+
+**Frontend (SQLite) can use any indexes needed** for local query optimization since queries happen there.
+
+See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md) for detailed explanation.
+
 ### Adding a new synced table
 
 1. Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` (include `user_id`).
-2. Register in [src/db/powersync/schema.ts](src/db/powersync/schema.ts) (`drizzleSchema`).
-3. Add the table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
-4. Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
-5. Run migrations for frontend and backend as needed.
+2. **Backend schema**: Add only a `user_id` index: `index('idx_[table]_user_id').on(table.userId)`. Do not add composite foreign keys or other indexes (see above).
+3. Register in [src/db/powersync/schema.ts](src/db/powersync/schema.ts) (`drizzleSchema`).
+4. Add the table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
+5. Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
+6. Run migrations for frontend and backend as needed.
 
 **Before merging to production:** Deploy the new sync rules in the PowerSync Cloud dashboard (production uses PowerSync Cloud; local uses `powersync-service` config).
 

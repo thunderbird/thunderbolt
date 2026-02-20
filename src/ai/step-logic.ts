@@ -1,3 +1,5 @@
+import { gptOssNudges, gptOssSearchNudges } from '@/ai/prompts/vendors/openai/nudges'
+
 type Step = { finishReason: string }
 
 type Message = {
@@ -87,6 +89,8 @@ export const searchModeNudges: NudgeMessages = {
     'Respond now. Output <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is REQUIRED — without it, nothing will render. No more tools.',
 }
 
-/** Get the appropriate nudge messages for a mode */
-export const getNudgeMessages = (modeName?: string): NudgeMessages =>
-  modeName === 'search' ? searchModeNudges : nudgeMessages
+/** Get the appropriate nudge messages for a vendor/mode combination */
+export const getNudgeMessages = (modeName?: string, vendor?: string): NudgeMessages => {
+  if (vendor === 'openai') return modeName === 'search' ? gptOssSearchNudges : gptOssNudges
+  return modeName === 'search' ? searchModeNudges : nudgeMessages
+}

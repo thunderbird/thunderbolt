@@ -29,6 +29,20 @@
       "when": 1770091078446,
       "tag": "0003_previous_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771443395358,
+      "tag": "0004_smooth_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771612090526,
+      "tag": "0005_cheerful_hex",
+      "breakpoints": true
     }
   ]
 }

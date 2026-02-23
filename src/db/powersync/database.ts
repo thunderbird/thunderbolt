@@ -1,13 +1,15 @@
 import { getSettings } from '@/dal'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
-import type { AbstractPowerSyncDatabase } from '@powersync/common'
-import { PowerSyncDatabase, SyncStreamConnectionMethod } from '@powersync/web'
+import { type AbstractPowerSyncDatabase, SyncStreamConnectionMethod } from '@powersync/common'
+import { type PowerSyncDatabase } from '@powersync/web'
 import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
 import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
+import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
+import type { ThunderboltPowerSyncOptions } from './ThunderboltPowerSyncDatabase'
 
 /** LocalStorage key for sync enabled flag */
 const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
@@ -101,13 +103,17 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // Extract just the filename from the path
     const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
-    // Create PowerSync database.
+    // Create PowerSync database with transformation middleware.
     // Cast options: @powersync/web uses a nested @powersync/common, so Schema/Table types differ from our Drizzle schema.
-    const options: WebPowerSyncDatabaseOptions = {
+    const options: ThunderboltPowerSyncOptions = {
       database: { dbFilename },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
+      transformers: [],
+      // Required for both approaches: SharedWorker creates its own storage and bypasses our adapter.
+      // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
+      flags: { enableMultiTabs: false, useWebWorker: false },
     }
-    this.powerSync = new PowerSyncDatabase(options)
+    this.powerSync = new ThunderboltPowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
     // Cast instance: drizzle-driver expects AbstractPowerSyncDatabase from root @powersync/common; PowerSyncDatabase is from @powersync/web (nested common).

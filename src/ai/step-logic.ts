@@ -1,3 +1,4 @@
+import { mistralNudges, mistralSearchNudges } from '@/ai/prompts/vendors/mistral/nudges'
 import { gptOssNudges, gptOssSearchNudges } from '@/ai/prompts/vendors/openai/nudges'
 
 type Step = { finishReason: string }
@@ -92,5 +93,6 @@ export const searchModeNudges: NudgeMessages = {
 /** Get the appropriate nudge messages for a vendor/mode combination */
 export const getNudgeMessages = (modeName?: string, vendor?: string): NudgeMessages => {
   if (vendor === 'openai') return modeName === 'search' ? gptOssSearchNudges : gptOssNudges
+  if (vendor === 'mistral') return modeName === 'search' ? mistralSearchNudges : mistralNudges
   return modeName === 'search' ? searchModeNudges : nudgeMessages
 }

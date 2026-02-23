@@ -214,8 +214,7 @@ export const aiFetchStreamingResponse = async ({
     modeSystemPrompt,
   })
 
-  const activeModeName = modeSystemPrompt?.includes('SEARCH MODE') ? 'search' : undefined
-  const activeNudges = getNudgeMessages(activeModeName, model.vendor ?? undefined)
+  const activeNudges = getNudgeMessages(modeName, model.vendor ?? undefined)
 
   try {
     const baseModel = await createModel(model)

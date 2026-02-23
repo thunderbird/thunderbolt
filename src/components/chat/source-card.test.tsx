@@ -1,6 +1,6 @@
 import '@/testing-library'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { SourceCard } from './source-card'
 
@@ -82,20 +82,60 @@ describe('SourceCard', () => {
   })
 
   describe('link behavior', () => {
-    it('should open URL in new tab with security attributes', () => {
+    it('should use placeholder href and show warning dialog on click', () => {
       render(<SourceCard source={mockSource} />)
 
       const link = screen.getByRole('listitem')
-      expect(link).toHaveAttribute('href', 'https://example.com/article')
-      expect(link).toHaveAttribute('target', '_blank')
-      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(link).toHaveAttribute('href', '#')
+      expect(link.tagName).toBe('A')
     })
 
-    it('should be a clickable link', () => {
+    it('should show external link dialog when clicked', () => {
       render(<SourceCard source={mockSource} />)
 
       const link = screen.getByRole('listitem')
-      expect(link.tagName).toBe('A')
+      fireEvent.click(link)
+
+      // Dialog should appear with the URL
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+      expect(screen.getByText('Open external link')).toBeInTheDocument()
+      expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
+    })
+
+    it('should open URL in new window when dialog is confirmed', () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => null)
+      window.open = mockWindowOpen as typeof window.open
+
+      render(<SourceCard source={mockSource} />)
+
+      const link = screen.getByRole('listitem')
+      fireEvent.click(link)
+
+      const openButton = screen.getByRole('button', { name: 'Open link' })
+      fireEvent.click(openButton)
+
+      expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com/article', '_blank', 'noopener,noreferrer')
+
+      window.open = originalOpen
+    })
+
+    it('should not open URL when dialog is cancelled', () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => null)
+      window.open = mockWindowOpen as typeof window.open
+
+      render(<SourceCard source={mockSource} />)
+
+      const link = screen.getByRole('listitem')
+      fireEvent.click(link)
+
+      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
+      fireEvent.click(cancelButton)
+
+      expect(mockWindowOpen).not.toHaveBeenCalled()
+
+      window.open = originalOpen
     })
   })
 

@@ -1,7 +1,8 @@
-import { createContext, Fragment, memo, useContext, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useContext, useState, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
+import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { isSafeUrl } from '@/lib/url-utils'
 import type { CitationMap } from '@/types/citation'
 
@@ -132,11 +133,35 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * All components are memoized to prevent unnecessary re-renders during streaming.
  */
 const SafeLink = memo(({ href, children, ...props }: React.ComponentProps<'a'>) => {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingUrl, setPendingUrl] = useState<string>('')
+
   const safeHref = href && isSafeUrl(href) ? href : undefined
+
+  // Show warning for ALL links (user requested this)
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!safeHref) return
+
+    e.preventDefault()
+    setPendingUrl(safeHref)
+    setDialogOpen(true)
+  }
+
+  const handleConfirm = () => {
+    if (pendingUrl) {
+      window.open(pendingUrl, '_blank', 'noopener,noreferrer')
+    }
+    setDialogOpen(false)
+    setPendingUrl('')
+  }
+
   return (
-    <a {...props} href={safeHref} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
+    <>
+      <a {...props} href="#" onClick={handleClick}>
+        {children}
+      </a>
+      <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
+    </>
   )
 })
 

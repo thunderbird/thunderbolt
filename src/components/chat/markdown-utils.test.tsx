@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { describe, expect, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -6,7 +6,12 @@ import remarkGfm from 'remark-gfm'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationMap, CitationSource } from '@/types/citation'
 import { CitationPopoverProvider } from './citation-popover'
-import { CitationContext, citationMarkdownComponents, markdownComponents } from './markdown-utils'
+import {
+  CitationContext,
+  citationMarkdownComponents,
+  ExternalLinkDialogProvider,
+  markdownComponents,
+} from './markdown-utils'
 
 const makeSources = (name: string): CitationSource[] => [
   { id: `src-${name}`, title: `${name} Article`, url: `https://${name}.com`, siteName: name, isPrimary: true },
@@ -188,6 +193,31 @@ describe('markdownComponents', () => {
       expect(container.querySelector('em')).toBeTruthy()
       expect(container.querySelectorAll('br')).toHaveLength(2)
     })
+  })
+})
+
+describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => {
+  test('renders only one dialog instance; clicking a link shows that URL in the shared dialog', () => {
+    const markdown = '[first](https://a.com) [second](https://b.com) [third](https://c.com)'
+    const { container, getByRole, getByText } = render(
+      <ExternalLinkDialogProvider>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {markdown}
+        </ReactMarkdown>
+      </ExternalLinkDialogProvider>,
+    )
+
+    const links = container.querySelectorAll('a[href="#"]')
+    expect(links).toHaveLength(3)
+
+    fireEvent.click(links[0]!)
+
+    const dialog = getByRole('alertdialog')
+    expect(dialog).toBeInTheDocument()
+    expect(getByText('https://a.com')).toBeInTheDocument()
+
+    const dialogs = document.body.querySelectorAll('[role="alertdialog"]')
+    expect(dialogs).toHaveLength(1)
   })
 })
 

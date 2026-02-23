@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
+import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
@@ -27,8 +28,7 @@ const getBadgeColor = (siteName: string = '') => {
  */
 export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [pendingUrl, setPendingUrl] = useState<string>('')
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
@@ -40,19 +40,9 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   const badgeColor = getBadgeColor(displaySiteName)
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (safeUrl === '#') return
-
     e.preventDefault()
-    setPendingUrl(safeUrl)
-    setDialogOpen(true)
-  }
-
-  const handleConfirm = () => {
-    if (pendingUrl) {
-      window.open(pendingUrl, '_blank', 'noopener,noreferrer')
-    }
-    setDialogOpen(false)
-    setPendingUrl('')
+    if (safeUrl === '#') return
+    openDialog(safeUrl)
   }
 
   return (

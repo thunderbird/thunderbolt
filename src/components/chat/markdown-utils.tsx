@@ -1,13 +1,24 @@
-import { createContext, Fragment, memo, useContext, useState, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useContext, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
+import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isSafeUrl } from '@/lib/url-utils'
 import type { CitationMap } from '@/types/citation'
 
 // Re-export for consumers that import CitationMap from here
 export type { CitationMap }
+
+/**
+ * Context for opening the shared external link confirmation dialog.
+ * When provided, SafeLink uses this instead of rendering its own dialog,
+ * so one markdown tree uses a single dialog instance regardless of link count.
+ */
+type ExternalLinkDialogContextValue = {
+  openExternalLink: (url: string) => void
+}
+const ExternalLinkDialogContext = createContext<ExternalLinkDialogContextValue | undefined>(undefined)
 
 /**
  * Context for passing citation data to markdown components without creating
@@ -128,31 +139,49 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
 }
 
 /**
+ * Provider that renders a single ExternalLinkDialog for all SafeLinks in the tree.
+ * Wrap markdown content with this to avoid N dialog instances for N links.
+ */
+export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+
+  return (
+    <ExternalLinkDialogContext.Provider value={{ openExternalLink: openDialog }}>
+      {children}
+      <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
+    </ExternalLinkDialogContext.Provider>
+  )
+})
+ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
+
+/**
  * Custom ReactMarkdown component overrides that handle <br> tags in rendered output.
  * Ensures line breaks work correctly in tables, lists, and paragraphs.
  * All components are memoized to prevent unnecessary re-renders during streaming.
  */
 const SafeLink = memo(({ href, children, ...props }: React.ComponentProps<'a'>) => {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [pendingUrl, setPendingUrl] = useState<string>('')
+  const context = useContext(ExternalLinkDialogContext)
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
 
   const safeHref = href && isSafeUrl(href) ? href : undefined
 
-  // Show warning for ALL links (user requested this)
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!safeHref) return
-
-    e.preventDefault()
-    setPendingUrl(safeHref)
-    setDialogOpen(true)
+  if (context) {
+    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+      e.preventDefault()
+      if (!safeHref) return
+      context.openExternalLink(safeHref)
+    }
+    return (
+      <a {...props} href="#" onClick={handleClick}>
+        {children}
+      </a>
+    )
   }
 
-  const handleConfirm = () => {
-    if (pendingUrl) {
-      window.open(pendingUrl, '_blank', 'noopener,noreferrer')
-    }
-    setDialogOpen(false)
-    setPendingUrl('')
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+    if (!safeHref) return
+    openDialog(safeHref)
   }
 
   return (

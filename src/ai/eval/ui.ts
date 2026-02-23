@@ -43,6 +43,7 @@ export const silenceConsole = () => {
   console.log = noop
   console.info = noop
   console.warn = noop
+  // Deliberately NOT silencing console.error — errors should always surface
   console.groupCollapsed = noop
   console.groupEnd = noop
 }

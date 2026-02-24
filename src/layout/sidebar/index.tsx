@@ -25,6 +25,7 @@ export default function Sidebar() {
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
+  const lastChatPathRef = useRef<string | null>(null)
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
@@ -42,6 +43,12 @@ export default function Sidebar() {
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/chats/')) {
+      lastChatPathRef.current = location.pathname
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
@@ -124,9 +131,10 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
-    const chatThreadId = currentChatThreadId || (chatThreads.length > 0 ? chatThreads[0].id : null)
-    if (chatThreadId) {
-      navigate(`/chats/${chatThreadId}`)
+    if (lastChatPathRef.current) {
+      navigate(lastChatPathRef.current)
+    } else if (chatThreads.length > 0) {
+      navigate(`/chats/${chatThreads[0].id}`)
     } else {
       await createNewChat(false)
     }

@@ -90,25 +90,25 @@ const issuePowerSyncToken = async (
   const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
   const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()
 
-  const deviceName = request.headers.get('x-device-name')
-  const isDeviceNameValid = deviceName && deviceName.length > 0 && deviceName.length <= 100
-  if (isDeviceNameValid) {
-    const now = new Date()
-    await database
-      .insert(devicesTable)
-      .values({
-        id: deviceId,
-        userId,
-        name: deviceName,
-        lastSeen: now,
-        createdAt: now,
-      })
-      .onConflictDoUpdate({
-        target: devicesTable.id,
-        set: { lastSeen: now, name: deviceName },
-        where: eq(devicesTable.userId, userId),
-      })
-  }
+  const rawDeviceName = request.headers.get('x-device-name')?.trim()
+  const deviceName =
+    rawDeviceName && rawDeviceName.length > 0 && rawDeviceName.length <= 100 ? rawDeviceName : 'Unknown device'
+
+  const now = new Date()
+  await database
+    .insert(devicesTable)
+    .values({
+      id: deviceId,
+      userId,
+      name: deviceName,
+      lastSeen: now,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({
+      target: devicesTable.id,
+      set: { lastSeen: now, name: deviceName },
+      where: eq(devicesTable.userId, userId),
+    })
 
   return { ok: true, token, expiresAt, powerSyncUrl: settings.powersyncUrl }
 }

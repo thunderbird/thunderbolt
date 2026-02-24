@@ -59,7 +59,7 @@ export default function Sidebar() {
     }
   }, [showSearch, isCollapsed])
 
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ['chatThreads'],
     queryFn: getAllChatThreads,
     placeholderData: (previousData) => previousData,
@@ -161,6 +161,12 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
+    // Wait for data to load to avoid race condition where we create a new chat
+    // when the user's last chat exists but hasn't loaded yet
+    if (isPending) {
+      return
+    }
+
     const allThreads = data ?? []
     if (lastChatPathRef.current && isChatPathValid(lastChatPathRef.current, allThreads)) {
       navigate(lastChatPathRef.current)

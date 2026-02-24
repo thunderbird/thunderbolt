@@ -1,8 +1,16 @@
 import { DatabaseSingleton } from '@/db/singleton'
-import { chatMessagesTable, chatThreadsTable, modelsTable, promptsTable, triggersTable } from '@/db/tables'
+import {
+  chatMessagesTable,
+  chatThreadsTable,
+  modelProfilesTable,
+  modelsTable,
+  promptsTable,
+  triggersTable,
+} from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
+import { defaultModelGptOss120b } from '@/defaults/models'
 import {
   createModel,
   deleteModel,
@@ -888,6 +896,84 @@ describe('Models DAL', () => {
 
       const models = await getAllModels()
       expect(models).toHaveLength(2)
+    })
+  })
+
+  describe('createModel auto-profile', () => {
+    it('should auto-create a default profile for a known seeded model', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Create a model with the same ID as a seeded default (GPT-OSS)
+      await createModel({
+        id: defaultModelGptOss120b.id,
+        provider: 'thunderbolt',
+        name: 'GPT OSS',
+        model: 'gpt-oss-120b',
+      })
+
+      // Verify a profile was auto-created
+      const profile = await db
+        .select()
+        .from(modelProfilesTable)
+        .where(eq(modelProfilesTable.modelId, defaultModelGptOss120b.id))
+        .get()
+      expect(profile).not.toBeUndefined()
+      expect(profile?.temperature).toBe(0.3)
+    })
+
+    it('should not create a profile for an unknown model ID', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      await createModel({
+        id: modelId,
+        provider: 'openai',
+        name: 'Unknown Model',
+        model: 'gpt-4',
+      })
+
+      const profile = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, modelId)).get()
+      expect(profile).toBeUndefined()
+    })
+  })
+
+  describe('deleteModel profile cascade', () => {
+    it('should soft-delete the model profile when deleting a model', async () => {
+      const db = DatabaseSingleton.instance.db
+      const modelId = uuidv7()
+
+      // Create a model and manually insert a profile
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Model with profile',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+      await db.insert(modelProfilesTable).values({
+        modelId,
+        temperature: 0.5,
+      })
+
+      // Verify profile exists
+      const profileBefore = await db
+        .select()
+        .from(modelProfilesTable)
+        .where(eq(modelProfilesTable.modelId, modelId))
+        .get()
+      expect(profileBefore?.deletedAt).toBeNull()
+
+      // Delete the model
+      await deleteModel(modelId)
+
+      // Verify profile is soft-deleted
+      const profileAfter = await db
+        .select()
+        .from(modelProfilesTable)
+        .where(eq(modelProfilesTable.modelId, modelId))
+        .get()
+      expect(profileAfter?.deletedAt).not.toBeNull()
     })
   })
 })

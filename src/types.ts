@@ -11,6 +11,7 @@ import type {
   chatMessagesTable,
   chatThreadsTable,
   mcpServersTable,
+  modelProfilesTable,
   modelsTable,
   modesTable,
   promptsTable,
@@ -50,6 +51,7 @@ export type TaskRow = InferSelectModel<typeof tasksTable>
 export type McpServerRow = InferSelectModel<typeof mcpServersTable>
 export type PromptRow = InferSelectModel<typeof promptsTable>
 export type TriggerRow = InferSelectModel<typeof triggersTable>
+export type ModelProfileRow = InferSelectModel<typeof modelProfilesTable>
 
 // Application types - Row types with previously-required fields made non-null
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role'>
@@ -70,6 +72,7 @@ export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled'>
+export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
 
 export type AutomationRun = {
   prompt: Prompt | null

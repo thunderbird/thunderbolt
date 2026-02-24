@@ -99,4 +99,9 @@ export const migrations: Migration[] = [
     name: '0017_glorious_marauders.sql',
     sql: 'CREATE TABLE `modes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`name` text NOT NULL,\n\t`label` text NOT NULL,\n\t`icon` text NOT NULL,\n\t`system_prompt` text,\n\t`is_default` integer DEFAULT 0,\n\t`order` integer DEFAULT 0,\n\t`default_hash` text,\n\t`deleted_at` integer\n);\n--> statement-breakpoint\nCREATE UNIQUE INDEX `modes_id_unique` ON `modes` (`id`);--> statement-breakpoint\nCREATE INDEX `idx_modes_active` ON `modes` (`id`) WHERE "modes"."deleted_at" IS NULL;--> statement-breakpoint\nALTER TABLE `chat_threads` ADD `mode_id` text REFERENCES modes(id);',
   },
+  {
+    hash: '0018_lucky_surge',
+    name: '0018_lucky_surge.sql',
+    sql: 'CREATE TABLE `model_profiles` (\n\t`model_id` text PRIMARY KEY NOT NULL,\n\t`temperature` real,\n\t`max_steps` integer,\n\t`max_attempts` integer,\n\t`nudge_threshold` integer,\n\t`use_system_message_mode_developer` integer DEFAULT 0,\n\t`tools_override` text,\n\t`link_previews_override` text,\n\t`chat_mode_addendum` text,\n\t`search_mode_addendum` text,\n\t`research_mode_addendum` text,\n\t`citation_reinforcement_enabled` integer DEFAULT 0,\n\t`citation_reinforcement_prompt` text,\n\t`nudge_final_step` text,\n\t`nudge_preventive` text,\n\t`nudge_retry` text,\n\t`nudge_search_final_step` text,\n\t`nudge_search_preventive` text,\n\t`nudge_search_retry` text,\n\t`provider_options` text,\n\t`default_hash` text,\n\t`deleted_at` integer,\n\tFOREIGN KEY (`model_id`) REFERENCES `models`(`id`) ON UPDATE cascade ON DELETE cascade\n);\n--> statement-breakpoint\nCREATE INDEX `idx_model_profiles_active` ON `model_profiles` (`model_id`) WHERE "model_profiles"."deleted_at" IS NULL;',
+  },
 ]

@@ -148,6 +148,10 @@ export const deleteModel = async (id: string): Promise<void> => {
   // Import locally to avoid circular dependency
   const { deletePromptsForModel } = await import('./prompts')
 
+  // Soft-delete model profile
+  const { deleteModelProfileForModel } = await import('./model-profiles')
+  await deleteModelProfileForModel(id)
+
   // Soft-delete prompts and their triggers first (replaces onDelete: 'cascade')
   await deletePromptsForModel(id)
 
@@ -166,4 +170,8 @@ export const createModel = async (
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.insert(modelsTable).values(data)
+
+  // Auto-create default profile if one exists in seed data
+  const { createDefaultModelProfile } = await import('./model-profiles')
+  await createDefaultModelProfile(data.id)
 }

@@ -3,8 +3,9 @@ import { createSetting } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelsTable, modesTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, modesTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModes, hashMode } from '../defaults/modes'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
@@ -69,6 +70,9 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
   // AI models
   await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+
+  // Model profiles (after models, because they reference model IDs)
+  await reconcileDefaultsForTable(db, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
 
   // Modes
   await reconcileDefaultsForTable(db, modesTable, defaultModes, hashMode)

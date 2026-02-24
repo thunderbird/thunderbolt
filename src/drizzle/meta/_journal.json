@@ -127,6 +127,13 @@
       "when": 1769207380588,
       "tag": "0017_glorious_marauders",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1771953805792,
+      "tag": "0018_lucky_surge",
+      "breakpoints": true
     }
   ]
 }

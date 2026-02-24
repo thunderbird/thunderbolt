@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { chatMessagesTable, chatThreadsTable, modelsTable } from './tables'
+import { chatMessagesTable, chatThreadsTable, modelProfilesTable, modelsTable } from './tables'
 
 export const chatThreadsRelations = relations(chatThreadsTable, ({ many }) => ({
   messages: many(chatMessagesTable),
@@ -24,6 +24,17 @@ export const chatMessagesRelations = relations(chatMessagesTable, ({ one, many }
   }),
 }))
 
-export const modelsRelations = relations(modelsTable, ({ many }) => ({
+export const modelsRelations = relations(modelsTable, ({ one, many }) => ({
   chatMessages: many(chatMessagesTable),
+  profile: one(modelProfilesTable, {
+    fields: [modelsTable.id],
+    references: [modelProfilesTable.modelId],
+  }),
+}))
+
+export const modelProfilesRelations = relations(modelProfilesTable, ({ one }) => ({
+  model: one(modelsTable, {
+    fields: [modelProfilesTable.modelId],
+    references: [modelsTable.id],
+  }),
 }))

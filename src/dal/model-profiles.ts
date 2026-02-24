@@ -22,7 +22,11 @@ export const upsertModelProfile = async (
   data: Partial<ModelProfile> & Pick<ModelProfile, 'modelId'>,
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const existing = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, data.modelId)).get()
+  const existing = await db
+    .select()
+    .from(modelProfilesTable)
+    .where(and(eq(modelProfilesTable.modelId, data.modelId), isNull(modelProfilesTable.deletedAt)))
+    .get()
 
   if (existing) {
     const { defaultHash, ...updateFields } = data as Partial<ModelProfile> & { defaultHash?: string | null }

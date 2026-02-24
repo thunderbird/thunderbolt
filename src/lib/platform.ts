@@ -84,10 +84,9 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
 // Capabilities
 // -----------------------------------------------------------------------------
 
-export interface Capabilities {
+export type Capabilities = {
   libsql: boolean
   native_fetch: boolean
-  // extend as new backend capabilities are added
 }
 
 const DEFAULT_CAPABILITIES: Capabilities = { libsql: false, native_fetch: false }

@@ -147,9 +147,8 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
 }
 
 /** Run scenarios with a worker pool — each slot immediately starts the next scenario when free */
-export const runPool = async (scenarios: EvalScenario[]): Promise<EvalResult[]> => {
+export const runPool = async (scenarios: EvalScenario[], concurrency: number): Promise<EvalResult[]> => {
   const { startSpinner, stopSpinner, printResult } = await import('./ui')
-  const concurrency = parseInt(process.env.EVAL_SCENARIO_PARALLEL ?? '3')
 
   const results: EvalResult[] = []
   const queue = [...scenarios]

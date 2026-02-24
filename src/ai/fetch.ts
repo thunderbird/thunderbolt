@@ -267,7 +267,7 @@ export const aiFetchStreamingResponse = async ({
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
           const citationSystem =
-            profile?.citationReinforcementEnabled && hadToolCallSteps
+            profile?.citationReinforcementEnabled === 1 && hadToolCallSteps
               ? systemPrompt + (profile.citationReinforcementPrompt ?? '')
               : undefined
 

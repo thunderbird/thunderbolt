@@ -35,17 +35,17 @@ export const createPrompt = ({
   integrationStatus,
   modeSystemPrompt,
 }: PromptParams) => {
-  const getOverrideForMode = (modeName: string | null, profile: ModelProfile | null) => {
-    if (!profile) return undefined
-    if (modeName === 'chat') return profile.chatModeAddendum
-    if (modeName === 'search') return profile.searchModeAddendum
-    if (modeName === 'research') return profile.researchModeAddendum
-    return undefined
-  }
-
   const toolsOverride = profile?.toolsOverride ?? undefined
   const linkPreviewsOverride = profile?.linkPreviewsOverride ?? undefined
-  const modeAddendum = getOverrideForMode(modeName, profile)
+  const modeAddendum = !profile
+    ? undefined
+    : modeName === 'chat'
+      ? profile.chatModeAddendum
+      : modeName === 'search'
+        ? profile.searchModeAddendum
+        : modeName === 'research'
+          ? profile.researchModeAddendum
+          : undefined
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',

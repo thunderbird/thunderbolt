@@ -31,7 +31,7 @@ const main = async () => {
   initLayout(scenarios, scenarioParallel)
 
   // Run all scenarios through a single worker pool
-  const results = await runPool(scenarios)
+  const results = await runPool(scenarios, scenarioParallel)
 
   printFooter()
   teardownLayout()

@@ -112,12 +112,6 @@ export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
-  // For web, use PowerSync as default
-  // if (!isTauri()) {
-  // }
-
-  // const { libsql } = await getCapabilities()
-  // return libsql ? 'libsql-tauri' : 'wa-sqlite'
 }
 
 /**

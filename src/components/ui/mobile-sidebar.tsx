@@ -24,24 +24,13 @@ export const MobileSidebar = ({
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
 
-  const [sidebarWidth, setSidebarWidth] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300,
-  )
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const updateWidth = () => setSidebarWidth(window.innerWidth * 0.8)
-    window.addEventListener('resize', updateWidth)
-    window.addEventListener('orientationchange', updateWidth)
-    return () => {
-      window.removeEventListener('resize', updateWidth)
-      window.removeEventListener('orientationchange', updateWidth)
-    }
-  }, [])
+  // Calculate 80vw inline - no need to track in state since CSS already handles the visual width
+  const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300)
 
   // Transform x position to overlay opacity (fade out as sidebar moves away).
   // Output [0, 1] so backdrop-blur and bg dimming render at full strength when open
   // (opacity multiplies the whole composited layer including backdrop-filter).
+  const sidebarWidth = getSidebarWidth()
   const overlayOpacity = useTransform(
     x,
     side === 'left' ? [-sidebarWidth, 0] : [0, sidebarWidth],
@@ -50,10 +39,11 @@ export const MobileSidebar = ({
 
   // Handle external open/close requests
   useEffect(() => {
+    const width = getSidebarWidth()
     if (open && !internalOpen) {
       // Opening: set position first, then animate in
       // Set position synchronously before rendering to avoid flicker
-      x.set(side === 'left' ? -sidebarWidth : sidebarWidth)
+      x.set(side === 'left' ? -width : width)
       setInternalOpen(true)
 
       // Animate to position after render
@@ -74,7 +64,7 @@ export const MobileSidebar = ({
       // Closing: animate first, then close
       const animateClose = async () => {
         setIsAnimating(true)
-        await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, {
+        await animate(x, side === 'left' ? -width : width, {
           type: 'spring',
           // Same optimized spring physics for consistent feel across all animations
           damping: 35,
@@ -86,13 +76,14 @@ export const MobileSidebar = ({
       }
       animateClose()
     }
-  }, [open, internalOpen, isAnimating, x, side, sidebarWidth])
+  }, [open, internalOpen, isAnimating, x, side])
 
   const handleClose = async () => {
     if (isAnimating) return
 
+    const width = getSidebarWidth()
     setIsAnimating(true)
-    await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, {
+    await animate(x, side === 'left' ? -width : width, {
       type: 'spring',
       // Same optimized spring physics for consistent feel across all animations
       damping: 35,
@@ -140,8 +131,8 @@ export const MobileSidebar = ({
         <motion.div
           drag="x"
           dragConstraints={{
-            left: side === 'left' ? -sidebarWidth : 0,
-            right: side === 'left' ? 0 : sidebarWidth,
+            left: side === 'left' ? -getSidebarWidth() : 0,
+            right: side === 'left' ? 0 : getSidebarWidth(),
           }}
           dragElastic={0.2}
           onDragEnd={handleDragEnd}

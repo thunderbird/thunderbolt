@@ -1,4 +1,4 @@
-import { createContext, Fragment, memo, useContext, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useMemo, useContext, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
@@ -144,9 +144,10 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  */
 export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
   const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+  const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
 
   return (
-    <ExternalLinkDialogContext.Provider value={{ openExternalLink: openDialog }}>
+    <ExternalLinkDialogContext.Provider value={contextValue}>
       {children}
       <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
     </ExternalLinkDialogContext.Provider>

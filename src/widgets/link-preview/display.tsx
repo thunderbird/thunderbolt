@@ -4,7 +4,7 @@ import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isDesktop as isTauriDesktop } from '@/lib/platform'
 import { usePreview } from '@/content-view/context'
 import { ImageIcon } from 'lucide-react'
-import { useReducer } from 'react'
+import { useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
@@ -13,32 +13,9 @@ type LinkPreviewProps = {
   image: string | null
 }
 
-type ImageState = {
-  imageError: boolean
-  isImageLoading: boolean
-}
-
-type ImageAction = { type: 'IMAGE_LOADED' } | { type: 'IMAGE_ERROR' }
-
-const initialImageState = (image: string | null): ImageState => ({
-  imageError: false,
-  isImageLoading: !!image,
-})
-
-const imageReducer = (state: ImageState, action: ImageAction): ImageState => {
-  switch (action.type) {
-    case 'IMAGE_LOADED':
-      return { ...state, isImageLoading: false }
-    case 'IMAGE_ERROR':
-      return { ...state, imageError: true, isImageLoading: false }
-    default:
-      return state
-  }
-}
-
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
-  const [state, dispatch] = useReducer(imageReducer, image, initialImageState)
-  const { imageError, isImageLoading } = state
+  const [imageError, setImageError] = useState(false)
+  const [isImageLoading, setIsImageLoading] = useState(!!image)
   const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
   const showPlaceholder = !image || imageError
   const { showPreview } = usePreview()
@@ -76,8 +53,11 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
                   src={image}
                   alt={title ?? description ?? url}
                   className={`col-start-1 row-start-1 h-full w-full object-cover transition-opacity ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
-                  onLoad={() => dispatch({ type: 'IMAGE_LOADED' })}
-                  onError={() => dispatch({ type: 'IMAGE_ERROR' })}
+                  onLoad={() => setIsImageLoading(false)}
+                  onError={() => {
+                    setImageError(true)
+                    setIsImageLoading(false)
+                  }}
                 />
               </>
             )}

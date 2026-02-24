@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 type UseExternalLinkDialogReturn = {
   dialogOpen: boolean
@@ -12,23 +12,27 @@ type UseExternalLinkDialogReturn = {
  * Hook for managing external link warning dialog state.
  * Encapsulates the common pattern of showing a confirmation dialog
  * before opening external links in a new window.
+ * Callbacks are stable (useCallback) so context consumers (e.g. SafeLink)
+ * do not re-render when the provider re-renders during streaming.
  */
 export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingUrl, setPendingUrl] = useState<string>('')
 
-  const openDialog = (url: string) => {
+  const openDialog = useCallback((url: string) => {
     setPendingUrl(url)
     setDialogOpen(true)
-  }
+  }, [])
 
-  const handleConfirm = () => {
-    if (pendingUrl) {
-      window.open(pendingUrl, '_blank', 'noopener,noreferrer')
-    }
+  const handleConfirm = useCallback(() => {
     setDialogOpen(false)
-    setPendingUrl('')
-  }
+    setPendingUrl((current) => {
+      if (current) {
+        window.open(current, '_blank', 'noopener,noreferrer')
+      }
+      return ''
+    })
+  }, [])
 
   return {
     dialogOpen,

@@ -3,9 +3,19 @@ import { type PowerSyncTableName, powersyncTableToQueryKeys } from '@shared/powe
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
+/** Maps PowerSync internal table names (with prefixes) back to base table names */
+const toBaseTableName = (name: string): string => {
+  if (name.startsWith('ps_data_local__')) return name.slice('ps_data_local__'.length)
+  if (name.startsWith('ps_data__')) return name.slice('ps_data__'.length)
+  return name
+}
+
 /**
  * Hook that watches PowerSync tables for changes and invalidates React Query cache.
- * This enables automatic UI updates when data changes from:
+ * Uses PowerSync's onChange (tablesUpdated) for batched notifications instead of
+ * per-table watch queries.
+ *
+ * Enables automatic UI updates when data changes from:
  * - Local writes (immediately)
  * - Sync from cloud (when new data arrives)
  *
@@ -19,6 +29,10 @@ import { useEffect } from 'react'
  * // Watch specific tables
  * usePowerSyncInvalidation(['settings', 'models'])
  * ```
+ *
+ * TODO: in the feature this hook should be removed and we should start using live queries from PowerSync for better performance.
+ * See how to integrate useQuery (react-query) with drizzle and PowerSync.
+ * A good ticket where this could be addressed is: https://linear.app/mozilla-thunderbolt/issue/THU-249/rearchitect-databaseinstancedb
  */
 export const usePowerSyncInvalidation = (tables?: string[]) => {
   const queryClient = useQueryClient()
@@ -26,48 +40,33 @@ export const usePowerSyncInvalidation = (tables?: string[]) => {
   useEffect(() => {
     const powerSync = getPowerSyncInstance()
     if (!powerSync) {
-      // Not using PowerSync, nothing to watch
       return
     }
 
-    const tablesToWatch = tables ?? Object.keys(powersyncTableToQueryKeys)
-    const unsubscribes: (() => void)[] = []
+    const tablesToWatch = (tables ?? Object.keys(powersyncTableToQueryKeys)).filter(
+      (t): t is PowerSyncTableName => t in powersyncTableToQueryKeys,
+    )
+    if (tablesToWatch.length === 0) return
 
-    for (const tableName of tablesToWatch) {
-      if (!(tableName in powersyncTableToQueryKeys)) continue
-      const queryKeys = powersyncTableToQueryKeys[tableName as PowerSyncTableName]
-
-      // Watch the table for any changes
-      const abortController = new AbortController()
-
-      // Use PowerSync's onChange to detect table changes
-      const watchTable = async () => {
-        try {
-          // PowerSync watch returns an async iterator
-          for await (const _ of powerSync.watch(`SELECT 1 FROM ${tableName} LIMIT 1`, [], {
-            signal: abortController.signal,
-          })) {
-            // Table changed - invalidate all associated query keys
+    const dispose = powerSync.onChange(
+      {
+        onChange: (event) => {
+          const changedBaseNames = new Set(event.changedTables.map(toBaseTableName))
+          for (const tableName of changedBaseNames) {
+            const queryKeys = powersyncTableToQueryKeys[tableName as PowerSyncTableName]
+            if (!queryKeys) continue
             for (const queryKey of queryKeys) {
               queryClient.invalidateQueries({ queryKey })
             }
           }
-        } catch (error) {
-          // Aborted or error - ignore
-          if (!(error instanceof Error && error.name === 'AbortError')) {
-            console.warn(`PowerSync watch error for ${tableName}:`, error)
-          }
-        }
-      }
+        },
+      },
+      {
+        tables: tablesToWatch,
+        throttleMs: 50,
+      },
+    )
 
-      watchTable()
-      unsubscribes.push(() => abortController.abort())
-    }
-
-    return () => {
-      for (const unsubscribe of unsubscribes) {
-        unsubscribe()
-      }
-    }
+    return () => dispose()
   }, [queryClient, tables])
 }

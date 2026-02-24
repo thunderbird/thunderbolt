@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { isTauri } from '@/lib/platform'
 
 type UseExternalLinkDialogReturn = {
   dialogOpen: boolean
@@ -26,13 +27,19 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     setDialogOpen(true)
   }, [])
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     const urlToOpen = pendingUrlRef.current
     setDialogOpen(false)
     setPendingUrl('')
     pendingUrlRef.current = ''
     if (urlToOpen) {
-      window.open(urlToOpen, '_blank', 'noopener,noreferrer')
+      if (isTauri()) {
+        // In Tauri, use shell.open to open URLs in system browser
+        const { open } = await import('@tauri-apps/plugin-shell')
+        await open(urlToOpen)
+      } else {
+        window.open(urlToOpen, '_blank', 'noopener,noreferrer')
+      }
     }
   }, [])
 

@@ -7,6 +7,7 @@
     "core:default",
     "opener:default",
     "os:default",
+    "shell:default",
     "deep-link:default",
     "updater:default",
     "core:event:default",

@@ -126,10 +126,10 @@ const inferImageContentType = (headerContentType: string | null, imageUrl: strin
 }
 
 /**
- * Validates that an image URL is safe to fetch (prevents SSRF attacks).
+ * Validates that a URL is safe to fetch (prevents SSRF attacks).
  * Only allows http/https protocols and blocks internal/private IP addresses.
  */
-const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
+const validateSafeUrl = (url: string): { valid: boolean; error?: string } => {
   try {
     const parsed = new URL(url)
 
@@ -177,7 +177,7 @@ const validateImageUrl = (url: string): { valid: boolean; error?: string } => {
 
     return { valid: true }
   } catch {
-    return { valid: false, error: 'Invalid image URL' }
+    return { valid: false, error: 'Invalid URL' }
   }
 }
 
@@ -277,20 +277,12 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         }
       }
 
-      try {
-        const parsedUrl = new URL(targetUrl)
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-          return {
-            data: null,
-            success: false,
-            error: 'Only HTTP and HTTPS URLs are supported',
-          }
-        }
-      } catch {
+      const validation = validateSafeUrl(targetUrl)
+      if (!validation.valid) {
         return {
           data: null,
           success: false,
-          error: 'Invalid URL provided',
+          error: validation.error || 'Invalid URL provided',
         }
       }
 
@@ -318,7 +310,27 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
             }
           }
 
-          const html = await response.text()
+          const maxHtmlBytes = 2 * 1024 * 1024 // 2MB limit for HTML metadata extraction
+          const contentLength = response.headers.get('content-length')
+          const parsedLength = contentLength ? parseInt(contentLength, 10) : null
+          if (parsedLength !== null && !Number.isNaN(parsedLength) && parsedLength > maxHtmlBytes) {
+            return {
+              data: null,
+              success: false,
+              error: 'Response too large',
+            }
+          }
+
+          const buffer = await response.arrayBuffer()
+          if (buffer.byteLength > maxHtmlBytes) {
+            return {
+              data: null,
+              success: false,
+              error: 'Response too large',
+            }
+          }
+
+          const html = new TextDecoder().decode(buffer)
           const metadata = extractMetadata(html, targetUrl)
 
           return {
@@ -369,7 +381,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
       const fullPageUrl = pageUrl.includes('?') ? pageUrl : pageUrl + url.search
 
       // Validate URL format and SSRF protection on page URL
-      const pageValidation = validateImageUrl(fullPageUrl)
+      const pageValidation = validateSafeUrl(fullPageUrl)
       if (!pageValidation.valid) {
         ctx.set.status = 400
         return new Response(pageValidation.error || 'Invalid URL', {
@@ -410,7 +422,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
             })
           }
 
-          const validation = validateImageUrl(metadata.image)
+          const validation = validateSafeUrl(metadata.image)
           if (!validation.valid) {
             ctx.set.status = 400
             return new Response(validation.error || 'Invalid image URL', {
@@ -460,22 +472,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
 
       const fullImageUrl = imageUrl.includes('?') ? imageUrl : imageUrl + url.search
 
-      try {
-        const parsedUrl = new URL(fullImageUrl)
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-          ctx.set.status = 400
-          return new Response('Only HTTP and HTTPS URLs are supported', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        }
-      } catch {
-        ctx.set.status = 400
-        return new Response('Invalid URL provided', {
-          headers: { 'Content-Type': 'text/plain' },
-        })
-      }
-
-      const validation = validateImageUrl(fullImageUrl)
+      const validation = validateSafeUrl(fullImageUrl)
       if (!validation.valid) {
         ctx.set.status = 400
         return new Response(validation.error || 'Invalid image URL', {

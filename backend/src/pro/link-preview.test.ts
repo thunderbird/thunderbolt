@@ -254,7 +254,7 @@ describe('Link Preview Routes', () => {
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(false)
-      expect(body.error).toBe('Invalid URL provided')
+      expect(body.error).toBe('Invalid URL')
     })
 
     it('should return error when URL has malformed encoding', async () => {
@@ -269,6 +269,71 @@ describe('Link Preview Routes', () => {
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(false)
       expect(body.error).toBe('Invalid URL encoding')
+    })
+
+    it('should block private IPs on metadata endpoint (SSRF protection)', async () => {
+      const privateIps = ['http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/', 'http://192.168.1.1/']
+
+      for (const privateUrl of privateIps) {
+        const encoded = encodeURIComponent(privateUrl)
+        const response = await app.handle(new Request(`http://localhost/link-preview/${encoded}`, { method: 'GET' }))
+
+        expect(response.status).toBe(200)
+        expect(mockFetch).not.toHaveBeenCalled()
+
+        const body = (await response.json()) as LinkPreviewResponse
+        expect(body.success).toBe(false)
+        expect(body.error).toBe('Internal URLs are not allowed')
+      }
+    })
+
+    it('should block localhost on metadata endpoint (SSRF protection)', async () => {
+      const encoded = encodeURIComponent('http://localhost/admin')
+      const response = await app.handle(new Request(`http://localhost/link-preview/${encoded}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(false)
+      expect(body.error).toBe('Internal URLs are not allowed')
+    })
+
+    it('should return error when HTML response exceeds size limit', async () => {
+      const largeHtml = 'x'.repeat(3 * 1024 * 1024) // 3MB — exceeds 2MB limit
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          new Response(largeHtml, {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+          }),
+        ),
+      )
+
+      const encoded = encodeURIComponent('https://example.com')
+      const response = await app.handle(new Request(`http://localhost/link-preview/${encoded}`, { method: 'GET' }))
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(false)
+      expect(body.error).toBe('Response too large')
+    })
+
+    it('should reject when Content-Length exceeds size limit', async () => {
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          new Response('small body', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html', 'Content-Length': String(5 * 1024 * 1024) },
+          }),
+        ),
+      )
+
+      const encoded = encodeURIComponent('https://example.com')
+      const response = await app.handle(new Request(`http://localhost/link-preview/${encoded}`, { method: 'GET' }))
+
+      const body = (await response.json()) as LinkPreviewResponse
+      expect(body.success).toBe(false)
+      expect(body.error).toBe('Response too large')
     })
 
     it('should handle URL-encoded target URLs', async () => {

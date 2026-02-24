@@ -290,8 +290,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         for (const op of operations) {
           try {
             await applyOperation(op, user.id, database)
-          } catch (error) {
-            console.error(`Failed to apply operation:`, op, error)
+          } catch (_) {
             // Continue processing other operations
             // PowerSync recommends returning 2xx even for validation errors
           }

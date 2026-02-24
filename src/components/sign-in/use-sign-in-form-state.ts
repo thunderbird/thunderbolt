@@ -166,7 +166,7 @@ export const useSignInFormState = ({
 
       // Store the token for bearer auth
       if (result.data?.token) {
-        await setAuthToken(result.data.token)
+        setAuthToken(result.data.token)
       }
 
       const isNewUser = (result.data as { isNewUser?: boolean })?.isNewUser ?? false

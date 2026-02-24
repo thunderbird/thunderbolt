@@ -3,6 +3,8 @@
  *
  * Token is stored in localStorage so getAuthToken() is sync (required by Better Auth).
  * device_id is also in localStorage to identify this device (e.g. for PowerSync / devices list).
+ *
+ * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
 const DEVICE_ID_KEY = 'thunderbolt_device_id'

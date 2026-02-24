@@ -16,6 +16,7 @@ type LinkPreviewWidgetProps = {
     title: string | null
     description: string | null
     image: string | null
+    siteName?: string | null
   }>
 }
 
@@ -40,10 +41,16 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
-/** Builds a proxied image URL for the link preview image endpoint */
+/** Builds a proxied image URL via /proxy-image (when direct image URL is known) */
 const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
   if (!imageUrl || !cloudUrl?.trim()) return null
   return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
+}
+
+/** Builds an image URL via /image (extracts og:image from page and proxies it in one request) */
+const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | null => {
+  if (!pageUrl || !cloudUrl?.trim()) return null
+  return `${cloudUrl}/pro/link-preview/image/${encodeURIComponent(pageUrl)}`
 }
 
 /** Renders a link preview instantly from source registry metadata */
@@ -88,6 +95,7 @@ const FetchLinkPreview = ({
     title: string | null
     description: string | null
     image: string | null
+    siteName?: string | null
   }>
 }) => {
   const fetchFn = fetchPreviewFn ?? fetchLinkPreview
@@ -100,12 +108,13 @@ const FetchLinkPreview = ({
         title: preview.title,
         description: preview.description,
         image: preview.image,
-        siteName: 'siteName' in preview ? (preview.siteName as string | null) : null,
+        siteName: preview.siteName ?? null,
       }
     },
   })
 
-  const imageUrl = buildProxyImageUrl(data?.image, cloudUrl)
+  // Prefer proxying the known image URL; fall back to /image/ which extracts og:image from the page
+  const imageUrl = data?.image ? buildProxyImageUrl(data.image, cloudUrl) : buildPageImageUrl(url, cloudUrl)
 
   if (isLoading) {
     return <LinkPreviewSkeleton />

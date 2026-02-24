@@ -29,6 +29,15 @@ const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
   }
 }
 
+/** Decodes a URL path parameter, returning null on invalid encoding */
+const decodeUrlParam = (encoded: string): string | null => {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return null
+  }
+}
+
 /**
  * Fetches and proxies an image with size limits and timeout.
  * Returns a Response with the image data or an error response.
@@ -257,10 +266,8 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         }
       }
 
-      let pathOnly: string
-      try {
-        pathOnly = decodeURIComponent(pathParts[pathParts.length - 1])
-      } catch {
+      const pathOnly = decodeUrlParam(pathParts[pathParts.length - 1])
+      if (!pathOnly) {
         return {
           data: null,
           success: false,
@@ -368,10 +375,8 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         })
       }
 
-      let pageUrl: string
-      try {
-        pageUrl = decodeURIComponent(pathParts[pathParts.length - 1])
-      } catch {
+      const pageUrl = decodeUrlParam(pathParts[pathParts.length - 1])
+      if (!pageUrl) {
         ctx.set.status = 400
         return new Response('Invalid URL encoding', {
           headers: { 'Content-Type': 'text/plain' },
@@ -412,7 +417,25 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
             })
           }
 
-          const html = await response.text()
+          const maxHtmlBytes = 2 * 1024 * 1024 // 2MB limit for HTML metadata extraction
+          const contentLength = response.headers.get('content-length')
+          const parsedLength = contentLength ? parseInt(contentLength, 10) : null
+          if (parsedLength !== null && !Number.isNaN(parsedLength) && parsedLength > maxHtmlBytes) {
+            ctx.set.status = 413
+            return new Response('Page response too large', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
+          }
+
+          const buffer = await response.arrayBuffer()
+          if (buffer.byteLength > maxHtmlBytes) {
+            ctx.set.status = 413
+            return new Response('Page response too large', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
+          }
+
+          const html = new TextDecoder().decode(buffer)
           const metadata = extractMetadata(html, fullPageUrl)
 
           if (!metadata.image) {
@@ -460,10 +483,8 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         })
       }
 
-      let imageUrl: string
-      try {
-        imageUrl = decodeURIComponent(pathParts[pathParts.length - 1])
-      } catch {
+      const imageUrl = decodeUrlParam(pathParts[pathParts.length - 1])
+      if (!imageUrl) {
         ctx.set.status = 400
         return new Response('Invalid URL encoding', {
           headers: { 'Content-Type': 'text/plain' },

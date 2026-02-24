@@ -606,6 +606,47 @@ describe('Link Preview Routes', () => {
       expect(response.headers.get('content-type')).toBe('image/png')
     })
 
+    it('should reject HTML page response exceeding 2MB (Content-Length check)', async () => {
+      const pageUrl = 'https://example.com/page'
+
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          new Response('small body', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html', 'Content-Length': String(5 * 1024 * 1024) },
+          }),
+        ),
+      )
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(413)
+      expect(await response.text()).toBe('Page response too large')
+    })
+
+    it('should reject HTML page response exceeding 2MB (actual size check)', async () => {
+      const pageUrl = 'https://example.com/page'
+      const largeHtml = 'x'.repeat(3 * 1024 * 1024) // 3MB — exceeds 2MB limit
+
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          new Response(largeHtml, {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+          }),
+        ),
+      )
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(413)
+      expect(await response.text()).toBe('Page response too large')
+    })
+
     it('should reject images larger than 2MB (Content-Length check)', async () => {
       const pageUrl = 'https://example.com/page'
       const imageUrl = 'https://example.com/huge.jpg'

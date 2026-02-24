@@ -44,7 +44,7 @@ const ThunderboltProIcon = () => (
   </svg>
 )
 
-const INTEGRATION_SETTINGS_KEYS = [
+const integrationSettingsKeys = [
   'integrations_pro_is_enabled',
   'integrations_google_is_enabled',
   'integrations_google_credentials',
@@ -141,7 +141,7 @@ export default function IntegrationsPage() {
   ])
 
   const invalidateIntegrationSettings = () => {
-    for (const key of INTEGRATION_SETTINGS_KEYS) {
+    for (const key of integrationSettingsKeys) {
       queryClient.invalidateQueries({
         predicate: (query) => shouldInvalidateSettingsSubset(query, key),
       })

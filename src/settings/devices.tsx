@@ -5,9 +5,6 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import ky from 'ky'
-import { Smartphone, Trash2 } from 'lucide-react'
-import { useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,20 +15,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import dayjs from 'dayjs'
+import ky from 'ky'
+import { Smartphone, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) return '—'
-  const date = new Date(ts)
-  const now = Date.now()
-  const diffMs = now - date.getTime()
-  const diffMins = Math.floor(diffMs / 60_000)
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
+  const date = dayjs(ts)
+  const now = dayjs()
+  const diffMs = date.diff(now)
+  return dayjs.duration(diffMs, 'millisecond').humanize(true)
 }
 
 const revokeDevice = async (deviceId: string, baseUrl: string, token: string): Promise<void> => {
@@ -50,14 +44,13 @@ export default function DevicesSettingsPage() {
     queryFn: getAllDevices,
   })
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
-  const baseUrl = cloudUrl.value ?? 'http://localhost:8000/v1'
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
 
   const revokeMutation = useMutation({
     mutationFn: (deviceId: string) => {
       const token = getAuthToken()
       if (!token) throw new Error('Not signed in')
-      return revokeDevice(deviceId, baseUrl, token)
+      return revokeDevice(deviceId, cloudUrl.value, token)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })

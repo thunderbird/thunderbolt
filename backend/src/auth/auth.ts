@@ -1,5 +1,6 @@
 import type { db as DbType } from '@/db/client'
 import { user } from '@/db/auth-schema'
+import * as schema from '@/db/schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { createAuthMiddleware } from 'better-auth/api'
@@ -30,8 +31,18 @@ export const createAuth = (database: typeof DbType) =>
   betterAuth({
     database: drizzleAdapter(database, {
       provider: 'pg',
+      schema,
     }),
     trustedOrigins,
+    user: {
+      additionalFields: {
+        isNew: {
+          type: 'boolean',
+          required: false,
+          defaultValue: true,
+        },
+      },
+    },
     databaseHooks: {
       user: {
         create: {
@@ -53,21 +64,15 @@ export const createAuth = (database: typeof DbType) =>
         }
 
         const sessionUser = newSession.user
+        const isNewUser = (sessionUser as { isNew?: boolean }).isNew ?? true
 
-        // Check if user is new by comparing createdAt and updatedAt timestamps
-        // A new user has never had their updatedAt modified after creation
-        const isNewUser = new Date(sessionUser.createdAt).getTime() === new Date(sessionUser.updatedAt).getTime()
-
-        // If new user, update their updatedAt to mark they've completed first sign-in
         if (isNewUser) {
-          await database.update(user).set({ updatedAt: new Date() }).where(eq(user.id, sessionUser.id))
+          await database.update(user).set({ isNew: false }).where(eq(user.id, sessionUser.id))
         }
 
-        // Return modified response with isNewUser flag
         return ctx.json({
           session: newSession.session,
           user: sessionUser,
-          isNewUser,
         })
       }),
     },

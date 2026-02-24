@@ -43,6 +43,13 @@
       "when": 1771612090526,
       "tag": "0005_cheerful_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771958071916,
+      "tag": "0006_modern_annihilus",
+      "breakpoints": true
     }
   ]
 }

@@ -112,7 +112,7 @@ describe('Auth - Email Normalization', () => {
   })
 })
 
-describe('Auth - isNewUser in sign-in response', () => {
+describe('Auth - user.isNew in sign-in response', () => {
   let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
@@ -130,7 +130,7 @@ describe('Auth - isNewUser in sign-in response', () => {
     await cleanup()
   })
 
-  it('should return isNewUser: true when user signs in for the first time', async () => {
+  it('should return user.isNew: true when user signs in for the first time', async () => {
     await db.insert(waitlist).values({
       id: crypto.randomUUID(),
       email: 'newuser@example.com',
@@ -148,25 +148,22 @@ describe('Auth - isNewUser in sign-in response', () => {
 
     const result = (await auth.api.signInEmailOTP({
       body: { email: 'newuser@example.com', otp },
-    })) as unknown as { session: unknown; user: unknown; isNewUser: boolean }
+    })) as unknown as { session: unknown; user: { isNew?: boolean } }
 
-    expect(result.isNewUser).toBe(true)
+    expect(result.user?.isNew).toBe(true)
     expect(result.session).toBeDefined()
     expect(result.user).toBeDefined()
   })
 
-  it('should return isNewUser: false when existing user signs in again', async () => {
+  it('should return user.isNew: false when existing user signs in again', async () => {
     const existingUserId = crypto.randomUUID()
-    const now = new Date()
-    const earlier = new Date(now.getTime() - 10_000)
 
     await db.insert(user).values({
       id: existingUserId,
       name: 'Existing User',
       email: 'existing-isnewuser@example.com',
       emailVerified: true,
-      createdAt: earlier,
-      updatedAt: now,
+      isNew: false,
     })
 
     await auth.api.sendVerificationOTP({
@@ -180,9 +177,9 @@ describe('Auth - isNewUser in sign-in response', () => {
 
     const result = (await auth.api.signInEmailOTP({
       body: { email: 'existing-isnewuser@example.com', otp },
-    })) as unknown as { session: unknown; user: unknown; isNewUser: boolean }
+    })) as unknown as { session: unknown; user: { isNew?: boolean } }
 
-    expect(result.isNewUser).toBe(false)
+    expect(result.user?.isNew).toBe(false)
     expect(result.session).toBeDefined()
     expect(result.user).toBeDefined()
   })

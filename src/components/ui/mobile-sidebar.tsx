@@ -23,14 +23,29 @@ export const MobileSidebar = ({
   const [isAnimating, setIsAnimating] = useState(false)
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
-  // Sidebar takes 80% of screen width
-  const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300
 
-  // Transform x position to overlay opacity (fade out as sidebar moves away)
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300,
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateWidth = () => setSidebarWidth(window.innerWidth * 0.8)
+    window.addEventListener('resize', updateWidth)
+    window.addEventListener('orientationchange', updateWidth)
+    return () => {
+      window.removeEventListener('resize', updateWidth)
+      window.removeEventListener('orientationchange', updateWidth)
+    }
+  }, [])
+
+  // Transform x position to overlay opacity (fade out as sidebar moves away).
+  // Output [0, 1] so backdrop-blur and bg dimming render at full strength when open
+  // (opacity multiplies the whole composited layer including backdrop-filter).
   const overlayOpacity = useTransform(
     x,
     side === 'left' ? [-sidebarWidth, 0] : [0, sidebarWidth],
-    side === 'left' ? [0, 0.5] : [0.5, 0],
+    side === 'left' ? [0, 1] : [1, 0],
   )
 
   // Handle external open/close requests

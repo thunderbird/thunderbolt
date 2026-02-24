@@ -230,15 +230,15 @@ export const aiFetchStreamingResponse = async ({
     })
 
     // Load inference config from profile (fallback to code defaults)
-    const DEFAULT_TEMPERATURE = 0.2
-    const DEFAULT_MAX_STEPS = 20
-    const DEFAULT_MAX_ATTEMPTS = 2
-    const DEFAULT_NUDGE_THRESHOLD = 6
+    const defaultTemperature = 0.2
+    const defaultMaxSteps = 20
+    const defaultMaxAttempts = 2
+    const defaultNudgeThreshold = 6
 
-    const modelTemperature = profile?.temperature ?? DEFAULT_TEMPERATURE
-    const maxSteps = profile?.maxSteps ?? DEFAULT_MAX_STEPS
-    const maxAttempts = profile?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
-    const nudgeThreshold = profile?.nudgeThreshold ?? DEFAULT_NUDGE_THRESHOLD
+    const modelTemperature = profile?.temperature ?? defaultTemperature
+    const maxSteps = profile?.maxSteps ?? defaultMaxSteps
+    const maxAttempts = profile?.maxAttempts ?? defaultMaxAttempts
+    const nudgeThreshold = profile?.nudgeThreshold ?? defaultNudgeThreshold
 
     // Build provider options from profile + per-model DB settings
     // Uses vendor (actual model maker like 'mistral') for provider options key since the

@@ -10,7 +10,7 @@ import { scoreResult } from './scoring'
 import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario } from './types'
 
-const TIMEOUT = parseInt(process.env.EVAL_TIMEOUT ?? '120000')
+const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
 
 const dim = '\x1b[2m'
 const cyan = '\x1b[36m'
@@ -115,7 +115,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
         modeSystemPrompt: mode.systemPrompt ?? undefined,
         modeName: mode.name,
       }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Scenario timed out')), TIMEOUT)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Scenario timed out')), timeout)),
     ])
 
     // Parse streaming response

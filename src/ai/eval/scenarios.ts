@@ -1,7 +1,7 @@
 import { defaultModelGptOss120b, defaultModelMistralMedium31, defaultModelSonnet45 } from '@/defaults/models'
 import type { EvalCriteria, EvalScenario } from './types'
 
-const MODELS = [
+const models = [
   { name: 'gpt-oss', id: defaultModelGptOss120b.id },
   { name: 'mistral', id: defaultModelMistralMedium31.id },
   { name: 'sonnet', id: defaultModelSonnet45.id },
@@ -288,7 +288,7 @@ const buildScenarios = (
   modeName: EvalScenario['modeName'],
   defaultCriteria: EvalCriteria,
 ): EvalScenario[] =>
-  MODELS.flatMap((model) =>
+  models.flatMap((model) =>
     prompts.map((p) => ({
       id: `${model.name}/${modeName}/${p.id}`,
       modelName: model.name,
@@ -315,7 +315,7 @@ export const getScenarios = (modelNames?: string[], modeNames?: string[]): EvalS
 
 /** Get the model ID for a given model name */
 export const getModelId = (modelName: string): string => {
-  const model = MODELS.find((m) => m.name === modelName)
+  const model = models.find((m) => m.name === modelName)
   if (!model) throw new Error(`Unknown model: ${modelName}`)
   return model.id
 }

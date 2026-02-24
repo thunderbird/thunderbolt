@@ -1,6 +1,6 @@
 import type { EvalCriteria, EvalResult, EvalScenario, ParsedStream } from './types'
 
-const REVIEW_SITE_DOMAINS = [
+const reviewSiteDomains = [
   'wirecutter.com',
   'pcmag.com',
   'cnet.com',
@@ -27,7 +27,7 @@ export const extractWidgets = (text: string): string[] => [...text.matchAll(/<wi
  * Known navigation-only path segments that indicate aggregate/section pages.
  * Single-segment paths like /async-io-python/ are usually articles, NOT homepages.
  */
-const SECTION_PATHS = new Set([
+const sectionPaths = new Set([
   '/news',
   '/news/',
   '/ai',
@@ -50,7 +50,7 @@ const SECTION_PATHS = new Set([
   '/tags',
 ])
 
-const GENERIC_SUBDOMAINS = new Set(['www', 'm', 'mobile', 'app', 'api', 'cdn', 'static'])
+const genericSubdomains = new Set(['www', 'm', 'mobile', 'app', 'api', 'cdn', 'static'])
 
 /**
  * Check if a URL is a true homepage or navigation section page.
@@ -65,12 +65,12 @@ export const isHomepage = (url: string): boolean => {
     if (pathname === '/') {
       // Specific subdomains (not www/m/app) are content apps, not homepages
       const parts = hostname.split('.')
-      if (parts.length >= 3 && !GENERIC_SUBDOMAINS.has(parts[0])) return false
+      if (parts.length >= 3 && !genericSubdomains.has(parts[0])) return false
       return true
     }
     // Check against known section paths
     const normalized = pathname.toLowerCase().replace(/\/+$/, '')
-    return SECTION_PATHS.has(normalized) || SECTION_PATHS.has(normalized + '/')
+    return sectionPaths.has(normalized) || sectionPaths.has(normalized + '/')
   } catch {
     return false
   }
@@ -80,7 +80,7 @@ export const isHomepage = (url: string): boolean => {
 export const isReviewSite = (url: string): boolean => {
   try {
     const hostname = new URL(url).hostname.replace('www.', '')
-    return REVIEW_SITE_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+    return reviewSiteDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
   } catch {
     return false
   }

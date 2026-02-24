@@ -18,12 +18,12 @@ const esc = {
 /** Move cursor to absolute row, col */
 const moveTo = (row: number, col = 1) => write(`\x1b[${row};${col}H`)
 
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-const FIXED_BASE_LINES = 3 // separator + progress + stats
-const HEADER_LINES = 5 // title + separator + info + separator + blank
-const BAR_WIDTH = 30
-const PROMPT_MAX_WIDTH = 48
-const ID_WIDTH = 18
+const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const fixedBaseLines = 3 // separator + progress + stats
+const headerLines = 5 // title + separator + info + separator + blank
+const barWidth = 30
+const promptMaxWidth = 48
+const idWidth = 18
 
 const termRows = () => process.stdout.rows || 40
 const termCols = () => process.stdout.columns || 80
@@ -68,8 +68,8 @@ const activeSpinners = new Map<string, { scenario: EvalScenario; startTime: numb
 // Accumulated result lines for the middle area (rolling display)
 const resultLines: string[] = []
 
-const fixedBottomLines = () => FIXED_BASE_LINES + maxSpinners
-const resultsHeight = () => termRows() - HEADER_LINES - fixedBottomLines()
+const fixedBottomLines = () => fixedBaseLines + maxSpinners
+const resultsHeight = () => termRows() - headerLines - fixedBottomLines()
 
 // ── Layout setup ───────────────────────────────────────────
 
@@ -108,7 +108,7 @@ export const teardownLayout = () => {
 
 const renderResults = () => {
   const height = resultsHeight()
-  const startRow = HEADER_LINES + 1
+  const startRow = headerLines + 1
   const visible = resultLines.slice(-height)
 
   for (let i = 0; i < height; i++) {
@@ -126,8 +126,8 @@ const renderFooter = () => {
   const rows = termRows()
   const cols = termCols()
   const pct = totalScenarios === 0 ? 0 : Math.round((completedCount / totalScenarios) * 100)
-  const filled = totalScenarios === 0 ? 0 : Math.round((completedCount / totalScenarios) * BAR_WIDTH)
-  const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
+  const filled = totalScenarios === 0 ? 0 : Math.round((completedCount / totalScenarios) * barWidth)
+  const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled)
   const elapsed = ((performance.now() - evalStartTime) / 1000).toFixed(0)
   const baseRow = rows - fixedBottomLines() + 1
 
@@ -147,15 +147,15 @@ const renderFooter = () => {
   )
 
   // Rows 4+: spinner rows
-  const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]
+  const frame = spinnerFrames[spinnerFrame % spinnerFrames.length]
   const activeList = [...activeSpinners.values()]
 
   for (let i = 0; i < maxSpinners; i++) {
     moveTo(baseRow + 3 + i, 1)
     const entry = activeList[i]
     if (entry) {
-      const idShort = truncate(entry.scenario.id, ID_WIDTH)
-      const promptShort = truncate(entry.scenario.prompt, PROMPT_MAX_WIDTH)
+      const idShort = truncate(entry.scenario.id, idWidth)
+      const promptShort = truncate(entry.scenario.prompt, promptMaxWidth)
       const spinElapsed = ((performance.now() - entry.startTime) / 1000).toFixed(0)
       write(
         `${esc.clearLine}  ${esc.yellow}${frame}${esc.reset} ${esc.dim}${idShort}${esc.reset}  ${promptShort}  ${esc.gray}[${spinElapsed}s]${esc.reset}`,
@@ -204,8 +204,8 @@ export const printResult = (result: EvalResult) => {
   if (result.passed) passedCount++
   else failedCount++
 
-  const id = truncate(result.scenario.id, ID_WIDTH)
-  const promptShort = truncate(result.scenario.prompt, PROMPT_MAX_WIDTH)
+  const id = truncate(result.scenario.id, idWidth)
+  const promptShort = truncate(result.scenario.prompt, promptMaxWidth)
   const time = `${(result.durationMs / 1000).toFixed(1)}s`
 
   const icon = result.passed ? `${esc.green}✓${esc.reset}` : `${esc.red}✗${esc.reset}`
@@ -220,13 +220,13 @@ export const printResult = (result: EvalResult) => {
 
   // Push result line
   resultLines.push(
-    `  ${icon} ${esc.dim}${id.padEnd(ID_WIDTH)}${esc.reset} ${promptShort.padEnd(PROMPT_MAX_WIDTH)}  ${esc.gray}${time.padStart(6)}${esc.reset}${metricsStr}`,
+    `  ${icon} ${esc.dim}${id.padEnd(idWidth)}${esc.reset} ${promptShort.padEnd(promptMaxWidth)}  ${esc.gray}${time.padStart(6)}${esc.reset}${metricsStr}`,
   )
 
   // Push failure lines
   if (!result.passed && result.failures.length > 0) {
     for (const failure of result.failures) {
-      resultLines.push(`  ${' '.repeat(ID_WIDTH + 3)}${esc.red}↳ ${failure}${esc.reset}`)
+      resultLines.push(`  ${' '.repeat(idWidth + 3)}${esc.red}↳ ${failure}${esc.reset}`)
     }
   }
 

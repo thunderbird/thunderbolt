@@ -23,7 +23,8 @@ export const MobileSidebar = ({
   const [isAnimating, setIsAnimating] = useState(false)
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
-  const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth : 375
+  // Sidebar takes 80% of screen width
+  const sidebarWidth = typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300
 
   // Transform x position to overlay opacity (fade out as sidebar moves away)
   const overlayOpacity = useTransform(
@@ -109,9 +110,9 @@ export const MobileSidebar = ({
   return (
     <DialogPrimitive.Root open={internalOpen}>
       <DialogPrimitive.Portal>
-        {/* Animated overlay */}
+        {/* Animated overlay with blur */}
         <motion.div
-          className="fixed inset-0 z-50 bg-sidebar"
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-lg"
           style={{
             opacity: overlayOpacity,
             // willChange hints to browser this property will animate, enabling GPU acceleration
@@ -137,7 +138,7 @@ export const MobileSidebar = ({
             ...style,
           }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-full border-r shadow-lg flex flex-col',
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] border-r shadow-lg flex flex-col',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

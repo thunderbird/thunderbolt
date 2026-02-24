@@ -12,10 +12,15 @@ import { useEffect, useRef } from 'react'
  * in a clean signed-out state so they can sign in again or use the app offline.
  */
 const performCredentialsInvalidReset = async (): Promise<void> => {
-  await setSyncEnabled(false)
-  await resetAppDir()
-  localStorage.clear()
-  window.location.reload()
+  try {
+    await setSyncEnabled(false)
+    await resetAppDir()
+  } catch (error) {
+    console.error('Failed to perform credentials invalid reset:', error)
+  } finally {
+    localStorage.clear()
+    window.location.reload()
+  }
 }
 
 /**

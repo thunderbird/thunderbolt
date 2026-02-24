@@ -1,7 +1,6 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
-import type { ChatThread } from '@/types'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -131,47 +130,16 @@ export default function Sidebar() {
     }
   }
 
-  /**
-   * Extracts the chat ID from a chat path (e.g., "/chats/123" -> "123")
-   * Returns null if the path is invalid
-   */
-  const extractChatIdFromPath = (path: string): string | null => {
-    const match = path.match(/^\/chats\/(.+)$/)
-    return match ? match[1] : null
-  }
-
-  /**
-   * Checks if a chat path points to an existing, non-deleted chat
-   * @param path - The path to validate (e.g., "/chats/123" or "/chats/new")
-   * @param chatThreads - Array of active chat threads
-   * @returns true if the path is valid
-   */
-  const isChatPathValid = (path: string, chatThreads: ChatThread[]): boolean => {
-    const chatId = extractChatIdFromPath(path)
-
-    if (!chatId) {
-      return false
-    }
-
-    if (chatId === 'new') {
-      return true
-    }
-
-    return chatThreads.some((thread) => thread.id === chatId)
-  }
-
   const goToMainMenu = async () => {
-    // Only block navigation if query is pending and we have no last chat path to return to
+    // Only wait if query is pending and we have no fallback
     if (isPending && !lastChatPathRef.current) {
       return
     }
 
-    const allThreads = data ?? []
-    // Use lastChatPathRef if available (skip validation if query is pending since we can't validate against empty array)
-    if (lastChatPathRef.current && (isPending || isChatPathValid(lastChatPathRef.current, allThreads))) {
+    if (lastChatPathRef.current) {
       navigate(lastChatPathRef.current)
-    } else if (allThreads.length > 0) {
-      navigate(`/chats/${allThreads[0].id}`)
+    } else if (data && data.length > 0) {
+      navigate(`/chats/${data[0].id}`)
     } else {
       await createNewChat(false)
     }

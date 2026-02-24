@@ -34,9 +34,8 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     pendingUrlRef.current = ''
     if (urlToOpen) {
       if (isTauri()) {
-        // In Tauri, use shell.open to open URLs in system browser
-        const { open } = await import('@tauri-apps/plugin-shell')
-        await open(urlToOpen)
+        const { openUrl } = await import('@tauri-apps/plugin-opener')
+        await openUrl(urlToOpen)
       } else {
         window.open(urlToOpen, '_blank', 'noopener,noreferrer')
       }

@@ -169,7 +169,7 @@ export const useSignInFormState = ({
         setAuthToken(result.data.token)
       }
 
-      const isNewUser = (result.data as { isNewUser?: boolean })?.isNewUser ?? false
+      const isNewUser = (result.data?.user as { isNew?: boolean })?.isNew ?? false
       await onSignInSuccess(isNewUser)
 
       // Sign-in successful - show success state

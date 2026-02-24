@@ -161,15 +161,18 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
-    // Wait for data to load to avoid race condition where we create a new chat
-    // when the user's last chat exists but hasn't loaded yet
-    if (isPending) {
+    // If query is pending and we don't have a current chat ID, wait for data
+    // to avoid creating a new chat when the user's last chat exists but hasn't loaded yet
+    if (isPending && !currentChatThreadId) {
       return
     }
 
     const allThreads = data ?? []
     if (lastChatPathRef.current && isChatPathValid(lastChatPathRef.current, allThreads)) {
       navigate(lastChatPathRef.current)
+    } else if (currentChatThreadId) {
+      // Safe fallback: use current chat ID from URL params (doesn't depend on query)
+      navigate(`/chats/${currentChatThreadId}`)
     } else if (allThreads.length > 0) {
       navigate(`/chats/${allThreads[0].id}`)
     } else {

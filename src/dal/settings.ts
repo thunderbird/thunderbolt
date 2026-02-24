@@ -295,20 +295,23 @@ export const updateSettings = async (
   // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
   // Try insert first, then update on unique constraint violation to avoid race conditions
   // when multiple components call updateSettings simultaneously.
-  for (const [key, value] of entries) {
-    const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
+  // Wrapped in a transaction so all-or-nothing: if any row fails, none are committed.
+  await db.transaction(async (tx) => {
+    for (const [key, value] of entries) {
+      const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
 
-    try {
-      await db.insert(settingsTable).values(row)
-    } catch (err) {
-      if (!isInsertConflictError(err)) throw err
-      const updateData = options.recomputeHash
-        ? { value: row.value, defaultHash: row.defaultHash }
-        : { value: row.value }
+      try {
+        await tx.insert(settingsTable).values(row)
+      } catch (err) {
+        if (!isInsertConflictError(err)) throw err
+        const updateData = options.recomputeHash
+          ? { value: row.value, defaultHash: row.defaultHash }
+          : { value: row.value }
 
-      await db.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
+        await tx.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
+      }
     }
-  }
+  })
 }
 
 /**

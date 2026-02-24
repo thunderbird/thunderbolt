@@ -2,6 +2,7 @@ import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
+import { getModelProfile } from '@/dal/model-profiles'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { getModelId } from './scenarios'
@@ -21,7 +22,7 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
   if (!verbose) return
 
   const modelId = getModelId(scenario.modelName)
-  const model = await getModel(modelId)
+  const [model, profile] = await Promise.all([getModel(modelId), getModelProfile(modelId)])
   const settings = await getSettings({
     preferred_name: '',
     location_name: '',
@@ -41,8 +42,7 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
 
   const systemPrompt = createPrompt({
     modelName: model?.name ?? scenario.modelName,
-    vendor: model?.vendor ?? null,
-    model: model?.model ?? null,
+    profile,
     modeName: scenario.modeName,
     preferredName: settings.preferredName,
     location: {

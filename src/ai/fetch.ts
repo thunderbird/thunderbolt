@@ -1,15 +1,13 @@
 import { createPrompt } from '@/ai/prompt'
-import { getModelConfig } from '@/ai/prompts'
-import { mistralCitationReinforcement } from '@/ai/prompts/vendors/mistral/citation-reinforcement'
 import {
   extractTextFromMessages,
-  getNudgeMessages,
+  getNudgeMessagesFromProfile,
   hasToolCalls,
   isFinalStep,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
-import { getModel, getSettings } from '@/dal'
+import { getModel, getModelProfile, getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -154,6 +152,8 @@ export const aiFetchStreamingResponse = async ({
 
   if (!model) throw new Error('Model not found')
 
+  const profile = await getModelProfile(modelId)
+
   const supportsTools = model.toolUsage !== 0
 
   const sourceCollector: SourceMetadata[] = []
@@ -194,8 +194,7 @@ export const aiFetchStreamingResponse = async ({
 
   const systemPrompt = createPrompt({
     modelName: model.name,
-    vendor: model.vendor ?? null,
-    model: model.model,
+    profile,
     modeName: modeName ?? null,
     preferredName: settings.preferredName,
     location: {
@@ -214,7 +213,7 @@ export const aiFetchStreamingResponse = async ({
     modeSystemPrompt,
   })
 
-  const activeNudges = getNudgeMessages(modeName, model.vendor ?? undefined)
+  const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
 
   try {
     const baseModel = await createModel(model)
@@ -230,18 +229,25 @@ export const aiFetchStreamingResponse = async ({
       ],
     })
 
-    // Load vendor-specific inference config (temperature, maxSteps, nudges, etc.)
-    const vendorConfig = getModelConfig({ vendor: model.vendor ?? null, model: model.model })
-    const { temperature: modelTemperature, maxSteps, maxAttempts, nudgeThreshold } = vendorConfig
+    // Load inference config from profile (fallback to code defaults)
+    const DEFAULT_TEMPERATURE = 0.2
+    const DEFAULT_MAX_STEPS = 20
+    const DEFAULT_MAX_ATTEMPTS = 2
+    const DEFAULT_NUDGE_THRESHOLD = 6
 
-    // Build provider options from vendor config + per-model DB settings
+    const modelTemperature = profile?.temperature ?? DEFAULT_TEMPERATURE
+    const maxSteps = profile?.maxSteps ?? DEFAULT_MAX_STEPS
+    const maxAttempts = profile?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
+    const nudgeThreshold = profile?.nudgeThreshold ?? DEFAULT_NUDGE_THRESHOLD
+
+    // Build provider options from profile + per-model DB settings
     // Uses vendor (actual model maker like 'mistral') for provider options key since the
     // backend recognizes vendor-specific options. Falls back to provider for user-created models.
     // See: https://github.com/vllm-project/vllm/issues/9019
     const providerOptionsKey = model.vendor ?? model.provider
     const rawOptions = {
       ...(model.supportsParallelToolCalls === 0 && { parallelToolCalls: false }),
-      ...vendorConfig.providerOptions,
+      ...profile?.providerOptions,
     }
     const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
 
@@ -259,11 +265,11 @@ export const aiFetchStreamingResponse = async ({
         providerOptions,
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
-          // Mistral citation reinforcement: after tool calls, strengthen the system prompt
-          // with citation format instructions (system prompt = highest authority for Mistral)
-          const isMistral = model.vendor === 'mistral'
           const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
-          const citationSystem = isMistral && hadToolCallSteps ? systemPrompt + mistralCitationReinforcement : undefined
+          const citationSystem =
+            profile?.citationReinforcementEnabled && hadToolCallSteps
+              ? systemPrompt + (profile.citationReinforcementPrompt ?? '')
+              : undefined
 
           // Final step: disable tools to force a response
           if (isFinalStep(steps.length, maxSteps)) {
@@ -283,7 +289,7 @@ export const aiFetchStreamingResponse = async ({
             }
           }
 
-          // For Mistral: reinforce citations via system prompt even without a nudge
+          // Reinforce citations via system prompt after tool calls (when enabled by profile)
           if (citationSystem) {
             return { system: citationSystem }
           }

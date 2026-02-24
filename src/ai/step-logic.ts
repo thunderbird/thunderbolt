@@ -1,5 +1,4 @@
-import { mistralNudges, mistralSearchNudges } from '@/ai/prompts/vendors/mistral/nudges'
-import { gptOssNudges, gptOssSearchNudges } from '@/ai/prompts/vendors/openai/nudges'
+import type { ModelProfile } from '@/types'
 
 type Step = { finishReason: string }
 
@@ -90,9 +89,31 @@ export const searchModeNudges: NudgeMessages = {
     'Respond now. Output <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is REQUIRED — without it, nothing will render. No more tools.',
 }
 
-/** Get the appropriate nudge messages for a vendor/mode combination */
-export const getNudgeMessages = (modeName?: string, vendor?: string): NudgeMessages => {
-  if (vendor === 'openai') return modeName === 'search' ? gptOssSearchNudges : gptOssNudges
-  if (vendor === 'mistral') return modeName === 'search' ? mistralSearchNudges : mistralNudges
-  return modeName === 'search' ? searchModeNudges : nudgeMessages
+/** Get the appropriate nudge messages from a model profile, falling back to code defaults */
+export const getNudgeMessagesFromProfile = (profile: ModelProfile | null, modeName?: string): NudgeMessages => {
+  const isSearch = modeName === 'search'
+
+  if (!profile) return isSearch ? searchModeNudges : nudgeMessages
+
+  if (isSearch) {
+    const hasSearchOverrides = profile.nudgeSearchFinalStep || profile.nudgeSearchPreventive || profile.nudgeSearchRetry
+    if (hasSearchOverrides) {
+      return {
+        finalStep: profile.nudgeSearchFinalStep ?? searchModeNudges.finalStep,
+        preventive: profile.nudgeSearchPreventive ?? searchModeNudges.preventive,
+        retry: profile.nudgeSearchRetry ?? searchModeNudges.retry,
+      }
+    }
+    return searchModeNudges
+  }
+
+  const hasNudgeOverrides = profile.nudgeFinalStep || profile.nudgePreventive || profile.nudgeRetry
+  if (hasNudgeOverrides) {
+    return {
+      finalStep: profile.nudgeFinalStep ?? nudgeMessages.finalStep,
+      preventive: profile.nudgePreventive ?? nudgeMessages.preventive,
+      retry: profile.nudgeRetry ?? nudgeMessages.retry,
+    }
+  }
+  return nudgeMessages
 }

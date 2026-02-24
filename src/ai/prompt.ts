@@ -1,21 +1,14 @@
-import { getPromptOverrides } from '@/ai/prompts'
 import { widgetPrompts } from '@/widgets'
+import type { ModelProfile } from '@/types'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
   modelName: string
-  /** Vendor identifier for model-specific prompt overrides (e.g. 'openai', 'mistral', 'anthropic') */
-  vendor: string | null
-  /** Model identifier for model-specific prompt overrides (e.g. 'gpt-oss-120b', 'mistral-medium-3.1') */
-  model: string | null
+  profile: ModelProfile | null
   /** Mode name for mode-specific prompt overrides (e.g. 'chat', 'search', 'research') */
   modeName: string | null
   preferredName: string
-  location: {
-    name?: string
-    lat?: number
-    lng?: number
-  }
+  location: { name?: string; lat?: number; lng?: number }
   localization: {
     distanceUnit: string
     temperatureUnit: string
@@ -34,8 +27,7 @@ export type PromptParams = {
  */
 export const createPrompt = ({
   modelName,
-  vendor,
-  model,
+  profile,
   modeName,
   preferredName,
   location,
@@ -43,7 +35,17 @@ export const createPrompt = ({
   integrationStatus,
   modeSystemPrompt,
 }: PromptParams) => {
-  const overrides = getPromptOverrides(vendor, model, modeName)
+  const getOverrideForMode = (modeName: string | null, profile: ModelProfile | null) => {
+    if (!profile) return undefined
+    if (modeName === 'chat') return profile.chatModeAddendum
+    if (modeName === 'search') return profile.searchModeAddendum
+    if (modeName === 'research') return profile.researchModeAddendum
+    return undefined
+  }
+
+  const toolsOverride = profile?.toolsOverride ?? undefined
+  const linkPreviewsOverride = profile?.linkPreviewsOverride ?? undefined
+  const modeAddendum = getOverrideForMode(modeName, profile)
   const contextSection = [
     `Current date/time: ${new Date().toLocaleString('en-US', {
       weekday: 'long',
@@ -96,13 +98,13 @@ If you're unsure whether to search: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
-${overrides?.tools ? `\n${overrides.tools}` : ''}
+${toolsOverride ? `\n${toolsOverride}` : ''}
 
 ## Link Previews
 • Aggregate pages (listicles, "Top 10") are for DISCOVERY ONLY
 • Always link to individual item pages, not review sites
 • For products: link to official manufacturer pages
-${overrides?.linkPreviews ? `\n${overrides.linkPreviews}` : ''}
+${linkPreviewsOverride ? `\n${linkPreviewsOverride}` : ''}
 
 ${widgetPrompts}
 
@@ -114,5 +116,5 @@ Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
-${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${overrides?.modeAddendum ? `\n\n${overrides.modeAddendum}` : ''}` : ''}`
+${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}`
 }

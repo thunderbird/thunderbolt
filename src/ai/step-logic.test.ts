@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   extractTextFromMessages,
-  getNudgeMessages,
+  getNudgeMessagesFromProfile,
   hasToolCalls,
   isFinalStep,
   nudgeMessages,
@@ -242,18 +242,18 @@ describe('searchModeNudges', () => {
   })
 })
 
-describe('getNudgeMessages', () => {
+describe('getNudgeMessagesFromProfile', () => {
   test('returns default nudges when no mode specified', () => {
-    expect(getNudgeMessages()).toBe(nudgeMessages)
-    expect(getNudgeMessages(undefined)).toBe(nudgeMessages)
+    expect(getNudgeMessagesFromProfile(null)).toBe(nudgeMessages)
+    expect(getNudgeMessagesFromProfile(null, undefined)).toBe(nudgeMessages)
   })
 
   test('returns search nudges for search mode', () => {
-    expect(getNudgeMessages('search')).toBe(searchModeNudges)
+    expect(getNudgeMessagesFromProfile(null, 'search')).toBe(searchModeNudges)
   })
 
   test('returns default nudges for non-search modes', () => {
-    expect(getNudgeMessages('chat')).toBe(nudgeMessages)
-    expect(getNudgeMessages('research')).toBe(nudgeMessages)
+    expect(getNudgeMessagesFromProfile(null, 'chat')).toBe(nudgeMessages)
+    expect(getNudgeMessagesFromProfile(null, 'research')).toBe(nudgeMessages)
   })
 })

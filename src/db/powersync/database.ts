@@ -10,7 +10,10 @@ import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 
 /** LocalStorage key for sync enabled flag */
-const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
+const syncEnabledKey = 'powersync_sync_enabled'
+
+/** Max time to wait for initial sync before continuing (e.g. when network is down) */
+const initialSyncTimeoutMs = 10_000
 
 /** Custom event name for sync enabled changes */
 export const SYNC_ENABLED_CHANGE_EVENT = 'powersync_sync_enabled_change'
@@ -36,7 +39,7 @@ export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
  */
 export const isSyncEnabled = (): boolean => {
   if (typeof localStorage === 'undefined') return false
-  return localStorage.getItem(SYNC_ENABLED_KEY) === 'true'
+  return localStorage.getItem(syncEnabledKey) === 'true'
 }
 
 /**
@@ -46,7 +49,7 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
   if (typeof localStorage === 'undefined') return
 
   // Update localStorage and dispatch event
-  localStorage.setItem(SYNC_ENABLED_KEY, String(enabled))
+  localStorage.setItem(syncEnabledKey, String(enabled))
   window.dispatchEvent(new CustomEvent(SYNC_ENABLED_CHANGE_EVENT, { detail: enabled }))
 
   // Connect or disconnect from PowerSync Cloud
@@ -183,6 +186,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   /**
    * Wait for PowerSync to complete its initial sync.
    * This ensures data from the cloud is available before reconciling defaults.
+   * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
   async waitForInitialSync(): Promise<void> {
     // Skip if sync is disabled or not connected
@@ -196,8 +200,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return
     }
 
-    return new Promise((resolve) => {
-      const unsubscribe = this.powerSync!.registerListener({
+    let unsubscribe: (() => void) | undefined
+    const syncPromise = new Promise<void>((resolve) => {
+      unsubscribe = this.powerSync!.registerListener({
         statusChanged: (newStatus) => {
           if (newStatus.hasSynced) {
             unsubscribe?.()
@@ -206,6 +211,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
         },
       })
     })
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        unsubscribe?.()
+        console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
+        resolve()
+      }, initialSyncTimeoutMs)
+    })
+
+    await Promise.race([syncPromise, timeoutPromise])
   }
 
   async close(): Promise<void> {

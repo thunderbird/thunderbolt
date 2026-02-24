@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 type UseExternalLinkDialogReturn = {
   dialogOpen: boolean
@@ -18,20 +18,22 @@ type UseExternalLinkDialogReturn = {
 export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingUrl, setPendingUrl] = useState<string>('')
+  const pendingUrlRef = useRef<string>('')
 
   const openDialog = useCallback((url: string) => {
+    pendingUrlRef.current = url
     setPendingUrl(url)
     setDialogOpen(true)
   }, [])
 
   const handleConfirm = useCallback(() => {
+    const urlToOpen = pendingUrlRef.current
     setDialogOpen(false)
-    setPendingUrl((current) => {
-      if (current) {
-        window.open(current, '_blank', 'noopener,noreferrer')
-      }
-      return ''
-    })
+    setPendingUrl('')
+    pendingUrlRef.current = ''
+    if (urlToOpen) {
+      window.open(urlToOpen, '_blank', 'noopener,noreferrer')
+    }
   }, [])
 
   return {

@@ -161,10 +161,11 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
-    if (lastChatPathRef.current && isChatPathValid(lastChatPathRef.current, chatThreads)) {
+    const allThreads = data ?? []
+    if (lastChatPathRef.current && isChatPathValid(lastChatPathRef.current, allThreads)) {
       navigate(lastChatPathRef.current)
-    } else if (chatThreads.length > 0) {
-      navigate(`/chats/${chatThreads[0].id}`)
+    } else if (allThreads.length > 0) {
+      navigate(`/chats/${allThreads[0].id}`)
     } else {
       await createNewChat(false)
     }

@@ -160,24 +160,42 @@ ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
  * Ensures line breaks work correctly in tables, lists, and paragraphs.
  * All components are memoized to prevent unnecessary re-renders during streaming.
  */
-const SafeLink = memo(({ href, children, ...props }: React.ComponentProps<'a'>) => {
-  const context = useContext(ExternalLinkDialogContext)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
 
-  const safeHref = href && isSafeUrl(href) ? href : undefined
+/**
+ * SafeLink implementation that uses context (no hook allocations).
+ * Used when wrapped in ExternalLinkDialogProvider (the common case).
+ */
+const SafeLinkWithContext = memo(
+  ({
+    href,
+    children,
+    context,
+    ...props
+  }: React.ComponentProps<'a'> & { context: { openExternalLink: (url: string) => void } }) => {
+    const safeHref = href && isSafeUrl(href) ? href : undefined
 
-  if (context) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
       e.preventDefault()
       if (!safeHref) return
       context.openExternalLink(safeHref)
     }
+
     return (
       <a {...props} href="#" onClick={handleClick}>
         {children}
       </a>
     )
-  }
+  },
+)
+SafeLinkWithContext.displayName = 'SafeLinkWithContext'
+
+/**
+ * SafeLink implementation that manages its own state (with hook).
+ * Used when no ExternalLinkDialogProvider is present (standalone usage).
+ */
+const SafeLinkStandalone = memo(({ href, children, ...props }: React.ComponentProps<'a'>) => {
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+  const safeHref = href && isSafeUrl(href) ? href : undefined
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
@@ -193,6 +211,16 @@ const SafeLink = memo(({ href, children, ...props }: React.ComponentProps<'a'>) 
       <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
     </>
   )
+})
+SafeLinkStandalone.displayName = 'SafeLinkStandalone'
+
+/**
+ * Router component that chooses between context-based or standalone implementation.
+ * Avoids wasted hook allocations when context is available.
+ */
+const SafeLink = memo((props: React.ComponentProps<'a'>) => {
+  const context = useContext(ExternalLinkDialogContext)
+  return context ? <SafeLinkWithContext {...props} context={context} /> : <SafeLinkStandalone {...props} />
 })
 
 SafeLink.displayName = 'SafeLink'

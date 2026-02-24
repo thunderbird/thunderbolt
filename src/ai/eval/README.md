@@ -93,18 +93,18 @@ Failures (3):
 
 ============================================================
 
-Report saved to: .evals/eval-results.md
+Report saved to: evals/eval-results.md
 ```
 
 ## Environment Variables
 
-| Variable                 | Default                  | Example           | Description                     |
-| ------------------------ | ------------------------ | ----------------- | ------------------------------- |
-| `EVAL_MODELS`            | all                      | `gpt-oss,mistral` | Which models to test            |
-| `EVAL_MODES`             | all                      | `chat,search`     | Which modes to test             |
-| `EVAL_SCENARIO_PARALLEL` | `3`                      | `1`               | Concurrent scenarios per worker |
-| `EVAL_TIMEOUT`           | `120000`                 | `60000`           | Timeout per scenario (ms)       |
-| `EVAL_OUTPUT`            | `.evals/eval-results.md` | `reports/eval.md` | Report file path                |
+| Variable                 | Default                 | Example           | Description                     |
+| ------------------------ | ----------------------- | ----------------- | ------------------------------- |
+| `EVAL_MODELS`            | all                     | `gpt-oss,mistral` | Which models to test            |
+| `EVAL_MODES`             | all                     | `chat,search`     | Which modes to test             |
+| `EVAL_SCENARIO_PARALLEL` | `3`                     | `1`               | Concurrent scenarios per worker |
+| `EVAL_TIMEOUT`           | `120000`                | `60000`           | Timeout per scenario (ms)       |
+| `EVAL_OUTPUT`            | `evals/eval-results.md` | `reports/eval.md` | Report file path                |
 
 ### CLI Flags
 
@@ -118,7 +118,7 @@ Example with detailed report:
 ```
 $ EVAL_MODELS=gpt-oss EVAL_MODES=chat bun run eval -- --detailed
 
-# The markdown report at .evals/eval-results.md will include:
+# The markdown report at evals/eval-results.md will include:
 ## Failures
 
 ### gpt-oss/chat/C4

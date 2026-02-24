@@ -181,6 +181,6 @@ export const generateReport = (results: EvalResult[], detailed = false) => {
   const summary = summarize(results)
   printConsoleReport(results, summary)
 
-  const outputPath = process.env.EVAL_OUTPUT ?? `.evals/eval-results-${timestamp()}.md`
+  const outputPath = process.env.EVAL_OUTPUT ?? `evals/eval-results-${timestamp()}.md`
   writeMarkdownReport(results, summary, outputPath, detailed)
 }

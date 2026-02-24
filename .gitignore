@@ -37,7 +37,7 @@ tauri.key
 storybook-static
 
 # Eval results
-.evals/
+evals/
 
 # Dev Ex custom things
 mise*.toml

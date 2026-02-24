@@ -225,16 +225,14 @@ export const hasSetting = async (key: string): Promise<boolean> => {
 /**
  * Create a setting only if it doesn't already exist
  * Does nothing if the setting already exists (preserves existing value)
+ * Uses insert-then-catch-conflict to avoid TOCTOU race (PowerSync views don't support ON CONFLICT)
  */
 export const createSetting = async (key: string, value: string | null): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const existing = await db
-    .select({ key: settingsTable.key })
-    .from(settingsTable)
-    .where(eq(settingsTable.key, key))
-    .get()
-  if (!existing) {
+  try {
     await db.insert(settingsTable).values({ key, value })
+  } catch (err) {
+    if (!isInsertConflictError(err)) throw err
   }
 }
 

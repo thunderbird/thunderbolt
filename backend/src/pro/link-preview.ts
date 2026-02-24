@@ -360,7 +360,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         return {
           data: null,
           success: false,
-          error: error instanceof Error ? error.message : 'Link preview request failed',
+          error: 'Link preview request failed',
         }
       }
     })

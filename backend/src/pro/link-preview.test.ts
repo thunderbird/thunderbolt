@@ -414,7 +414,7 @@ describe('Link Preview Routes', () => {
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(false)
-      expect(body.error).toBe('Network connection failed')
+      expect(body.error).toBe('Link preview request failed')
     })
 
     it('should return all nulls when page has no social tags (e.g. captcha page)', async () => {

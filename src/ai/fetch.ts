@@ -247,6 +247,10 @@ export const aiFetchStreamingResponse = async ({
     const providerOptionsKey = model.vendor ?? model.provider
     const rawOptions = {
       ...(model.supportsParallelToolCalls === 0 && { parallelToolCalls: false }),
+      // OpenAI vendor models require systemMessageMode: 'developer' for Chat Completions API.
+      // This is a transport-level requirement (not model tuning), so it's hardcoded as a baseline
+      // rather than relying solely on the profile — custom OpenAI models may not have a profile.
+      ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
       ...profile?.providerOptions,
     }
     const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined

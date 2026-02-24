@@ -278,23 +278,21 @@ export const useOnboardingState = () => {
       dispatch({ type: 'SUBMIT_LOCATION', payload: locationData })
 
       try {
-        await Promise.all([
-          locationName.setValue(locationData.locationName),
-          locationLat.setValue(String(locationData.locationLat)),
-          locationLng.setValue(String(locationData.locationLng)),
-        ])
+        // Run sequentially to avoid "cannot start a transaction within a transaction"
+        // (each setValue uses updateSettings which wraps in db.transaction)
+        await locationName.setValue(locationData.locationName)
+        await locationLat.setValue(String(locationData.locationLat))
+        await locationLng.setValue(String(locationData.locationLng))
 
         const country = extractCountryFromLocation(locationData.locationName)
         if (country) {
           const countryUnitsData = await fetchCountryUnits(country)
           if (countryUnitsData) {
-            await Promise.all([
-              distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true }),
-              temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true }),
-              dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true }),
-              timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true }),
-              currency.setValue(countryUnitsData.currency.code, { recomputeHash: true }),
-            ])
+            await distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
+            await temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
+            await dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
+            await timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
+            await currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
           }
         }
 

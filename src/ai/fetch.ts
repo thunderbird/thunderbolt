@@ -1,11 +1,12 @@
 import { createPrompt } from '@/ai/prompt'
 import {
+  buildStepOverrides,
   extractTextFromMessages,
   getNudgeMessagesFromProfile,
   hasToolCalls,
+  inferenceDefaults,
   isFinalStep,
   shouldRetry,
-  shouldShowPreventiveNudge,
 } from '@/ai/step-logic'
 import { getModel, getModelProfile, getSettings } from '@/dal'
 import { fetch } from '@/lib/fetch'
@@ -229,16 +230,10 @@ export const aiFetchStreamingResponse = async ({
       ],
     })
 
-    // Load inference config from profile (fallback to code defaults)
-    const defaultTemperature = 0.2
-    const defaultMaxSteps = 20
-    const defaultMaxAttempts = 2
-    const defaultNudgeThreshold = 6
-
-    const modelTemperature = profile?.temperature ?? defaultTemperature
-    const maxSteps = profile?.maxSteps ?? defaultMaxSteps
-    const maxAttempts = profile?.maxAttempts ?? defaultMaxAttempts
-    const nudgeThreshold = profile?.nudgeThreshold ?? defaultNudgeThreshold
+    const modelTemperature = profile?.temperature ?? inferenceDefaults.temperature
+    const maxSteps = profile?.maxSteps ?? inferenceDefaults.maxSteps
+    const maxAttempts = profile?.maxAttempts ?? inferenceDefaults.maxAttempts
+    const nudgeThreshold = profile?.nudgeThreshold ?? inferenceDefaults.nudgeThreshold
 
     // Build provider options from profile + per-model DB settings
     // Uses vendor (actual model maker like 'mistral') for provider options key since the
@@ -269,34 +264,18 @@ export const aiFetchStreamingResponse = async ({
         providerOptions,
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
-          const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
-          const citationSystem =
-            profile?.citationReinforcementEnabled === 1 && hadToolCallSteps
-              ? systemPrompt + (profile.citationReinforcementPrompt ?? '')
-              : undefined
-
-          // Final step: disable tools to force a response
           if (isFinalStep(steps.length, maxSteps)) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
-            return {
-              ...(citationSystem && { system: citationSystem }),
-              activeTools: [],
-              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.finalStep }],
-            }
           }
-
-          // Nudge after many tool calls (but not on final step)
-          if (shouldShowPreventiveNudge(steps, nudgeThreshold)) {
-            return {
-              ...(citationSystem && { system: citationSystem }),
-              messages: [...stepMessages, { role: 'user' as const, content: activeNudges.preventive }],
-            }
-          }
-
-          // Reinforce citations via system prompt after tool calls (when enabled by profile)
-          if (citationSystem) {
-            return { system: citationSystem }
-          }
+          return buildStepOverrides({
+            steps,
+            messages: stepMessages,
+            systemPrompt,
+            profile,
+            maxSteps,
+            nudgeThreshold,
+            activeNudges,
+          })
         },
 
         abortSignal,

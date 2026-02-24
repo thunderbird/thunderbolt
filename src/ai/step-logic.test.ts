@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
 import {
+  buildStepOverrides,
   extractTextFromMessages,
   getNudgeMessagesFromProfile,
   hasToolCalls,
@@ -332,5 +333,117 @@ describe('getNudgeMessagesFromProfile', () => {
   test('returns search mode defaults when profile has no search overrides', () => {
     const profile = createStubProfile()
     expect(getNudgeMessagesFromProfile(profile, 'search')).toBe(searchModeNudges)
+  })
+})
+
+describe('buildStepOverrides', () => {
+  const baseParams = {
+    systemPrompt: 'You are an assistant.',
+    profile: null as ModelProfile | null,
+    maxSteps: 20,
+    nudgeThreshold: 6,
+    activeNudges: nudgeMessages,
+  }
+
+  const toolCallSteps = (n: number) => Array(n).fill({ finishReason: 'tool-calls' })
+  const textSteps = (n: number) => Array(n).fill({ finishReason: 'stop' })
+
+  test('returns undefined when no conditions are met', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result).toBeUndefined()
+  })
+
+  test('disables tools and nudges on final step', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(19),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result?.activeTools).toEqual([])
+    expect(result?.messages?.[result.messages.length - 1]?.content).toBe(nudgeMessages.finalStep)
+  })
+
+  test('adds preventive nudge at threshold', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      nudgeThreshold: 6,
+      steps: toolCallSteps(6),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result?.messages?.[result.messages.length - 1]?.content).toBe(nudgeMessages.preventive)
+    expect(result?.activeTools).toBeUndefined()
+  })
+
+  test('does not nudge below threshold', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(5),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result).toBeUndefined()
+  })
+
+  test('final step takes priority over preventive nudge', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      maxSteps: 7,
+      nudgeThreshold: 6,
+      steps: toolCallSteps(6),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result?.activeTools).toEqual([])
+  })
+
+  test('appends citation reinforcement when enabled and tool calls occurred', () => {
+    const profile = createStubProfile({
+      citationReinforcementEnabled: 1,
+      citationReinforcementPrompt: '\n<cite>sources</cite>',
+    })
+    const result = buildStepOverrides({
+      ...baseParams,
+      profile,
+      steps: toolCallSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result?.system).toBe('You are an assistant.\n<cite>sources</cite>')
+  })
+
+  test('no citation reinforcement when disabled', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      profile: createStubProfile({ citationReinforcementEnabled: 0 }),
+      steps: toolCallSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result).toBeUndefined()
+  })
+
+  test('no citation reinforcement without tool calls', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      profile: createStubProfile({ citationReinforcementEnabled: 1, citationReinforcementPrompt: '\ncite' }),
+      steps: textSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result).toBeUndefined()
+  })
+
+  test('includes citation system on final step when enabled', () => {
+    const profile = createStubProfile({
+      citationReinforcementEnabled: 1,
+      citationReinforcementPrompt: '\ncite!',
+    })
+    const result = buildStepOverrides({
+      ...baseParams,
+      profile,
+      steps: toolCallSteps(19),
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(result?.system).toBe('You are an assistant.\ncite!')
+    expect(result?.activeTools).toEqual([])
   })
 })

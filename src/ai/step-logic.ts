@@ -89,6 +89,58 @@ export const searchModeNudges: NudgeMessages = {
     'Respond now. Output <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is REQUIRED — without it, nothing will render. No more tools.',
 }
 
+/** Compute the prepareStep overrides for a single step of the agentic loop */
+export const buildStepOverrides = <TMessage>({
+  steps,
+  messages,
+  systemPrompt,
+  profile,
+  maxSteps,
+  nudgeThreshold,
+  activeNudges,
+}: {
+  steps: Step[]
+  messages: TMessage[]
+  systemPrompt: string
+  profile: ModelProfile | null
+  maxSteps: number
+  nudgeThreshold: number
+  activeNudges: NudgeMessages
+}) => {
+  const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
+  const citationSystem =
+    profile?.citationReinforcementEnabled === 1 && hadToolCallSteps
+      ? systemPrompt + (profile.citationReinforcementPrompt ?? '')
+      : undefined
+
+  if (isFinalStep(steps.length, maxSteps)) {
+    return {
+      system: citationSystem,
+      activeTools: [] as never[],
+      messages: [...messages, { role: 'user' as const, content: activeNudges.finalStep }],
+    }
+  }
+
+  if (shouldShowPreventiveNudge(steps, nudgeThreshold)) {
+    return {
+      system: citationSystem,
+      messages: [...messages, { role: 'user' as const, content: activeNudges.preventive }],
+    }
+  }
+
+  if (citationSystem) {
+    return { system: citationSystem }
+  }
+}
+
+/** Default inference config applied when no profile override exists */
+export const inferenceDefaults = {
+  temperature: 0.2,
+  maxSteps: 20,
+  maxAttempts: 2,
+  nudgeThreshold: 6,
+} as const
+
 /** Get the appropriate nudge messages from a model profile, falling back to code defaults */
 export const getNudgeMessagesFromProfile = (profile: ModelProfile | null, modeName?: string): NudgeMessages => {
   const isSearch = modeName === 'search'

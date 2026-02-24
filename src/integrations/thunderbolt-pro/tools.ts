@@ -68,6 +68,11 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             })
             nextIndex++
           } else if (!existingSource) {
+            if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
+              console.warn(
+                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.url}`,
+              )
+            }
             nextIndex++
           }
 
@@ -118,6 +123,11 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           if (result.author) existingSource.author = result.author
           if (result.published_date) existingSource.publishedDate = result.published_date
         } else {
+          if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
+            console.warn(
+              `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.url}`,
+            )
+          }
           nextIndex++
         }
 

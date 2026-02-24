@@ -310,7 +310,7 @@ describe('PowerSync API', () => {
       expect(devices[0]?.name).toBe('My Phone')
     })
 
-    it('does not upsert device when x-device-id is provided but x-device-name is empty', async () => {
+    it('upserts device with "Unknown device" when x-device-name is empty', async () => {
       const userId = 'user-device-no-name'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -345,10 +345,11 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(200)
 
       const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-empty-name'))
-      expect(devices).toHaveLength(0)
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe('Unknown device')
     })
 
-    it('does not upsert device when x-device-name exceeds 100 characters', async () => {
+    it('upserts device with "Unknown device" when x-device-name exceeds 100 characters', async () => {
       const userId = 'user-device-long-name'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -384,7 +385,8 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(200)
 
       const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-long-name'))
-      expect(devices).toHaveLength(0)
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe('Unknown device')
     })
 
     it('upserts device when x-device-name is exactly 100 characters', async () => {

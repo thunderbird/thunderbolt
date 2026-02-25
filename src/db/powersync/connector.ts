@@ -3,7 +3,7 @@ import { getDeviceDisplayName } from '@/lib/platform'
 import ky from 'ky'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 
-/** Dispatched when backend returns 410 (account deleted) or 403 + DEVICE_DISCONNECTED. App should reset and reload. */
+/** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
 export const POWERSYNC_CREDENTIALS_INVALID = 'powersync_credentials_invalid'
 
 type TokenResponse = {
@@ -63,7 +63,10 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         } catch {
           // ignore
         }
-        const isResetSignal = status === 410 || (status === 403 && body.code === 'DEVICE_DISCONNECTED')
+        const isResetSignal =
+          status === 410 ||
+          (status === 403 && body.code === 'DEVICE_DISCONNECTED') ||
+          (status === 409 && body.code === 'DEVICE_ID_TAKEN')
         if (isResetSignal) {
           window.dispatchEvent(new CustomEvent(POWERSYNC_CREDENTIALS_INVALID))
         }

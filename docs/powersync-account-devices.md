@@ -134,6 +134,7 @@ Summary for client:
 
 - **410** → account deleted (reset).
 - **403** with `DEVICE_DISCONNECTED` → this device revoked (reset).
+- **409** with `DEVICE_ID_TAKEN` → device id already registered to another user; reset to get a fresh device id.
 - **401** → generic auth failure.
 
 ### Revoke device (`POST /v1/account/devices/:id/revoke`)

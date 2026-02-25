@@ -27,8 +27,9 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  * Listens for "credentials invalid" and triggers a full app reset in two cases:
  *
  * 1. **Event (POWERSYNC_CREDENTIALS_INVALID)** – Fired when the backend returns 410 (account
- *    deleted) or 403 (device revoked) e.g. from the account-verify endpoint during app init
- *    or from PowerSync token refresh. We just run the reset handler.
+ *    deleted), 403 (device revoked), or 409 (device id taken by another user) e.g. from the
+ *    account-verify endpoint during app init or from PowerSync token refresh. We just run
+ *    the reset handler.
  *
  * 2. **Devices table (synced via PowerSync)** – We have a token and a device id (we consider
  *    ourselves a logged-in device). We watch the current device row:

@@ -28,7 +28,7 @@ type PowerSyncOperation = {
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
-const TIMESTAMP_DB_COLUMNS = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at'])
+const TIMESTAMP_DB_COLUMNS = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
 
 /**
  * Convert payload with DB column names to schema keys and filter to valid columns only.
@@ -59,6 +59,7 @@ type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
   | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' } }
+  | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
  * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, device upsert.
@@ -78,13 +79,18 @@ const issuePowerSyncToken = async (
   }
 
   const deviceRow = await database
-    .select({ revokedAt: devicesTable.revokedAt })
+    .select({ userId: devicesTable.userId, revokedAt: devicesTable.revokedAt })
     .from(devicesTable)
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .where(eq(devicesTable.id, deviceId))
     .limit(1)
     .then((rows) => rows[0])
-  if (deviceRow?.revokedAt != null) {
-    return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+  if (deviceRow) {
+    if (deviceRow.userId !== userId) {
+      return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+    }
+    if (deviceRow.revokedAt != null) {
+      return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+    }
   }
 
   const token = await powersyncJwt.sign({ sub: userId, user_id: userId })

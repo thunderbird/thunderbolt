@@ -119,6 +119,48 @@ describe('PowerSync API', () => {
       expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
     })
 
+    it('returns 409 when device id belongs to another user', async () => {
+      const userA = 'user-a-device-owner'
+      const userB = 'user-b-collision'
+      const sharedDeviceId = 'shared-device-id'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values([
+        { id: userA, name: 'User A', email: 'user-a@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+        { id: userB, name: 'User B', email: 'user-b@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+      ])
+
+      await db.insert(sessionTable).values({
+        id: 'session-user-b',
+        expiresAt,
+        token: 'bearer-user-b',
+        createdAt: now,
+        updatedAt: now,
+        userId: userB,
+      })
+
+      await db.insert(devicesTable).values({
+        id: sharedDeviceId,
+        userId: userA,
+        name: "User A's Device",
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-user-b',
+            'x-device-id': sharedDeviceId,
+          },
+        }),
+      )
+      expect(response.status).toBe(409)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
+    })
+
     it('returns 400 when x-device-id is missing', async () => {
       const userId = 'user-no-device-id'
       const now = new Date()

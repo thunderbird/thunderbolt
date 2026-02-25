@@ -13,6 +13,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { useAuth } from '@/contexts'
+import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { cn } from '@/lib/utils'
@@ -96,6 +97,13 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
+
+    // Disable sync before signing out
+    try {
+      await setSyncEnabled(false)
+    } catch (error) {
+      console.error('Failed to disable sync:', error)
+    }
 
     try {
       await authClient.signOut()

@@ -27,6 +27,7 @@ export const defaultSettingDataCollection: Setting = {
   value: 'true',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingTriggersEnabled: Setting = {
@@ -34,6 +35,7 @@ export const defaultSettingTriggersEnabled: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingExperimentalFeatureTasks: Setting = {
@@ -41,6 +43,7 @@ export const defaultSettingExperimentalFeatureTasks: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingNativeFetchEnabled: Setting = {
@@ -48,6 +51,7 @@ export const defaultSettingNativeFetchEnabled: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingDebugPosthog: Setting = {
@@ -55,6 +59,7 @@ export const defaultSettingDebugPosthog: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingPreferredName: Setting = {
@@ -62,6 +67,7 @@ export const defaultSettingPreferredName: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingLocationName: Setting = {
@@ -69,6 +75,7 @@ export const defaultSettingLocationName: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingLocationLat: Setting = {
@@ -76,6 +83,7 @@ export const defaultSettingLocationLat: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingLocationLng: Setting = {
@@ -83,6 +91,7 @@ export const defaultSettingLocationLng: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingCloudUrl: Setting = {
@@ -90,6 +99,7 @@ export const defaultSettingCloudUrl: Setting = {
   value: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingTheme: Setting = {
@@ -97,6 +107,7 @@ export const defaultSettingTheme: Setting = {
   value: 'system',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingDistanceUnit: Setting = {
@@ -104,6 +115,7 @@ export const defaultSettingDistanceUnit: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingTemperatureUnit: Setting = {
@@ -111,6 +123,7 @@ export const defaultSettingTemperatureUnit: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingDateFormat: Setting = {
@@ -118,6 +131,7 @@ export const defaultSettingDateFormat: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingTimeFormat: Setting = {
@@ -125,6 +139,7 @@ export const defaultSettingTimeFormat: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingCurrency: Setting = {
@@ -132,6 +147,7 @@ export const defaultSettingCurrency: Setting = {
   value: null,
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingIntegrationsProIsEnabled: Setting = {
@@ -139,6 +155,7 @@ export const defaultSettingIntegrationsProIsEnabled: Setting = {
   value: 'true',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingContentViewWidth: Setting = {
@@ -146,6 +163,7 @@ export const defaultSettingContentViewWidth: Setting = {
   value: '50',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingUserHasCompletedOnboarding: Setting = {
@@ -153,6 +171,7 @@ export const defaultSettingUserHasCompletedOnboarding: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
@@ -160,6 +179,7 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
   value: 'false',
   updatedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 /**

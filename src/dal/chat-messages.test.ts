@@ -4,7 +4,12 @@ import type { ThunderboltUIMessage } from '@/types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { getChatMessages, getLastMessage, saveMessagesWithContextUpdate } from './chat-messages'
+import {
+  deleteChatMessageAndDescendants,
+  getChatMessages,
+  getLastMessage,
+  saveMessagesWithContextUpdate,
+} from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -294,6 +299,42 @@ describe('Chat Messages DAL', () => {
       expect(msg3?.parentId).toBe(messageId2)
     })
 
+    it('should fall back to update when message id already exists (insert-first pattern for PowerSync)', async () => {
+      const threadId = uuidv7()
+      const messageId = uuidv7()
+      const db = DatabaseSingleton.instance.db
+
+      await db.insert(chatThreadsTable).values({
+        id: threadId,
+        title: 'Test Thread',
+        isEncrypted: 0,
+      })
+
+      // Insert message directly to simulate race: another caller already saved it
+      await db.insert(chatMessagesTable).values({
+        id: messageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Original content',
+        parentId: null,
+      })
+
+      // saveMessagesWithContextUpdate tries insert first, gets PRIMARY KEY constraint, falls back to update
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: messageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Updated content' }],
+        },
+      ]
+
+      await saveMessagesWithContextUpdate(threadId, messages)
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
+      expect(saved?.content).toBe('Updated content')
+      expect(saved?.role).toBe('assistant')
+    })
+
     it('should update context size from message metadata', async () => {
       const threadId = uuidv7()
       const messageId = uuidv7()
@@ -357,11 +398,11 @@ describe('Chat Messages DAL', () => {
         },
       ])
 
-      // Delete parent message
-      await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, parentMessageId))
+      // Soft delete parent message and descendants (DAL cascade)
+      await deleteChatMessageAndDescendants(parentMessageId)
 
-      // Child should be deleted by cascade
-      const messages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.chatThreadId, threadId))
+      // No messages visible (soft-deleted)
+      const messages = await getChatMessages(threadId)
       expect(messages).toHaveLength(0)
     })
 
@@ -411,11 +452,11 @@ describe('Chat Messages DAL', () => {
         },
       ])
 
-      // Delete root message
-      await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, msg1Id))
+      // Soft delete root message and descendants (DAL cascade)
+      await deleteChatMessageAndDescendants(msg1Id)
 
-      // All messages should be deleted by cascade
-      const messages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.chatThreadId, threadId))
+      // No messages visible (soft-deleted)
+      const messages = await getChatMessages(threadId)
       expect(messages).toHaveLength(0)
     })
 
@@ -457,11 +498,11 @@ describe('Chat Messages DAL', () => {
         },
       ])
 
-      // Delete middle message
-      await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, msg2Id))
+      // Soft delete middle message and its descendants (DAL cascade)
+      await deleteChatMessageAndDescendants(msg2Id)
 
-      // msg1 should remain, msg2 and msg3 should be deleted
-      const messages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.chatThreadId, threadId))
+      // Only msg1 visible (msg2 and msg3 soft-deleted)
+      const messages = await getChatMessages(threadId)
       expect(messages).toHaveLength(1)
       expect(messages[0]?.id).toBe(msg1Id)
     })

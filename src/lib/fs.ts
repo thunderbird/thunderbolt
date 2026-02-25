@@ -88,7 +88,8 @@ const resetAppDirOpfs = async (): Promise<void> => {
  * Resets the data directory by deleting the database file and recreating the directory
  */
 export const resetAppDir = async (): Promise<void> => {
-  DatabaseSingleton.reset()
+  // Must await for PowerSync to properly call disconnectAndClear()
+  await DatabaseSingleton.reset()
 
   const appDataDirPath = await createAppDir()
   const databaseType = await getDatabaseType()
@@ -96,13 +97,13 @@ export const resetAppDir = async (): Promise<void> => {
 
   // Only delete file if it's not an in-memory database
   if (dbPath === ':memory:') {
-    console.log('In-memory database detected, no file to delete')
     return
   }
 
   if (databaseType === 'libsql-tauri') {
     await resetAppDirTauri()
-  } else if (databaseType === 'wa-sqlite') {
+  } else if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
+    // Both wa-sqlite and PowerSync use OPFS
     await resetAppDirOpfs()
   } else {
     throw new Error(`Unsupported database type: ${databaseType}`)

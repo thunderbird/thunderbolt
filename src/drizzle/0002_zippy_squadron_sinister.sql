@@ -1,1 +1,0 @@
-ALTER TABLE `chat_messages` ADD `model_id` text REFERENCES models(id);

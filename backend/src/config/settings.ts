@@ -32,6 +32,12 @@ const settingsSchema = z.object({
   // Waitlist settings
   waitlistEnabled: z.boolean().default(false),
 
+  // PowerSync settings
+  powersyncUrl: z.string().default(''),
+  powersyncJwtKid: z.string().default(''),
+  powersyncJwtSecret: z.string().default(''),
+  powersyncTokenExpirySeconds: z.coerce.number().default(3600),
+
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
   corsOriginRegex: z
@@ -70,6 +76,10 @@ const parseSettings = (): Settings => {
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
+    powersyncUrl: process.env.POWERSYNC_URL || '',
+    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
+    powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
     corsOriginRegex:
       process.env.CORS_ORIGIN_REGEX ||

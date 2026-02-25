@@ -11,9 +11,11 @@ import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { type OAuthProvider } from '@/lib/auth'
-import { getSettings, updateSettings } from '@/dal'
+import { updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
-import { useEffect, useState, type ReactNode } from 'react'
+import { shouldInvalidateSettingsSubset, useSettings } from '@/hooks/use-settings'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 type Integration = {
@@ -42,32 +44,117 @@ const ThunderboltProIcon = () => (
   </svg>
 )
 
+const integrationSettingsKeys = [
+  'integrations_pro_is_enabled',
+  'integrations_google_is_enabled',
+  'integrations_google_credentials',
+  'integrations_microsoft_is_enabled',
+  'integrations_microsoft_credentials',
+] as const
+
+const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
+  if (!credentialsJson) return undefined
+  try {
+    return JSON.parse(credentialsJson) as Integration['credentials']
+  } catch (e) {
+    console.error('Failed to parse credentials:', e)
+    return undefined
+  }
+}
+
 export default function IntegrationsPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const [integrations, setIntegrations] = useState<Integration[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const [isProcessingCallback, setIsProcessingCallback] = useState(() => {
     const oauth = (location.state as { oauth?: unknown } | null)?.oauth
     return !!oauth
   })
 
+  const integrationSettings = useSettings({
+    integrations_pro_is_enabled: false,
+    integrations_google_is_enabled: false,
+    integrations_google_credentials: '',
+    integrations_microsoft_is_enabled: false,
+    integrations_microsoft_credentials: '',
+  })
+
+  const { data: proStatus, isLoading: proStatusLoading } = useQuery({
+    queryKey: ['proStatus'],
+    queryFn: getProStatus,
+  })
+
+  const integrations = useMemo((): Integration[] => {
+    const proEnabled = integrationSettings.integrationsProIsEnabled.value
+    const googleEnabled = integrationSettings.integrationsGoogleIsEnabled.value
+    const googleCredentials = integrationSettings.integrationsGoogleCredentials.value ?? ''
+    const microsoftEnabled = integrationSettings.integrationsMicrosoftIsEnabled.value
+    const microsoftCredentials = integrationSettings.integrationsMicrosoftCredentials.value ?? ''
+
+    const gParsed = parseCredentials(googleCredentials)
+    const mParsed = parseCredentials(microsoftCredentials)
+    const isProUser = proStatus?.isProUser ?? false
+
+    return [
+      {
+        id: 'thunderbolt-pro',
+        name: 'Thunderbolt Pro',
+        provider: 'thunderbolt-pro',
+        connectLabel: 'Get Pro',
+        icon: <ThunderboltProIcon />,
+        isEnabled: isProUser && proEnabled,
+        isConnected: isProUser,
+        userEmail: isProUser ? 'Thunderbolt Pro' : undefined,
+      },
+      {
+        id: 'google',
+        name: 'Google',
+        provider: 'google',
+        connectLabel: 'Connect Google',
+        icon: <GoogleIcon />,
+        isEnabled: googleEnabled,
+        isConnected: !!gParsed,
+        userEmail: gParsed?.profile?.email,
+        credentials: gParsed,
+      },
+      {
+        id: 'microsoft',
+        name: 'Microsoft',
+        provider: 'microsoft',
+        connectLabel: 'Connect Microsoft',
+        icon: <MicrosoftIcon />,
+        isEnabled: microsoftEnabled,
+        isConnected: !!mParsed,
+        userEmail: mParsed?.profile?.email,
+        credentials: mParsed,
+      },
+    ]
+  }, [
+    integrationSettings.integrationsProIsEnabled.value,
+    integrationSettings.integrationsGoogleIsEnabled.value,
+    integrationSettings.integrationsGoogleCredentials.value,
+    integrationSettings.integrationsMicrosoftIsEnabled.value,
+    integrationSettings.integrationsMicrosoftCredentials.value,
+    proStatus?.isProUser,
+  ])
+
+  const invalidateIntegrationSettings = () => {
+    for (const key of integrationSettingsKeys) {
+      queryClient.invalidateQueries({
+        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
+      })
+    }
+  }
+
   const { processCallback } = useOAuthConnect({
-    onSuccess: () => {
-      loadIntegrations()
-    },
-    onError: (error) => {
-      setError(error.message)
+    onSuccess: invalidateIntegrationSettings,
+    onError: (err) => {
+      setError(err.message)
     },
     returnContext: 'integrations',
   })
-
-  useEffect(() => {
-    loadIntegrations()
-  }, [])
 
   // Handle OAuth callback when navigated back from /oauth/callback
   useEffect(() => {
@@ -90,87 +177,6 @@ export default function IntegrationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  const loadIntegrations = async () => {
-    setLoading(true)
-    try {
-      // Fetch all integration settings in a single query (returns camelCase by default)
-      const {
-        integrationsProIsEnabled,
-        integrationsGoogleIsEnabled,
-        integrationsGoogleCredentials,
-        integrationsMicrosoftIsEnabled,
-        integrationsMicrosoftCredentials,
-      } = await getSettings({
-        integrations_pro_is_enabled: false,
-        integrations_google_is_enabled: false,
-        integrations_google_credentials: '',
-        integrations_microsoft_is_enabled: false,
-        integrations_microsoft_credentials: '',
-      })
-
-      // Thunderbolt Pro integration ----------------------------------------
-      const proStatus = await getProStatus()
-
-      const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
-        if (!credentialsJson) return undefined
-        try {
-          return JSON.parse(credentialsJson) as Integration['credentials']
-        } catch (e) {
-          console.error('Failed to parse credentials:', e)
-          return undefined
-        }
-      }
-
-      const gParsedCredentials = parseCredentials(integrationsGoogleCredentials)
-      const gUserEmail = gParsedCredentials?.profile?.email
-
-      const mParsedCredentials = parseCredentials(integrationsMicrosoftCredentials)
-      const mUserEmail = mParsedCredentials?.profile?.email
-
-      const integrations = [
-        {
-          id: 'thunderbolt-pro',
-          name: 'Thunderbolt Pro',
-          provider: 'thunderbolt-pro',
-          connectLabel: 'Get Pro',
-          icon: <ThunderboltProIcon />,
-          isEnabled: proStatus.isProUser && integrationsProIsEnabled,
-          isConnected: proStatus.isProUser,
-          userEmail: proStatus.isProUser ? 'Thunderbolt Pro' : undefined,
-        },
-        {
-          id: 'google',
-          name: 'Google',
-          provider: 'google',
-          connectLabel: 'Connect Google',
-          icon: <GoogleIcon />,
-          isEnabled: integrationsGoogleIsEnabled,
-          isConnected: !!gParsedCredentials,
-          userEmail: gUserEmail,
-          credentials: gParsedCredentials,
-        },
-        {
-          id: 'microsoft',
-          name: 'Microsoft',
-          provider: 'microsoft',
-          connectLabel: 'Connect Microsoft',
-          icon: <MicrosoftIcon />,
-          isEnabled: integrationsMicrosoftIsEnabled,
-          isConnected: !!mParsedCredentials,
-          userEmail: mUserEmail,
-          credentials: mParsedCredentials,
-        },
-      ]
-
-      setIntegrations(integrations)
-    } catch (error) {
-      console.error('Failed to load integrations:', error)
-      console.error('Failed to load integrations')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleGetPro = async () => {
     // For now, just show an alert since this is a placeholder
     alert(
@@ -184,32 +190,28 @@ export default function IntegrationsPage() {
         [`integrations_${integration.provider}_credentials`]: '',
         [`integrations_${integration.provider}_is_enabled`]: 'false',
       })
-
-      console.log(`Disconnected from ${integration.name}`)
-
-      await loadIntegrations()
-    } catch (error) {
-      console.error('Failed to disconnect integration', error)
+      invalidateIntegrationSettings()
+    } catch (err) {
+      console.error('Failed to disconnect integration', err)
     }
   }
 
   const handleToggleEnabled = async (integration: Integration, enabled: boolean) => {
     try {
-      // Use shorter setting key for thunderbolt-pro
       const settingKey =
         integration.provider === 'thunderbolt-pro'
           ? 'integrations_pro_is_enabled'
           : `integrations_${integration.provider}_is_enabled`
-
       await updateSettings({ [settingKey]: enabled.toString() })
-
-      setIntegrations((prev) => prev.map((i) => (i.id === integration.id ? { ...i, isEnabled: enabled } : i)))
-
-      console.log(`${integration.name} integration ${enabled ? 'enabled' : 'disabled'}`)
-    } catch (error) {
-      console.error('Failed to update integration', error)
+      queryClient.invalidateQueries({
+        predicate: (query) => shouldInvalidateSettingsSubset(query, settingKey),
+      })
+    } catch (err) {
+      console.error('Failed to update integration', err)
     }
   }
+
+  const loading = integrationSettings.integrationsProIsEnabled.isLoading || proStatusLoading
 
   if (loading) {
     return (
@@ -260,9 +262,7 @@ export default function IntegrationsPage() {
                     provider={integration.provider as OAuthProvider}
                     isConnected={false}
                     isProcessing={isProcessingCallback}
-                    onSuccess={() => {
-                      loadIntegrations()
-                    }}
+                    onSuccess={invalidateIntegrationSettings}
                     onError={(error) => {
                       setError(error.message)
                     }}

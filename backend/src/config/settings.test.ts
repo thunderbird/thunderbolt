@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test'
-import { getCorsMethodsList, getCorsOriginsList } from './settings'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { clearSettingsCache, getCorsMethodsList, getCorsOriginsList, getSettings } from './settings'
 
 describe('Config Settings', () => {
   describe('getCorsOriginsList', () => {
@@ -93,6 +93,11 @@ describe('Config Settings', () => {
           port: 8000,
           posthogHost: 'https://us.i.posthog.com',
           posthogApiKey: '',
+          waitlistEnabled: false,
+          powersyncUrl: '',
+          powersyncJwtKid: '',
+          powersyncJwtSecret: '',
+          powersyncTokenExpirySeconds: 3600,
           corsOrigins: 'http://localhost:1420',
           corsOriginRegex: '',
           corsAllowCredentials: true,
@@ -124,6 +129,73 @@ describe('Config Settings', () => {
         expect(Number.isInteger(numPort)).toBe(true)
         expect(numPort).toBeGreaterThan(0)
       }
+    })
+  })
+
+  describe('PowerSync settings', () => {
+    const POWERSYNC_ENV_KEYS = [
+      'POWERSYNC_URL',
+      'POWERSYNC_JWT_KID',
+      'POWERSYNC_JWT_SECRET',
+      'POWERSYNC_TOKEN_EXPIRY_SECONDS',
+    ] as const
+
+    let savedEnv: Partial<Record<string, string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of POWERSYNC_ENV_KEYS) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+      }
+    })
+
+    afterEach(() => {
+      for (const key of POWERSYNC_ENV_KEYS) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('should use default values when PowerSync env vars are unset', () => {
+      for (const key of POWERSYNC_ENV_KEYS) {
+        delete process.env[key]
+      }
+      const settings = getSettings()
+
+      expect(settings.powersyncUrl).toBe('')
+      expect(settings.powersyncJwtKid).toBe('')
+      expect(settings.powersyncJwtSecret).toBe('')
+      expect(settings.powersyncTokenExpirySeconds).toBe(3600)
+    })
+
+    it('should read PowerSync values from env when set', () => {
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      process.env.POWERSYNC_JWT_KID = 'my-kid'
+      process.env.POWERSYNC_JWT_SECRET = 'my-secret'
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '7200'
+
+      const settings = getSettings()
+
+      expect(settings.powersyncUrl).toBe('https://sync.example.com')
+      expect(settings.powersyncJwtKid).toBe('my-kid')
+      expect(settings.powersyncJwtSecret).toBe('my-secret')
+      expect(settings.powersyncTokenExpirySeconds).toBe(7200)
+    })
+
+    it('should coerce powersyncTokenExpirySeconds from string to number', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '1800'
+
+      const settings = getSettings()
+
+      expect(settings.powersyncTokenExpirySeconds).toBe(1800)
+      expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
     })
   })
 })

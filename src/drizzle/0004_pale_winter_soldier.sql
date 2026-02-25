@@ -1,1 +1,0 @@
-ALTER TABLE `chat_threads` ADD `was_triggered_by_automation` integer DEFAULT 0 NOT NULL;

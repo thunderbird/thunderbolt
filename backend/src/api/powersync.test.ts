@@ -1,0 +1,1204 @@
+import type { Settings } from '@/config/settings'
+import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { session as sessionTable, user as userTable } from '@/db/auth-schema'
+import { devicesTable, promptsTable, settingsTable } from '@/db/schema'
+import { createTestDb } from '@/test-utils/db'
+import { eq } from 'drizzle-orm'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Elysia } from 'elysia'
+import { createPowerSyncRoutes } from './powersync'
+
+const powersyncSettings: Settings = {
+  fireworksApiKey: '',
+  mistralApiKey: '',
+  anthropicApiKey: '',
+  exaApiKey: '',
+  thunderboltInferenceUrl: '',
+  thunderboltInferenceApiKey: '',
+  monitoringToken: '',
+  googleClientId: '',
+  googleClientSecret: '',
+  microsoftClientId: '',
+  microsoftClientSecret: '',
+  logLevel: 'INFO',
+  port: 8000,
+  posthogHost: '',
+  posthogApiKey: '',
+  corsOrigins: '',
+  corsOriginRegex: '',
+  corsAllowCredentials: true,
+  corsAllowMethods: '',
+  corsAllowHeaders: '',
+  corsExposeHeaders: '',
+  waitlistEnabled: false,
+  powersyncUrl: 'https://powersync.example.com',
+  powersyncJwtKid: 'test-kid',
+  powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',
+  powersyncTokenExpirySeconds: 3600,
+}
+
+describe('PowerSync API', () => {
+  let app: Elysia
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    const { auth } = createBetterAuthPlugin(db)
+    app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  describe('GET /powersync/token', () => {
+    it('returns 401 when no session and no Bearer token', async () => {
+      const response = await app.handle(new Request('http://localhost/powersync/token'))
+      expect(response.status).toBe(401)
+      const data = await response.json()
+      expect(data).toEqual({ error: 'Unauthorized' })
+    })
+
+    it('returns 401 when Bearer token does not match any session', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: { Authorization: 'Bearer invalid-token' },
+        }),
+      )
+      expect(response.status).toBe(401)
+      const data = await response.json()
+      expect(data).toEqual({ error: 'Unauthorized' })
+    })
+
+    it('returns 403 when device is revoked', async () => {
+      const userId = 'user-revoked-device'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Revoked Device User',
+        email: 'revoked-powersync@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-revoked',
+        expiresAt,
+        token: 'bearer-revoked-device',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const revokedAt = new Date()
+      await db.insert(devicesTable).values({
+        id: 'revoked-device-id',
+        userId,
+        name: 'Revoked Device',
+        lastSeen: new Date(revokedAt.getTime() - 60 * 1000),
+        createdAt: new Date(revokedAt.getTime() - 120 * 1000),
+        revokedAt,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-revoked-device',
+            'x-device-id': 'revoked-device-id',
+          },
+        }),
+      )
+      expect(response.status).toBe(403)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+    })
+
+    it('returns 409 when device id belongs to another user', async () => {
+      const userA = 'user-a-device-owner'
+      const userB = 'user-b-collision'
+      const sharedDeviceId = 'shared-device-id'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values([
+        { id: userA, name: 'User A', email: 'user-a@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+        { id: userB, name: 'User B', email: 'user-b@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+      ])
+
+      await db.insert(sessionTable).values({
+        id: 'session-user-b',
+        expiresAt,
+        token: 'bearer-user-b',
+        createdAt: now,
+        updatedAt: now,
+        userId: userB,
+      })
+
+      await db.insert(devicesTable).values({
+        id: sharedDeviceId,
+        userId: userA,
+        name: "User A's Device",
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-user-b',
+            'x-device-id': sharedDeviceId,
+          },
+        }),
+      )
+      expect(response.status).toBe(409)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
+    })
+
+    it('returns 400 when x-device-id is missing', async () => {
+      const userId = 'user-no-device-id'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'No Device ID User',
+        email: 'no-device-id@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-no-device-id',
+        expiresAt,
+        token: 'bearer-no-device-id',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: { Authorization: 'Bearer bearer-no-device-id' },
+        }),
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+    })
+
+    it('returns 400 when x-device-id is empty', async () => {
+      const userId = 'user-empty-device-id'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Empty Device ID User',
+        email: 'empty-device-id@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-empty-device-id',
+        expiresAt,
+        token: 'bearer-empty-device-id',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-empty-device-id',
+            'x-device-id': '   ',
+          },
+        }),
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+    })
+
+    it('revoked device cannot bypass by omitting x-device-id', async () => {
+      const userId = 'user-revoked-bypass'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Revoked Bypass User',
+        email: 'revoked-bypass@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-revoked-bypass',
+        expiresAt,
+        token: 'bearer-revoked-bypass',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const revokedAt = new Date()
+      await db.insert(devicesTable).values({
+        id: 'revoked-bypass-device',
+        userId,
+        name: 'Revoked Device',
+        lastSeen: new Date(revokedAt.getTime() - 60 * 1000),
+        createdAt: new Date(revokedAt.getTime() - 120 * 1000),
+        revokedAt,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: { Authorization: 'Bearer bearer-revoked-bypass' },
+        }),
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+    })
+
+    it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
+      const userId = 'user-powersync-token'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'PowerSync User',
+        email: 'powersync-token@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-powersync-token',
+        expiresAt,
+        token: 'bearer-powersync-valid',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-powersync-valid',
+            'x-device-id': 'device-session-token',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+      const data = (await response.json()) as { token: string; expiresAt: string; powerSyncUrl: string }
+      expect(data.token).toBeDefined()
+      expect(typeof data.token).toBe('string')
+      expect(data.expiresAt).toBeDefined()
+      expect(data.powerSyncUrl).toBe('https://powersync.example.com')
+    })
+
+    it('upserts device when x-device-id and x-device-name are provided', async () => {
+      const userId = 'user-device-upsert'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Device User',
+        email: 'device-powersync@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-upsert',
+        expiresAt,
+        token: 'bearer-device-upsert',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-device-upsert',
+            'x-device-id': 'device-123',
+            'x-device-name': 'My Phone',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-123'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.userId).toBe(userId)
+      expect(devices[0]?.name).toBe('My Phone')
+    })
+
+    it('upserts device with "Unknown device" when x-device-name is empty', async () => {
+      const userId = 'user-device-no-name'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'No Name User',
+        email: 'device-no-name@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-no-name',
+        expiresAt,
+        token: 'bearer-device-no-name',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-device-no-name',
+            'x-device-id': 'device-empty-name',
+            'x-device-name': '',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-empty-name'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe('Unknown device')
+    })
+
+    it('upserts device with "Unknown device" when x-device-name exceeds 100 characters', async () => {
+      const userId = 'user-device-long-name'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Long Name User',
+        email: 'device-long-name@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-long-name',
+        expiresAt,
+        token: 'bearer-device-long-name',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const longName = 'a'.repeat(101)
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-device-long-name',
+            'x-device-id': 'device-long-name',
+            'x-device-name': longName,
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-long-name'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe('Unknown device')
+    })
+
+    it('upserts device when x-device-name is exactly 100 characters', async () => {
+      const userId = 'user-device-100-char'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: '100 Char User',
+        email: 'device-100-char@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-100-char',
+        expiresAt,
+        token: 'bearer-device-100-char',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const name100 = 'a'.repeat(100)
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-device-100-char',
+            'x-device-id': 'device-100-char',
+            'x-device-name': name100,
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-100-char'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe(name100)
+    })
+
+    it('upserts device when x-device-name is a single character', async () => {
+      const userId = 'user-device-1-char'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: '1 Char User',
+        email: 'device-1-char@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-1-char',
+        expiresAt,
+        token: 'bearer-device-1-char',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-device-1-char',
+            'x-device-id': 'device-1-char',
+            'x-device-name': 'X',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-1-char'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.name).toBe('X')
+    })
+  })
+
+  describe('PUT /powersync/upload', () => {
+    it('returns 401 when not authenticated', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operations: [] }),
+        }),
+      )
+      expect(response.status).toBe(401)
+      const data = await response.json()
+      expect(data).toEqual({ error: 'Unauthorized' })
+    })
+
+    it('returns 422 when body schema is invalid (operations not an array)', async () => {
+      const userId = 'user-upload-validation'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload User',
+        email: 'upload-validation@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-validation',
+        expiresAt,
+        token: 'bearer-upload-validation',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-validation',
+          },
+          body: JSON.stringify({ operations: 'not-an-array' }),
+        }),
+      )
+      expect(response.status).toBe(422)
+    })
+
+    it('returns 200 and applies PUT operation to settings', async () => {
+      const userId = 'user-upload-put'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload Put User',
+        email: 'upload-put@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-put',
+        expiresAt,
+        token: 'bearer-upload-put',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-put',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PUT' as const,
+                type: 'settings',
+                id: 'test_setting_key',
+                data: { value: 'test_value' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      const data = (await response.json()) as { success: boolean }
+      expect(data.success).toBe(true)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_setting_key'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.value).toBe('test_value')
+      expect(rows[0]?.userId).toBe(userId)
+    })
+
+    it('ignores user_id and id in PUT payload, always uses session user', async () => {
+      const userId = 'user-put-owns-row'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Owner',
+        email: 'owner@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-put-owns',
+        expiresAt,
+        token: 'bearer-put-owns',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-put-owns',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PUT' as const,
+                type: 'settings',
+                id: 'owned_setting',
+                data: { value: 'correct', user_id: 'other-user-id', id: 'ignored_id' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owned_setting'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.userId).toBe(userId)
+      expect(rows[0]?.value).toBe('correct')
+      expect(rows[0]?.key).toBe('owned_setting')
+    })
+
+    it('user B cannot update or overwrite user A setting (WHERE user_id validates)', async () => {
+      const userA = 'user-a-same-setting'
+      const userB = 'user-b-same-setting'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values([
+        { id: userA, name: 'User A', email: 'a@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+        { id: userB, name: 'User B', email: 'b@example.com', emailVerified: true, createdAt: now, updatedAt: now },
+      ])
+      await db.insert(sessionTable).values([
+        { id: 'session-a-same', expiresAt, token: 'bearer-a-same', createdAt: now, updatedAt: now, userId: userA },
+        { id: 'session-b-same', expiresAt, token: 'bearer-b-same', createdAt: now, updatedAt: now, userId: userB },
+      ])
+
+      await db.insert(settingsTable).values({
+        key: 'shared_key',
+        value: 'user-a-value',
+        userId: userA,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-b-same',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PUT' as const,
+                type: 'settings',
+                id: 'shared_key',
+                data: { value: 'user-b-attempt', user_id: userA },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'shared_key'))
+      expect(rows).toHaveLength(2)
+      const userARow = rows.find((r) => r.userId === userA)
+      const userBRow = rows.find((r) => r.userId === userB)
+      expect(userARow?.value).toBe('user-a-value')
+      expect(userBRow?.value).toBe('user-b-attempt')
+      // user_id from payload was ignored; User B's row has session user_id
+      expect(userBRow?.userId).toBe(userB)
+    })
+
+    it('returns 200 and applies PATCH operation', async () => {
+      const userId = 'user-upload-patch'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload Patch User',
+        email: 'upload-patch@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-patch',
+        expiresAt,
+        token: 'bearer-upload-patch',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(settingsTable).values({
+        key: 'patch_setting',
+        value: 'initial',
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-patch',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'settings',
+                id: 'patch_setting',
+                data: { value: 'updated_value' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'patch_setting'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.value).toBe('updated_value')
+    })
+
+    it('ignores user_id and id in PATCH payload', async () => {
+      const userId = 'user-patch-owns'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Patch Owner',
+        email: 'patch-owner@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-patch-owns',
+        expiresAt,
+        token: 'bearer-patch-owns',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await db.insert(settingsTable).values({
+        key: 'patch_owned',
+        value: 'initial',
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-patch-owns',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'settings',
+                id: 'patch_owned',
+                data: { value: 'updated', user_id: 'other-user', id: 'other_id' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'patch_owned'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.userId).toBe(userId)
+      expect(rows[0]?.value).toBe('updated')
+    })
+
+    it('converts deleted_at ISO string to Date in PATCH (prompts soft delete)', async () => {
+      const userId = 'user-patch-deleted-at'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Patch DeletedAt User',
+        email: 'patch-deleted-at@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-patch-deleted-at',
+        expiresAt,
+        token: 'bearer-patch-deleted-at',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await db.insert(promptsTable).values({
+        id: 'prompt-to-soft-delete',
+        title: 'My Prompt',
+        prompt: 'Hello',
+        modelId: 'gpt-4',
+        userId,
+      })
+
+      const deletedAtIso = '2026-02-18T16:41:12.428Z'
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-patch-deleted-at',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'prompts',
+                id: 'prompt-to-soft-delete',
+                data: { deleted_at: deletedAtIso, model_id: null, prompt: null, title: null },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(promptsTable).where(eq(promptsTable.id, 'prompt-to-soft-delete'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.deletedAt).toEqual(new Date(deletedAtIso))
+      expect(rows[0]?.modelId).toBeNull()
+      expect(rows[0]?.prompt).toBeNull()
+      expect(rows[0]?.title).toBeNull()
+    })
+
+    it('returns 200 and applies DELETE operation', async () => {
+      const userId = 'user-upload-delete'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload Delete User',
+        email: 'upload-delete@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-delete',
+        expiresAt,
+        token: 'bearer-upload-delete',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(settingsTable).values({
+        key: 'to_delete',
+        value: 'x',
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-delete',
+          },
+          body: JSON.stringify({
+            operations: [{ op: 'DELETE' as const, type: 'settings', id: 'to_delete' }],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'to_delete'))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('ignores unknown and injection-like column names in PUT data', async () => {
+      const userId = 'user-upload-safe'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Safe Upload User',
+        email: 'upload-safe@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-safe',
+        expiresAt,
+        token: 'bearer-upload-safe',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-safe',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PUT' as const,
+                type: 'settings',
+                id: 'safe_key',
+                data: {
+                  value: 'expected',
+                  '"; DROP TABLE settings; --': 'ignored',
+                  invalid_column: 'ignored',
+                },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'safe_key'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.value).toBe('expected')
+      expect(rows[0]?.userId).toBe(userId)
+    })
+
+    it('two users can add the same setting key and each gets their own row', async () => {
+      const userA = 'user-multi-a'
+      const userB = 'user-multi-b'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values([
+        {
+          id: userA,
+          name: 'User A',
+          email: 'multi-a@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: userB,
+          name: 'User B',
+          email: 'multi-b@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      await db.insert(sessionTable).values([
+        { id: 'session-multi-a', expiresAt, token: 'bearer-multi-a', createdAt: now, updatedAt: now, userId: userA },
+        { id: 'session-multi-b', expiresAt, token: 'bearer-multi-b', createdAt: now, updatedAt: now, userId: userB },
+      ])
+
+      const responseA = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-multi-a' },
+          body: JSON.stringify({
+            operations: [{ op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'dark' } }],
+          }),
+        }),
+      )
+      expect(responseA.status).toBe(200)
+
+      const responseB = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-multi-b' },
+          body: JSON.stringify({
+            operations: [{ op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'light' } }],
+          }),
+        }),
+      )
+      expect(responseB.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'ui-theme'))
+      expect(rows).toHaveLength(2)
+      const rowA = rows.find((r) => r.userId === userA)
+      const rowB = rows.find((r) => r.userId === userB)
+      expect(rowA?.value).toBe('dark')
+      expect(rowB?.value).toBe('light')
+    })
+
+    it('two users can add and update their own settings without affecting each other', async () => {
+      const userA = 'user-isolated-a'
+      const userB = 'user-isolated-b'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values([
+        {
+          id: userA,
+          name: 'Alice',
+          email: 'isolated-a@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: userB,
+          name: 'Bob',
+          email: 'isolated-b@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      await db.insert(sessionTable).values([
+        {
+          id: 'session-isolated-a',
+          expiresAt,
+          token: 'bearer-isolated-a',
+          createdAt: now,
+          updatedAt: now,
+          userId: userA,
+        },
+        {
+          id: 'session-isolated-b',
+          expiresAt,
+          token: 'bearer-isolated-b',
+          createdAt: now,
+          updatedAt: now,
+          userId: userB,
+        },
+      ])
+
+      await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-a' },
+          body: JSON.stringify({
+            operations: [
+              { op: 'PUT' as const, type: 'settings', id: 'preferred_name', data: { value: 'Alice' } },
+              { op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'dark' } },
+            ],
+          }),
+        }),
+      )
+
+      await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-b' },
+          body: JSON.stringify({
+            operations: [
+              { op: 'PUT' as const, type: 'settings', id: 'preferred_name', data: { value: 'Bob' } },
+              { op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'light' } },
+            ],
+          }),
+        }),
+      )
+
+      await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-a' },
+          body: JSON.stringify({
+            operations: [
+              { op: 'PATCH' as const, type: 'settings', id: 'preferred_name', data: { value: 'Alice Smith' } },
+            ],
+          }),
+        }),
+      )
+
+      await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-b' },
+          body: JSON.stringify({
+            operations: [{ op: 'PATCH' as const, type: 'settings', id: 'ui-theme', data: { value: 'system' } }],
+          }),
+        }),
+      )
+
+      const preferredRows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
+      expect(preferredRows).toHaveLength(2)
+      expect(preferredRows.find((r) => r.userId === userA)?.value).toBe('Alice Smith')
+      expect(preferredRows.find((r) => r.userId === userB)?.value).toBe('Bob')
+
+      const themeRows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'ui-theme'))
+      expect(themeRows).toHaveLength(2)
+      expect(themeRows.find((r) => r.userId === userA)?.value).toBe('dark')
+      expect(themeRows.find((r) => r.userId === userB)?.value).toBe('system')
+    })
+
+    it('returns 200 with empty operations array', async () => {
+      const userId = 'user-upload-empty'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Empty Ops User',
+        email: 'upload-empty@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-empty',
+        expiresAt,
+        token: 'bearer-upload-empty',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-empty',
+          },
+          body: JSON.stringify({ operations: [] }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      const data = (await response.json()) as { success: boolean }
+      expect(data.success).toBe(true)
+    })
+  })
+})
+
+describe('PowerSync API (not configured)', () => {
+  it('GET /powersync/token returns 404 when PowerSync is not configured', async () => {
+    const testEnv = await createTestDb()
+    const { auth } = createBetterAuthPlugin(testEnv.db)
+    const noPowersyncSettings: Settings = {
+      ...powersyncSettings,
+      powersyncJwtSecret: '',
+      powersyncUrl: '',
+    }
+    const app = new Elysia().use(createPowerSyncRoutes(auth, noPowersyncSettings, testEnv.db)) as unknown as Elysia
+
+    const response = await app.handle(new Request('http://localhost/powersync/token'))
+    expect(response.status).toBe(404)
+
+    await testEnv.cleanup()
+  })
+})

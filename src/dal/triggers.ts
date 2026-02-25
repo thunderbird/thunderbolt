@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Trigger } from '../types'
 
 /**
@@ -27,22 +27,22 @@ export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
 }
 
 /**
- * Soft deletes all triggers associated with a prompt (sets deletedAt timestamp)
+ * Soft deletes all triggers associated with a prompt (sets deletedAt datetime)
  * Scrubs all nullable columns for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(triggersTable)
-    .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(triggersTable), deletedAt: nowIso() })
     .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
 }
 
 /**
- * Soft deletes all triggers associated with multiple prompts (sets deletedAt timestamp)
+ * Soft deletes all triggers associated with multiple prompts (sets deletedAt datetime)
  * Scrubs all nullable columns for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteTriggersForPrompts = async (promptIds: string[]): Promise<void> => {
   if (promptIds.length === 0) return
@@ -50,7 +50,7 @@ export const deleteTriggersForPrompts = async (promptIds: string[]): Promise<voi
   const db = DatabaseSingleton.instance.db
   await db
     .update(triggersTable)
-    .set({ ...clearNullableColumns(triggersTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(triggersTable), deletedAt: nowIso() })
     .where(and(inArray(triggersTable.promptId, promptIds), isNull(triggersTable.deletedAt)))
 }
 

@@ -1,8 +1,9 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
+import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { convertUIMessageToDbChatMessage } from '../lib/utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -77,20 +78,27 @@ export const saveMessagesWithContextUpdate = async (
     return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
   })
 
-  // Insert messages
-  await db
-    .insert(chatMessagesTable)
-    .values(dbChatMessages)
-    .onConflictDoUpdate({
-      target: chatMessagesTable.id,
-      set: {
-        content: sql`excluded.content`,
-        parts: sql`excluded.parts`,
-        role: sql`excluded.role`,
-        parentId: sql`excluded.parent_id`,
-        metadata: sql`excluded.metadata`,
-      },
-    })
+  // Insert-first pattern for PowerSync compatibility.
+  // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
+  // Try insert first, then update on unique constraint violation to avoid race conditions
+  // when multiple components save messages simultaneously.
+  for (const msg of dbChatMessages) {
+    try {
+      await db.insert(chatMessagesTable).values(msg)
+    } catch (err) {
+      if (!isInsertConflictError(err)) throw err
+      await db
+        .update(chatMessagesTable)
+        .set({
+          content: msg.content,
+          parts: msg.parts,
+          role: msg.role,
+          parentId: msg.parentId,
+          metadata: msg.metadata,
+        })
+        .where(eq(chatMessagesTable.id, msg.id))
+    }
+  }
 
   // Update context size if available in latest message
   const latestMessage = messages[messages.length - 1]
@@ -125,4 +133,37 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
 export const updateMessage = async (messageId: string, message: Partial<ChatMessage>): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
+}
+
+/**
+ * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
+ */
+const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> => {
+  const db = DatabaseSingleton.instance.db
+  const children = (await db
+    .select({ id: chatMessagesTable.id })
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.parentId, messageId), isNull(chatMessagesTable.deletedAt)))) as {
+    id: string
+  }[]
+
+  const descendantIds = await Promise.all(children.map((c) => getMessageAndDescendantIds(c.id)))
+  return [messageId, ...descendantIds.flat()]
+}
+
+/**
+ * Soft deletes a chat message and all its descendants (children, grandchildren, etc.).
+ * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
+ * Cascade is handled in the DAL; parent_id is a logical reference only.
+ */
+export const deleteChatMessageAndDescendants = async (messageId: string): Promise<void> => {
+  const db = DatabaseSingleton.instance.db
+  const idsToSoftDelete = await getMessageAndDescendantIds(messageId)
+  if (idsToSoftDelete.length === 0) return
+
+  const deletedAt = nowIso()
+  await db
+    .update(chatMessagesTable)
+    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+    .where(and(inArray(chatMessagesTable.id, idsToSoftDelete), isNull(chatMessagesTable.deletedAt)))
 }

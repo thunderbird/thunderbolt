@@ -39,7 +39,12 @@ export const getOAuthConfig = async (provider: OAuthProvider): Promise<OAuthConf
   return providers[provider].getOAuthConfig()
 }
 
-export const buildAuthUrl = async (provider: OAuthProvider, state: string, codeChallenge: string, redirectUri?: string): Promise<string> => {
+export const buildAuthUrl = async (
+  provider: OAuthProvider,
+  state: string,
+  codeChallenge: string,
+  redirectUri?: string,
+): Promise<string> => {
   return providers[provider].buildAuthUrl(state, codeChallenge, redirectUri)
 }
 

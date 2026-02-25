@@ -23,6 +23,8 @@
     "core:webview:allow-set-webview-size",
     "core:webview:allow-set-webview-position",
     "core:webview:allow-webview-close",
+    "core:webview:allow-webview-hide",
+    "core:webview:allow-webview-show",
     "core:window:allow-destroy",
     "process:allow-exit",
     "process:allow-restart",

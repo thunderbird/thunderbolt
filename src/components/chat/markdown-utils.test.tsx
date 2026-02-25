@@ -233,7 +233,9 @@ describe('citationMarkdownComponents (citation placeholders via context)', () =>
       {
         wrapper: ({ children }) => (
           <TestProvider>
-            <CitationPopoverProvider>{children}</CitationPopoverProvider>
+            <ExternalLinkDialogProvider>
+              <CitationPopoverProvider>{children}</CitationPopoverProvider>
+            </ExternalLinkDialogProvider>
           </TestProvider>
         ),
       },

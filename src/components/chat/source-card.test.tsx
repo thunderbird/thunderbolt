@@ -82,11 +82,11 @@ describe('SourceCard', () => {
   })
 
   describe('link behavior', () => {
-    it('should use placeholder href and show warning dialog on click', () => {
+    it('should use actual URL as href and show warning dialog on click', () => {
       render(<SourceCard source={mockSource} />)
 
       const link = screen.getByRole('listitem')
-      expect(link).toHaveAttribute('href', '#')
+      expect(link).toHaveAttribute('href', 'https://example.com/article')
       expect(link.tagName).toBe('A')
     })
 

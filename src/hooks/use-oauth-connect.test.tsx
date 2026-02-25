@@ -7,7 +7,7 @@ import { useOAuthConnect, type OAuthDependencies } from './use-oauth-connect'
 
 // Create mock functions for OAuth dependencies
 const createMockDependencies = (): OAuthDependencies => ({
-  startOAuthFlowWebview: async () => {
+  startOAuthFlowLoopback: async () => {
     // Return null to simulate user cancellation or error
     return null
   },

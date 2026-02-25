@@ -1,6 +1,6 @@
 import { deleteSetting, getSettings, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
-import { startOAuthFlowWebview } from '@/lib/oauth-webview'
+import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import { isMobile, isTauri } from '@/lib/platform'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -23,7 +23,7 @@ export const clearOAuthConnectingState = (key: string) => {
 }
 
 type OAuthDependencies = {
-  startOAuthFlowWebview?: typeof startOAuthFlowWebview
+  startOAuthFlowLoopback?: typeof startOAuthFlowLoopback
   redirectOAuthFlow?: typeof redirectOAuthFlow
   exchangeCodeForTokens?: typeof exchangeCodeForTokens
   getUserInfo?: typeof getUserInfo
@@ -119,7 +119,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
   // Use injected dependencies or fall back to real implementations
   const {
-    startOAuthFlowWebview: startFlow = startOAuthFlowWebview,
+    startOAuthFlowLoopback: startLoopback = startOAuthFlowLoopback,
     redirectOAuthFlow: redirect = redirectOAuthFlow,
     exchangeCodeForTokens: exchangeTokens = exchangeCodeForTokens,
     getUserInfo: getUser = getUserInfo,
@@ -204,8 +204,8 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
           // The callback will be handled by the deep link listener
         } else {
-          // For desktop: Use webview flow
-          const result = await startFlow(provider)
+          // For desktop: Use system browser + loopback server flow
+          const result = await startLoopback(provider)
 
           if (!result) {
             clearConnecting(key)

@@ -34,11 +34,11 @@ export const getOAuthConfig = async (): Promise<OAuthConfig> => {
   }
 }
 
-export const buildAuthUrl = async (state: string, codeChallenge: string): Promise<string> => {
+export const buildAuthUrl = async (state: string, codeChallenge: string, redirectUri?: string): Promise<string> => {
   const config = await getOAuthConfig()
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', config.clientId)
-  authUrl.searchParams.set('redirect_uri', config.redirectUri)
+  authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('scope', config.scope)
   authUrl.searchParams.set('state', state)
@@ -49,12 +49,12 @@ export const buildAuthUrl = async (state: string, codeChallenge: string): Promis
   return authUrl.toString()
 }
 
-export const exchangeCodeForTokens = async (code: string, codeVerifier: string): Promise<OAuthTokens> => {
+export const exchangeCodeForTokens = async (code: string, codeVerifier: string, redirectUri?: string): Promise<OAuthTokens> => {
   const config = await getOAuthConfig()
   const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
   return await ky
     .post(`${cloudUrl}/auth/google/exchange`, {
-      json: { code, code_verifier: codeVerifier, redirect_uri: config.redirectUri },
+      json: { code, code_verifier: codeVerifier, redirect_uri: redirectUri ?? config.redirectUri },
     })
     .json<OAuthTokens>()
 }

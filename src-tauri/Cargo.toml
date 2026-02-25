@@ -82,6 +82,7 @@ thunderbolt-bridge = { package = "thunderbolt-bridge", path = "./thunderbolt_bri
 thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_libsql", optional = true }
 thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
 tauri-plugin-deep-link = "2.3"
+tauri-plugin-oauth = "2"
 tauri-plugin-updater = "2.3"
 
 [profile.dev]

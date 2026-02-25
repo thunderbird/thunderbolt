@@ -14,7 +14,7 @@ type ExternalLinkDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   url: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
 }
 
 export const ExternalLinkDialog = memo(({ open, onOpenChange, url, onConfirm }: ExternalLinkDialogProps) => {

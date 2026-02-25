@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from 'react'
 import { isTauri } from '@/lib/platform'
+import { isSafeUrl } from '@/lib/url-utils'
 
 type UseExternalLinkDialogReturn = {
   dialogOpen: boolean
   pendingUrl: string
   openDialog: (url: string) => void
-  handleConfirm: () => void
+  handleConfirm: () => Promise<void>
   setDialogOpen: (open: boolean) => void
 }
 
@@ -29,16 +30,42 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
 
   const handleConfirm = useCallback(async () => {
     const urlToOpen = pendingUrlRef.current
+
+    // Early return for empty URL
+    if (!urlToOpen) {
+      setDialogOpen(false)
+      return
+    }
+
+    // Defense-in-depth: Validate URL even though callers should validate
+    if (!isSafeUrl(urlToOpen)) {
+      console.error('Attempted to open unsafe URL:', urlToOpen)
+      setDialogOpen(false)
+      setPendingUrl('')
+      pendingUrlRef.current = ''
+      return
+    }
+
+    // Close dialog immediately (starts fade-out animation)
     setDialogOpen(false)
-    setPendingUrl('')
-    pendingUrlRef.current = ''
-    if (urlToOpen) {
+
+    try {
       if (isTauri()) {
         const { openUrl } = await import('@tauri-apps/plugin-opener')
         await openUrl(urlToOpen)
       } else {
         window.open(urlToOpen, '_blank', 'noopener,noreferrer')
       }
+    } catch (error) {
+      console.error('Failed to open URL:', error)
+      // Fallback to window.open for graceful degradation
+      window.open(urlToOpen, '_blank', 'noopener,noreferrer')
+    } finally {
+      // Clear state after a short delay to avoid flickering during animation
+      setTimeout(() => {
+        setPendingUrl('')
+        pendingUrlRef.current = ''
+      }, 200)
     }
   }, [])
 

@@ -54,12 +54,16 @@ describe('useExternalLinkDialog', () => {
       })
 
       act(() => {
+        // Call async function without awaiting (matches real onClick behavior)
         result.current.handleConfirm()
       })
 
       expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
       expect(result.current.dialogOpen).toBe(false)
-      expect(result.current.pendingUrl).toBe('')
+
+      // URL should still be visible during animation (cleared after 200ms timeout)
+      // This is expected behavior to prevent text flickering during dialog fade-out
+      expect(result.current.pendingUrl).toBe('https://example.com')
 
       window.open = originalOpen
     })

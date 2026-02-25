@@ -44,16 +44,17 @@ export const startOAuthFlowLoopback = async (
   const port = await start({ ports: loopbackPorts, response: completionHtml })
   const redirectUri = `http://localhost:${port}`
 
-  const state = uuidv4()
-  const codeVerifier = generateCodeVerifier()
-  const codeChallenge = await generateCodeChallenge(codeVerifier)
-
-  const { promise: urlPromise, resolve: resolveUrl } = Promise.withResolvers<string>()
-
-  // Register listener BEFORE opening browser to avoid race condition
-  const unlisten = await onUrl((url) => resolveUrl(url))
-
+  let unlisten: (() => void) | undefined
   try {
+    const state = uuidv4()
+    const codeVerifier = generateCodeVerifier()
+    const codeChallenge = await generateCodeChallenge(codeVerifier)
+
+    const { promise: urlPromise, resolve: resolveUrl } = Promise.withResolvers<string>()
+
+    // Register listener BEFORE opening browser to avoid race condition
+    unlisten = await onUrl((url) => resolveUrl(url))
+
     const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
     await openUrl(authUrl)
 
@@ -82,7 +83,7 @@ export const startOAuthFlowLoopback = async (
     if (err instanceof Error && err.message === 'OAuth flow timed out') return null
     throw err
   } finally {
-    unlisten()
-    await cancel(port).catch(() => {})
+    unlisten?.()
+    await cancel(port)
   }
 }

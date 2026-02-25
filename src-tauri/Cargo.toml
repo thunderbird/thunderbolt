@@ -64,6 +64,7 @@ tauri = { version = "2.9.1", features = [
     "unstable",  # Required for webview
 ] }
 tauri-plugin-opener = "2.5.2"
+tauri-plugin-oauth = "2"
 tauri-plugin-shell = "2.3.3"
 tauri-plugin-os = "2.3.2"
 serde = { version = "1.0.219", features = ["derive"] }

@@ -1,5 +1,4 @@
 import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
-import { decodeCitationSources } from '@/lib/citation-utils'
 import { sourceToCitation } from '@/lib/source-utils'
 import type { CitationMap, CitationSource } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
@@ -15,14 +14,6 @@ type TextPartProps = {
   messageId: string
   sources?: SourceMetadata[]
 }
-
-/**
- * Text fragments that should be appended directly without a paragraph break:
- * - Punctuation/connectors between adjacent citations (e.g., ",", ".", ", and")
- * - Table row continuations that start with | (internal \n is preserved by the parser)
- */
-const shouldAppendInline = (text: string): boolean =>
-  /^[,;.·\s]*(and|or|,|;|\.)*\s*$/i.test(text) || text.trimStart().startsWith('|')
 
 /**
  * Matches one or more adjacent [N] citations separated by optional whitespace.
@@ -86,46 +77,6 @@ export const buildSourceCitationPlaceholders = (
   return { fullText, citations }
 }
 
-/**
- * Builds a single markdown string with {{CITE:N}} placeholders at the positions
- * where the AI placed citation widgets, and returns the citation data map.
- */
-const buildTextWithCitationPlaceholders = (
-  contentParts: ReturnType<typeof parseContentParts>,
-): { fullText: string; citations: CitationMap } => {
-  let fullText = ''
-  const citations: CitationMap = new Map()
-  const parts = [...contentParts]
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]
-    if (part.type === 'text') {
-      if (fullText.length === 0 || shouldAppendInline(part.content)) {
-        fullText += part.content
-      } else if (!fullText.endsWith('\n\n')) {
-        fullText += '\n\n' + part.content
-      } else {
-        fullText += part.content
-      }
-    } else if (part.type === 'widget' && part.widget.widget === 'citation') {
-      const sources = decodeCitationSources(part.widget.args.sources)
-      if (sources) {
-        // Consume a leading period from the next text part so the citation
-        // renders after the sentence end: "sentence. [Source]"
-        const next = parts[i + 1]
-        if (next?.type === 'text' && next.content.startsWith('.')) {
-          fullText = fullText.trimEnd() + '.'
-          parts[i + 1] = { ...next, content: next.content.slice(1) }
-        }
-        fullText = fullText.trimEnd() + ` {{CITE:${citations.size}}}`
-        citations.set(citations.size, sources)
-      }
-    }
-  }
-
-  return { fullText, citations }
-}
-
 export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   const hasNewSources = !!sources && sources.length > 0
 
@@ -143,7 +94,6 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
     const parts = parseContentParts(part.text)
 
-    // Path A: new [N] format — sources metadata exists
     if (hasNewSources) {
       const textContent = parts
         .filter((p) => p.type === 'text')
@@ -155,20 +105,13 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
       return { contentParts: parts, ...result, hasCitations: hasCit, hasText: textContent.length > 0 }
     }
 
-    // Path B: old <widget:citation> format (backward compat)
-    const hasCit = parts.some((p) => p.type === 'widget' && p.widget.widget === 'citation')
     const hasTxt = parts.some((p) => p.type === 'text')
-
-    if (hasCit && hasTxt) {
-      const result = buildTextWithCitationPlaceholders(parts)
-      return { contentParts: parts, ...result, hasCitations: true, hasText: true }
-    }
 
     return {
       contentParts: parts,
       fullText: '',
       citations: new Map() as CitationMap,
-      hasCitations: hasCit,
+      hasCitations: false,
       hasText: hasTxt,
     }
   }, [part.text, hasNewSources, sources])

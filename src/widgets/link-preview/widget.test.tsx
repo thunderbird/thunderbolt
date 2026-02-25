@@ -67,7 +67,7 @@ describe('LinkPreviewWidget', () => {
       )
 
       const img = container.querySelector('img')
-      expect(img?.getAttribute('src')).toContain('/pro/proxy/')
+      expect(img?.getAttribute('src')).toContain('/pro/link-preview/proxy-image/')
       expect(img?.getAttribute('src')).toContain(encodeURIComponent('https://example.com/photo.jpg'))
     })
 

@@ -25,6 +25,7 @@ export default function Sidebar() {
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
+  const lastChatPathRef = useRef<string | null>(null)
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
@@ -44,6 +45,12 @@ export default function Sidebar() {
   })
 
   useEffect(() => {
+    if (location.pathname.startsWith('/chats/')) {
+      lastChatPathRef.current = location.pathname
+    }
+  }, [location.pathname])
+
+  useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
       requestAnimationFrame(() => {
         searchInputRef.current?.focus()
@@ -51,7 +58,7 @@ export default function Sidebar() {
     }
   }, [showSearch, isCollapsed])
 
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ['chatThreads'],
     queryFn: getAllChatThreads,
     placeholderData: (previousData) => previousData,
@@ -124,9 +131,15 @@ export default function Sidebar() {
   }
 
   const goToMainMenu = async () => {
-    const chatThreadId = currentChatThreadId || (chatThreads.length > 0 ? chatThreads[0].id : null)
-    if (chatThreadId) {
-      navigate(`/chats/${chatThreadId}`)
+    // Only wait if query is pending and we have no fallback
+    if (isPending && !lastChatPathRef.current) {
+      return
+    }
+
+    if (lastChatPathRef.current) {
+      navigate(lastChatPathRef.current)
+    } else if (data && data.length > 0) {
+      navigate(`/chats/${data[0].id}`)
     } else {
       await createNewChat(false)
     }

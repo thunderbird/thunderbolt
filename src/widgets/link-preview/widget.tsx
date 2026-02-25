@@ -5,6 +5,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
+import { getHostname } from './utils'
 
 type LinkPreviewWidgetProps = {
   url: string
@@ -12,16 +13,18 @@ type LinkPreviewWidgetProps = {
   sources?: SourceMetadata[]
   messageId: string
   fetchPreviewFn?: (params: { url: string }) => Promise<{
-    title: string
-    description: string
+    title: string | null
+    description: string | null
     image: string | null
+    siteName?: string | null
   }>
 }
 
 type LinkPreviewMetadata = {
-  title: string
-  description: string
+  title: string | null
+  description: string | null
   image: string | null
+  siteName: string | null
 }
 
 export const LinkPreviewSkeleton = () => {
@@ -38,16 +41,26 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
+/** Builds a proxied image URL via /proxy-image (when direct image URL is known) */
+const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
+  if (!imageUrl || !cloudUrl?.trim()) return null
+  return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
+}
+
+/** Builds an image URL via /image (extracts og:image from page and proxies it in one request) */
+const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | null => {
+  if (!pageUrl || !cloudUrl?.trim()) return null
+  return `${cloudUrl}/pro/link-preview/image/${encodeURIComponent(pageUrl)}`
+}
+
 /** Renders a link preview instantly from source registry metadata */
 const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string | null }) => {
-  const imageUrl = sourceData.image && cloudUrl ? `${cloudUrl}/pro/proxy/${encodeURIComponent(sourceData.image)}` : null
-
   return (
     <LinkPreview
-      title={sourceData.title}
-      description={sourceData.description ?? ''}
+      title={sourceData.title || getHostname(sourceData.url)}
+      description={sourceData.description ?? null}
       url={sourceData.url}
-      image={imageUrl}
+      image={buildProxyImageUrl(sourceData.image, cloudUrl)}
     />
   )
 }
@@ -79,9 +92,10 @@ const FetchLinkPreview = ({
   messageId: string
   cloudUrl: string | null
   fetchPreviewFn?: (params: { url: string }) => Promise<{
-    title: string
-    description: string
+    title: string | null
+    description: string | null
     image: string | null
+    siteName?: string | null
   }>
 }) => {
   const fetchFn = fetchPreviewFn ?? fetchLinkPreview
@@ -91,27 +105,32 @@ const FetchLinkPreview = ({
     fetchFn: async () => {
       const preview = await fetchFn({ url })
       return {
-        title: preview.title || url,
-        description: preview.description || '',
+        title: preview.title,
+        description: preview.description,
         image: preview.image,
+        siteName: preview.siteName ?? null,
       }
     },
   })
+
+  // Prefer proxying the known image URL; fall back to /image/ which extracts og:image from the page
+  const imageUrl = data?.image ? buildProxyImageUrl(data.image, cloudUrl) : buildPageImageUrl(url, cloudUrl)
 
   if (isLoading) {
     return <LinkPreviewSkeleton />
   }
 
-  if (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to load preview'
-    return <LinkPreview title={url} description={errorMessage} url={url} image={null} />
+  if (error || !data) {
+    if (error) console.warn('Link preview failed:', url)
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  if (!data) {
-    return <LinkPreview title={url} description="Failed to load preview" url={url} image={null} />
+  const isEmpty = !data.title && !data.description && !data.image && !data.siteName
+  if (isEmpty) {
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 
-  const imageUrl = data.image && cloudUrl ? `${cloudUrl}/pro/proxy/${encodeURIComponent(data.image)}` : null
+  const displayTitle = data.title || data.siteName || getHostname(url)
 
-  return <LinkPreview title={data.title} description={data.description} url={url} image={imageUrl} />
+  return <LinkPreview title={displayTitle} description={data.description} url={url} image={imageUrl} />
 }

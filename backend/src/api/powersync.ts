@@ -179,16 +179,21 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
       const schemaPatch = toSchemaRecord(patchPayload, validDbNames, dbNameToKey)
       if (Object.keys(schemaPatch).length === 0) return false
 
-      await database
+      const patched = await database
         .update(table)
         .set(schemaPatch as never)
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
+        .returning()
 
-      return true
+      return patched.length > 0
     }
     case 'DELETE': {
-      await database.delete(table).where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
-      return true
+      const deleted = await database
+        .delete(table)
+        .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
+        .returning()
+
+      return deleted.length > 0
     }
   }
   return false

@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { getClock } from '@/testing-library'
 
 // --- Mock all external dependencies before importing the module under test ---
 
@@ -21,7 +22,7 @@ let mockGetUserInfoImpl: () => Promise<object> = async () => ({
 })
 
 mock.module('@fabianlars/tauri-plugin-oauth', () => ({
-  start: (opts: object) => mockStartImpl(),
+  start: () => mockStartImpl(),
   cancel: (port: number) => mockCancelImpl(port),
   onUrl: (cb: (url: string) => void) => mockOnUrlImpl(cb),
 }))
@@ -49,7 +50,6 @@ mock.module('uuid', () => ({
 const { startOAuthFlowLoopback } = await import('./oauth-loopback')
 
 describe('startOAuthFlowLoopback', () => {
-  let cancelSpy: ReturnType<typeof spyOn>
   let unlistenFn: ReturnType<typeof mock>
 
   beforeEach(() => {
@@ -90,9 +90,7 @@ describe('startOAuthFlowLoopback', () => {
 
   it('Google error: throws when callback URL contains error_description', async () => {
     mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() =>
-        cb('http://localhost:17421?error=access_denied&error_description=User+denied+access'),
-      )
+      queueMicrotask(() => cb('http://localhost:17421?error=access_denied&error_description=User+denied+access'))
       return unlistenFn
     }
 
@@ -116,9 +114,7 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     }
 
-    await expect(startOAuthFlowLoopback('google')).rejects.toThrow(
-      'Missing code or state in OAuth callback',
-    )
+    await expect(startOAuthFlowLoopback('google')).rejects.toThrow('Missing code or state in OAuth callback')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
@@ -139,30 +135,20 @@ describe('startOAuthFlowLoopback', () => {
   })
 
   it('timeout: returns null when browser is not redirected within timeout', async () => {
-    // onUrl callback never fires — simulates user abandoning browser
+    // onUrl callback never fires — simulates user abandoning browser.
+    // The global preload installs @sinonjs/fake-timers, so we tick the clock
+    // to fire the 1ms timeout registered inside startOAuthFlowLoopback.
     mockOnUrlImpl = async (_cb) => unlistenFn
 
-    // Patch setTimeout to fire immediately for the timeout branch
-    const originalSetTimeout = globalThis.setTimeout
-    let timeoutCallback: (() => void) | null = null
-    // @ts-expect-error patching global for test
-    globalThis.setTimeout = (fn: () => void, _ms: number) => {
-      timeoutCallback = fn
-      return 0
-    }
+    const clock = getClock()
+    const promise = startOAuthFlowLoopback('google', 1)
 
-    const promise = startOAuthFlowLoopback('google')
-
-    // Trigger the timeout
-    await new Promise((resolve) => queueMicrotask(resolve))
-    timeoutCallback?.()
+    // Tick past the 1ms timeout; tickAsync also flushes microtasks
+    await clock.tickAsync(10)
 
     const result = await promise
     expect(result).toBeNull()
     expect(unlistenFn).toHaveBeenCalledTimes(1)
-
-    // Restore
-    globalThis.setTimeout = originalSetTimeout
   })
 
   it('cleanup on success: cancel and unlisten are both called after successful flow', async () => {

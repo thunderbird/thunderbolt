@@ -32,11 +32,14 @@ const completionHtml = `<html>
  * Opens the system browser to the OAuth provider's consent screen, waits for
  * the redirect callback on a localhost port, then exchanges the code for tokens.
  *
+ * @param provider - The OAuth provider to authenticate with
+ * @param timeoutMs - How long to wait for the user to complete auth (default: 5 minutes)
  * @returns Token + user info on success, null on timeout/cancellation
  * @throws On state mismatch, token exchange failure, or port binding failure
  */
 export const startOAuthFlowLoopback = async (
   provider: OAuthProvider,
+  timeoutMs = oauthTimeoutMs,
 ): Promise<{ tokens: OAuthTokens; userInfo: GoogleUserInfo } | null> => {
   const port = await start({ ports: loopbackPorts, response: completionHtml })
   const redirectUri = `http://localhost:${port}`
@@ -57,7 +60,7 @@ export const startOAuthFlowLoopback = async (
     const callbackUrl = await Promise.race([
       urlPromise,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('OAuth flow timed out')), oauthTimeoutMs),
+        setTimeout(() => reject(new Error('OAuth flow timed out')), timeoutMs),
       ),
     ])
 

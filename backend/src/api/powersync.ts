@@ -292,9 +292,21 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Invalid request: operations must be an array' }
         }
 
-        // Process operations sequentially to maintain order
+        // Process operations sequentially to maintain order.
+        // If any operation fails, return 4xx so the client does not call transaction.complete()
+        // and PowerSync will retry the batch.
         for (const op of operations) {
-          await applyOperation(op, user.id, database)
+          const ok = await applyOperation(op, user.id, database)
+          if (!ok) {
+            set.status = 400
+            return {
+              error: 'Upload operation failed',
+              code: 'UPLOAD_OPERATION_FAILED',
+              table: op.type,
+              id: op.id,
+              op: op.op,
+            }
+          }
         }
 
         return { success: true }

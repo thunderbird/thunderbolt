@@ -1145,6 +1145,57 @@ describe('PowerSync API', () => {
       expect(themeRows.find((r) => r.userId === userB)?.value).toBe('system')
     })
 
+    it('returns 400 when an operation fails (invalid table, empty payload, etc.)', async () => {
+      const userId = 'user-upload-fail'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload Fail User',
+        email: 'upload-fail@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-fail',
+        expiresAt,
+        token: 'bearer-upload-fail',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-fail',
+          },
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PUT' as const,
+                type: 'nonexistent_table',
+                id: 'some_id',
+                data: { value: 'x' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(400)
+      const data = (await response.json()) as { error: string; code: string; table: string; id: string; op: string }
+      expect(data.error).toBe('Upload operation failed')
+      expect(data.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(data.table).toBe('nonexistent_table')
+      expect(data.id).toBe('some_id')
+      expect(data.op).toBe('PUT')
+    })
+
     it('returns 200 with empty operations array', async () => {
       const userId = 'user-upload-empty'
       const now = new Date()

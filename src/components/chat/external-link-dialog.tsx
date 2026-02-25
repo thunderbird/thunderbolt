@@ -21,8 +21,12 @@ type ExternalLinkDialogProps = {
 
 export const ExternalLinkDialog = memo(
   ({ open, onOpenChange, url, onConfirm, openError = null, isOpening = false }: ExternalLinkDialogProps) => {
-    const handleOpenClick = () => {
-      onConfirm()
+    const handleOpenClick = async () => {
+      try {
+        await onConfirm()
+      } catch (err) {
+        console.error('Failed to open external link', err)
+      }
     }
 
     return (

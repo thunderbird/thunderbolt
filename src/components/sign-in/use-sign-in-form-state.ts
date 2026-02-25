@@ -79,7 +79,7 @@ type UseSignInFormStateOptions = {
  * For returning users only: reset pending CRUD operations so that when they later enable
  * sync, local ops do not conflict with cloud data.
  */
-const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
+export const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
   if (isNewUser) return
 
   try {

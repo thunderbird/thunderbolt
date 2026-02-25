@@ -22,7 +22,7 @@ import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
 import TasksPage from '@/tasks'
-import { WaitlistLayout, WaitlistPage, WaitlistSignInPage } from '@/waitlist'
+import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
@@ -80,7 +80,6 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
-            <Route path="signin" element={<WaitlistSignInPage />} />
           </Route>
         </Route>
       )}

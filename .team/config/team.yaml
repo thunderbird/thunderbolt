@@ -1,0 +1,20 @@
+project:
+  id: prj-thu302
+  name: "THU-302: Fix Google Connect not working on desktop"
+  description: "Replace WebviewWindow OAuth (blocked by Google) with system browser + localhost loopback server"
+  branch: italomenezes/thu-302-connect-google-not-working-on-desktop
+
+coordination:
+  consensus: agent_teams
+  implementation: subagents
+  integration: agent_teams
+  qa: subagents
+
+models:
+  architect: opus
+  po: sonnet
+  team_lead: sonnet
+  dba: sonnet
+  implementers: sonnet
+  qa: sonnet
+  signals: haiku

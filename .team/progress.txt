@@ -1,0 +1,88 @@
+# Project: Model-Driven Profiles (prj-mdp001)
+# Started: 2026-02-23
+
+## Codebase Patterns
+- Framework: React + TypeScript (Vite), Backend: Elysia (Bun)
+- Database: Drizzle ORM with SQLite (wa-sqlite for web, bun-sqlite for tests)
+- Schema: src/db/schema.ts with Drizzle tables
+- Migrations: `bun db generate` (never manual SQL)
+- DAL: src/dal/ with singleton DatabaseSingleton
+- Defaults: src/defaults/ with reconcile-defaults.ts pattern (hash comparison for auto-update)
+- Tests: co-located <file>.test.ts, use bun test, @testing-library/react
+- Testing pattern: dependency injection over mocking (docs/testing.md)
+
+## Current AI Prompt System
+- Prompts: src/ai/prompts/ (folder-based, vendor-level overrides)
+- Types: VendorConfig, PromptOverride, VendorOverrides, ModelIdentifier
+- Resolver: getModelConfig() merges defaults → vendor → model configs
+- Overrides: getPromptOverrides() merges vendor global + vendor mode + model overrides
+- Consumers: src/ai/fetch.ts (streamText), src/ai/prompt.ts (createPrompt)
+- Eval: src/ai/eval/ with 75 scenarios, worker pool, rolling UI
+
+## Key Constraint
+- NO prompt content changes — same prompts, different storage
+- Must pass existing evals: GPT-OSS 98%+, Mistral 93%
+
+## Architecture Decision (from team discussion)
+- Database is runtime source of truth
+- Code-defined seed data for built-in models (same pattern as modes)
+- Same schema for built-in, user-created, and future plugin profiles
+- Declarative over imperative — behavioral hooks become config fields
+- Vendor is just metadata, not an architectural layer
+
+---
+
+# Project: Fix Google Connect on Desktop (THU-302)
+# Started: 2026-02-25
+
+## Problem
+Google OAuth shows "Error 400: invalid_request" on desktop because current code opens the auth page
+inside a Tauri WebviewWindow. Google has blocked embedded webview OAuth since Jan 2021.
+
+## Solution
+Replace WebviewWindow flow with system browser + localhost loopback server using tauri-plugin-oauth.
+The plugin binds to one of three pre-registered ports (17421, 17422, 17423), opens the system browser,
+and receives the OAuth callback via a local HTTP server emitting a Tauri event.
+
+## Proposal
+- Written to: .team/proposals/PROPOSAL-001.md
+- Status: Draft (2026-02-25)
+
+## Key Files Identified
+- src/lib/oauth-webview.ts — DELETE (WebviewWindow implementation, root cause)
+- src/lib/oauth-loopback.ts — CREATE (new loopback server flow)
+- src/hooks/use-oauth-connect.ts — UPDATE (replace startOAuthFlowWebview → startOAuthFlowLoopback on desktop branch)
+- src/integrations/google/auth.ts — UPDATE (optional redirectUri param on buildAuthUrl, exchangeCodeForTokens)
+- src/integrations/microsoft/auth.ts — UPDATE (same optional redirectUri param)
+- src/lib/auth.ts — UPDATE (propagate optional redirectUri through provider-agnostic wrappers)
+- src/lib/oauth-redirect.ts — UPDATE (remove dead desktop Tauri branch that returned oauth-callback.html)
+- src-tauri/capabilities/default.json — UPDATE (add oauth:default, add loopback localhost URLs)
+- src-tauri/capabilities/auth.json — DELETE (only existed for OAuth WebviewWindow)
+- src-tauri/Cargo.toml — UPDATE (add tauri-plugin-oauth = "2")
+- src-tauri/src/lib.rs — UPDATE (register tauri_plugin_oauth::init())
+
+## OAuth State / PKCE
+- PKCE already implemented in src/lib/pkce.ts — reused as-is
+- State validation already in existing flows — preserved
+- Loopback: state generated → passed in auth URL → validated on callback before token exchange
+
+## Mobile / Web flows: UNCHANGED
+- Mobile: openUrl + deep link (oauth-state.ts) — not touched
+- Web: redirectOAuthFlow via window.location — not touched
+
+## Scope: NO backend changes required
+- Backend already accepts redirect_uri in POST /auth/google/exchange body
+- All three loopback ports must be pre-registered in Google Cloud Console + Microsoft Entra (manual, not code)
+
+## Security Requirements (all in proposal)
+- SR-001: PKCE (already implemented, reused)
+- SR-002: State parameter validated before token exchange
+- SR-003: cancel(port) in finally block — no port leaks
+- SR-004: No credentials in code (backend holds client secret)
+- SR-005: Loopback URIs pre-registered (operational prereq)
+- SR-006: Only pre-registered ports passed to plugin start()
+
+## Open Questions
+1. Should desktop connecting timeout be extended from 15s to ~5min?
+2. Fallback UI if openUrl silently fails on Linux?
+3. Who registers loopback URIs in Google Cloud Console / Microsoft Entra?

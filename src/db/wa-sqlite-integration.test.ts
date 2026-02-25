@@ -1,4 +1,5 @@
-import { migrate } from '@/db/migrate'
+import { deleteModel, getModel } from '@/dal/models'
+import { applySchema } from '@/db/apply-schema'
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable } from '@/db/tables'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
@@ -17,17 +18,13 @@ describe('wa-sqlite integration', () => {
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
 
-    // Initialize with wa-sqlite (not bun-sqlite like other tests)
     await DatabaseSingleton.instance.initialize({ type: 'wa-sqlite', path: ':memory:' })
-
-    // Run migrations
-    const db = DatabaseSingleton.instance.db
-    await migrate(db)
-  })
+    await applySchema(DatabaseSingleton.instance.db)
+  }, 10000) // Increase timeout for worker initialization under load
 
   afterAll(async () => {
     await DatabaseSingleton.instance.close()
-    DatabaseSingleton.reset()
+    await DatabaseSingleton.reset()
     consoleSpies.restore()
   })
 
@@ -69,7 +66,7 @@ describe('wa-sqlite integration', () => {
       expect(model?.name).toBe('Updated Name')
     })
 
-    it('should delete records', async () => {
+    it('should soft delete records (DAL)', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
 
@@ -81,10 +78,11 @@ describe('wa-sqlite integration', () => {
         contextWindow: 128000,
       })
 
-      await db.delete(modelsTable).where(eq(modelsTable.id, modelId))
+      await deleteModel(modelId)
 
-      const model = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
-      expect(model).toBeUndefined()
+      expect(await getModel(modelId)).toBeNull()
+      const raw = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
+      expect(raw?.deletedAt).toBeDefined()
     })
   })
 
@@ -202,25 +200,17 @@ describe('wa-sqlite integration', () => {
     })
   })
 
-  describe('migrations', () => {
-    it('should have all migrations applied', async () => {
+  describe('schema', () => {
+    it('should have expected app tables (schema applied at init, no migrations)', async () => {
       const db = DatabaseSingleton.instance.db
 
-      // Check that the migrations table exists
-      const migrationsTable = await db.all(sql`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name='__drizzle_migrations'
-      `)
-      expect(migrationsTable).toHaveLength(1)
-
-      // Check that some expected tables exist
-      const tables = await db.all(sql`
+      const tablesResult = await db.all(sql`
         SELECT name FROM sqlite_master 
         WHERE type='table'
         ORDER BY name
       `)
 
-      const tableNames = tables.map((t) => (t as unknown[])[0] as string)
+      const tableNames = tablesResult.map((t) => (t as unknown[])[0] as string)
       expect(tableNames).toContain('models')
       expect(tableNames).toContain('settings')
       expect(tableNames).toContain('chat_threads')

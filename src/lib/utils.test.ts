@@ -284,13 +284,26 @@ describe('utils', () => {
       const testTable = sqliteTable('test', {
         id: text('id').primaryKey().notNull(),
         name: text('name'),
-        deletedAt: integer('deleted_at'),
+        deletedAt: text('deleted_at'),
       })
 
       const result = clearNullableColumns(testTable)
 
       expect(result).toEqual({ name: null })
       expect(result).not.toHaveProperty('deletedAt')
+    })
+
+    it('should skip userId column (required for PowerSync sync rules)', () => {
+      const testTable = sqliteTable('test', {
+        id: text('id').primaryKey().notNull(),
+        name: text('name'),
+        userId: text('user_id'),
+      })
+
+      const result = clearNullableColumns(testTable)
+
+      expect(result).toEqual({ name: null })
+      expect(result).not.toHaveProperty('userId')
     })
 
     it('should skip foreign key columns', () => {

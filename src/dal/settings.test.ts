@@ -197,6 +197,25 @@ describe('Settings DAL', () => {
       expect(records['hash_key_two'].defaultHash).toBe(expectedHash2)
     })
 
+    it('should fall back to update when key already exists (insert-first pattern for PowerSync)', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      // Insert row directly to simulate race: another caller already created it
+      await db.insert(settingsTable).values({
+        key: 'race_key',
+        value: 'original',
+        updatedAt: null,
+        defaultHash: null,
+        userId: null,
+      })
+
+      // updateSettings tries insert first, gets UNIQUE constraint, falls back to update
+      await updateSettings({ race_key: 'updated_via_fallback' })
+
+      const settings = await getSettings({ race_key: String })
+      expect(settings.raceKey).toBe('updated_via_fallback')
+    })
+
     it('should handle deeply nested JSON structures', async () => {
       // Test that the JsonValue type properly accepts complex nested structures
       const complexCredentials = {
@@ -251,7 +270,13 @@ describe('Settings DAL', () => {
         key: 'test_key',
         value: 'original',
         updatedAt: null,
-        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        defaultHash: hashSetting({
+          key: 'test_key',
+          value: 'original',
+          updatedAt: null,
+          defaultHash: null,
+          userId: null,
+        }),
       })
 
       // Update the value without recomputeHash
@@ -262,7 +287,7 @@ describe('Settings DAL', () => {
       // Value should be updated but hash should remain the same (pointing to original)
       expect(setting?.value).toBe('modified')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(true)
     })
@@ -275,7 +300,13 @@ describe('Settings DAL', () => {
         key: 'test_key',
         value: 'original',
         updatedAt: null,
-        defaultHash: hashSetting({ key: 'test_key', value: 'original', updatedAt: null, defaultHash: null }),
+        defaultHash: hashSetting({
+          key: 'test_key',
+          value: 'original',
+          updatedAt: null,
+          defaultHash: null,
+          userId: null,
+        }),
       })
 
       // Update the value with recomputeHash: true
@@ -286,7 +317,7 @@ describe('Settings DAL', () => {
       // Value should be updated and hash should point to the new value
       expect(setting?.value).toBe('new_baseline')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(false)
     })
@@ -364,7 +395,7 @@ describe('Settings DAL', () => {
       setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_key')).get()
       expect(setting?.value).toBe('user_custom_value')
       expect(setting?.defaultHash).toBe(
-        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null }),
+        hashSetting({ key: 'test_key', value: 'new_baseline', updatedAt: null, defaultHash: null, userId: null }),
       )
       expect(isSettingModified(setting!)).toBe(true) // Still modified since value differs from new baseline
     })

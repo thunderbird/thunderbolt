@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
+import { nowIso } from '@/lib/utils'
 import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { type Prompt } from '@/types'
@@ -222,7 +223,7 @@ describe('Prompts DAL', () => {
         id: promptId,
         prompt: 'Test automation prompt',
         modelId: modelId,
-        deletedAt: Date.now(),
+        deletedAt: nowIso(),
       })
 
       await db.insert(chatThreadsTable).values({

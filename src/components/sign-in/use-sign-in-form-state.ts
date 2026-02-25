@@ -1,5 +1,7 @@
 import type { AuthClient } from '@/contexts'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { updateSettings } from '@/dal'
+import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -73,8 +75,30 @@ type UseSignInFormStateOptions = {
 }
 
 /**
- * State hook for the sign-in form.
- * Separates computation/logic from display for easier testing and reuse.
+ * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
+ * For returning users only: reset pending CRUD operations so that when they later enable
+ * sync, local ops do not conflict with cloud data.
+ */
+const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
+  if (isNewUser) return
+
+  try {
+    const database = DatabaseSingleton.instance.database
+    if ('clearPendingCrudOperations' in database) {
+      // on sign in (existing user), set user_has_completed_onboarding to true
+      // we consider that an existing user has completed onboarding since they have signed in previously
+      // this is necessary because sync is disabled by default - so we don't have a way to know if they have actually completed onboarding
+      await updateSettings({ user_has_completed_onboarding: true })
+      await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
+    }
+  } catch (error) {
+    console.error('Failed to clear pending CRUD after sign-in:', error)
+  }
+}
+
+/**
+ * State hook for SignInModal
+ * Separates computation/logic from display for easier testing
  */
 export const useSignInFormState = ({
   authClient,
@@ -142,8 +166,11 @@ export const useSignInFormState = ({
 
       // Store the token for bearer auth
       if (result.data?.token) {
-        await setAuthToken(result.data.token)
+        setAuthToken(result.data.token)
       }
+
+      const isNewUser = (result.data?.user as { isNew?: boolean })?.isNew ?? false
+      await onSignInSuccess(isNewUser)
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })

@@ -111,10 +111,7 @@ export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
  * Note: this is asynchronous because we might need to query the backend once.
  */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
-  if (!isTauri()) return 'wa-sqlite'
-
-  const { libsql } = await getCapabilities()
-  return libsql ? 'libsql-tauri' : 'wa-sqlite'
+  return 'powersync'
 }
 
 /**
@@ -129,12 +126,39 @@ export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath
     return `${appDataDirPath}/thunderbolt.db`
   }
 
-  // For wa-sqlite, check OPFS availability
+  // For wa-sqlite and powersync, check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    return `${appDataDirPath}/thunderbolt.db`
+    // Use different filename for PowerSync to avoid conflicts during migration
+    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
+    return `${appDataDirPath}/${filename}`
   }
 
   console.warn('OPFS not available (likely private browsing), using in-memory database')
   return ':memory:'
+}
+
+/**
+ * Returns an auto-filled device display name (e.g. "Chrome on macOS", "Safari on iOS").
+ * Used for the synced devices table; not editable by the user.
+ */
+export const getDeviceDisplayName = (): string => {
+  if (isTauri()) {
+    const p = getPlatform()
+    const name = p.charAt(0).toUpperCase() + p.slice(1)
+    return `Thunderbolt on ${name}`
+  }
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  let browser = 'Browser'
+  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome'
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari'
+  else if (ua.includes('Firefox')) browser = 'Firefox'
+  else if (ua.includes('Edg')) browser = 'Edge'
+  let os = 'Unknown'
+  if (ua.includes('Mac')) os = 'macOS'
+  else if (ua.includes('Win')) os = 'Windows'
+  else if (ua.includes('Linux')) os = 'Linux'
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
+  else if (ua.includes('Android')) os = 'Android'
+  return `${browser} on ${os}`
 }

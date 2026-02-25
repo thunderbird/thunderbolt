@@ -1,9 +1,7 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { migrate } from '@/db/migrate'
 import { DatabaseSingleton } from '@/db/singleton'
-import { loadAuthToken } from '@/lib/auth-token'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
@@ -31,10 +29,6 @@ const initializeDatabase = async (appDirPath: string): Promise<AnyDrizzleDatabas
     type: databaseType,
     path: dbPath,
   })
-}
-
-const runDatabaseMigrations = async (db: AnyDrizzleDatabase): Promise<void> => {
-  await migrate(db)
 }
 
 const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
@@ -79,17 +73,13 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 3: Database migrations
+  // Step 3: Wait for PowerSync initial sync before reconciling defaults
+  // This ensures synced data from the cloud is available before we check for missing defaults
   try {
-    await runDatabaseMigrations(db)
+    await DatabaseSingleton.instance.waitForInitialSync()
   } catch (error) {
-    console.error('Failed to run database migrations:', error)
-    const migrationError = createHandleError('MIGRATION_FAILED', 'Failed to run database migrations', error)
-    trackError(migrationError, { initialization_step: 'database_migration' })
-    return {
-      success: false,
-      error: migrationError,
-    }
+    // Non-critical - log and continue
+    console.warn('Failed to wait for initial sync:', error)
   }
 
   // Step 4: Reconcile defaults
@@ -103,13 +93,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       success: false,
       error: reconcileError,
     }
-  }
-
-  // Step 4.5: Load auth token for mobile (non-critical)
-  try {
-    await loadAuthToken()
-  } catch (error) {
-    console.warn('Failed to load auth token, continuing:', error)
   }
 
   // Step 5: HTTP client initialization (use provided client or create one)

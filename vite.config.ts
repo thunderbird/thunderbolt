@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
-import { bundleMigrations } from './src/db/bundle-migrations'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -28,15 +27,6 @@ export default defineConfig({
     },
   },
   plugins: [
-    {
-      name: 'bundle-migrations',
-      async buildStart() {
-        bundleMigrations({
-          migrationsDir: path.resolve(__dirname, 'src/drizzle'),
-          outputFile: path.resolve(__dirname, 'src/drizzle/_migrations.ts'),
-        })
-      },
-    },
     tailwindcss(),
     react(),
     // Include the bundle analyzer plugin only when explicitly requested.
@@ -72,6 +62,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@shared': path.resolve(__dirname, './shared'),
     },
     conditions: ['browser'],
   },
@@ -97,7 +88,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite'],
+    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
   worker: {
     format: 'es',

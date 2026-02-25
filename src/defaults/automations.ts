@@ -19,6 +19,7 @@ export const defaultAutomationDailyBrief: Prompt = {
   title: 'Daily Brief',
   deletedAt: null,
   defaultHash: null,
+  userId: null,
   modelId: defaultModelGptOss120b.id,
   prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
@@ -62,6 +63,7 @@ export const defaultAutomationImportantEmails: Prompt = {
   title: 'Important Emails',
   deletedAt: null,
   defaultHash: null,
+  userId: null,
   modelId: defaultModelGptOss120b.id,
   prompt: `Review my inbox and summarize the 5 most important emails that need my attention today. Include sender, subject, and why each is important.`,
 }

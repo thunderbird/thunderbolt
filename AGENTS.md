@@ -46,3 +46,7 @@
 - Consider refactoring into standalone functions for clarity
 - Remove unused variables and imports
 - Verify tests pass and no TypeScript errors exist
+
+## PowerSync and synced tables
+
+See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.

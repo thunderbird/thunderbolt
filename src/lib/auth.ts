@@ -39,16 +39,17 @@ export const getOAuthConfig = async (provider: OAuthProvider): Promise<OAuthConf
   return providers[provider].getOAuthConfig()
 }
 
-export const buildAuthUrl = async (provider: OAuthProvider, state: string, codeChallenge: string): Promise<string> => {
-  return providers[provider].buildAuthUrl(state, codeChallenge)
+export const buildAuthUrl = async (provider: OAuthProvider, state: string, codeChallenge: string, redirectUri?: string): Promise<string> => {
+  return providers[provider].buildAuthUrl(state, codeChallenge, redirectUri)
 }
 
 export const exchangeCodeForTokens = async (
   provider: OAuthProvider,
   code: string,
   codeVerifier: string,
+  redirectUri?: string,
 ): Promise<OAuthTokens> => {
-  return providers[provider].exchangeCodeForTokens(code, codeVerifier)
+  return providers[provider].exchangeCodeForTokens(code, codeVerifier, redirectUri)
 }
 
 export const getUserInfo = async (provider: OAuthProvider, accessToken: string): Promise<GoogleUserInfo> => {

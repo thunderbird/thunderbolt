@@ -1,4 +1,4 @@
-import { onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
+import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
@@ -108,11 +108,14 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         return
       }
 
-      if (!result.data?.token) return
+      if (!result.data?.token) {
+        dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
+        return
+      }
 
       await setAuthToken(result.data.token)
 
-      const isNewUser = (result.data?.user as { isNew?: boolean })?.isNew ?? false
+      const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
 
       onVerified?.()

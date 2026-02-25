@@ -74,6 +74,10 @@ type UseSignInFormStateOptions = {
   skipToOtp?: boolean
 }
 
+/** Better Auth includes `isNew` on the user object at runtime but not in its types. */
+export const isNewAuthUser = (user: unknown): boolean =>
+  typeof user === 'object' && user !== null && 'isNew' in user && (user as { isNew: unknown }).isNew === true
+
 /**
  * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
  * For returning users only: reset pending CRUD operations so that when they later enable
@@ -169,7 +173,7 @@ export const useSignInFormState = ({
         setAuthToken(result.data.token)
       }
 
-      const isNewUser = (result.data?.user as { isNew?: boolean })?.isNew ?? false
+      const isNewUser = isNewAuthUser(result.data?.user)
       await onSignInSuccess(isNewUser)
 
       // Sign-in successful - show success state

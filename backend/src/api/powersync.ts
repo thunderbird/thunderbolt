@@ -93,15 +93,12 @@ const issuePowerSyncToken = async (
     }
   }
 
-  const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
-  const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()
-
   const rawDeviceName = request.headers.get('x-device-name')?.trim()
   const deviceName =
     rawDeviceName && rawDeviceName.length > 0 && rawDeviceName.length <= 100 ? rawDeviceName : 'Unknown device'
 
   const now = new Date()
-  await database
+  const upserted = await database
     .insert(devicesTable)
     .values({
       id: deviceId,
@@ -115,6 +112,14 @@ const issuePowerSyncToken = async (
       set: { lastSeen: now, name: deviceName },
       setWhere: eq(devicesTable.userId, userId),
     })
+    .returning()
+
+  if (upserted.length === 0 || upserted[0].userId !== userId) {
+    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+  }
+
+  const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
+  const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()
 
   return { ok: true, token, expiresAt, powerSyncUrl: settings.powersyncUrl }
 }

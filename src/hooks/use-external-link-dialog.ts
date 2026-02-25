@@ -9,6 +9,7 @@ type UseExternalLinkDialogReturn = {
   pendingUrl: string
   openDialog: (url: string) => void
   handleConfirm: () => Promise<void>
+  dismissWithAction: (action: (url: string) => void) => void
   setDialogOpen: (open: boolean) => void
   openError: string | null
   isOpening: boolean
@@ -76,11 +77,28 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     }
   }, [])
 
+  /** Closes the dialog and invokes `action` with the pending URL. Validates URL with isSafeUrl before invoking (defense-in-depth with handleConfirm). */
+  const dismissWithAction = useCallback((action: (url: string) => void) => {
+    const url = pendingUrlRef.current
+    if (!url) return
+    if (!isSafeUrl(url)) {
+      console.error('Attempted to open unsafe URL in app:', url)
+      setOpenError(OPEN_FAILED_MESSAGE)
+      setDialogOpen(false)
+      setPendingUrl('')
+      pendingUrlRef.current = ''
+      return
+    }
+    setDialogOpen(false)
+    action(url)
+  }, [])
+
   return {
     dialogOpen,
     pendingUrl,
     openDialog,
     handleConfirm,
+    dismissWithAction,
     setDialogOpen,
     openError,
     isOpening,

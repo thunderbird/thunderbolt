@@ -15,12 +15,21 @@ type ExternalLinkDialogProps = {
   onOpenChange: (open: boolean) => void
   url: string
   onConfirm: () => Promise<void>
+  onOpenInApp?: () => void
   openError?: string | null
   isOpening?: boolean
 }
 
 export const ExternalLinkDialog = memo(
-  ({ open, onOpenChange, url, onConfirm, openError = null, isOpening = false }: ExternalLinkDialogProps) => {
+  ({
+    open,
+    onOpenChange,
+    url,
+    onConfirm,
+    onOpenInApp,
+    openError = null,
+    isOpening = false,
+  }: ExternalLinkDialogProps) => {
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
@@ -37,8 +46,13 @@ export const ExternalLinkDialog = memo(
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {onOpenInApp && (
+              <Button onClick={onOpenInApp} variant="outline">
+                Open in Thunderbolt
+              </Button>
+            )}
             <Button onClick={onConfirm} disabled={isOpening}>
-              {isOpening ? 'Opening…' : 'Open link'}
+              {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open link'}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

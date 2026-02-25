@@ -1,9 +1,11 @@
-import { createContext, Fragment, memo, useMemo, useContext, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useCallback, useMemo, useContext, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
+import { usePreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
+import { isDesktop } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
 import type { CitationMap } from '@/types/citation'
 
@@ -143,9 +145,15 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * Wrap markdown content with this to avoid N dialog instances for N links.
  */
 export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, dismissWithAction, setDialogOpen, openError, isOpening } =
     useExternalLinkDialog()
   const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
+
+  const desktop = isDesktop()
+  // Called unconditionally (rules of hooks); gated by `desktop` before use
+  const { showPreview } = usePreview()
+
+  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview), [dismissWithAction, showPreview])
 
   return (
     <ExternalLinkDialogContext.Provider value={contextValue}>
@@ -155,6 +163,7 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
+        onOpenInApp={desktop ? handleOpenInApp : undefined}
         openError={openError}
         isOpening={isOpening}
       />

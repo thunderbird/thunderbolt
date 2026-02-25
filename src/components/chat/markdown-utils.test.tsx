@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { ContentViewProvider } from '@/content-view/context'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationMap, CitationSource } from '@/types/citation'
 import { CitationPopoverProvider } from './citation-popover'
@@ -200,11 +201,13 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
   test('renders only one dialog instance; clicking a link shows that URL in the shared dialog', () => {
     const markdown = '[first](https://a.com) [second](https://b.com) [third](https://c.com)'
     const { container, getByRole, getByText } = render(
-      <ExternalLinkDialogProvider>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {markdown}
-        </ReactMarkdown>
-      </ExternalLinkDialogProvider>,
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {markdown}
+          </ReactMarkdown>
+        </ExternalLinkDialogProvider>
+      </ContentViewProvider>,
     )
 
     const links = container.querySelectorAll('a[href="#"]')
@@ -233,9 +236,11 @@ describe('citationMarkdownComponents (citation placeholders via context)', () =>
       {
         wrapper: ({ children }) => (
           <TestProvider>
-            <ExternalLinkDialogProvider>
-              <CitationPopoverProvider>{children}</CitationPopoverProvider>
-            </ExternalLinkDialogProvider>
+            <ContentViewProvider>
+              <ExternalLinkDialogProvider>
+                <CitationPopoverProvider>{children}</CitationPopoverProvider>
+              </ExternalLinkDialogProvider>
+            </ContentViewProvider>
           </TestProvider>
         ),
       },

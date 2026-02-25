@@ -107,6 +107,52 @@ describe('useExternalLinkDialog', () => {
     })
   })
 
+  describe('dismissWithAction', () => {
+    it('should invoke action with URL when URL is safe', () => {
+      const action = mock(() => {})
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('https://example.com')
+      })
+      act(() => {
+        result.current.dismissWithAction(action)
+      })
+
+      expect(action).toHaveBeenCalledTimes(1)
+      expect(action).toHaveBeenCalledWith('https://example.com')
+      expect(result.current.dialogOpen).toBe(false)
+    })
+
+    it('should not invoke action and should set openError when URL is unsafe', () => {
+      const action = mock(() => {})
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('javascript:alert(1)')
+      })
+      act(() => {
+        result.current.dismissWithAction(action)
+      })
+
+      expect(action).not.toHaveBeenCalled()
+      expect(result.current.dialogOpen).toBe(false)
+      expect(result.current.pendingUrl).toBe('')
+      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
+    })
+
+    it('should do nothing when pendingUrl is empty', () => {
+      const action = mock(() => {})
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.dismissWithAction(action)
+      })
+
+      expect(action).not.toHaveBeenCalled()
+    })
+  })
+
   describe('setDialogOpen', () => {
     it('should allow manually closing the dialog', () => {
       const { result } = renderHook(() => useExternalLinkDialog())

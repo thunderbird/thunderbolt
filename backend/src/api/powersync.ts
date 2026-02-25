@@ -202,13 +202,13 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
  *
  * Returns an empty Elysia instance if PowerSync is not configured.
  */
-export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: typeof DbType): Elysia => {
+export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: typeof DbType) => {
   if (!settings.powersyncJwtSecret) {
     console.warn('PowerSync is not configured, skipping PowerSync routes')
-    return new Elysia()
+    return new Elysia({ prefix: '/powersync' })
   }
 
-  return new Elysia()
+  return new Elysia({ prefix: '/powersync' })
     .use(
       jwt({
         name: 'powersyncJwt',
@@ -222,7 +222,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       const session = await auth.api.getSession({ headers: request.headers })
       return { user: session?.user ?? null }
     })
-    .get('/powersync/token', async ({ powersyncJwt, request, set, user }) => {
+    .get('/token', async ({ powersyncJwt, request, set, user }) => {
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
         set.status = 503
         return { error: 'PowerSync is not configured' }
@@ -278,7 +278,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       return result
     })
     .put(
-      '/powersync/upload',
+      '/upload',
       async ({ body, set, user }) => {
         // Requires authenticated user; applies batched CRUD from PowerSync.
         if (!user) {

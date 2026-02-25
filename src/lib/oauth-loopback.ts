@@ -2,7 +2,7 @@ import { cancel, onUrl, start } from '@fabianlars/tauri-plugin-oauth'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { v4 as uuidv4 } from 'uuid'
 import {
-  type GoogleUserInfo,
+  type OAuthUserInfo,
   type OAuthProvider,
   type OAuthTokens,
   buildAuthUrl,
@@ -40,7 +40,7 @@ const completionHtml = `<html>
 export const startOAuthFlowLoopback = async (
   provider: OAuthProvider,
   timeoutMs = oauthTimeoutMs,
-): Promise<{ tokens: OAuthTokens; userInfo: GoogleUserInfo } | null> => {
+): Promise<{ tokens: OAuthTokens; userInfo: OAuthUserInfo } | null> => {
   const port = await start({ ports: loopbackPorts, response: completionHtml })
   const redirectUri = `http://localhost:${port}`
 
@@ -53,10 +53,10 @@ export const startOAuthFlowLoopback = async (
   // Register listener BEFORE opening browser to avoid race condition
   const unlisten = await onUrl((url) => resolveUrl(url))
 
-  const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
-  await openUrl(authUrl)
-
   try {
+    const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
+    await openUrl(authUrl)
+
     const callbackUrl = await Promise.race([
       urlPromise,
       new Promise<never>((_, reject) =>

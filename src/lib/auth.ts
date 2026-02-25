@@ -26,6 +26,13 @@ export type OAuthTokens = {
   scope?: string
 }
 
+/**
+ * Provider-agnostic user info returned by all OAuth providers.
+ * Use this type at the provider-agnostic boundary instead of the
+ * provider-specific GoogleUserInfo.
+ */
+export type OAuthUserInfo = GoogleUserInfo
+
 const providers = {
   google,
   microsoft,
@@ -39,6 +46,14 @@ export const getOAuthConfig = async (provider: OAuthProvider): Promise<OAuthConf
   return providers[provider].getOAuthConfig()
 }
 
+/**
+ * Builds the OAuth authorization URL for the given provider.
+ *
+ * @param redirectUri - Optional redirect URI override for flows that determine
+ *   the URI at runtime (e.g. loopback server). When provided, the **same value**
+ *   must be passed to {@link exchangeCodeForTokens} for the same flow — OAuth
+ *   providers reject the token exchange if the two redirect URIs differ.
+ */
 export const buildAuthUrl = async (
   provider: OAuthProvider,
   state: string,
@@ -48,6 +63,12 @@ export const buildAuthUrl = async (
   return providers[provider].buildAuthUrl(state, codeChallenge, redirectUri)
 }
 
+/**
+ * Exchanges an authorization code for OAuth tokens.
+ *
+ * @param redirectUri - Must match the value passed to {@link buildAuthUrl}
+ *   for the same flow. Omit when buildAuthUrl was also called without one.
+ */
 export const exchangeCodeForTokens = async (
   provider: OAuthProvider,
   code: string,
@@ -57,7 +78,7 @@ export const exchangeCodeForTokens = async (
   return providers[provider].exchangeCodeForTokens(code, codeVerifier, redirectUri)
 }
 
-export const getUserInfo = async (provider: OAuthProvider, accessToken: string): Promise<GoogleUserInfo> => {
+export const getUserInfo = async (provider: OAuthProvider, accessToken: string): Promise<OAuthUserInfo> => {
   return providers[provider].getUserInfo(accessToken)
 }
 
@@ -90,7 +111,7 @@ const generateCodeChallenge = async (verifier: string): Promise<string> => {
 
 export const startOAuthFlow = async (
   provider: OAuthProvider,
-): Promise<{ tokens: OAuthTokens; userInfo: GoogleUserInfo }> => {
+): Promise<{ tokens: OAuthTokens; userInfo: OAuthUserInfo }> => {
   const state = uuidv4()
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)

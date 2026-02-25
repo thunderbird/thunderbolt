@@ -60,9 +60,6 @@ describe('useExternalLinkDialog', () => {
 
       expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
       expect(result.current.dialogOpen).toBe(false)
-
-      // URL should still be visible during animation (cleared after 200ms timeout)
-      // This is expected behavior to prevent text flickering during dialog fade-out
       expect(result.current.pendingUrl).toBe('https://example.com')
 
       window.open = originalOpen
@@ -156,6 +153,32 @@ describe('useExternalLinkDialog', () => {
 
       // Should not call window.open for empty URL
       expect(mockWindowOpen).not.toHaveBeenCalled()
+
+      window.open = originalOpen
+    })
+
+    it('should open second URL when user confirms first then quickly opens another link', async () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => null)
+      window.open = mockWindowOpen as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('https://first.com')
+      })
+      await act(async () => {
+        result.current.handleConfirm()
+      })
+      act(() => {
+        result.current.openDialog('https://second.com')
+      })
+      act(() => {
+        result.current.handleConfirm()
+      })
+
+      expect(mockWindowOpen).toHaveBeenCalledTimes(2)
+      expect(mockWindowOpen).toHaveBeenLastCalledWith('https://second.com', '_blank', 'noopener,noreferrer')
 
       window.open = originalOpen
     })

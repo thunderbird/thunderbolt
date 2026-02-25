@@ -60,13 +60,9 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
       console.error('Failed to open URL:', error)
       // Fallback to window.open for graceful degradation
       window.open(urlToOpen, '_blank', 'noopener,noreferrer')
-    } finally {
-      // Clear state after a short delay to avoid flickering during animation
-      setTimeout(() => {
-        setPendingUrl('')
-        pendingUrlRef.current = ''
-      }, 200)
     }
+    // Don't clear pendingUrl here — next openDialog overwrites it; leaving it
+    // set avoids flicker during dialog close and removes timer/race entirely.
   }, [])
 
   return {

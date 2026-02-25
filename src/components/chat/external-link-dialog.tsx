@@ -8,13 +8,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 
 type ExternalLinkDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   url: string
   onConfirm: () => Promise<void>
+  /** Called when onConfirm() rejects (e.g. unhandled throw). Use to show error in dialog. */
+  onOpenError?: (error: unknown) => void
   onOpenInApp?: () => void
   openError?: string | null
   isOpening?: boolean
@@ -26,10 +28,18 @@ export const ExternalLinkDialog = memo(
     onOpenChange,
     url,
     onConfirm,
+    onOpenError,
     onOpenInApp,
     openError = null,
     isOpening = false,
   }: ExternalLinkDialogProps) => {
+    const handleConfirmClick = useCallback(() => {
+      Promise.resolve(onConfirm()).catch((error: unknown) => {
+        if (onOpenError) onOpenError(error)
+        else console.error('External link confirm failed:', error)
+      })
+    }, [onConfirm, onOpenError])
+
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
@@ -51,7 +61,7 @@ export const ExternalLinkDialog = memo(
                 Open in Thunderbolt
               </Button>
             )}
-            <Button onClick={onConfirm} disabled={isOpening}>
+            <Button onClick={handleConfirmClick} disabled={isOpening}>
               {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open link'}
             </Button>
           </AlertDialogFooter>

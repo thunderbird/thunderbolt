@@ -28,7 +28,7 @@ const getBadgeColor = (siteName: string = '') => {
  */
 export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, reportOpenError, setDialogOpen, openError, isOpening } =
     useExternalLinkDialog()
 
   const displayTitle = source.title || source.url
@@ -49,7 +49,7 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   return (
     <>
       <a
-        href="#"
+        href={safeUrl}
         onClick={handleClick}
         className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
         role="listitem"
@@ -80,6 +80,10 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
+        onOpenError={(err) => {
+          console.error('External link confirm failed:', err)
+          reportOpenError()
+        }}
         openError={openError}
         isOpening={isOpening}
       />

@@ -117,6 +117,22 @@ describe('ExternalLinkDialog', () => {
 
       expect(mockChange).toHaveBeenCalledWith(false)
     })
+
+    it('should call onOpenError when onConfirm promise rejects', async () => {
+      const rejectError = new Error('open failed')
+      let resolveReport: (err: unknown) => void
+      const reported = new Promise<unknown>((resolve) => {
+        resolveReport = resolve
+      })
+      const mockConfirm = () => Promise.reject(rejectError)
+      const onOpenError = (err: unknown) => resolveReport!(err)
+      render(<ExternalLinkDialog {...defaultProps} onConfirm={mockConfirm} onOpenError={onOpenError} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open link' }))
+
+      const reportedError = await reported
+      expect(reportedError).toBe(rejectError)
+    })
   })
 
   describe('accessibility', () => {

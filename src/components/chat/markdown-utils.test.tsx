@@ -210,7 +210,7 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
       </ContentViewProvider>,
     )
 
-    const links = container.querySelectorAll('a[href="#"]')
+    const links = container.querySelectorAll('a[href]')
     expect(links).toHaveLength(3)
 
     fireEvent.click(links[0]!)

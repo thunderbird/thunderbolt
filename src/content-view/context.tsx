@@ -168,6 +168,11 @@ export const usePreview = () => {
   }
 }
 
+/** Returns showPreview when inside ContentViewProvider, undefined otherwise. */
+export const useShowPreview = (): ((url: string) => void) | undefined => {
+  return useContext(ContentViewContext)?.showPreview
+}
+
 export const useSideview = () => {
   const { showSideview, state } = useContentView()
   return {

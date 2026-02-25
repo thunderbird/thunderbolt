@@ -1,6 +1,6 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
-import { usePreview } from '@/content-view/context'
+import { useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isDesktop } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
@@ -68,13 +68,21 @@ const LinkPreviewCard = ({
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
   const [imageError, setImageError] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(!!image)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, dismissWithAction, setDialogOpen, openError, isOpening } =
-    useExternalLinkDialog()
+  const {
+    dialogOpen,
+    pendingUrl,
+    openDialog,
+    handleConfirm,
+    reportOpenError,
+    dismissWithAction,
+    setDialogOpen,
+    openError,
+    isOpening,
+  } = useExternalLinkDialog()
   const showPlaceholder = !image || imageError
 
-  const desktop = isDesktop()
-  // Called unconditionally (rules of hooks); gated by `desktop` before use
-  const { showPreview } = usePreview()
+  const showPreview = useShowPreview()
+  const desktop = isDesktop() && !!showPreview
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
@@ -83,11 +91,11 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
     openDialog(url)
   }
 
-  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview), [dismissWithAction, showPreview])
+  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview!), [dismissWithAction, showPreview])
 
   return (
     <div className="my-4">
-      <a href="#" onClick={handleClick}>
+      <a href={isSafeUrl(url) ? url : '#'} onClick={handleClick}>
         <LinkPreviewCard
           description={description}
           image={image}
@@ -104,6 +112,10 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
+        onOpenError={(err) => {
+          console.error('External link confirm failed:', err)
+          reportOpenError()
+        }}
         onOpenInApp={desktop ? handleOpenInApp : undefined}
         openError={openError}
         isOpening={isOpening}

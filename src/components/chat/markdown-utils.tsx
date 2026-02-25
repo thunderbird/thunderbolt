@@ -3,7 +3,7 @@ import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
-import { usePreview } from '@/content-view/context'
+import { useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isDesktop } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
@@ -145,15 +145,23 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * Wrap markdown content with this to avoid N dialog instances for N links.
  */
 export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, dismissWithAction, setDialogOpen, openError, isOpening } =
-    useExternalLinkDialog()
+  const {
+    dialogOpen,
+    pendingUrl,
+    openDialog,
+    handleConfirm,
+    reportOpenError,
+    dismissWithAction,
+    setDialogOpen,
+    openError,
+    isOpening,
+  } = useExternalLinkDialog()
   const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
 
-  const desktop = isDesktop()
-  // Called unconditionally (rules of hooks); gated by `desktop` before use
-  const { showPreview } = usePreview()
+  const showPreview = useShowPreview()
+  const desktop = isDesktop() && !!showPreview
 
-  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview), [dismissWithAction, showPreview])
+  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview!), [dismissWithAction, showPreview])
 
   return (
     <ExternalLinkDialogContext.Provider value={contextValue}>
@@ -163,6 +171,10 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
+        onOpenError={(err) => {
+          console.error('External link confirm failed:', err)
+          reportOpenError()
+        }}
         onOpenInApp={desktop ? handleOpenInApp : undefined}
         openError={openError}
         isOpening={isOpening}
@@ -202,7 +214,7 @@ const SafeLink = memo((props: React.ComponentProps<'a'>) => {
   }
 
   return (
-    <a {...restProps} href="#" onClick={handleClick}>
+    <a {...restProps} href={safeHref ?? '#'} onClick={handleClick}>
       {children}
     </a>
   )

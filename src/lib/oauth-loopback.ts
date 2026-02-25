@@ -51,7 +51,6 @@ export const startOAuthFlowLoopback = async (
   // Register listener BEFORE opening browser to avoid race condition
   const unlisten = await onUrl((url) => resolveUrl(url))
 
-  // redirectUri param will be accepted once TASK-002 updates auth.ts signatures
   const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
   await openUrl(authUrl)
 
@@ -71,7 +70,6 @@ export const startOAuthFlowLoopback = async (
     if (!code || !returnedState) throw new Error('Missing code or state in OAuth callback')
     if (returnedState !== state) throw new Error('OAuth state mismatch')
 
-    // redirectUri param will be accepted once TASK-002 updates auth.ts signatures
     const tokens = await exchangeCodeForTokens(provider, code, codeVerifier, redirectUri)
     const userInfo = await getUserInfo(provider, tokens.access_token)
 

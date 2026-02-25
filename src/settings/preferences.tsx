@@ -302,7 +302,6 @@ export default function PreferencesSettingsPage() {
     } catch (error) {
       console.error('Failed to delete account:', error)
       setDeleteAccountError(error instanceof Error ? error.message : 'Failed to delete account.')
-      dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     } finally {
       dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
@@ -791,8 +790,13 @@ export default function PreferencesSettingsPage() {
             <p className="text-sm text-muted-foreground">
               Enable cloud synchronization to keep your data synced across devices.
             </p>
+            {!isAuthenticated && <p className="text-xs text-muted-foreground mt-1">Sign in to enable sync.</p>}
           </div>
-          <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
+          <Switch
+            checked={syncEnabled}
+            onCheckedChange={handleSyncToggle}
+            disabled={!isAuthenticated || isConnecting}
+          />
         </div>
       </SectionCard>
 

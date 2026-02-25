@@ -87,7 +87,8 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         .json<{ success: boolean }>()
 
       dispatch({ type: 'JOIN_SUCCESS' })
-    } catch {
+    } catch (error) {
+      console.error('Waitlist join error:', error)
       dispatch({ type: 'JOIN_ERROR', payload: 'Something went wrong. Please try again.' })
     }
   }
@@ -119,7 +120,8 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       await onSignInSuccess(isNewUser)
 
       onVerified?.()
-    } catch {
+    } catch (error) {
+      console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
     }
   }

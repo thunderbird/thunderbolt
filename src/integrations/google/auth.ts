@@ -49,7 +49,11 @@ export const buildAuthUrl = async (state: string, codeChallenge: string, redirec
   return authUrl.toString()
 }
 
-export const exchangeCodeForTokens = async (code: string, codeVerifier: string, redirectUri?: string): Promise<OAuthTokens> => {
+export const exchangeCodeForTokens = async (
+  code: string,
+  codeVerifier: string,
+  redirectUri?: string,
+): Promise<OAuthTokens> => {
   const config = await getOAuthConfig()
   const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
   return await ky

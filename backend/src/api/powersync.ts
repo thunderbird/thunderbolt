@@ -240,7 +240,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           set.status = result.status
           return result.body
         }
-        return result
+        return { token: result.token, expiresAt: result.expiresAt, powerSyncUrl: result.powerSyncUrl }
       }
 
       // Path 2: No session; Bearer token only. Resolve session → user; 410 if user deleted (e.g. account deleted elsewhere).
@@ -280,7 +280,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         set.status = result.status
         return result.body
       }
-      return result
+      return { token: result.token, expiresAt: result.expiresAt, powerSyncUrl: result.powerSyncUrl }
     })
     .put(
       '/upload',

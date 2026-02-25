@@ -1,8 +1,10 @@
 import { Button } from '@/components/ui/button'
+import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
+import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { Check, Copy, ExternalLink } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ContentViewHeader } from './header'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
 
@@ -19,8 +21,12 @@ type SidebarWebviewProps = {
  */
 export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
   const panelRef = useRef<HTMLDivElement>(null)
-  const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef)
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+    useExternalLinkDialog()
+
+  const { webview, isInitialized, closeWebview } = useSidebarWebview(config, panelRef)
   const [isCopied, setIsCopied] = useState(false)
+  const shouldClosePreviewRef = useRef(false)
 
   const handleClose = async () => {
     try {
@@ -44,16 +50,40 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
     }
   }
 
-  const handleOpenExternal = async () => {
+  const handleOpenExternal = () => {
     if (!config?.url) return
-    try {
-      trackEvent('preview_open_external')
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(config.url)
-    } catch (error) {
-      console.error('Error opening URL externally:', error)
-    }
+    trackEvent('preview_open_external')
+    shouldClosePreviewRef.current = true
+    openDialog(config.url)
   }
+
+  const handleDialogChange = (open: boolean) => {
+    // If user clicks Cancel, reset the flag so preview doesn't close
+    if (!open && !isOpening && shouldClosePreviewRef.current) {
+      shouldClosePreviewRef.current = false
+    }
+    setDialogOpen(open)
+  }
+
+  // Hide/show webview when dialog opens/closes (Tauri webviews render above React)
+  useEffect(() => {
+    if (!webview) return
+
+    if (dialogOpen) {
+      webview.hide().catch((error) => console.error('Failed to hide webview:', error))
+    } else {
+      webview.show().catch((error) => console.error('Failed to show webview:', error))
+    }
+  }, [dialogOpen, webview])
+
+  // Close preview when link is successfully opened
+  useEffect(() => {
+    // Only close if: dialog closed, we're in "open external" mode, no error, and not currently opening
+    if (!dialogOpen && shouldClosePreviewRef.current && !openError && !isOpening) {
+      shouldClosePreviewRef.current = false
+      onClose?.()
+    }
+  }, [dialogOpen, openError, isOpening, onClose])
 
   if (!isTauri()) {
     return (
@@ -110,6 +140,15 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
           </div>
         )}
       </div>
+
+      <ExternalLinkDialog
+        open={dialogOpen}
+        onOpenChange={handleDialogChange}
+        url={pendingUrl}
+        onConfirm={handleConfirm}
+        openError={openError}
+        isOpening={isOpening}
+      />
     </div>
   )
 }

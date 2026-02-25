@@ -4,11 +4,13 @@ import { useExternalLinkDialog } from './use-external-link-dialog'
 
 describe('useExternalLinkDialog', () => {
   describe('initial state', () => {
-    it('should initialize with dialog closed and empty URL', () => {
+    it('should initialize with dialog closed, empty URL, no error, not opening', () => {
       const { result } = renderHook(() => useExternalLinkDialog())
 
       expect(result.current.dialogOpen).toBe(false)
       expect(result.current.pendingUrl).toBe('')
+      expect(result.current.openError).toBe(null)
+      expect(result.current.isOpening).toBe(false)
     })
   })
 
@@ -24,7 +26,7 @@ describe('useExternalLinkDialog', () => {
       expect(result.current.pendingUrl).toBe('https://example.com')
     })
 
-    it('should handle multiple different URLs', () => {
+    it('should handle multiple different URLs and clear openError', () => {
       const { result } = renderHook(() => useExternalLinkDialog())
 
       act(() => {
@@ -38,11 +40,34 @@ describe('useExternalLinkDialog', () => {
       })
 
       expect(result.current.pendingUrl).toBe('https://second.com')
+      expect(result.current.openError).toBe(null)
     })
   })
 
   describe('handleConfirm', () => {
-    it('should open URL in new window and close dialog', () => {
+    it('should open URL in new window and close dialog on success', async () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => ({}) as Window)
+      window.open = mockWindowOpen as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('https://example.com')
+      })
+
+      await act(async () => {
+        await result.current.handleConfirm()
+      })
+
+      expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+      expect(result.current.dialogOpen).toBe(false)
+      expect(result.current.pendingUrl).toBe('https://example.com')
+
+      window.open = originalOpen
+    })
+
+    it('should keep dialog open and set openError when window.open returns null', async () => {
       const originalOpen = window.open
       const mockWindowOpen = mock(() => null)
       window.open = mockWindowOpen as typeof window.open
@@ -53,27 +78,26 @@ describe('useExternalLinkDialog', () => {
         result.current.openDialog('https://example.com')
       })
 
-      act(() => {
-        // Call async function without awaiting (matches real onClick behavior)
-        result.current.handleConfirm()
+      await act(async () => {
+        await result.current.handleConfirm()
       })
 
-      expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
-      expect(result.current.dialogOpen).toBe(false)
-      expect(result.current.pendingUrl).toBe('https://example.com')
+      expect(mockWindowOpen).toHaveBeenCalled()
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
 
       window.open = originalOpen
     })
 
-    it('should not open window when pendingUrl is empty', () => {
+    it('should not open window when pendingUrl is empty', async () => {
       const originalOpen = window.open
-      const mockWindowOpen = mock(() => null)
+      const mockWindowOpen = mock(() => ({}) as Window)
       window.open = mockWindowOpen as typeof window.open
 
       const { result } = renderHook(() => useExternalLinkDialog())
 
-      act(() => {
-        result.current.handleConfirm()
+      await act(async () => {
+        await result.current.handleConfirm()
       })
 
       expect(mockWindowOpen).not.toHaveBeenCalled()
@@ -136,9 +160,9 @@ describe('useExternalLinkDialog', () => {
       expect(result.current.pendingUrl).toBe(longUrl)
     })
 
-    it('should handle empty string URL', () => {
+    it('should handle empty string URL', async () => {
       const originalOpen = window.open
-      const mockWindowOpen = mock(() => null)
+      const mockWindowOpen = mock(() => ({}) as Window)
       window.open = mockWindowOpen as typeof window.open
 
       const { result } = renderHook(() => useExternalLinkDialog())
@@ -147,11 +171,10 @@ describe('useExternalLinkDialog', () => {
         result.current.openDialog('')
       })
 
-      act(() => {
-        result.current.handleConfirm()
+      await act(async () => {
+        await result.current.handleConfirm()
       })
 
-      // Should not call window.open for empty URL
       expect(mockWindowOpen).not.toHaveBeenCalled()
 
       window.open = originalOpen
@@ -159,7 +182,7 @@ describe('useExternalLinkDialog', () => {
 
     it('should open second URL when user confirms first then quickly opens another link', async () => {
       const originalOpen = window.open
-      const mockWindowOpen = mock(() => null)
+      const mockWindowOpen = mock(() => ({}) as Window)
       window.open = mockWindowOpen as typeof window.open
 
       const { result } = renderHook(() => useExternalLinkDialog())
@@ -168,13 +191,13 @@ describe('useExternalLinkDialog', () => {
         result.current.openDialog('https://first.com')
       })
       await act(async () => {
-        result.current.handleConfirm()
+        await result.current.handleConfirm()
       })
       act(() => {
         result.current.openDialog('https://second.com')
       })
-      act(() => {
-        result.current.handleConfirm()
+      await act(async () => {
+        await result.current.handleConfirm()
       })
 
       expect(mockWindowOpen).toHaveBeenCalledTimes(2)

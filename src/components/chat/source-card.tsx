@@ -28,7 +28,8 @@ const getBadgeColor = (siteName: string = '') => {
  */
 export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+    useExternalLinkDialog()
 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
@@ -74,7 +75,14 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
           <span className="text-xs text-muted-foreground leading-4">{displaySiteName}</span>
         </div>
       </a>
-      <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
+      <ExternalLinkDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        url={pendingUrl}
+        onConfirm={handleConfirm}
+        openError={openError}
+        isOpening={isOpening}
+      />
     </>
   )
 }

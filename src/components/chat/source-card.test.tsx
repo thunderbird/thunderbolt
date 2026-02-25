@@ -104,7 +104,7 @@ describe('SourceCard', () => {
 
     it('should open URL in new window when dialog is confirmed', () => {
       const originalOpen = window.open
-      const mockWindowOpen = mock(() => null)
+      const mockWindowOpen = mock(() => ({}) as Window)
       window.open = mockWindowOpen as typeof window.open
 
       render(<SourceCard source={mockSource} />)

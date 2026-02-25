@@ -143,13 +143,21 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * Wrap markdown content with this to avoid N dialog instances for N links.
  */
 export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+    useExternalLinkDialog()
   const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
 
   return (
     <ExternalLinkDialogContext.Provider value={contextValue}>
       {children}
-      <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
+      <ExternalLinkDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        url={pendingUrl}
+        onConfirm={handleConfirm}
+        openError={openError}
+        isOpening={isOpening}
+      />
     </ExternalLinkDialogContext.Provider>
   )
 })

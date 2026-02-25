@@ -41,6 +41,19 @@ describe('ExternalLinkDialog', () => {
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
     })
+
+    it('should display openError when provided', () => {
+      render(<ExternalLinkDialog {...defaultProps} openError="Could not open link." />)
+
+      expect(screen.getByText('Could not open link.')).toBeInTheDocument()
+    })
+
+    it('should show Opening… and disable Open button when isOpening', () => {
+      render(<ExternalLinkDialog {...defaultProps} isOpening />)
+
+      const openButton = screen.getByRole('button', { name: 'Opening…' })
+      expect(openButton).toBeDisabled()
+    })
   })
 
   describe('URL display', () => {

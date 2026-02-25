@@ -50,7 +50,8 @@ const LinkPreviewDesktop = ({ description, image, title, url }: LinkPreviewProps
 const LinkPreviewWithDialog = ({ description, image, title, url }: LinkPreviewProps) => {
   const [imageError, setImageError] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(!!image)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen } = useExternalLinkDialog()
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, setDialogOpen, openError, isOpening } =
+    useExternalLinkDialog()
   const showPlaceholder = !image || imageError
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -74,7 +75,14 @@ const LinkPreviewWithDialog = ({ description, image, title, url }: LinkPreviewPr
           url={url}
         />
       </a>
-      <ExternalLinkDialog open={dialogOpen} onOpenChange={setDialogOpen} url={pendingUrl} onConfirm={handleConfirm} />
+      <ExternalLinkDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        url={pendingUrl}
+        onConfirm={handleConfirm}
+        openError={openError}
+        isOpening={isOpening}
+      />
     </div>
   )
 }

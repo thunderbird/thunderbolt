@@ -196,7 +196,7 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
     }
     case 'PATCH': {
       if (!op.data || Object.keys(op.data).length === 0) {
-        return false
+        return true // no-op: nothing to update
       }
       const patchPayload = { ...op.data } as Record<string, unknown>
       delete patchPayload.id

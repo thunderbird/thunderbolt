@@ -845,6 +845,56 @@ describe('PowerSync API', () => {
       expect(rows[0]?.value).toBe('updated_value')
     })
 
+    it('returns 200 for PATCH with empty data (no-op)', async () => {
+      const userId = 'user-patch-empty'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Patch Empty User',
+        email: 'patch-empty@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-patch-empty',
+        expiresAt,
+        token: 'bearer-patch-empty',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await db.insert(settingsTable).values({
+        key: 'empty_patch_setting',
+        value: 'unchanged',
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: uploadHeaders('bearer-patch-empty'),
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'settings',
+                id: 'empty_patch_setting',
+                data: {},
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'empty_patch_setting'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.value).toBe('unchanged')
+    })
+
     it('returns 400 when PATCH targets non-existent record', async () => {
       const userId = 'user-patch-nonexistent'
       const now = new Date()

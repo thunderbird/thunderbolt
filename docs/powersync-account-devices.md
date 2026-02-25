@@ -130,6 +130,12 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
   - If the user no longer exists (account deleted) → **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.
   - Otherwise may return **401** (invalid/expired token).
 
+### PowerSync upload (`PUT /powersync/upload`)
+
+- Requires authenticated user and `X-Device-ID` header.
+- Same device validation as token: if device is revoked → **403** with `{ code: 'DEVICE_DISCONNECTED' }`. If `X-Device-ID` is missing → **400** with `{ code: 'DEVICE_ID_REQUIRED' }`.
+- Only non-revoked devices can upload data.
+
 Summary for client:
 
 - **410** → account deleted (reset).

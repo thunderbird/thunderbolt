@@ -55,11 +55,50 @@ const toSchemaRecord = (
   return out
 }
 
+type DeviceValidationResult =
+  | { ok: true }
+  | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' } }
+  | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
+
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
   | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
+
+/**
+ * Validates that the device is not revoked and belongs to the user.
+ * Requires x-device-id so revoked devices cannot bypass by omitting it.
+ */
+const validateDeviceNotRevoked = async (
+  userId: string,
+  request: Request,
+  database: typeof DbType,
+): Promise<DeviceValidationResult> => {
+  const deviceId = request.headers.get('x-device-id')?.trim()
+  if (!deviceId) {
+    return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+  }
+
+  const deviceRow = await database
+    .select({ userId: devicesTable.userId, revokedAt: devicesTable.revokedAt })
+    .from(devicesTable)
+    .where(eq(devicesTable.id, deviceId))
+    .limit(1)
+    .then((rows) => rows[0])
+
+  if (deviceRow) {
+    if (deviceRow.userId !== userId) {
+      return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+    }
+    if (deviceRow.revokedAt != null) {
+      return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+    }
+  }
+
+  return { ok: true }
+}
 
 /**
  * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, device upsert.
@@ -73,26 +112,12 @@ const issuePowerSyncToken = async (
   settings: Settings,
   database: typeof DbType,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const deviceId = request.headers.get('x-device-id')?.trim()
-  if (!deviceId) {
-    return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+  const validation = await validateDeviceNotRevoked(userId, request, database)
+  if (!validation.ok) {
+    return validation
   }
 
-  const deviceRow = await database
-    .select({ userId: devicesTable.userId, revokedAt: devicesTable.revokedAt })
-    .from(devicesTable)
-    .where(eq(devicesTable.id, deviceId))
-    .limit(1)
-    .then((rows) => rows[0])
-  if (deviceRow) {
-    if (deviceRow.userId !== userId) {
-      return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
-    }
-    if (deviceRow.revokedAt != null) {
-      return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
-    }
-  }
-
+  const deviceId = request.headers.get('x-device-id')!.trim()
   const rawDeviceName = request.headers.get('x-device-name')?.trim()
   const deviceName =
     rawDeviceName && rawDeviceName.length > 0 && rawDeviceName.length <= 100 ? rawDeviceName : 'Unknown device'
@@ -289,12 +314,19 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     })
     .put(
       '/upload',
-      async ({ body, set, user }) => {
+      async ({ body, request, set, user }) => {
         // Requires authenticated user; applies batched CRUD from PowerSync.
         if (!user) {
           set.status = 401
           return { error: 'Unauthorized' }
         }
+
+        const validation = await validateDeviceNotRevoked(user.id, request, database)
+        if (!validation.ok) {
+          set.status = validation.status
+          return validation.body
+        }
+
         const operations = body.operations as PowerSyncOperation[]
 
         if (!Array.isArray(operations)) {

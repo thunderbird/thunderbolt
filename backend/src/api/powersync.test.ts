@@ -54,6 +54,12 @@ describe('PowerSync API', () => {
     await cleanup()
   })
 
+  const uploadHeaders = (bearer: string, deviceId = 'test-device-id') => ({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${bearer}`,
+    'X-Device-ID': deviceId,
+  })
+
   describe('GET /powersync/token', () => {
     it('returns 401 when no session and no Bearer token', async () => {
       const response = await app.handle(new Request('http://localhost/powersync/token'))
@@ -525,6 +531,90 @@ describe('PowerSync API', () => {
       expect(data).toEqual({ error: 'Unauthorized' })
     })
 
+    it('returns 400 when X-Device-ID is missing', async () => {
+      const userId = 'user-upload-no-device'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload User',
+        email: 'upload-no-device@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-no-device',
+        expiresAt,
+        token: 'bearer-upload-no-device',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-upload-no-device',
+          },
+          body: JSON.stringify({ operations: [] }),
+        }),
+      )
+      expect(response.status).toBe(400)
+      const data = (await response.json()) as { code: string }
+      expect(data.code).toBe('DEVICE_ID_REQUIRED')
+    })
+
+    it('returns 403 when device is revoked', async () => {
+      const userId = 'user-upload-revoked'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Upload Revoked User',
+        email: 'upload-revoked@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-upload-revoked',
+        expiresAt,
+        token: 'bearer-upload-revoked',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(devicesTable).values({
+        id: 'revoked-upload-device',
+        userId,
+        name: 'Revoked Device',
+        lastSeen: now,
+        createdAt: now,
+        revokedAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: uploadHeaders('bearer-upload-revoked', 'revoked-upload-device'),
+          body: JSON.stringify({
+            operations: [{ op: 'PUT' as const, type: 'settings', id: 'key', data: { value: 'x' } }],
+          }),
+        }),
+      )
+      expect(response.status).toBe(403)
+      const data = (await response.json()) as { code: string }
+      expect(data.code).toBe('DEVICE_DISCONNECTED')
+    })
+
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
       const userId = 'user-upload-validation'
       const now = new Date()
@@ -551,10 +641,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-validation',
-          },
+          headers: uploadHeaders('bearer-upload-validation'),
           body: JSON.stringify({ operations: 'not-an-array' }),
         }),
       )
@@ -587,10 +674,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-put',
-          },
+          headers: uploadHeaders('bearer-upload-put'),
           body: JSON.stringify({
             operations: [
               {
@@ -638,10 +722,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-put-owns',
-          },
+          headers: uploadHeaders('bearer-put-owns'),
           body: JSON.stringify({
             operations: [
               {
@@ -687,10 +768,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-b-same',
-          },
+          headers: uploadHeaders('bearer-b-same'),
           body: JSON.stringify({
             operations: [
               {
@@ -747,10 +825,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-patch',
-          },
+          headers: uploadHeaders('bearer-upload-patch'),
           body: JSON.stringify({
             operations: [
               {
@@ -796,10 +871,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-patch-nonexistent',
-          },
+          headers: uploadHeaders('bearer-patch-nonexistent'),
           body: JSON.stringify({
             operations: [
               {
@@ -868,10 +940,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-patch-attacker',
-          },
+          headers: uploadHeaders('bearer-patch-attacker'),
           body: JSON.stringify({
             operations: [
               {
@@ -924,10 +993,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-patch-owns',
-          },
+          headers: uploadHeaders('bearer-patch-owns'),
           body: JSON.stringify({
             operations: [
               {
@@ -981,10 +1047,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-patch-deleted-at',
-          },
+          headers: uploadHeaders('bearer-patch-deleted-at'),
           body: JSON.stringify({
             operations: [
               {
@@ -1039,10 +1102,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-delete',
-          },
+          headers: uploadHeaders('bearer-upload-delete'),
           body: JSON.stringify({
             operations: [{ op: 'DELETE' as const, type: 'settings', id: 'to_delete' }],
           }),
@@ -1080,10 +1140,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-delete-nonexistent',
-          },
+          headers: uploadHeaders('bearer-delete-nonexistent'),
           body: JSON.stringify({
             operations: [{ op: 'DELETE' as const, type: 'settings', id: 'nonexistent_to_delete' }],
           }),
@@ -1145,10 +1202,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-delete-attacker',
-          },
+          headers: uploadHeaders('bearer-delete-attacker'),
           body: JSON.stringify({
             operations: [{ op: 'DELETE' as const, type: 'settings', id: 'owner_only_to_delete' }],
           }),
@@ -1189,10 +1243,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-safe',
-          },
+          headers: uploadHeaders('bearer-upload-safe'),
           body: JSON.stringify({
             operations: [
               {
@@ -1249,7 +1300,7 @@ describe('PowerSync API', () => {
       const responseA = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-multi-a' },
+          headers: uploadHeaders('bearer-multi-a'),
           body: JSON.stringify({
             operations: [{ op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'dark' } }],
           }),
@@ -1260,7 +1311,7 @@ describe('PowerSync API', () => {
       const responseB = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-multi-b' },
+          headers: uploadHeaders('bearer-multi-b'),
           body: JSON.stringify({
             operations: [{ op: 'PUT' as const, type: 'settings', id: 'ui-theme', data: { value: 'light' } }],
           }),
@@ -1322,7 +1373,7 @@ describe('PowerSync API', () => {
       await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-a' },
+          headers: uploadHeaders('bearer-isolated-a'),
           body: JSON.stringify({
             operations: [
               { op: 'PUT' as const, type: 'settings', id: 'preferred_name', data: { value: 'Alice' } },
@@ -1335,7 +1386,7 @@ describe('PowerSync API', () => {
       await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-b' },
+          headers: uploadHeaders('bearer-isolated-b'),
           body: JSON.stringify({
             operations: [
               { op: 'PUT' as const, type: 'settings', id: 'preferred_name', data: { value: 'Bob' } },
@@ -1348,7 +1399,7 @@ describe('PowerSync API', () => {
       await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-a' },
+          headers: uploadHeaders('bearer-isolated-a'),
           body: JSON.stringify({
             operations: [
               { op: 'PATCH' as const, type: 'settings', id: 'preferred_name', data: { value: 'Alice Smith' } },
@@ -1360,7 +1411,7 @@ describe('PowerSync API', () => {
       await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bearer-isolated-b' },
+          headers: uploadHeaders('bearer-isolated-b'),
           body: JSON.stringify({
             operations: [{ op: 'PATCH' as const, type: 'settings', id: 'ui-theme', data: { value: 'system' } }],
           }),
@@ -1404,10 +1455,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-fail',
-          },
+          headers: uploadHeaders('bearer-upload-fail'),
           body: JSON.stringify({
             operations: [
               {
@@ -1455,10 +1503,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-empty',
-          },
+          headers: uploadHeaders('bearer-upload-empty'),
           body: JSON.stringify({ operations: [] }),
         }),
       )

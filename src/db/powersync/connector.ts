@@ -15,6 +15,23 @@ type TokenResponse = {
 type ErrorBody = { code?: string; error?: string }
 
 /**
+ * Checks if the response indicates credentials are invalid (account deleted, device revoked, etc.).
+ * If so, dispatches POWERSYNC_CREDENTIALS_INVALID and returns true.
+ */
+export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
+  const isResetSignal =
+    status === 410 ||
+    (status === 403 && body.code === 'DEVICE_DISCONNECTED') ||
+    (status === 409 && body.code === 'DEVICE_ID_TAKEN') ||
+    (status === 400 && body.code === 'DEVICE_ID_REQUIRED')
+  if (isResetSignal) {
+    window.dispatchEvent(new CustomEvent(POWERSYNC_CREDENTIALS_INVALID))
+    return true
+  }
+  return false
+}
+
+/**
  * Build headers with Authorization Bearer token and device id/name if available.
  */
 const buildHeaders = (additionalHeaders?: Record<string, string>): Record<string, string> => {
@@ -63,13 +80,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         } catch {
           // ignore
         }
-        const isResetSignal =
-          status === 410 ||
-          (status === 403 && body.code === 'DEVICE_DISCONNECTED') ||
-          (status === 409 && body.code === 'DEVICE_ID_TAKEN')
-        if (isResetSignal) {
-          window.dispatchEvent(new CustomEvent(POWERSYNC_CREDENTIALS_INVALID))
-        }
+        handleCredentialsInvalidIfNeeded(status, body)
         if (status !== 401) {
           console.error('Failed to fetch PowerSync credentials:', status, body)
         }
@@ -111,15 +122,19 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
-      // Send to backend
-      await ky.put(`${this.backendUrl}/powersync/upload`, {
+      const response = await ky.put(`${this.backendUrl}/powersync/upload`, {
         headers: buildHeaders(),
         json: { operations },
+        throwHttpErrors: false,
       })
 
-      // Mark the transaction as complete
-      await transaction.complete()
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as ErrorBody
+        handleCredentialsInvalidIfNeeded(response.status, body)
+        throw new Error(`Upload failed: ${response.status} ${JSON.stringify(body)}`)
+      }
 
+      await transaction.complete()
       console.info('PowerSync upload completed successfully')
     } catch (error) {
       console.error('PowerSync upload failed:', error)

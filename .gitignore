@@ -51,3 +51,4 @@ mise.toml
 src-tauri/gen/apple/vendor/
 src-tauri/gen/apple/.bundle/
 
+.worktrees/

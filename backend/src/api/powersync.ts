@@ -113,7 +113,7 @@ const issuePowerSyncToken = async (
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: { lastSeen: now, name: deviceName },
-      where: eq(devicesTable.userId, userId),
+      setWhere: eq(devicesTable.userId, userId),
     })
 
   return { ok: true, token, expiresAt, powerSyncUrl: settings.powersyncUrl }

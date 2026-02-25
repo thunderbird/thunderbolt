@@ -205,10 +205,10 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
 export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: typeof DbType): Elysia => {
   if (!settings.powersyncJwtSecret) {
     console.warn('PowerSync is not configured, skipping PowerSync routes')
-    return new Elysia({ prefix: '/powersync' })
+    return new Elysia()
   }
 
-  return new Elysia({ prefix: '/powersync' })
+  return new Elysia()
     .use(
       jwt({
         name: 'powersyncJwt',
@@ -222,7 +222,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       const session = await auth.api.getSession({ headers: request.headers })
       return { user: session?.user ?? null }
     })
-    .get('/token', async ({ powersyncJwt, request, set, user }) => {
+    .get('/powersync/token', async ({ powersyncJwt, request, set, user }) => {
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
         set.status = 503
         return { error: 'PowerSync is not configured' }
@@ -278,7 +278,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       return result
     })
     .put(
-      '/upload',
+      '/powersync/upload',
       async ({ body, set, user }) => {
         // Requires authenticated user; applies batched CRUD from PowerSync.
         if (!user) {
@@ -294,12 +294,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
         // Process operations sequentially to maintain order
         for (const op of operations) {
-          try {
-            await applyOperation(op, user.id, database)
-          } catch (_) {
-            // Continue processing other operations
-            // PowerSync recommends returning 2xx even for validation errors
-          }
+          await applyOperation(op, user.id, database)
         }
 
         return { success: true }

@@ -71,7 +71,8 @@ export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
 
     if (dialogOpen) {
       webview.hide().catch((error) => console.error('Failed to hide webview:', error))
-    } else {
+    } else if (!shouldClosePreviewRef.current) {
+      // Skip show when preview is about to close (second effect will call onClose); avoids flicker before unmount
       webview.show().catch((error) => console.error('Failed to show webview:', error))
     }
   }, [dialogOpen, webview])

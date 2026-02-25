@@ -70,16 +70,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
       setDialogOpen(false)
     } catch (error) {
       console.error('Failed to open URL:', error)
-      if (isTauri()) {
-        setOpenError(OPEN_FAILED_MESSAGE)
-      } else {
-        const fallback = window.open(urlToOpen, '_blank', 'noopener,noreferrer')
-        if (fallback === null) {
-          setOpenError(OPEN_FAILED_MESSAGE)
-        } else {
-          setDialogOpen(false)
-        }
-      }
+      setOpenError(OPEN_FAILED_MESSAGE)
     } finally {
       setIsOpening(false)
     }

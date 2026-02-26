@@ -134,8 +134,8 @@ describe('SourceCard', () => {
       const link = screen.getByRole('listitem')
       fireEvent.click(link)
 
-      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
-      fireEvent.click(cancelButton)
+      const closeButton = screen.getByRole('button', { name: 'Close' })
+      fireEvent.click(closeButton)
 
       expect(mockWindowOpen).not.toHaveBeenCalled()
 

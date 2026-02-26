@@ -8,7 +8,7 @@ import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interfac
 import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { getPlatform, isSafariWeb } from '@/lib/platform'
+import { getPlatform, getWebBrowser } from '@/lib/platform'
 
 /** LocalStorage key for sync enabled flag */
 const syncEnabledKey = 'powersync_sync_enabled'
@@ -72,7 +72,7 @@ const getPowerSyncOptions = (path: string) => {
   const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
   const isWeb = getPlatform() === 'web'
-  const isSafari = isSafariWeb()
+  const isSafari = getWebBrowser() === 'safari'
 
   // Non-Safari web (Chrome, Edge, etc.): PowerSync's default setup works well
   // without explicit worker paths or VFS overrides.

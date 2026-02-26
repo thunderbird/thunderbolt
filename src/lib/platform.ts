@@ -51,16 +51,31 @@ export const isMobile = (): boolean => {
   return currentPlatform === 'ios' || currentPlatform === 'android'
 }
 
+type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
+
 /**
- * Detects if the app is running in Safari on the web (not Tauri).
- * Chrome and Edge include "Safari" in their UA for compatibility, so we exclude them.
- * @returns true if running in Safari on web, false otherwise
+ * Returns the browser when running on web (not Tauri).
+ * Chrome and Edge include "Safari" in their UA for compatibility, so we check Edge/Chrome first.
+ * @returns Browser identifier, or 'unknown' when not on web or UA cannot be parsed
  */
-export const isSafariWeb = (): boolean => {
-  if (getPlatform() !== 'web') return false
-  if (typeof navigator === 'undefined') return false
+export const getWebBrowser = (): WebBrowser => {
+  if (getPlatform() !== 'web' || typeof navigator === 'undefined') {
+    return 'unknown'
+  }
+
   const ua = navigator.userAgent
-  return ua.includes('Safari') && !ua.includes('Chrome')
+
+  if (ua.includes('Edg')) {
+    return 'edge'
+  } else if (ua.includes('Chrome')) {
+    return 'chrome'
+  } else if (ua.includes('Firefox')) {
+    return 'firefox'
+  } else if (ua.includes('Safari')) {
+    return 'safari'
+  }
+
+  return 'unknown'
 }
 
 /**

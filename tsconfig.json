@@ -21,12 +21,13 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@/src/*": ["./src/*"]
+      "@/src/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
     },
     /* Types */
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["src"],
+  "include": ["src", "shared"],
   "exclude": ["src/db/bundle-migrations.ts", "src/drizzle/_migrations.ts"],
   "references": [
     {

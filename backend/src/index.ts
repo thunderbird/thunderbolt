@@ -11,6 +11,8 @@ import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
+import { createAccountRoutes } from '@/api/account'
+import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -81,6 +83,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
+      .use(createPowerSyncRoutes(auth, settings, database))
+      .use(createAccountRoutes(auth, database))
   )
 }
 

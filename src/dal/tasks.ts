@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { tasksTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Task } from '../types'
 
 /**
@@ -54,28 +54,28 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
 }
 
 /**
- * Soft deletes a single task by ID (sets deletedAt timestamp)
+ * Soft deletes a single task by ID (sets deletedAt datetime)
  * Scrubs all data for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteTask = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(tasksTable)
-    .set({ ...clearNullableColumns(tasksTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(tasksTable), deletedAt: nowIso() })
     .where(and(eq(tasksTable.id, id), isNull(tasksTable.deletedAt)))
 }
 
 /**
- * Soft deletes multiple tasks by their IDs (sets deletedAt timestamp)
+ * Soft deletes multiple tasks by their IDs (sets deletedAt datetime)
  * Scrubs all data for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteTasks = async (ids: string[]): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(tasksTable)
-    .set({ ...clearNullableColumns(tasksTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(tasksTable), deletedAt: nowIso() })
     .where(and(inArray(tasksTable.id, ids), isNull(tasksTable.deletedAt)))
 }
 

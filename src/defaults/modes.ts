@@ -24,6 +24,7 @@ export const defaultModeChat: Mode = {
   order: 0,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeSearch: Mode = {
@@ -36,6 +37,7 @@ export const defaultModeSearch: Mode = {
   order: 1,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeResearch: Mode = {
@@ -48,6 +50,7 @@ export const defaultModeResearch: Mode = {
   order: 2,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 /**

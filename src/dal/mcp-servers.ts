@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { mcpServersTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
 
 /**
@@ -26,15 +26,15 @@ export const getHttpMcpServers = async (): Promise<McpServer[]> => {
 }
 
 /**
- * Soft deletes an MCP server by ID (sets deletedAt timestamp)
+ * Soft deletes an MCP server by ID (sets deletedAt datetime)
  * Scrubs all non-enum data for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion timestamps
+ * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteMcpServer = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db
     .update(mcpServersTable)
-    .set({ ...clearNullableColumns(mcpServersTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
     .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
 }
 

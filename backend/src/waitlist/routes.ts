@@ -1,5 +1,4 @@
 import type { Auth } from '@/auth/auth'
-import { clearWaitlistApproved, markWaitlistApproved } from '@/auth/utils'
 import type { db } from '@/db/client'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
@@ -37,19 +36,9 @@ const isAutoApprovedDomain = (email: string): boolean => {
   return domain ? autoApprovedDomains.includes(domain) : false
 }
 
-/**
- * Trigger Better Auth's OTP flow for approved users.
- * Marks the email first so the callback uses the 'waitlist-approved' template.
- * Clears the flag if OTP send fails to prevent incorrect template on future sends.
- */
+/** Trigger Better Auth's OTP flow for approved users. */
 const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<void> => {
-  markWaitlistApproved(email)
-  try {
-    await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
-  } catch (error) {
-    clearWaitlistApproved(email)
-    throw error
-  }
+  await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
 }
 
 type WaitlistRoutesOptions = {

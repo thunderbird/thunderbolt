@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
+import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
 import { serializeValue } from '../lib/serialization'
@@ -224,10 +225,15 @@ export const hasSetting = async (key: string): Promise<boolean> => {
 /**
  * Create a setting only if it doesn't already exist
  * Does nothing if the setting already exists (preserves existing value)
+ * Uses insert-then-catch-conflict to avoid TOCTOU race (PowerSync views don't support ON CONFLICT)
  */
 export const createSetting = async (key: string, value: string | null): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(settingsTable).values({ key, value }).onConflictDoNothing()
+  try {
+    await db.insert(settingsTable).values({ key, value })
+  } catch (err) {
+    if (!isInsertConflictError(err)) throw err
+  }
 }
 
 /**
@@ -285,18 +291,27 @@ export const updateSettings = async (
     return
   }
 
-  // Single batch upsert for value updates
-  const values = entries.map(([key, value]) => prepareSettingRow(key, value, options.recomputeHash ?? false))
+  // Insert-first pattern for PowerSync compatibility.
+  // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
+  // Try insert first, then update on unique constraint violation to avoid race conditions
+  // when multiple components call updateSettings simultaneously.
+  // Wrapped in a transaction so all-or-nothing: if any row fails, none are committed.
+  await db.transaction(async (tx) => {
+    for (const [key, value] of entries) {
+      const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
 
-  await db
-    .insert(settingsTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: settingsTable.key,
-      set: options.recomputeHash
-        ? { value: sql`excluded.value`, defaultHash: sql`excluded.default_hash` }
-        : { value: sql`excluded.value` },
-    })
+      try {
+        await tx.insert(settingsTable).values(row)
+      } catch (err) {
+        if (!isInsertConflictError(err)) throw err
+        const updateData = options.recomputeHash
+          ? { value: row.value, defaultHash: row.defaultHash }
+          : { value: row.value }
+
+        await tx.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
+      }
+    }
+  })
 }
 
 /**

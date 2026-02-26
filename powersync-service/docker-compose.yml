@@ -1,0 +1,59 @@
+services:
+  powersync:
+    restart: unless-stopped
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    image: journeyapps/powersync-service:latest
+    command: ["start", "-r", "unified"]
+    volumes:
+      - ./config/config.yaml:/config/config.yaml
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/config.yaml
+    ports:
+      - 8080:8080
+
+  postgres:
+    image: postgres:18-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGPORT=5432
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    command: ["postgres", "-c", "wal_level=logical"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7.0
+    command: --replSet rs0 --bind_ip_all --quiet
+    restart: unless-stopped
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_storage:/data/db
+
+  mongo-rs-init:
+    image: mongo:7.0
+    depends_on:
+      - mongo
+    restart: on-failure
+    entrypoint:
+      - bash
+      - -c
+      - 'mongosh --host mongo:27017 --eval ''try{rs.status().ok && quit(0)} catch {} rs.initiate({_id: "rs0", version: 1, members: [{ _id: 0, host : "mongo:27017" }]})'''
+
+volumes:
+  mongo_storage:
+  pg_data:

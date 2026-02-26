@@ -1,4 +1,26 @@
+import { mock } from 'bun:test'
+import * as authUtils from '@/auth/utils'
+import * as waitlistUtils from '@/waitlist/utils'
+
+const mockSendSignInEmail = mock(() => Promise.resolve())
+const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
+const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
+
+mock.module('@/auth/utils', () => ({
+  ...authUtils,
+  sendSignInEmail: mockSendSignInEmail,
+}))
+
+mock.module('@/waitlist/utils', () => ({
+  ...waitlistUtils,
+  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
+  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
+  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
+}))
+
 import { user } from '@/db/auth-schema'
+import { waitlist } from '@/db/schema'
+import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
 import { createTestDb } from '@/test-utils/db'
 import { betterAuth } from 'better-auth'
@@ -87,5 +109,78 @@ describe('Auth - Email Normalization', () => {
       expect(users).toHaveLength(1)
       expect(users[0].email).toBe('already.lowercase@example.com')
     })
+  })
+})
+
+describe('Auth - user.isNew in sign-in response', () => {
+  let auth: ReturnType<typeof createAuth>
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    mockSendSignInEmail.mockClear()
+
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    auth = createAuth(db)
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  it('should return user.isNew: true when user signs in for the first time', async () => {
+    await db.insert(waitlist).values({
+      id: crypto.randomUUID(),
+      email: 'newuser@example.com',
+      status: 'approved',
+    })
+
+    await auth.api.sendVerificationOTP({
+      body: { email: 'newuser@example.com', type: 'sign-in' },
+    })
+
+    expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+    const callArgs = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>).at(0)?.[0]
+    expect(callArgs?.otp).toBeDefined()
+    const otp = callArgs!.otp
+
+    const result = (await auth.api.signInEmailOTP({
+      body: { email: 'newuser@example.com', otp },
+    })) as unknown as { session: unknown; user: { isNew?: boolean } }
+
+    expect(result.user?.isNew).toBe(true)
+    expect(result.session).toBeDefined()
+    expect(result.user).toBeDefined()
+  })
+
+  it('should return user.isNew: false when existing user signs in again', async () => {
+    const existingUserId = crypto.randomUUID()
+
+    await db.insert(user).values({
+      id: existingUserId,
+      name: 'Existing User',
+      email: 'existing-isnewuser@example.com',
+      emailVerified: true,
+      isNew: false,
+    })
+
+    await auth.api.sendVerificationOTP({
+      body: { email: 'existing-isnewuser@example.com', type: 'sign-in' },
+    })
+
+    expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+    const callArgs = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>).at(0)?.[0]
+    expect(callArgs?.otp).toBeDefined()
+    const otp = callArgs!.otp
+
+    const result = (await auth.api.signInEmailOTP({
+      body: { email: 'existing-isnewuser@example.com', otp },
+    })) as unknown as { session: unknown; user: { isNew?: boolean } }
+
+    expect(result.user?.isNew).toBe(false)
+    expect(result.session).toBeDefined()
+    expect(result.user).toBeDefined()
   })
 })

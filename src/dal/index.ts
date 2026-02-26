@@ -39,7 +39,13 @@ export {
 } from './chat-threads'
 
 // Chat Messages
-export { getChatMessages, getLastMessage, saveMessagesWithContextUpdate, updateMessage } from './chat-messages'
+export {
+  deleteChatMessageAndDescendants,
+  getChatMessages,
+  getLastMessage,
+  saveMessagesWithContextUpdate,
+  updateMessage,
+} from './chat-messages'
 
 // Tasks
 export {
@@ -86,3 +92,6 @@ export {
   resetModelProfileToDefault,
   upsertModelProfile,
 } from './model-profiles'
+
+// Devices
+export { getAllDevices, getDevice, type Device } from './devices'

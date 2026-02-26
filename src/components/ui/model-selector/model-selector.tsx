@@ -85,7 +85,7 @@ export const ModelSelector = ({
     const content = (
       <div
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2 mt-1.5 rounded-lg transition-colors text-left cursor-pointer',
+          'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
           'hover:bg-accent/50',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',

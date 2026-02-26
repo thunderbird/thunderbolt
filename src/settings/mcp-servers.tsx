@@ -108,7 +108,7 @@ export default function McpServersPage() {
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
       await db
         .update(mcpServersTable)
-        .set({ enabled: enabled ? 1 : 0, updatedAt: Math.floor(Date.now() / 1000) })
+        .set({ enabled: enabled ? 1 : 0, updatedAt: new Date().toISOString() })
         .where(eq(mcpServersTable.id, id))
     },
     onSuccess: () => {

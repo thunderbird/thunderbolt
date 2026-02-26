@@ -51,6 +51,10 @@ describe('Link Preview Routes', () => {
       corsAllowHeaders: 'Content-Type,Authorization',
       corsExposeHeaders: '',
       waitlistEnabled: false,
+      powersyncUrl: '',
+      powersyncJwtKid: '',
+      powersyncJwtSecret: '',
+      powersyncTokenExpirySeconds: 3600,
     })
 
     // Create mock fetch

@@ -52,3 +52,6 @@ src-tauri/gen/apple/vendor/
 src-tauri/gen/apple/.bundle/
 
 .worktrees/
+
+# Powersync
+public/@powersync/**

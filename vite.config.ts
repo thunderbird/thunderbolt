@@ -2,11 +2,11 @@
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
-import { bundleMigrations } from './src/db/bundle-migrations'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -29,12 +29,9 @@ export default defineConfig({
   },
   plugins: [
     {
-      name: 'bundle-migrations',
-      async buildStart() {
-        bundleMigrations({
-          migrationsDir: path.resolve(__dirname, 'src/drizzle'),
-          outputFile: path.resolve(__dirname, 'src/drizzle/_migrations.ts'),
-        })
+      name: 'copy-powersync-assets',
+      buildStart() {
+        execSync('powersync-web copy-assets --output public', { stdio: 'inherit' })
       },
     },
     tailwindcss(),
@@ -72,6 +69,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@shared': path.resolve(__dirname, './shared'),
     },
     conditions: ['browser'],
   },
@@ -97,7 +95,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite'],
+    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
   worker: {
     format: 'es',

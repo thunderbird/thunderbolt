@@ -1,7 +1,7 @@
 import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createTrigger,
@@ -249,8 +249,11 @@ describe('Triggers DAL', () => {
       const triggersAfter = await getAllTriggersForPrompt(promptId)
       expect(triggersAfter).toHaveLength(0)
 
-      // But should still exist in database with deletedAt set
-      const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
+      // Should still exist in database with deletedAt set (select by id; promptId is cleared by soft delete)
+      const rawTriggers = await db
+        .select()
+        .from(triggersTable)
+        .where(inArray(triggersTable.id, [triggerId1, triggerId2]))
       expect(rawTriggers).toHaveLength(2)
       expect(rawTriggers.every((t) => t.deletedAt !== null)).toBe(true)
     })
@@ -380,13 +383,13 @@ describe('Triggers DAL', () => {
       expect(enabledAfter).toHaveLength(0)
     })
 
-    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+    it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId1 = uuidv7()
       const triggerId2 = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(modelsTable).values({
         id: modelId,
@@ -495,14 +498,14 @@ describe('Triggers DAL', () => {
       await expect(deleteTriggersForPrompts(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
     })
 
-    it('should preserve original deletedAt timestamps for already-deleted triggers', async () => {
+    it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
       const triggerId1 = uuidv7()
       const triggerId2 = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(modelsTable).values({
         id: modelId,

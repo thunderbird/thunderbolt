@@ -115,3 +115,39 @@ export const ShortURL: Story = {
     url: 'https://mozilla.org',
   },
 }
+
+/**
+ * Dialog in loading state while opening the URL
+ */
+export const Opening: Story = {
+  args: {
+    open: true,
+    onOpenChange: fn(),
+    url: 'https://example.com/slow-redirect',
+    isOpening: true,
+  },
+}
+
+/**
+ * Dialog showing an error after failing to open the URL
+ */
+export const WithError: Story = {
+  args: {
+    open: true,
+    onOpenChange: fn(),
+    url: 'https://example.com',
+    openError: 'Could not open link. Please try again or copy the URL.',
+  },
+}
+
+/**
+ * Desktop variant with "Open in Thunderbolt" sidebar button
+ */
+export const WithOpenInApp: Story = {
+  args: {
+    open: true,
+    onOpenChange: fn(),
+    url: 'https://example.com/article',
+    onOpenInApp: fn(),
+  },
+}

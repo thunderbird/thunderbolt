@@ -35,6 +35,10 @@ export const determineNavigationTarget = (
     return { path: oauthReturnContext, oauth }
   }
 
+  if (oauthReturnContext === 'onboarding') {
+    return { path: '/chats/new', oauth }
+  }
+
   if (oauthReturnContext === 'integrations') {
     return { path: '/settings/integrations', oauth }
   }

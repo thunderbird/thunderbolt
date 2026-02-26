@@ -54,7 +54,7 @@ export default function OAuthCallback() {
             },
           })
         } else if (returnContext === 'onboarding') {
-          navigate('/', {
+          navigate('/chats/new', {
             state: {
               oauth: { code, state, error: errorDescription || error },
             },

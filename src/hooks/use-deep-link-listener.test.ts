@@ -189,6 +189,15 @@ describe('determineNavigationTarget', () => {
     })
   })
 
+  it('navigates to /chats/new when returnContext is "onboarding"', () => {
+    const result = determineNavigationTarget('onboarding', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/chats/new',
+      oauth: mockOAuthData,
+    })
+  })
+
   it('navigates to integrations page when returnContext is "integrations"', () => {
     const result = determineNavigationTarget('integrations', mockOAuthData)
 

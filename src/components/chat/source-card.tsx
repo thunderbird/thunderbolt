@@ -47,6 +47,8 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   return (
     <a
       href={safeUrl}
+      target="_blank"
+      rel="noopener noreferrer"
       onClick={handleClick}
       className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
       role="listitem"

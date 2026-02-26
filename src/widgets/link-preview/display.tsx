@@ -77,7 +77,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
 
   return (
     <div className="my-4">
-      <a href={isSafeUrl(url) ? url : '#'} onClick={handleClick}>
+      <a href={isSafeUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
         <LinkPreviewCard
           description={description}
           image={image}

@@ -225,7 +225,7 @@ const SafeLink = memo((props: React.ComponentProps<'a'>) => {
   }
 
   return (
-    <a {...restProps} href={safeHref ?? '#'} onClick={handleClick}>
+    <a {...restProps} href={safeHref ?? '#'} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
       {children}
     </a>
   )

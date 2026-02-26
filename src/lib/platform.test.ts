@@ -8,59 +8,55 @@ mock.module('@tauri-apps/plugin-os', () => ({
 import { getWebBrowser, isPrPreview, prPreviewHostRegex } from './platform'
 
 describe('getWebBrowser', () => {
+  let originalNavigator: typeof globalThis.navigator
+
   beforeEach(() => {
     delete (window as { isTauri?: boolean }).isTauri
-    Object.defineProperty(navigator, 'userAgent', {
+    originalNavigator = globalThis.navigator
+    // Replace navigator with a plain object — Happy-DOM's navigator.userAgent
+    // may be non-configurable in CI, causing Object.defineProperty to fail.
+    Object.defineProperty(globalThis, 'navigator', {
       configurable: true,
-      value:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      writable: true,
+      value: { userAgent: '' },
     })
   })
 
   afterEach(() => {
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      writable: true,
+      value: originalNavigator,
+    })
     mockPlatform.mockRestore?.()
   })
 
   it('returns safari for Safari user agent', () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-    })
+    ;(globalThis.navigator as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
     expect(getWebBrowser()).toBe('safari')
   })
 
   it('returns chrome for Chrome user agent', () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    })
+    ;(globalThis.navigator as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     expect(getWebBrowser()).toBe('chrome')
   })
 
   it('returns edge for Edge user agent (Chrome-based)', () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
-    })
+    ;(globalThis.navigator as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
     expect(getWebBrowser()).toBe('edge')
   })
 
   it('returns firefox for Firefox user agent', () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-    })
+    ;(globalThis.navigator as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0'
     expect(getWebBrowser()).toBe('firefox')
   })
 
   it('returns unknown for unrecognized user agent', () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value: 'SomeBot/1.0',
-    })
+    ;(globalThis.navigator as { userAgent: string }).userAgent = 'SomeBot/1.0'
     expect(getWebBrowser()).toBe('unknown')
   })
 

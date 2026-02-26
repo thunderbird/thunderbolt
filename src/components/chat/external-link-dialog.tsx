@@ -42,21 +42,14 @@ export const ExternalLinkDialog = memo(
       }
     }, [onConfirm, onOpenError])
 
-    const handleOpenChange = useCallback(
-      (next: boolean) => {
-        onOpenChange(next)
-      },
-      [onOpenChange],
-    )
-
     return (
-      <AlertDialog open={open} onOpenChange={handleOpenChange}>
+      <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Open external link</AlertDialogTitle>
             <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
             <button
-              onClick={() => handleOpenChange(false)}
+              onClick={() => onOpenChange(false)}
               className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
             >
               <X className="size-4" />

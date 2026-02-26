@@ -30,6 +30,7 @@ import { AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { UpdateNotification } from './components/update-notification'
+import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
@@ -149,7 +150,9 @@ export const App = () => {
                         initialSideviewType={initData.sideviewType}
                         initialSideviewId={initData.sideviewId}
                       >
-                        <AppContent initData={initData} />
+                        <ExternalLinkDialogProvider>
+                          <AppContent initData={initData} />
+                        </ExternalLinkDialogProvider>
                       </ContentViewProvider>
                     </SidebarProvider>
                   </MCPProvider>

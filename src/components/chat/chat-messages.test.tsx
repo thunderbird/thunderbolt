@@ -13,13 +13,16 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useChatStore } from '@/chats/chat-store'
 import { ChatMessages } from './chat-messages'
+import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { ThunderboltUIMessage } from '@/types'
 
 const createTestWrapper = () => {
   const QueryWrapper = createQueryTestWrapper()
   return ({ children }: { children: React.ReactNode }) => (
     <QueryWrapper>
-      <ContentViewProvider>{children}</ContentViewProvider>
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </ContentViewProvider>
     </QueryWrapper>
   )
 }

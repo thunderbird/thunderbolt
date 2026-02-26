@@ -1,10 +1,20 @@
 import '@/testing-library'
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
+import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationWidgetComponent } from './widget'
 
-const renderWithProviders = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
+const renderWithProviders = (ui: React.ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 describe('CitationWidgetComponent', () => {
   describe('rendering', () => {

@@ -19,6 +19,8 @@ const mockWebview = {
   setPosition: mock(() => Promise.resolve()),
   setSize: mock(() => Promise.resolve()),
   close: mock(() => Promise.resolve()),
+  hide: mock(() => Promise.resolve()),
+  show: mock(() => Promise.resolve()),
   once: mock(() => {}),
 }
 
@@ -53,6 +55,8 @@ describe('useSidebarWebview', () => {
     mockWebview.setPosition.mockClear()
     mockWebview.setSize.mockClear()
     mockWebview.close.mockClear()
+    mockWebview.hide.mockClear()
+    mockWebview.show.mockClear()
     mockWebview.once.mockClear()
     mockWindow.onResized.mockClear()
     mockWindow.onMoved.mockClear()
@@ -479,6 +483,86 @@ describe('useSidebarWebview', () => {
       expect(mockWebview.setSize).not.toHaveBeenCalled()
       expect(result.current.webview).toBeNull()
       expect(result.current.isInitialized).toBe(false)
+    })
+  })
+
+  describe('hidden parameter', () => {
+    const createContainer = () => {
+      const container = document.createElement('div')
+      container.getBoundingClientRect = mock(() => ({
+        top: 100,
+        left: 50,
+        width: 400,
+        height: 600,
+        bottom: 700,
+        right: 450,
+        x: 50,
+        y: 100,
+        toJSON: () => {},
+      }))
+      return { current: container } as RefObject<HTMLDivElement>
+    }
+
+    it('should call hide() when hidden changes to true', async () => {
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const containerRef = createContainer()
+      let hidden = false
+
+      const { result, rerender } = renderHook(() => useSidebarWebview(config, containerRef, hidden))
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isInitialized).toBe(true)
+      mockWebview.hide.mockClear()
+      mockWebview.show.mockClear()
+
+      hidden = true
+      rerender()
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockWebview.hide).toHaveBeenCalledTimes(1)
+      expect(mockWebview.show).not.toHaveBeenCalled()
+    })
+
+    it('should call show() when hidden changes back to false', async () => {
+      const config: SidebarWebviewConfig = { url: 'https://example.com' }
+      const containerRef = createContainer()
+      let hidden = true
+
+      const { result, rerender } = renderHook(() => useSidebarWebview(config, containerRef, hidden))
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.isInitialized).toBe(true)
+      mockWebview.hide.mockClear()
+      mockWebview.show.mockClear()
+
+      hidden = false
+      rerender()
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockWebview.show).toHaveBeenCalledTimes(1)
+      expect(mockWebview.hide).not.toHaveBeenCalled()
+    })
+
+    it('should not crash when hidden is true but webview is not initialized', () => {
+      const containerRef = { current: null } as unknown as RefObject<HTMLDivElement>
+
+      expect(() => {
+        renderHook(() => useSidebarWebview(null, containerRef, true))
+      }).not.toThrow()
+
+      expect(mockWebview.hide).not.toHaveBeenCalled()
     })
   })
 })

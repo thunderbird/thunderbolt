@@ -19,6 +19,7 @@ export type SidebarWebviewConfig = {
 export const useSidebarWebview = (
   config: SidebarWebviewConfig | null,
   containerRef: React.RefObject<HTMLElement | null>,
+  hidden = false,
 ) => {
   const [isInitialized, setIsInitialized] = useState(false)
   const webviewRef = useRef<Webview | null>(null)
@@ -181,6 +182,18 @@ export const useSidebarWebview = (
       cleanupWebview()
     }
   }, [config?.url]) // Re-initialize if URL changes
+
+  // Hide/show the native webview when overlaid by DOM elements (e.g. dialogs)
+  useEffect(() => {
+    const webview = webviewRef.current
+    if (!webview) return
+
+    if (hidden) {
+      webview.hide().catch(console.error)
+    } else {
+      webview.show().catch(console.error)
+    }
+  }, [hidden])
 
   const closeWebview = async () => {
     if (webviewRef.current) {

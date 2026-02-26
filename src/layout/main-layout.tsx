@@ -23,7 +23,7 @@ import { Outlet } from 'react-router'
 
 export default function Page() {
   const ref = useRef<ImperativePanelHandle>(null)
-  const { state, close } = useContentView()
+  const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const { contentViewWidth } = useSettings({
     content_view_width: Number,
@@ -141,7 +141,9 @@ export default function Page() {
                 transition={{ duration: 0.2, delay: 0.15 }}
                 className="h-full"
               >
-                {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} />}
+                {state.type === 'preview' && (
+                  <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
+                )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
                 {state.type === 'sideview' && (
                   <>

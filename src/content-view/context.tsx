@@ -24,6 +24,8 @@ type ContentViewContextType = {
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
   isOpen: boolean
+  previewHidden: boolean
+  setPreviewHidden: (hidden: boolean) => void
 }
 
 const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
@@ -46,6 +48,7 @@ type ContentViewProviderProps = {
  */
 export const ContentViewProvider = ({ children, initialSideviewType, initialSideviewId }: ContentViewProviderProps) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
+  const [previewHidden, setPreviewHidden] = useState(false)
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
@@ -130,6 +133,8 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
         showSideview,
         close,
         isOpen: state.type !== null,
+        previewHidden,
+        setPreviewHidden,
       }}
     >
       {children}
@@ -171,6 +176,11 @@ export const usePreview = () => {
 /** Returns showPreview when inside ContentViewProvider, undefined otherwise. */
 export const useShowPreview = (): ((url: string) => void) | undefined => {
   return useContext(ContentViewContext)?.showPreview
+}
+
+/** Returns setPreviewHidden when inside ContentViewProvider, undefined otherwise. */
+export const useSetPreviewHidden = (): ((hidden: boolean) => void) | undefined => {
+  return useContext(ContentViewContext)?.setPreviewHidden
 }
 
 export const useSideview = () => {

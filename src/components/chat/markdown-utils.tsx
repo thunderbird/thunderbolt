@@ -1,9 +1,9 @@
-import { createContext, Fragment, memo, useCallback, useMemo, useContext, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useCallback, useEffect, useMemo, useContext, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
-import { useShowPreview } from '@/content-view/context'
+import { useSetPreviewHidden, useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { isDesktop } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
@@ -170,7 +170,13 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
 
   const showPreview = useShowPreview()
+  const setPreviewHidden = useSetPreviewHidden()
   const desktop = isDesktop() && !!showPreview
+
+  // Hide the native sidebar webview while the dialog is open (Tauri webviews render above DOM)
+  useEffect(() => {
+    setPreviewHidden?.(dialogOpen)
+  }, [dialogOpen, setPreviewHidden])
 
   const handleOpenInApp = useCallback(() => {
     if (showPreview) dismissWithAction(showPreview)

@@ -10,6 +10,7 @@ import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webv
 type SidebarWebviewProps = {
   config: SidebarWebviewConfig | null
   onClose?: () => void
+  hidden?: boolean
 }
 
 /**
@@ -18,9 +19,9 @@ type SidebarWebviewProps = {
  * The webview will automatically track the container's size and position,
  * updating when the sidebar is resized or moved.
  */
-export const SidebarWebview = ({ config, onClose }: SidebarWebviewProps) => {
+export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps) => {
   const panelRef = useRef<HTMLDivElement>(null)
-  const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef)
+  const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef, hidden)
   const [isCopied, setIsCopied] = useState(false)
 
   const handleClose = async () => {

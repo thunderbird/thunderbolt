@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelProfilesTable } from '../db/tables'
-import { clearNullableColumns } from '../lib/utils'
+import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { ModelProfile, ModelProfileRow } from '../types'
 
 const mapProfile = (row: ModelProfileRow): ModelProfile => row as ModelProfile
@@ -58,7 +58,7 @@ export const deleteModelProfileForModel = async (modelId: string): Promise<void>
   const db = DatabaseSingleton.instance.db
   await db
     .update(modelProfilesTable)
-    .set({ ...clearNullableColumns(modelProfilesTable), deletedAt: Date.now() })
+    .set({ ...clearNullableColumns(modelProfilesTable), deletedAt: nowIso() })
     .where(and(eq(modelProfilesTable.modelId, modelId), isNull(modelProfilesTable.deletedAt)))
 }
 

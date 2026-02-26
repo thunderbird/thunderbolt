@@ -165,10 +165,9 @@ export const triggersTable = sqliteTable(
 export const modelProfilesTable = sqliteTable(
   'model_profiles',
   {
-    modelId: text('model_id')
-      .primaryKey()
-      .notNull()
-      .references(() => modelsTable.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    // PowerSync requires 'id' as the PK column name in the DB.
+    // Drizzle field name is 'modelId' for TypeScript access.
+    modelId: text('id').primaryKey(),
     temperature: real('temperature'),
     maxSteps: integer('max_steps'),
     maxAttempts: integer('max_attempts'),
@@ -189,7 +188,8 @@ export const modelProfilesTable = sqliteTable(
     nudgeSearchRetry: text('nudge_search_retry'),
     providerOptions: text('provider_options', { mode: 'json' }).$type<Record<string, unknown>>(),
     defaultHash: text('default_hash'),
-    deletedAt: integer('deleted_at'),
+    deletedAt: text('deleted_at'),
+    userId: text('user_id'),
   },
   (table) => [
     index('idx_model_profiles_active')

@@ -74,7 +74,7 @@ describe('Model Profiles DAL', () => {
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.5,
-        deletedAt: Date.now(),
+        deletedAt: new Date().toISOString(),
       })
 
       const profile = await getModelProfile(modelId)
@@ -174,7 +174,7 @@ describe('Model Profiles DAL', () => {
     it('should preserve original deletedAt for already-deleted profiles', async () => {
       const db = DatabaseSingleton.instance.db
       const modelId = uuidv7()
-      const originalDeletedAt = Date.now() - 10000
+      const originalDeletedAt = new Date(Date.now() - 10000).toISOString()
 
       await db.insert(modelsTable).values({
         id: modelId,
@@ -220,7 +220,7 @@ describe('Model Profiles DAL', () => {
         modelId: defaultModelGptOss120b.id,
         temperature: 0.99,
         maxSteps: 1,
-        deletedAt: Date.now(),
+        deletedAt: new Date().toISOString(),
       })
 
       // Reset to defaults

@@ -34,4 +34,5 @@ CITATION CHECK: Before finishing your response, count your [N] citations. If you
   nudgeSearchRetry: `Your previous attempt produced no visible text. Output <widget:link-preview url="https://full-url-here" /> for each result you found. The url attribute is required.`,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }

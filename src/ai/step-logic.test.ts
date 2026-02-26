@@ -35,6 +35,7 @@ const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile 
   providerOptions: null,
   defaultHash: null,
   deletedAt: null,
+  userId: null,
   ...overrides,
 })
 

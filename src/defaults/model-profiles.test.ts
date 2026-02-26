@@ -25,6 +25,7 @@ const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile 
   providerOptions: null,
   defaultHash: null,
   deletedAt: null,
+  userId: null,
   ...overrides,
 })
 
@@ -42,7 +43,7 @@ describe('hashModelProfile', () => {
 
   test('changes when deletedAt changes', () => {
     const a = createStubProfile({ deletedAt: null })
-    const b = createStubProfile({ deletedAt: 1234567890 })
+    const b = createStubProfile({ deletedAt: '2024-01-01T00:00:00.000Z' })
     expect(hashModelProfile(a)).not.toBe(hashModelProfile(b))
   })
 

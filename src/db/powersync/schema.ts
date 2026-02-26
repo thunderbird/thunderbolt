@@ -17,6 +17,7 @@ export const drizzleSchema = {
   prompts: tables.promptsTable,
   triggers: tables.triggersTable,
   modes: tables.modesTable,
+  model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
 } satisfies Record<PowerSyncTableName, unknown>
 

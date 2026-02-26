@@ -15,6 +15,7 @@ export const powersyncTableNames = [
   'prompts',
   'triggers',
   'modes',
+  'model_profiles',
   'devices',
 ] as const
 
@@ -37,5 +38,6 @@ export const powersyncTableToQueryKeys: {
   prompts: [['prompts']],
   triggers: [['triggers']],
   modes: [['modes']],
+  model_profiles: [['modelProfiles']],
   devices: [['devices']],
 }

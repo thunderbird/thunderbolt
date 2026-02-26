@@ -41,4 +41,5 @@ Do NOT submit a response with zero citations — this is a hard requirement.`,
   nudgeSearchRetry: `Respond now with <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is required.`,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }

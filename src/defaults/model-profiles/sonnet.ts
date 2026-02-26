@@ -24,4 +24,5 @@ export const defaultModelProfileSonnet45: ModelProfile = {
   nudgeSearchRetry: null,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }

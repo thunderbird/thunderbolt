@@ -1,6 +1,5 @@
 import {
   AlertDialog,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -8,6 +7,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { ExternalLink, PanelRight, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 
 type ExternalLinkDialogProps = {
@@ -55,7 +55,15 @@ export const ExternalLinkDialog = memo(
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Open external link</AlertDialogTitle>
-            <AlertDialogDescription>You're leaving Thunderbolt to visit an external link:</AlertDialogDescription>
+            <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
+            <button
+              onClick={() => handleOpenChange(false)}
+              disabled={isOpening}
+              className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </button>
           </AlertDialogHeader>
 
           <div className="rounded-md border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
@@ -65,13 +73,14 @@ export const ExternalLinkDialog = memo(
           {openError && <p className="text-sm text-destructive">{openError}</p>}
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isOpening}>Cancel</AlertDialogCancel>
             {onOpenInApp && (
               <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
-                Open in Thunderbolt
+                <PanelRight className="size-4" />
+                Open in Sidebar
               </Button>
             )}
             <Button onClick={handleConfirmClick} disabled={isOpening}>
+              {onOpenInApp && <ExternalLink className="size-4" />}
               {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open link'}
             </Button>
           </AlertDialogFooter>

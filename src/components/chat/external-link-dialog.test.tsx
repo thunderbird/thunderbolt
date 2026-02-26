@@ -20,7 +20,6 @@ describe('ExternalLinkDialog', () => {
 
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
       expect(screen.getByText('Open external link')).toBeInTheDocument()
-      expect(screen.getByText("You're leaving Thunderbolt to visit an external link:")).toBeInTheDocument()
     })
 
     it('should not display dialog when open is false', () => {
@@ -35,10 +34,10 @@ describe('ExternalLinkDialog', () => {
       expect(screen.getByText('https://example.com')).toBeInTheDocument()
     })
 
-    it('should display Cancel and Open link buttons', () => {
+    it('should display close button and Open link button', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
     })
 
@@ -55,25 +54,25 @@ describe('ExternalLinkDialog', () => {
       expect(openButton).toBeDisabled()
     })
 
-    it('should disable Cancel button when isOpening', () => {
+    it('should disable close button when isOpening', () => {
       render(<ExternalLinkDialog {...defaultProps} isOpening />)
 
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled()
     })
 
-    it('should render "Open in Thunderbolt" button when onOpenInApp is provided', () => {
+    it('should render "Open in Sidebar" button when onOpenInApp is provided', () => {
       const mockOpenInApp = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenInApp={mockOpenInApp} />)
 
-      expect(screen.getByRole('button', { name: 'Open in Thunderbolt' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open in Sidebar' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open in Browser' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Open link' })).not.toBeInTheDocument()
     })
 
-    it('should not render "Open in Thunderbolt" button when onOpenInApp is not provided', () => {
+    it('should not render "Open in Sidebar" button when onOpenInApp is not provided', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      expect(screen.queryByRole('button', { name: 'Open in Thunderbolt' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
     })
   })
@@ -105,31 +104,29 @@ describe('ExternalLinkDialog', () => {
       expect(mockConfirm).toHaveBeenCalledTimes(1)
     })
 
-    it('should call onOpenInApp when "Open in Thunderbolt" button is clicked', () => {
+    it('should call onOpenInApp when "Open in Sidebar" button is clicked', () => {
       const mockOpenInApp = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenInApp={mockOpenInApp} />)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Open in Thunderbolt' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open in Sidebar' }))
 
       expect(mockOpenInApp).toHaveBeenCalledTimes(1)
     })
 
-    it('should call onOpenChange when Cancel button is clicked', () => {
+    it('should call onOpenChange when close button is clicked', () => {
       const mockChange = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} />)
 
-      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
-      fireEvent.click(cancelButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
       expect(mockChange).toHaveBeenCalledWith(false)
     })
 
-    it('should not call onOpenChange when Cancel is clicked while isOpening', () => {
+    it('should not call onOpenChange when close is clicked while isOpening', () => {
       const mockChange = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} isOpening />)
 
-      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
-      fireEvent.click(cancelButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
       expect(mockChange).not.toHaveBeenCalled()
     })
@@ -169,14 +166,10 @@ describe('ExternalLinkDialog', () => {
       expect(dialog).toBeInTheDocument()
     })
 
-    it('should have proper title and description', () => {
+    it('should have proper title', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      // Title should be associated with the dialog
       expect(screen.getByText('Open external link')).toBeInTheDocument()
-
-      // Description should be present
-      expect(screen.getByText("You're leaving Thunderbolt to visit an external link:")).toBeInTheDocument()
     })
   })
 })

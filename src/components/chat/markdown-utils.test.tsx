@@ -223,7 +223,7 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     expect(dialogs).toHaveLength(1)
   })
 
-  test('works without ContentViewProvider: no Open in Thunderbolt, Open link does not crash', () => {
+  test('works without ContentViewProvider: no Open in Sidebar, Open link does not crash', () => {
     const markdown = '[link](https://example.com)'
     const { container } = render(
       <ExternalLinkDialogProvider>
@@ -239,7 +239,7 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
 
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(screen.getByText('https://example.com')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Open in Thunderbolt' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
 
     const originalOpen = window.open

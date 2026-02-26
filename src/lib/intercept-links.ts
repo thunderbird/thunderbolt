@@ -1,4 +1,5 @@
 import { isTauri } from './platform'
+import { isSafeUrl } from './url-utils'
 
 const handler = async (event: MouseEvent) => {
   if (event.defaultPrevented) return
@@ -9,6 +10,7 @@ const handler = async (event: MouseEvent) => {
   if (url.origin === location.origin || url.protocol === 'app:') {
     return
   }
+  if (!isSafeUrl(anchor.href)) return
 
   event.preventDefault()
 

@@ -5,7 +5,7 @@ import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
-import { CitationContext, citationMarkdownComponents, ExternalLinkDialogProvider } from './markdown-utils'
+import { CitationContext, citationMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
 
@@ -120,26 +120,24 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
   if (hasCitations && hasText) {
     return (
-      <ExternalLinkDialogProvider>
-        <div className="p-4 rounded-md my-2">
-          <CitationPopoverProvider>
-            <CitationContext.Provider value={citations}>
-              <MemoizedMarkdown
-                key={`${messageId}-text`}
-                id={messageId}
-                content={fullText}
-                components={citationMarkdownComponents}
-              />
-            </CitationContext.Provider>
-          </CitationPopoverProvider>
-        </div>
-      </ExternalLinkDialogProvider>
+      <div className="p-4 rounded-md my-2">
+        <CitationPopoverProvider>
+          <CitationContext.Provider value={citations}>
+            <MemoizedMarkdown
+              key={`${messageId}-text`}
+              id={messageId}
+              content={fullText}
+              components={citationMarkdownComponents}
+            />
+          </CitationContext.Provider>
+        </CitationPopoverProvider>
+      </div>
     )
   }
 
   // Default behavior for block-level widgets or no citations
   return (
-    <ExternalLinkDialogProvider>
+    <>
       {deduplicateLinkPreviews(contentParts).map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
@@ -154,7 +152,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
           </div>
         )
       })}
-    </ExternalLinkDialogProvider>
+    </>
   )
 })
 

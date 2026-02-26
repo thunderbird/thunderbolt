@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react'
-import { describe, expect, test } from 'bun:test'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -221,6 +221,33 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
 
     const dialogs = document.body.querySelectorAll('[role="alertdialog"]')
     expect(dialogs).toHaveLength(1)
+  })
+
+  test('works without ContentViewProvider: no Open in Thunderbolt, Open link does not crash', () => {
+    const markdown = '[link](https://example.com)'
+    const { container } = render(
+      <ExternalLinkDialogProvider>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {markdown}
+        </ReactMarkdown>
+      </ExternalLinkDialogProvider>,
+    )
+
+    const link = container.querySelector('a[href]')
+    if (!link) throw new Error('expected link')
+    fireEvent.click(link)
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.getByText('https://example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open in Thunderbolt' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
+
+    const originalOpen = window.open
+    const mockWindowOpen = mock(() => ({}) as Window)
+    window.open = mockWindowOpen as typeof window.open
+    fireEvent.click(screen.getByRole('button', { name: 'Open link' }))
+    expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+    window.open = originalOpen
   })
 })
 

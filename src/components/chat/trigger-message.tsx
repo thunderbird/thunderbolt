@@ -2,7 +2,6 @@ import { cn } from '@/lib/utils'
 import { Zap } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 import TimelineMessage from './timeline-message'
-import { ExternalLinkDialogProvider } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { memo } from 'react'
 
@@ -40,9 +39,7 @@ export const TriggerMessage = memo(
           icon={<Zap className="h-4 w-4 text-muted-foreground" />}
           defaultOpen={false}
         >
-          <ExternalLinkDialogProvider>
-            <MemoizedMarkdown id={chatThreadId} content={prompt} />
-          </ExternalLinkDialogProvider>
+          <MemoizedMarkdown id={chatThreadId} content={prompt} />
         </Expandable>
       ) : (
         <div className="shadow-none w-full max-w-[696px] rounded-lg border border-transparent px-4 py-2">

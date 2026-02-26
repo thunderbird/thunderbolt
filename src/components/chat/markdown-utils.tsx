@@ -172,7 +172,9 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   const showPreview = useShowPreview()
   const desktop = isDesktop() && !!showPreview
 
-  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview!), [dismissWithAction, showPreview])
+  const handleOpenInApp = useCallback(() => {
+    if (showPreview) dismissWithAction(showPreview)
+  }, [dismissWithAction, showPreview])
 
   const handleOpenError = useCallback(
     (err: unknown) => {

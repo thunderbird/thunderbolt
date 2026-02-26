@@ -2,7 +2,7 @@ import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const settingsTable = sqliteTable('settings', {
   // Column is named 'id' in DB for PowerSync compatibility, but accessed as 'key' in TypeScript
@@ -158,6 +158,42 @@ export const triggersTable = sqliteTable(
   (table) => [
     index('idx_triggers_active')
       .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+export const modelProfilesTable = sqliteTable(
+  'model_profiles',
+  {
+    // PowerSync requires 'id' as the PK column name in the DB.
+    // Drizzle field name is 'modelId' for TypeScript access.
+    modelId: text('id').primaryKey(),
+    temperature: real('temperature'),
+    maxSteps: integer('max_steps'),
+    maxAttempts: integer('max_attempts'),
+    nudgeThreshold: integer('nudge_threshold'),
+    useSystemMessageModeDeveloper: integer('use_system_message_mode_developer').default(0),
+    toolsOverride: text('tools_override'),
+    linkPreviewsOverride: text('link_previews_override'),
+    chatModeAddendum: text('chat_mode_addendum'),
+    searchModeAddendum: text('search_mode_addendum'),
+    researchModeAddendum: text('research_mode_addendum'),
+    citationReinforcementEnabled: integer('citation_reinforcement_enabled').default(0),
+    citationReinforcementPrompt: text('citation_reinforcement_prompt'),
+    nudgeFinalStep: text('nudge_final_step'),
+    nudgePreventive: text('nudge_preventive'),
+    nudgeRetry: text('nudge_retry'),
+    nudgeSearchFinalStep: text('nudge_search_final_step'),
+    nudgeSearchPreventive: text('nudge_search_preventive'),
+    nudgeSearchRetry: text('nudge_search_retry'),
+    providerOptions: text('provider_options', { mode: 'json' }).$type<Record<string, unknown>>(),
+    defaultHash: text('default_hash'),
+    deletedAt: text('deleted_at'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_model_profiles_active')
+      .on(table.modelId)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

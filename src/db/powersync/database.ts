@@ -1,5 +1,4 @@
 import { getSettings } from '@/dal'
-import { getPlatform } from '@/lib/platform'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { PowerSyncDatabase, SyncStreamConnectionMethod } from '@powersync/web'

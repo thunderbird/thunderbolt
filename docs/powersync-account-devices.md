@@ -55,7 +55,18 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
 5. Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
 6. Run migrations for frontend and backend as needed.
 
-**Before merging to production:** Deploy the new sync rules in the PowerSync Cloud dashboard (production uses PowerSync Cloud; local uses `powersync-service` config).
+### PR flow for adding tables
+
+Split the work into two PRs to avoid sync rule mismatches:
+
+1. **PR 1 – Backend schemas and migrations**
+   - Backend: table in `backend/src/db/powersync-schema.ts`, migration, `shared/powersync-tables.ts`, `config.yaml` sync rules.
+   - Merge this PR first.
+   - After deploy finishes, update sync rules in the PowerSync Cloud dashboard (production uses PowerSync Cloud; local uses `powersync-service` config).
+
+2. **PR 2 – Frontend and remaining changes**
+   - Frontend: table in `src/db/tables.ts`, `src/db/powersync/schema.ts`, and any UI/feature code.
+   - Merge after PR 1 is deployed and PowerSync rules are updated.
 
 ---
 

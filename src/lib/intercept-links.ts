@@ -10,9 +10,8 @@ const handler = async (event: MouseEvent) => {
   if (url.origin === location.origin || url.protocol === 'app:') {
     return
   }
-  if (!isSafeUrl(anchor.href)) return
-
   event.preventDefault()
+  if (!isSafeUrl(anchor.href)) return
 
   if (isTauri()) {
     // Use Tauri's openUrl in Tauri environment

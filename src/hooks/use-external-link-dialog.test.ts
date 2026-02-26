@@ -105,6 +105,28 @@ describe('useExternalLinkDialog', () => {
 
       window.open = originalOpen
     })
+
+    it('should keep dialog open and set openError when URL is unsafe (same UX as dismissWithAction)', async () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => ({}) as Window)
+      window.open = mockWindowOpen as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('javascript:alert(1)')
+      })
+      await act(async () => {
+        await result.current.handleConfirm()
+      })
+
+      expect(mockWindowOpen).not.toHaveBeenCalled()
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.pendingUrl).toBe('javascript:alert(1)')
+      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
+
+      window.open = originalOpen
+    })
   })
 
   describe('dismissWithAction', () => {

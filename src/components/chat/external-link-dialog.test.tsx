@@ -55,6 +55,12 @@ describe('ExternalLinkDialog', () => {
       expect(openButton).toBeDisabled()
     })
 
+    it('should disable Cancel button when isOpening', () => {
+      render(<ExternalLinkDialog {...defaultProps} isOpening />)
+
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    })
+
     it('should render "Open in Thunderbolt" button when onOpenInApp is provided', () => {
       const mockOpenInApp = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenInApp={mockOpenInApp} />)
@@ -116,6 +122,26 @@ describe('ExternalLinkDialog', () => {
       fireEvent.click(cancelButton)
 
       expect(mockChange).toHaveBeenCalledWith(false)
+    })
+
+    it('should not call onOpenChange when Cancel is clicked while isOpening', () => {
+      const mockChange = mock()
+      render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} isOpening />)
+
+      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
+      fireEvent.click(cancelButton)
+
+      expect(mockChange).not.toHaveBeenCalled()
+    })
+
+    it('should not call onOpenChange when Escape is pressed while isOpening', () => {
+      const mockChange = mock()
+      render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} isOpening />)
+
+      const dialog = screen.getByRole('alertdialog')
+      fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
+
+      expect(mockChange).not.toHaveBeenCalled()
     })
 
     it('should call onOpenError when onConfirm promise rejects', async () => {

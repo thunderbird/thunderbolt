@@ -42,8 +42,16 @@ export const ExternalLinkDialog = memo(
       }
     }, [onConfirm, onOpenError])
 
+    const handleOpenChange = useCallback(
+      (next: boolean) => {
+        if (!next && isOpening) return
+        onOpenChange(next)
+      },
+      [onOpenChange, isOpening],
+    )
+
     return (
-      <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialog open={open} onOpenChange={handleOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Open external link</AlertDialogTitle>
@@ -57,7 +65,7 @@ export const ExternalLinkDialog = memo(
           {openError && <p className="text-sm text-destructive">{openError}</p>}
 
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isOpening}>Cancel</AlertDialogCancel>
             {onOpenInApp && (
               <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
                 Open in Thunderbolt

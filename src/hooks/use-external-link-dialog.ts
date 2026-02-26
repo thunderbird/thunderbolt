@@ -17,7 +17,6 @@ type DialogAction =
   | { type: 'set_open'; open: boolean }
   | { type: 'start_opening' }
   | { type: 'set_error'; error: string }
-  | { type: 'reject_unsafe' }
 
 const initialState: DialogState = {
   dialogOpen: false,
@@ -38,8 +37,6 @@ const dialogReducer = (state: DialogState, action: DialogAction): DialogState =>
       return { ...state, isOpening: true, openError: null }
     case 'set_error':
       return { ...state, openError: action.error, isOpening: false }
-    case 'reject_unsafe':
-      return { dialogOpen: false, pendingUrl: '', openError: null, isOpening: false }
   }
 }
 
@@ -88,8 +85,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
 
     if (!isSafeUrl(urlToOpen)) {
       console.error('Attempted to open unsafe URL:', urlToOpen)
-      pendingUrlRef.current = ''
-      dispatch({ type: 'reject_unsafe' })
+      dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
       return
     }
 
@@ -104,10 +100,10 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
         // so we can't use the return value to detect popup-blocked
         window.open(urlToOpen, '_blank', 'noopener,noreferrer')
       }
-      dispatch({ type: 'close' })
+      if (pendingUrlRef.current === urlToOpen) dispatch({ type: 'close' })
     } catch (error) {
       console.error('Failed to open URL:', error)
-      dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
+      if (pendingUrlRef.current === urlToOpen) dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
     }
   }, [])
 

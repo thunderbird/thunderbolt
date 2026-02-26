@@ -52,6 +52,18 @@ export const isMobile = (): boolean => {
 }
 
 /**
+ * Detects if the app is running in Safari on the web (not Tauri).
+ * Chrome and Edge include "Safari" in their UA for compatibility, so we exclude them.
+ * @returns true if running in Safari on web, false otherwise
+ */
+export const isSafariWeb = (): boolean => {
+  if (getPlatform() !== 'web') return false
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return ua.includes('Safari') && !ua.includes('Chrome')
+}
+
+/**
  * Checks if OPFS (Origin Private File System) is available
  * OPFS is not available in private/incognito browsing modes
  * @returns Promise<boolean> - true if OPFS is available, false otherwise

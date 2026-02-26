@@ -114,6 +114,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    if (!isReady) return null
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
@@ -124,11 +126,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         )}
       </div>
     )
-
-    // Don't render until mobile detection is ready to prevent layout flash
-    if (!isReady) {
-      return null
-    }
 
     return (
       <>

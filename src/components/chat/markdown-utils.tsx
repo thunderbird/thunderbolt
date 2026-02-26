@@ -174,6 +174,14 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
 
   const handleOpenInApp = useCallback(() => dismissWithAction(showPreview!), [dismissWithAction, showPreview])
 
+  const handleOpenError = useCallback(
+    (err: unknown) => {
+      console.error('External link confirm failed:', err)
+      reportOpenError()
+    },
+    [reportOpenError],
+  )
+
   return (
     <ExternalLinkDialogContext.Provider value={contextValue}>
       {children}
@@ -182,10 +190,7 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
-        onOpenError={(err) => {
-          console.error('External link confirm failed:', err)
-          reportOpenError()
-        }}
+        onOpenError={handleOpenError}
         onOpenInApp={desktop ? handleOpenInApp : undefined}
         openError={openError}
         isOpening={isOpening}

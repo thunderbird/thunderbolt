@@ -90,9 +90,6 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     if (!isSafeUrl(url)) {
       console.error('Attempted to open unsafe URL in app:', url)
       setOpenError(OPEN_FAILED_MESSAGE)
-      setDialogOpen(false)
-      setPendingUrl('')
-      pendingUrlRef.current = ''
       return
     }
     setDialogOpen(false)

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { LinkPreview } from './display'
 import { LinkPreviewSkeleton } from './widget'
 
@@ -16,9 +17,11 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div style={{ minWidth: '400px', width: '100%', maxWidth: '600px' }}>
-        <Story />
-      </div>
+      <ExternalLinkDialogProvider>
+        <div style={{ minWidth: '400px', width: '100%', maxWidth: '600px' }}>
+          <Story />
+        </div>
+      </ExternalLinkDialogProvider>
     ),
   ],
   tags: ['autodocs'],

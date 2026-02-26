@@ -33,11 +33,13 @@ export const ExternalLinkDialog = memo(
     openError = null,
     isOpening = false,
   }: ExternalLinkDialogProps) => {
-    const handleConfirmClick = useCallback(() => {
-      Promise.resolve(onConfirm()).catch((error: unknown) => {
+    const handleConfirmClick = useCallback(async () => {
+      try {
+        await onConfirm()
+      } catch (error) {
         if (onOpenError) onOpenError(error)
         else console.error('External link confirm failed:', error)
-      })
+      }
     }, [onConfirm, onOpenError])
 
     return (
@@ -57,7 +59,7 @@ export const ExternalLinkDialog = memo(
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             {onOpenInApp && (
-              <Button onClick={onOpenInApp} variant="outline">
+              <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
                 Open in Thunderbolt
               </Button>
             )}

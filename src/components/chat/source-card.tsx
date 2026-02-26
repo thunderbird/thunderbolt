@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { CitationSource } from '@/types/citation'
-import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
-import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
+import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
@@ -28,8 +27,7 @@ const getBadgeColor = (siteName: string = '') => {
  */
 export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, reportOpenError, setDialogOpen, openError, isOpening } =
-    useExternalLinkDialog()
+  const openExternalLink = useOpenExternalLink()
 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
@@ -43,50 +41,36 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     if (safeUrl === '#') return
-    openDialog(safeUrl)
+    openExternalLink(safeUrl)
   }
 
   return (
-    <>
-      <a
-        href={safeUrl}
-        onClick={handleClick}
-        className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
-        role="listitem"
-      >
-        <p className="text-base text-foreground leading-6 whitespace-pre-wrap">{displayTitle}</p>
+    <a
+      href={safeUrl}
+      onClick={handleClick}
+      className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
+      role="listitem"
+    >
+      <p className="text-base text-foreground leading-6 whitespace-pre-wrap">{displayTitle}</p>
 
-        <div className="flex items-center gap-1.5">
-          {showFavicon ? (
-            <img
-              src={faviconUrl}
-              alt=""
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              onError={() => setFaviconError(true)}
-            />
-          ) : (
-            <div
-              className={cn('w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0', badgeColor)}
-              aria-hidden="true"
-            >
-              <span className="text-white text-[11px] font-normal leading-4">{initial}</span>
-            </div>
-          )}
-          <span className="text-xs text-muted-foreground leading-4">{displaySiteName}</span>
-        </div>
-      </a>
-      <ExternalLinkDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        url={pendingUrl}
-        onConfirm={handleConfirm}
-        onOpenError={(err) => {
-          console.error('External link confirm failed:', err)
-          reportOpenError()
-        }}
-        openError={openError}
-        isOpening={isOpening}
-      />
-    </>
+      <div className="flex items-center gap-1.5">
+        {showFavicon ? (
+          <img
+            src={faviconUrl}
+            alt=""
+            className="w-4 h-4 rounded-full flex-shrink-0"
+            onError={() => setFaviconError(true)}
+          />
+        ) : (
+          <div
+            className={cn('w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0', badgeColor)}
+            aria-hidden="true"
+          >
+            <span className="text-white text-[11px] font-normal leading-4">{initial}</span>
+          </div>
+        )}
+        <span className="text-xs text-muted-foreground leading-4">{displaySiteName}</span>
+      </div>
+    </a>
   )
 }

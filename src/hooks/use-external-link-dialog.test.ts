@@ -124,7 +124,7 @@ describe('useExternalLinkDialog', () => {
       expect(result.current.dialogOpen).toBe(false)
     })
 
-    it('should not invoke action and should set openError when URL is unsafe', () => {
+    it('should not invoke action, keep dialog open and set openError when URL is unsafe', () => {
       const action = mock(() => {})
       const { result } = renderHook(() => useExternalLinkDialog())
 
@@ -136,8 +136,8 @@ describe('useExternalLinkDialog', () => {
       })
 
       expect(action).not.toHaveBeenCalled()
-      expect(result.current.dialogOpen).toBe(false)
-      expect(result.current.pendingUrl).toBe('')
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.pendingUrl).toBe('javascript:alert(1)')
       expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
     })
 

@@ -2,7 +2,11 @@ import '@/testing-library'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
+import { ExternalLinkDialogProvider } from './markdown-utils'
 import { SourceList } from './source-list'
+
+const renderWithProvider = (ui: React.ReactElement) =>
+  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
 
 describe('SourceList', () => {
   const mockSources: CitationSource[] = [
@@ -32,7 +36,7 @@ describe('SourceList', () => {
 
   describe('rendering', () => {
     it('should render multiple SourceCard components', () => {
-      render(<SourceList sources={mockSources} />)
+      renderWithProvider(<SourceList sources={mockSources} />)
 
       expect(screen.getByText('First Article')).toBeInTheDocument()
       expect(screen.getByText('Second Article')).toBeInTheDocument()
@@ -44,7 +48,7 @@ describe('SourceList', () => {
     })
 
     it('should display primary source first', () => {
-      render(<SourceList sources={mockSources} />)
+      renderWithProvider(<SourceList sources={mockSources} />)
 
       const listItems = screen.getAllByRole('listitem')
       // Primary source (id: '3') should be first
@@ -53,7 +57,7 @@ describe('SourceList', () => {
 
     it('should render single source without error', () => {
       const singleSource = [mockSources[0]]
-      render(<SourceList sources={singleSource} />)
+      renderWithProvider(<SourceList sources={singleSource} />)
 
       expect(screen.getByText('First Article')).toBeInTheDocument()
 
@@ -62,7 +66,7 @@ describe('SourceList', () => {
     })
 
     it('should handle empty sources array gracefully', () => {
-      render(<SourceList sources={[]} />)
+      renderWithProvider(<SourceList sources={[]} />)
 
       expect(screen.getByText('No sources available')).toBeInTheDocument()
 
@@ -72,7 +76,7 @@ describe('SourceList', () => {
     })
 
     it('should render separators between items', () => {
-      const { container } = render(<SourceList sources={mockSources} />)
+      const { container } = renderWithProvider(<SourceList sources={mockSources} />)
 
       // Should have N-1 separators for N items (2 separators for 3 items)
       const separators = container.querySelectorAll('[data-slot="separator-root"]')
@@ -80,7 +84,7 @@ describe('SourceList', () => {
     })
 
     it('should not render separator after last item', () => {
-      const { container } = render(<SourceList sources={[mockSources[0]]} />)
+      const { container } = renderWithProvider(<SourceList sources={[mockSources[0]]} />)
 
       // Single item should have no separators
       const separators = container.querySelectorAll('[data-slot="separator-root"]')
@@ -96,7 +100,7 @@ describe('SourceList', () => {
         { ...mockSources[2], isPrimary: true },
       ]
 
-      render(<SourceList sources={sources} />)
+      renderWithProvider(<SourceList sources={sources} />)
 
       const listItems = screen.getAllByRole('listitem')
       // Primary first
@@ -113,7 +117,7 @@ describe('SourceList', () => {
         { ...mockSources[2], isPrimary: false, title: 'Modified Third' },
       ]
 
-      render(<SourceList sources={sources} />)
+      renderWithProvider(<SourceList sources={sources} />)
 
       const listItems = screen.getAllByRole('listitem')
       // Primary source should come first
@@ -126,7 +130,7 @@ describe('SourceList', () => {
     it('should handle no primary sources', () => {
       const sources = mockSources.map((s) => ({ ...s, isPrimary: false }))
 
-      render(<SourceList sources={sources} />)
+      renderWithProvider(<SourceList sources={sources} />)
 
       const listItems = screen.getAllByRole('listitem')
       // Should maintain original order
@@ -138,14 +142,14 @@ describe('SourceList', () => {
 
   describe('accessibility', () => {
     it('should have list role', () => {
-      render(<SourceList sources={mockSources} />)
+      renderWithProvider(<SourceList sources={mockSources} />)
 
       const list = screen.getByRole('list')
       expect(list).toBeInTheDocument()
     })
 
     it('should have proper ARIA structure', () => {
-      render(<SourceList sources={mockSources} />)
+      renderWithProvider(<SourceList sources={mockSources} />)
 
       const list = screen.getByRole('list')
       const listItems = screen.getAllByRole('listitem')
@@ -157,14 +161,14 @@ describe('SourceList', () => {
 
   describe('styling', () => {
     it('should apply custom className', () => {
-      render(<SourceList sources={mockSources} className="custom-class" />)
+      renderWithProvider(<SourceList sources={mockSources} className="custom-class" />)
 
       const list = screen.getByRole('list')
       expect(list).toHaveClass('custom-class')
     })
 
     it('should have container styling', () => {
-      render(<SourceList sources={mockSources} />)
+      renderWithProvider(<SourceList sources={mockSources} />)
 
       const list = screen.getByRole('list')
       expect(list).toHaveClass('overflow-hidden')
@@ -181,7 +185,7 @@ describe('SourceList', () => {
         },
       ]
 
-      render(<SourceList sources={sourcesWithMissing} />)
+      renderWithProvider(<SourceList sources={sourcesWithMissing} />)
 
       // URL should be displayed as title
       expect(screen.getByText('https://example.com/first')).toBeInTheDocument()
@@ -197,13 +201,13 @@ describe('SourceList', () => {
         siteName: `Site ${i}`,
       }))
 
-      render(<SourceList sources={manySources} />)
+      renderWithProvider(<SourceList sources={manySources} />)
 
       const listItems = screen.getAllByRole('listitem')
       expect(listItems).toHaveLength(20)
 
       // Should have 19 separators for 20 items
-      const { container } = render(<SourceList sources={manySources} />)
+      const { container } = renderWithProvider(<SourceList sources={manySources} />)
       const separators = container.querySelectorAll('[data-slot="separator-root"]')
       expect(separators).toHaveLength(19)
     })

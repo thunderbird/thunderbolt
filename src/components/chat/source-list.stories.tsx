@@ -1,4 +1,5 @@
 import { SourceList } from '@/components/chat/source-list'
+import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import type { CitationSource } from '@/types/citation'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
@@ -16,11 +17,13 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div className="p-8 bg-background">
-        <div className="max-w-2xl">
-          <Story />
+      <ExternalLinkDialogProvider>
+        <div className="p-8 bg-background">
+          <div className="max-w-2xl">
+            <Story />
+          </div>
         </div>
-      </div>
+      </ExternalLinkDialogProvider>
     ),
   ],
 } satisfies Meta<typeof SourceList>

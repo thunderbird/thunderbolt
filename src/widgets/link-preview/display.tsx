@@ -1,11 +1,8 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
-import { useShowPreview } from '@/content-view/context'
-import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
-import { isDesktop } from '@/lib/platform'
+import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { isSafeUrl } from '@/lib/url-utils'
 import { ImageIcon } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
@@ -68,30 +65,15 @@ const LinkPreviewCard = ({
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
   const [imageError, setImageError] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(!!image)
-  const {
-    dialogOpen,
-    pendingUrl,
-    openDialog,
-    handleConfirm,
-    reportOpenError,
-    dismissWithAction,
-    setDialogOpen,
-    openError,
-    isOpening,
-  } = useExternalLinkDialog()
+  const openExternalLink = useOpenExternalLink()
   const showPlaceholder = !image || imageError
-
-  const showPreview = useShowPreview()
-  const desktop = isDesktop() && !!showPreview
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     e.stopPropagation()
     if (!isSafeUrl(url)) return
-    openDialog(url)
+    openExternalLink(url)
   }
-
-  const handleOpenInApp = useCallback(() => dismissWithAction(showPreview!), [dismissWithAction, showPreview])
 
   return (
     <div className="my-4">
@@ -107,19 +89,6 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
           url={url}
         />
       </a>
-      <ExternalLinkDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        url={pendingUrl}
-        onConfirm={handleConfirm}
-        onOpenError={(err) => {
-          console.error('External link confirm failed:', err)
-          reportOpenError()
-        }}
-        onOpenInApp={desktop ? handleOpenInApp : undefined}
-        openError={openError}
-        isOpening={isOpening}
-      />
     </div>
   )
 }

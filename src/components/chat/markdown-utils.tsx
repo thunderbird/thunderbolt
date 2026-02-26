@@ -22,6 +22,17 @@ type ExternalLinkDialogContextValue = {
 }
 const ExternalLinkDialogContext = createContext<ExternalLinkDialogContextValue | undefined>(undefined)
 
+/** Use the shared external link dialog. Throws if not inside ExternalLinkDialogProvider. */
+export const useOpenExternalLink = (): ((url: string) => void) => {
+  const context = useContext(ExternalLinkDialogContext)
+  if (!context) {
+    throw new Error(
+      'useOpenExternalLink requires ExternalLinkDialogProvider. Wrap the content with <ExternalLinkDialogProvider>.',
+    )
+  }
+  return context.openExternalLink
+}
+
 /**
  * Context for passing citation data to markdown components without creating
  * new component types on each render. Components read from this context

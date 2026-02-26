@@ -1,4 +1,5 @@
 import '@/testing-library'
+import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
 import { render } from '@testing-library/react'
@@ -11,7 +12,9 @@ const renderWithProviders = (ui: React.ReactElement) => {
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <ContentViewProvider>{children}</ContentViewProvider>
+        <ContentViewProvider>
+          <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+        </ContentViewProvider>
       </TestProvider>
     ),
   })

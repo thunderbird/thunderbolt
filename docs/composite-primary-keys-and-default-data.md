@@ -15,6 +15,7 @@ Several tables hold data that is **seeded as defaults** when a user first initia
 | modes   | `(id, user_id)`  | Default modes (e.g. `default-mode`) are seeded per user with same ID. |
 | tasks   | `(id, user_id)`  | Default tasks (e.g. `inbox`) are seeded per user with same ID. |
 | prompts | `(id, user_id)`  | Default automations/prompts are seeded per user with same ID. |
+| model_profiles | `(id, user_id)` | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user. |
 
 ## Tables with single primary key
 

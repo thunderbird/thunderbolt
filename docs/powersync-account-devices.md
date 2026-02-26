@@ -28,7 +28,7 @@ PowerSync provides offline-first sync between the backend (PostgreSQL) and clien
 
 Defined in [shared/powersync-tables.ts](shared/powersync-tables.ts):
 
-`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `devices`.
+`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `model_profiles`, `devices`.
 
 ### Indexes and foreign keys
 

@@ -51,6 +51,12 @@
 
 See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
 
+**Deploying new synced tables (two-PR process):**
+1. **PR 1 (backend-only):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and `config.yaml` sync rule. Merge → run migration → update PowerSync Cloud dashboard rules.
+2. **PR 2 (frontend + everything else):** Frontend schema, DAL, defaults, reconciliation, and any UI/logic. Merge only after PR 1's dashboard rules are live.
+
+Deploying frontend before the sync rules are updated causes silent sync failure — the table works locally but won't replicate across devices.
+
 ## CORS and API headers
 
 When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Name`), update `backend/src/config/settings.ts` so `corsAllowHeaders` includes them. Otherwise CORS preflight will fail and requests from the browser will be blocked.

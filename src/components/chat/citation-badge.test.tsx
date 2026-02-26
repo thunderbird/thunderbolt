@@ -4,10 +4,20 @@ import { describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
+import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { CitationSource } from '@/types/citation'
 
 // Standalone mode (no provider) — CitationBadge owns its Popover/Sheet
-const renderStandalone = (ui: React.ReactElement) => render(ui, { wrapper: createTestProvider() })
+const renderStandalone = (ui: React.ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 // Managed mode (with provider) — CitationBadge is just a trigger
 const renderManaged = (ui: React.ReactElement) => {
@@ -15,7 +25,9 @@ const renderManaged = (ui: React.ReactElement) => {
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <CitationPopoverProvider>{children}</CitationPopoverProvider>
+        <ExternalLinkDialogProvider>
+          <CitationPopoverProvider>{children}</CitationPopoverProvider>
+        </ExternalLinkDialogProvider>
       </TestProvider>
     ),
   })

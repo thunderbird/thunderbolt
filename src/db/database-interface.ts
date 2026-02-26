@@ -5,6 +5,8 @@ export interface DatabaseInterface {
   db: BaseSQLiteDatabase<'async', any, typeof schema>
   initialize(path: string): Promise<void>
   close?(): Promise<void>
+  /** Wait for initial sync to complete (PowerSync only) */
+  waitForInitialSync?(): Promise<void>
 }
 
 export type AnyDrizzleDatabase = BaseSQLiteDatabase<'async', any, typeof schema>

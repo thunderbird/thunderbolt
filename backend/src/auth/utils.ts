@@ -1,31 +1,5 @@
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 
-/**
- * Tracks emails that should receive the waitlist-approved template instead of magic-link.
- * Used when triggering OTP from the waitlist form for approved users.
- */
-const waitlistApprovedEmails = new Set<string>()
-
-/** Mark an email to receive the waitlist-approved template on next OTP send */
-export const markWaitlistApproved = (email: string): void => {
-  waitlistApprovedEmails.add(email.toLowerCase())
-}
-
-/** Clear the waitlist-approved flag for an email (e.g., on OTP send failure) */
-export const clearWaitlistApproved = (email: string): void => {
-  waitlistApprovedEmails.delete(email.toLowerCase())
-}
-
-/** Check and consume the waitlist-approved flag for an email */
-export const consumeWaitlistApproved = (email: string): boolean => {
-  const normalized = email.toLowerCase()
-  if (waitlistApprovedEmails.has(normalized)) {
-    waitlistApprovedEmails.delete(normalized)
-    return true
-  }
-  return false
-}
-
 /** Deep link base URL for mobile apps (iOS/Android) */
 const deepLinkHost = 'https://thunderbolt.io'
 
@@ -94,14 +68,9 @@ type SendSignInEmailParams = {
   verifyUrl: string
 }
 
-/**
- * Send sign-in email with both OTP code and a clickable link.
- * Uses 'waitlist-approved' template if the email was marked via markWaitlistApproved(),
- * otherwise uses the standard 'magic-link' template.
- */
+/** Send sign-in email with both OTP code and a clickable link. */
 export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
-  const isWaitlistApproved = consumeWaitlistApproved(email)
-  const templateId = isWaitlistApproved ? 'waitlist-approved' : 'magic-link'
+  const templateId = 'magic-link'
 
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)

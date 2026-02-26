@@ -1,7 +1,9 @@
 import type { db as DbType } from '@/db/client'
 import { user } from '@/db/auth-schema'
+import * as schema from '@/db/schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
+import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
@@ -29,8 +31,18 @@ export const createAuth = (database: typeof DbType) =>
   betterAuth({
     database: drizzleAdapter(database, {
       provider: 'pg',
+      schema,
     }),
     trustedOrigins,
+    user: {
+      additionalFields: {
+        isNew: {
+          type: 'boolean',
+          required: false,
+          defaultValue: true,
+        },
+      },
+    },
     databaseHooks: {
       user: {
         create: {
@@ -39,6 +51,30 @@ export const createAuth = (database: typeof DbType) =>
           }),
         },
       },
+    },
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/sign-in/email-otp') {
+          return
+        }
+
+        const newSession = ctx.context.newSession
+        if (!newSession?.user) {
+          return
+        }
+
+        const sessionUser = newSession.user
+        const isNewUser = (sessionUser as { isNew?: boolean }).isNew ?? true
+
+        if (isNewUser) {
+          await database.update(user).set({ isNew: false }).where(eq(user.id, sessionUser.id))
+        }
+
+        return ctx.json({
+          session: newSession.session,
+          user: sessionUser,
+        })
+      }),
     },
     plugins: [
       bearer(), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work

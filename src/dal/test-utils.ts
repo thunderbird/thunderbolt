@@ -1,10 +1,11 @@
-import { migrate } from '@/db/migrate'
+import { applySchema } from '@/db/apply-schema'
 import { DatabaseSingleton } from '@/db/singleton'
 import { reconcileDefaults } from '../lib/reconcile-defaults'
 
 /**
  * Sets up an in-memory SQLite database for testing.
- * Creates all tables and reconciles default values.
+ * Applies schema from Drizzle tables (no migrations; matches PowerSync “schema at init” approach)
+ * and reconciles default values.
  *
  * Usage:
  * ```ts
@@ -14,12 +15,9 @@ import { reconcileDefaults } from '../lib/reconcile-defaults'
  * ```
  */
 export const setupTestDatabase = async () => {
-  // Use in-memory Bun SQLite for testing (fast and synchronous)
   await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations to create tables
   const db = DatabaseSingleton.instance.db
-  await migrate(db)
+  await applySchema(db)
   await reconcileDefaults(db)
 }
 
@@ -35,14 +33,13 @@ export const setupTestDatabase = async () => {
  * ```
  */
 export const teardownTestDatabase = async () => {
-  DatabaseSingleton.reset()
+  await DatabaseSingleton.reset()
 }
 
 /**
  * Resets the database to a clean state by tearing down and setting up again.
- * This ensures complete isolation between tests by creating a fresh database
- * with all migrations applied, but WITHOUT reconciling defaults (to avoid
- * polluting tests with default data).
+ * Creates a fresh database with schema applied (no migrations), but WITHOUT
+ * reconciling defaults so tests stay isolated.
  *
  * Tests that need default values should manually reconcile them in beforeEach.
  *
@@ -55,11 +52,7 @@ export const teardownTestDatabase = async () => {
  */
 export const resetTestDatabase = async () => {
   await teardownTestDatabase()
-
-  // Re-initialize with fresh database
   await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-
-  // Run migrations but skip reconciling defaults
   const db = DatabaseSingleton.instance.db
-  await migrate(db)
+  await applySchema(db)
 }

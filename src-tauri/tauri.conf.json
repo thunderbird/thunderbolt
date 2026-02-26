@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Thunderbolt",
-  "version": "0.1.46",
+  "version": "0.1.54",
   "identifier": "net.thunderbird.thunderbolt",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -22,11 +22,11 @@
     "security": {
       "csp": {
         "default-src": "'self' tauri: asset:",
-        "connect-src": "*",
+        "connect-src": "* ipc: http://ipc.localhost",
         "img-src": "'self' asset: data: https://api.thunderbolt.io",
         "font-src": "'self' data:",
         "style-src": "'self' 'unsafe-inline'",
-        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8000 https://thunderbolt.io"
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8000 https://thunderbolt.io https://api.thunderbolt.io"
       }
     },
     "withGlobalTauri": true

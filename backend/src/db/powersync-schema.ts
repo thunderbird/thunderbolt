@@ -1,4 +1,15 @@
-import { index, integer, pgSchema, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
+import type { PowerSyncTableName } from '@shared/powersync-tables'
+import {
+  type AnyPgColumn,
+  type AnyPgTable,
+  index,
+  integer,
+  pgSchema,
+  primaryKey,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core'
+import { getTableColumns } from 'drizzle-orm'
 import { user } from './auth-schema'
 
 /**
@@ -192,3 +203,65 @@ export const devicesTable = powersyncSchema.table(
   },
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )
+
+/**
+ * Map of PowerSync table names to Drizzle tables for account delete.
+ * Must have an entry for every PowerSyncTableName (type-checked).
+ */
+export const powersyncTablesByName = {
+  settings: settingsTable,
+  chat_threads: chatThreadsTable,
+  chat_messages: chatMessagesTable,
+  tasks: tasksTable,
+  models: modelsTable,
+  mcp_servers: mcpServersTable,
+  prompts: promptsTable,
+  triggers: triggersTable,
+  modes: modesTable,
+  devices: devicesTable,
+} satisfies Record<PowerSyncTableName, AnyPgTable>
+
+/**
+ * For each PowerSync table, map DB column name (snake_case) to schema key (camelCase).
+ * Used when applying PowerSync upload operations with Drizzle's type-safe API.
+ */
+export const powersyncDbNameToSchemaKey: Record<PowerSyncTableName, Record<string, string>> = Object.fromEntries(
+  (Object.entries(powersyncTablesByName) as [PowerSyncTableName, AnyPgTable][]).map(([tableName, table]) => [
+    tableName,
+    Object.fromEntries(Object.entries(getTableColumns(table)).map(([schemaKey, col]) => [col.name, schemaKey])),
+  ]),
+) as Record<PowerSyncTableName, Record<string, string>>
+
+/**
+ * Primary key column for each PowerSync table (for PATCH/DELETE where clauses).
+ */
+export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
+  settings: settingsTable.key,
+  chat_threads: chatThreadsTable.id,
+  chat_messages: chatMessagesTable.id,
+  tasks: tasksTable.id,
+  models: modelsTable.id,
+  mcp_servers: mcpServersTable.id,
+  prompts: promptsTable.id,
+  triggers: triggersTable.id,
+  modes: modesTable.id,
+  devices: devicesTable.id,
+}
+
+/**
+ * Conflict target for each PowerSync table (for INSERT ON CONFLICT).
+ * Tables with default data (settings, models, modes, tasks, prompts) use composite primary keys (id/key + user_id)
+ * so each user can have their own row with the same default ID. See docs/composite-primary-keys-and-default-data.md.
+ */
+export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> = {
+  settings: [settingsTable.key, settingsTable.userId],
+  chat_threads: [chatThreadsTable.id],
+  chat_messages: [chatMessagesTable.id],
+  tasks: [tasksTable.id, tasksTable.userId],
+  models: [modelsTable.id, modelsTable.userId],
+  mcp_servers: [mcpServersTable.id],
+  prompts: [promptsTable.id, promptsTable.userId],
+  triggers: [triggersTable.id],
+  modes: [modesTable.id, modesTable.userId],
+  devices: [devicesTable.id],
+}

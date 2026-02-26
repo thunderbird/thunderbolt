@@ -58,7 +58,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange }: ModeSelector
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-3 py-2.5 mt-1.5 rounded-xl transition-colors text-left cursor-pointer',
           isSelected ? 'bg-muted' : 'hover:bg-accent/50',
         )}
       >

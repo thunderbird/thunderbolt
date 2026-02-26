@@ -32,6 +32,12 @@ const settingsSchema = z.object({
   // Waitlist settings
   waitlistEnabled: z.boolean().default(false),
 
+  // PowerSync settings
+  powersyncUrl: z.string().default(''),
+  powersyncJwtKid: z.string().default(''),
+  powersyncJwtSecret: z.string().default(''),
+  powersyncTokenExpirySeconds: z.coerce.number().default(3600),
+
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
   corsOriginRegex: z
@@ -42,7 +48,7 @@ const settingsSchema = z.object({
   corsAllowHeaders: z
     .string()
     .default(
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     ),
   corsExposeHeaders: z.string().default('mcp-session-id'),
 })
@@ -70,6 +76,10 @@ const parseSettings = (): Settings => {
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
+    powersyncUrl: process.env.POWERSYNC_URL || '',
+    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
+    powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
     corsOriginRegex:
       process.env.CORS_ORIGIN_REGEX ||
@@ -78,7 +88,7 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id',
   }
 

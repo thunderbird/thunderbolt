@@ -72,38 +72,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # --------------------------------------------------------------
-      # Enforce "one migration per PR" policy (non-blocking per commit)
-      # --------------------------------------------------------------
-      - name: Count new migrations (relative to base)
-        if: github.event_name == 'pull_request'
-        id: migrations
-        run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          count=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'src/drizzle/*.sql' | wc -l)
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-
-      - name: Enforce single migration per PR
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr="${{ github.event.pull_request.number }}"
-          repo="${{ github.repository }}"
-          owner=$(echo "$repo" | cut -d'/' -f1)
-          count="${{ steps.migrations.outputs.count }}"
-
-          if [ "$count" -gt 1 ]; then
-            # Request changes (will block merge)
-            gh pr review "$pr" --request-changes -b "🚨 There are $count migrations in this branch. Please run scripts/reset-migrations.sh to squash the migrations."
-          else
-            # Dismiss any previous CHANGES_REQUESTED reviews by this bot to unblock merge
-            reviews=$(gh api repos/$repo/pulls/$pr/reviews --jq '.[] | select(.user.login=="github-actions[bot]" and .state=="CHANGES_REQUESTED") | .id')
-            for id in $reviews; do
-              gh api -X PUT repos/$repo/pulls/$pr/reviews/$id/dismissals -f message="✅ Single migration file confirmed." -H "Accept: application/vnd.github+json"
-            done
-          fi
-
       - name: Type check
         run: bun run tsc --noEmit
 

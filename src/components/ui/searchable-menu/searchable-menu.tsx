@@ -191,7 +191,7 @@ export const SearchableMenu = <T,>({
         align={isMobile ? 'center' : align}
         side={side}
         collisionPadding={16}
-        className={cn('p-0 rounded-lg duration-100', showBlur && 'z-50', contentClassName)}
+        className={cn('p-0 rounded-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

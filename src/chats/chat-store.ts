@@ -123,7 +123,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ sessions: nextSessions })
 
-    updateSettings({ selected_model: model.id })
+    await updateSettings({ selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
   },

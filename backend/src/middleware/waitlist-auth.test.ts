@@ -27,6 +27,10 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   corsAllowHeaders: 'Content-Type,Authorization',
   corsExposeHeaders: '',
   waitlistEnabled: false,
+  powersyncUrl: '',
+  powersyncJwtKid: '',
+  powersyncJwtSecret: '',
+  powersyncTokenExpirySeconds: 3600,
   ...overrides,
 })
 

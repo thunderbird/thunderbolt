@@ -1,3 +1,4 @@
+import '@/lib/dayjs'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 
@@ -14,13 +15,14 @@ import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import DevSettingsPage from '@/settings/dev-settings'
+import DevicesSettingsPage from '@/settings/devices'
 import { default as Settings } from '@/settings/index'
 import IntegrationsPage from '@/settings/integrations'
 import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
 import TasksPage from '@/tasks'
-import { WaitlistLayout, WaitlistPage, WaitlistSignInPage } from '@/waitlist'
+import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
@@ -78,7 +80,6 @@ function AppRoutes({ initData }: { initData: InitData }) {
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
-            <Route path="signin" element={<WaitlistSignInPage />} />
           </Route>
         </Route>
       )}
@@ -108,6 +109,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
             <Route index element={<Settings />} />
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
+            <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="dev-settings" element={<DevSettingsPage />} />

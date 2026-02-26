@@ -1,5 +1,7 @@
 'use client'
 
+import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
+import { usePowerSyncInvalidation } from '@/hooks/use-powersync-invalidation'
 import { useSettings } from '@/hooks/use-settings'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -57,6 +59,23 @@ type AuthProviderProps = {
 }
 
 export const AuthProvider = ({ children, authClient: overrideClient }: AuthProviderProps) => {
+  // Run the credentials-invalid listener here, before the early return below. When the user
+  // deletes their account elsewhere, PowerSync syncs and wipes local data (including
+  // settings). Then cloudUrl is gone, value becomes null, and we return null so children
+  // (and any hook that lived inside them) never mount. If the listener were only in
+  // AppContent, it would never run and we’d be stuck on a blank screen. By calling it at the
+  // top of AuthProvider, it runs as soon as this provider mounts (we have initData and DB)
+  // and keeps running so that when the device row disappears or is revoked, we trigger a
+  // full reset and reload.
+  usePowerSyncCredentialsInvalidListener()
+
+  // Watch PowerSync tables and invalidate React Query when they change (local writes or sync).
+  // Must run here (before the early return) so that when we return null, the devices table
+  // is still watched. Otherwise the useQuery(['devices', deviceId]) in the credentials
+  // listener would never be invalidated when PowerSync syncs (e.g. device revoked or removed),
+  // and we wouldn't detect the change.
+  usePowerSyncInvalidation()
+
   const { cloudUrl } = useSettings({ cloud_url: String })
 
   const value = useMemo(() => {

@@ -27,6 +27,7 @@ After using tools, cite every sourced fact with [N] at end of sentence. Do not a
   order: 0,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeSearch: Mode = {
@@ -55,6 +56,7 @@ Do NOT answer questions directly. Do NOT write paragraphs. Just search and show 
   order: 1,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 export const defaultModeResearch: Mode = {
@@ -98,6 +100,7 @@ Do not add a Sources or References section at the end — inline [N] citations a
   order: 2,
   deletedAt: null,
   defaultHash: null,
+  userId: null,
 }
 
 /**

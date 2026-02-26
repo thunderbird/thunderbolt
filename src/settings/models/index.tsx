@@ -376,6 +376,7 @@ export default function ModelsPage() {
         defaultHash: null, // User-created, not based on a default
         vendor: null,
         description: null,
+        userId: null,
       }
       const model = await createModel(modelConfigWithDefaults)
 

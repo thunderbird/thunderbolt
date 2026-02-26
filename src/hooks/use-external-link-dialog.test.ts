@@ -67,7 +67,7 @@ describe('useExternalLinkDialog', () => {
       window.open = originalOpen
     })
 
-    it('should keep dialog open and set openError when window.open returns null', async () => {
+    it('should close dialog even when window.open returns null (noopener returns null on success)', async () => {
       const originalOpen = window.open
       const mockWindowOpen = mock(() => null)
       window.open = mockWindowOpen as typeof window.open
@@ -83,8 +83,8 @@ describe('useExternalLinkDialog', () => {
       })
 
       expect(mockWindowOpen).toHaveBeenCalled()
-      expect(result.current.dialogOpen).toBe(true)
-      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
+      expect(result.current.dialogOpen).toBe(false)
+      expect(result.current.openError).toBeNull()
 
       window.open = originalOpen
     })

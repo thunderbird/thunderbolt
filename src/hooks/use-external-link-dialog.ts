@@ -31,7 +31,7 @@ const dialogReducer = (state: DialogState, action: DialogAction): DialogState =>
     case 'open':
       return { dialogOpen: true, pendingUrl: action.url, openError: null, isOpening: false }
     case 'close':
-      return { ...state, dialogOpen: false }
+      return { ...state, dialogOpen: false, isOpening: false }
     case 'set_open':
       return { ...state, dialogOpen: action.open }
     case 'start_opening':
@@ -100,11 +100,9 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
         const { openUrl } = await import('@tauri-apps/plugin-opener')
         await openUrl(urlToOpen)
       } else {
-        const opened = window.open(urlToOpen, '_blank', 'noopener,noreferrer')
-        if (opened === null) {
-          dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
-          return
-        }
+        // noopener causes window.open to return null even on success,
+        // so we can't use the return value to detect popup-blocked
+        window.open(urlToOpen, '_blank', 'noopener,noreferrer')
       }
       dispatch({ type: 'close' })
     } catch (error) {

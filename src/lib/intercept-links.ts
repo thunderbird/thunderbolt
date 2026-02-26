@@ -1,6 +1,7 @@
 import { isTauri } from './platform'
 
 const handler = async (event: MouseEvent) => {
+  if (event.defaultPrevented) return
   const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]')
   if (!anchor) return
   const url = new URL(anchor.href)

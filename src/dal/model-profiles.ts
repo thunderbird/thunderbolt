@@ -17,23 +17,19 @@ export const getModelProfile = async (modelId: string): Promise<ModelProfile | n
   return profile ? mapProfile(profile) : null
 }
 
-/** Upsert a profile (insert or update) */
+/** Upsert a profile (insert or update, handles soft-deleted rows atomically) */
 export const upsertModelProfile = async (
   data: Partial<ModelProfile> & Pick<ModelProfile, 'modelId'>,
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  const existing = await db
-    .select()
-    .from(modelProfilesTable)
-    .where(and(eq(modelProfilesTable.modelId, data.modelId), isNull(modelProfilesTable.deletedAt)))
-    .get()
-
-  if (existing) {
-    const { defaultHash, ...updateFields } = data as Partial<ModelProfile> & { defaultHash?: string | null }
-    await db.update(modelProfilesTable).set(updateFields).where(eq(modelProfilesTable.modelId, data.modelId))
-  } else {
-    await db.insert(modelProfilesTable).values(data)
-  }
+  const { defaultHash, ...updateFields } = data as Partial<ModelProfile> & { defaultHash?: string | null }
+  await db
+    .insert(modelProfilesTable)
+    .values(data)
+    .onConflictDoUpdate({
+      target: modelProfilesTable.modelId,
+      set: { ...updateFields, deletedAt: null },
+    })
 }
 
 /** Create default profile for a model using seed data */

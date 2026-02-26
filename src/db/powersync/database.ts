@@ -10,6 +10,21 @@ import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 
+/** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
+export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
+
+/**
+ * Determines which PowerSync database config to use based on platform and browser.
+ * - default: Non-Safari web — PowerSync's default setup works well.
+ * - safari-tauri: Safari web or Tauri — full WASQLiteOpenFactory with OPFSCoopSyncVFS required.
+ */
+export const getPowerSyncDatabaseConfig = (): PowerSyncDatabaseConfig => {
+  const isWeb = getPlatform() === 'web'
+  const isSafari = getWebBrowser() === 'safari'
+  if (isWeb && !isSafari) return 'default'
+  return 'safari-tauri'
+}
+
 /** LocalStorage key for sync enabled flag */
 const syncEnabledKey = 'powersync_sync_enabled'
 
@@ -68,15 +83,12 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
   }
 }
 
-const getPowerSyncOptions = (path: string) => {
+/** @internal Exported for testing */
+export const getPowerSyncOptions = (path: string) => {
   const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
+  const config = getPowerSyncDatabaseConfig()
 
-  const isWeb = getPlatform() === 'web'
-  const isSafari = getWebBrowser() === 'safari'
-
-  // Non-Safari web (Chrome, Edge, etc.): PowerSync's default setup works well
-  // without explicit worker paths or VFS overrides.
-  if (isWeb && !isSafari) {
+  if (config === 'default') {
     return {
       database: { dbFilename },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],

@@ -24,7 +24,7 @@ export default function ChatUI() {
     useChatScrollHandler()
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
-  const { isMobile, isReady } = useIsMobile()
+  const { isMobile } = useIsMobile()
 
   const handleSelectPrompt = useCallback((prompt: string) => {
     chatPromptInputRef.current?.setInput(prompt)
@@ -44,10 +44,6 @@ export default function ChatUI() {
       }
     }
   }, [hasMessages, scrollToBottom])
-
-  if (!isReady) {
-    return null
-  }
 
   return (
     <div className="h-full w-full">

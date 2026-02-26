@@ -32,10 +32,9 @@ const createMockUseContextTracking =
   })
 
 const createMockUseIsMobile =
-  (isMobile: boolean = false, isReady: boolean = true) =>
+  (isMobile: boolean = false) =>
   () => ({
     isMobile,
-    isReady,
   })
 
 const TestWrapper = ({ children }: { children: React.ReactNode }) => {
@@ -90,28 +89,6 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
-    })
-
-    it('should return null when mobile detection is not ready', () => {
-      const { mockUseChat } = setupStore()
-
-      const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(false, false)} />,
-        { wrapper: TestWrapper },
-      )
-
-      expect(container.querySelector('form')).toBeNull()
-    })
-
-    it('should render once mobile detection is ready', () => {
-      const { mockUseChat } = setupStore()
-
-      const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(false, true)} />,
-        { wrapper: TestWrapper },
-      )
-
-      expect(container.querySelector('form')).not.toBeNull()
     })
   })
 

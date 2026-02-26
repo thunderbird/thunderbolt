@@ -41,8 +41,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const modes = useChatStore((state) => state.modes)
     const setSelectedMode = useChatStore((state) => state.setSelectedMode)
 
-    // Use isReady to prevent layout flash on mobile
-    const { isMobile, isReady } = useIsMobile()
+    const { isMobile } = useIsMobile()
 
     const { chatInstance, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
 
@@ -114,8 +113,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       },
       setInput,
     }))
-
-    if (!isReady) return null
 
     const footerStartElements = (
       <div className="flex items-center gap-2">

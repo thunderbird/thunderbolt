@@ -176,17 +176,14 @@ export const getDeviceDisplayName = (): string => {
     const name = p.charAt(0).toUpperCase() + p.slice(1)
     return `Thunderbolt on ${name}`
   }
+  const browser = getWebBrowser()
+  const browserDisplay = browser === 'unknown' ? 'Browser' : browser.charAt(0).toUpperCase() + browser.slice(1)
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-  let browser = 'Browser'
-  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome'
-  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari'
-  else if (ua.includes('Firefox')) browser = 'Firefox'
-  else if (ua.includes('Edg')) browser = 'Edge'
   let os = 'Unknown'
   if (ua.includes('Mac')) os = 'macOS'
   else if (ua.includes('Win')) os = 'Windows'
   else if (ua.includes('Linux')) os = 'Linux'
   else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
   else if (ua.includes('Android')) os = 'Android'
-  return `${browser} on ${os}`
+  return `${browserDisplay} on ${os}`
 }

@@ -156,17 +156,8 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
  * Wrap markdown content with this to avoid N dialog instances for N links.
  */
 export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
-  const {
-    dialogOpen,
-    pendingUrl,
-    openDialog,
-    handleConfirm,
-    reportOpenError,
-    dismissWithAction,
-    setDialogOpen,
-    openError,
-    isOpening,
-  } = useExternalLinkDialog()
+  const { dialogOpen, pendingUrl, openDialog, handleConfirm, dismissWithAction, setDialogOpen, openError, isOpening } =
+    useExternalLinkDialog()
   const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
 
   const showPreview = useShowPreview()
@@ -176,19 +167,12 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   // Hide the native sidebar webview while the dialog is open (Tauri webviews render above DOM)
   useEffect(() => {
     setPreviewHidden?.(dialogOpen)
+    return () => setPreviewHidden?.(false)
   }, [dialogOpen, setPreviewHidden])
 
   const handleOpenInApp = useCallback(() => {
     if (showPreview) dismissWithAction(showPreview)
   }, [dismissWithAction, showPreview])
-
-  const handleOpenError = useCallback(
-    (err: unknown) => {
-      console.error('External link confirm failed:', err)
-      reportOpenError()
-    },
-    [reportOpenError],
-  )
 
   return (
     <ExternalLinkDialogContext.Provider value={contextValue}>
@@ -198,7 +182,6 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
         onOpenChange={setDialogOpen}
         url={pendingUrl}
         onConfirm={handleConfirm}
-        onOpenError={handleOpenError}
         onOpenInApp={desktop ? handleOpenInApp : undefined}
         openError={openError}
         isOpening={isOpening}

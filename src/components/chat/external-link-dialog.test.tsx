@@ -54,10 +54,10 @@ describe('ExternalLinkDialog', () => {
       expect(openButton).toBeDisabled()
     })
 
-    it('should disable close button when isOpening', () => {
+    it('should keep close button enabled when isOpening', () => {
       render(<ExternalLinkDialog {...defaultProps} isOpening />)
 
-      expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled()
     })
 
     it('should render "Open in Sidebar" button when onOpenInApp is provided', () => {
@@ -122,23 +122,23 @@ describe('ExternalLinkDialog', () => {
       expect(mockChange).toHaveBeenCalledWith(false)
     })
 
-    it('should not call onOpenChange when close is clicked while isOpening', () => {
+    it('should allow closing via X button even while isOpening', () => {
       const mockChange = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} isOpening />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
-      expect(mockChange).not.toHaveBeenCalled()
+      expect(mockChange).toHaveBeenCalledWith(false)
     })
 
-    it('should not call onOpenChange when Escape is pressed while isOpening', () => {
+    it('should allow closing via Escape even while isOpening', () => {
       const mockChange = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenChange={mockChange} isOpening />)
 
       const dialog = screen.getByRole('alertdialog')
       fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
 
-      expect(mockChange).not.toHaveBeenCalled()
+      expect(mockChange).toHaveBeenCalledWith(false)
     })
 
     it('should call onOpenError when onConfirm promise rejects', async () => {

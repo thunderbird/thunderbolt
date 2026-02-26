@@ -44,10 +44,9 @@ export const ExternalLinkDialog = memo(
 
     const handleOpenChange = useCallback(
       (next: boolean) => {
-        if (!next && isOpening) return
         onOpenChange(next)
       },
-      [onOpenChange, isOpening],
+      [onOpenChange],
     )
 
     return (
@@ -58,8 +57,7 @@ export const ExternalLinkDialog = memo(
             <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
             <button
               onClick={() => handleOpenChange(false)}
-              disabled={isOpening}
-              className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none"
+              className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
             >
               <X className="size-4" />
               <span className="sr-only">Close</span>

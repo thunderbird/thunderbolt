@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 
 export type HttpClient = KyInstance
 
-interface HttpClientContextType {
+type HttpClientContextType = {
   httpClient: HttpClient
 }
 

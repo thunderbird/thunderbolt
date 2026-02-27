@@ -5,7 +5,7 @@ import { useSideview } from './context'
 /**
  * Sideview component - displays content based on sideview type
  */
-export function Sideview() {
+export const Sideview = () => {
   const { sideviewId, sideviewType } = useSideview()
 
   const { data: _object } = useQuery({

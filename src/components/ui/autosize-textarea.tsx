@@ -16,7 +16,7 @@ import {
   type Ref,
 } from 'react'
 
-interface UseAutosizeTextAreaProps {
+type UseAutosizeTextAreaProps = {
   textAreaRef: MutableRefObject<HTMLTextAreaElement | null>
   minHeight?: number
   maxHeight?: number

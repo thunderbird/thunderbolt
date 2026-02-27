@@ -21,7 +21,7 @@ import {
 } from './tools'
 
 // Custom error type for HTTP error mocking
-interface HTTPError extends Error {
+type HTTPError = Error & {
   response?: {
     status: number
   }

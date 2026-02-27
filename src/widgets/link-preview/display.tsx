@@ -71,7 +71,11 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!isSafeUrl(url)) return
+
+    if (!isSafeUrl(url)) {
+      return
+    }
+
     openExternalLink(url)
   }
 

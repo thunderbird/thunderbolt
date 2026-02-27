@@ -43,7 +43,7 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>
 
-interface AutomationFormModalProps {
+type AutomationFormModalProps = {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   prompt?: Prompt | null

@@ -129,6 +129,9 @@ export default [
           format: ['camelCase', 'PascalCase'], // PascalCase for React components
         },
       ],
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+      'func-style': ['error', 'expression', { allowArrowFunctions: true }],
+      'max-depth': ['warn', 4],
     },
   },
   ...storybook.configs['flat/recommended'],

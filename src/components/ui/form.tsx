@@ -67,7 +67,7 @@ type FormItemContextValue = {
 
 const FormItemContext = createContext<FormItemContextValue>({} as FormItemContextValue)
 
-function FormItem({ className, ...props }: ComponentProps<'div'>) {
+const FormItem = ({ className, ...props }: ComponentProps<'div'>) => {
   const id = useId()
 
   return (
@@ -77,7 +77,7 @@ function FormItem({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-function FormLabel({ className, ...props }: ComponentProps<typeof Root>) {
+const FormLabel = ({ className, ...props }: ComponentProps<typeof Root>) => {
   const { error, formItemId } = useFormField()
 
   return (
@@ -91,7 +91,7 @@ function FormLabel({ className, ...props }: ComponentProps<typeof Root>) {
   )
 }
 
-function FormControl({ ...props }: ComponentProps<typeof Slot>) {
+const FormControl = ({ ...props }: ComponentProps<typeof Slot>) => {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField()
 
   return (
@@ -105,7 +105,7 @@ function FormControl({ ...props }: ComponentProps<typeof Slot>) {
   )
 }
 
-function FormDescription({ className, ...props }: ComponentProps<'p'>) {
+const FormDescription = ({ className, ...props }: ComponentProps<'p'>) => {
   const { formDescriptionId } = useFormField()
 
   return (
@@ -118,7 +118,7 @@ function FormDescription({ className, ...props }: ComponentProps<'p'>) {
   )
 }
 
-function FormMessage({ className, ...props }: ComponentProps<'p'>) {
+const FormMessage = ({ className, ...props }: ComponentProps<'p'>) => {
   const { error, formMessageId } = useFormField()
   const body = error ? String(error?.message ?? '') : props.children
 

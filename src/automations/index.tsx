@@ -233,7 +233,7 @@ export default function AutomationsPage() {
   )
 }
 
-interface PromptCardProps {
+type PromptCardProps = {
   prompt: Prompt
   triggersEnabled: boolean
   onRun: (promptId: string) => void

@@ -234,7 +234,9 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     )
 
     const link = container.querySelector('a[href]')
-    if (!link) throw new Error('expected link')
+    if (!link) {
+      throw new Error('expected link')
+    }
     fireEvent.click(link)
 
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()

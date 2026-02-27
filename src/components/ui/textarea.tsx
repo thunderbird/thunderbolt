@@ -2,7 +2,7 @@ import { type ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
 
-function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
+const Textarea = ({ className, ...props }: ComponentProps<'textarea'>) => {
   return (
     <textarea
       data-slot="textarea"

@@ -199,7 +199,9 @@ export const useSidebarWebview = (
   // Hide/show the native webview when overlaid by DOM elements (e.g. dialogs)
   useEffect(() => {
     const webview = webviewRef.current
-    if (!webview) return
+    if (!webview) {
+      return
+    }
 
     if (hidden) {
       webview.hide().catch(console.error)

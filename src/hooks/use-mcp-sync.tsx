@@ -3,7 +3,7 @@ import { useMCP } from '@/lib/mcp-provider'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-export function useMcpSync() {
+export const useMcpSync = () => {
   const { servers, addServer, removeServer, updateServerStatus } = useMCP()
 
   const { data: dbServers = [] } = useQuery({

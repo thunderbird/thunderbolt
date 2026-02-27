@@ -5,7 +5,7 @@ import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
-interface MCPServerConnection {
+type MCPServerConnection = {
   id: string
   name: string
   url: string
@@ -15,7 +15,7 @@ interface MCPServerConnection {
   enabled: boolean
 }
 
-interface MCPContextType {
+type MCPContextType = {
   servers: MCPServerConnection[]
   getEnabledClients: () => MCPClient[]
   reconnectServer: (serverId: string) => Promise<void>
@@ -26,7 +26,7 @@ interface MCPContextType {
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
-export function MCPProvider({ children }: { children: ReactNode }) {
+export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
@@ -200,7 +200,7 @@ export function MCPProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export function useMCP() {
+export const useMCP = () => {
   const context = useContext(MCPContext)
   if (!context) {
     throw new Error('useMCP must be used within an MCPProvider')

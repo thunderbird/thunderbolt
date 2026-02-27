@@ -22,7 +22,7 @@ const loadTauriModules = async () => {
   }
 }
 
-interface TrayContextType {
+type TrayContextType = {
   tray: any | undefined // Changed from TrayIcon to any for compatibility
   window: any | undefined // Changed from Window to any for compatibility
 }

@@ -5,7 +5,7 @@ import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
 import { useSideview } from './context'
 
-export function EmailThreadView() {
+export const EmailThreadView = () => {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
   const { sideviewId, sideviewType: _, setSideview } = useSideview()
 

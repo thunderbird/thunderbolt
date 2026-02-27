@@ -48,7 +48,7 @@ type SimulatorChatProps = {
   stopRef: MutableRefObject<(() => void) | null>
 }
 
-function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
+const SimulatorChat = ({ sseContent, onStop, stopRef }: SimulatorChatProps) => {
   // Generate stable IDs only once when component mounts
   const [chatId] = useState(() => `simulation-${uuidv7()}`)
 
@@ -241,7 +241,7 @@ function SimulatorChat({ sseContent, onStop, stopRef }: SimulatorChatProps) {
   )
 }
 
-function SimulatorContent() {
+const SimulatorContent = () => {
   const { simulationSse } = useSettings({
     simulation_sse: '',
   })

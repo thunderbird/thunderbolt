@@ -79,7 +79,7 @@ export const startOAuthFlowWebview = async (
   return { tokens, userInfo }
 }
 
-async function waitForCallback(window: WebviewWindow): Promise<{ code: string; state: string } | null> {
+const waitForCallback = async (window: WebviewWindow): Promise<{ code: string; state: string } | null> => {
   return new Promise(async (resolve, reject) => {
     const cleanup = async () => {
       unlistenCallback()

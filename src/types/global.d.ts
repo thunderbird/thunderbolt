@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 interface Window {
   isTauri?: boolean
   __TAURI__: {

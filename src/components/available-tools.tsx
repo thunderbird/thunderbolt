@@ -24,7 +24,7 @@ export type ToolItem = {
   enabled?: boolean
 }
 
-export interface AvailableToolsProps {
+export type AvailableToolsProps = {
   /**
    * Collection of tools to display.
    */

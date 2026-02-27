@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-export interface QueryResult {
+export type QueryResult = {
   /** The number of rows affected by the query. */
   rowsAffected: number
   /**

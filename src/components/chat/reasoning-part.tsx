@@ -2,7 +2,7 @@ import type { ReasoningUIPart } from 'ai'
 import { Check, Loader2 } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 
-interface ReasoningPartProps {
+type ReasoningPartProps = {
   part: ReasoningUIPart
 }
 

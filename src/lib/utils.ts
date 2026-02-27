@@ -11,15 +11,15 @@ import {
   type SnakeCasedPropertiesDeep,
 } from 'type-fest'
 
-export function cn(...inputs: ClassValue[]) {
+export const cn = (...inputs: ClassValue[]) => {
   return twMerge(clsx(inputs))
 }
 
-export function uuidv7ToDate(uuid: string) {
+export const uuidv7ToDate = (uuid: string) => {
   return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
 }
 
-export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage {
+export const convertDbChatMessageToUIMessage = (message: ChatMessage): UIMessage => {
   return {
     id: message.id,
     parts: message.parts ?? [],
@@ -28,11 +28,11 @@ export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage
   }
 }
 
-export function convertUIMessageToDbChatMessage(
+export const convertUIMessageToDbChatMessage = (
   message: UIMessage,
   chatThreadId: string,
   parentId?: string | null,
-): ChatMessage {
+): ChatMessage => {
   const metadata = message.metadata as UIMessageMetadata | undefined
 
   return {
@@ -50,11 +50,11 @@ export function convertUIMessageToDbChatMessage(
   }
 }
 
-export function snakeCased(str: string): string {
+export const snakeCased = (str: string): string => {
   return str.replace(/([A-Z])/g, (match) => `_${match.toLowerCase()}`)
 }
 
-export function snakeCasedProperties<T extends Record<string, any>>(obj: T): SnakeCasedProperties<T> {
+export const snakeCasedProperties = <T extends Record<string, any>>(obj: T): SnakeCasedProperties<T> => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     return obj as any
   }
@@ -83,7 +83,7 @@ export function snakeCasedProperties<T extends Record<string, any>>(obj: T): Sna
   return result as SnakeCasedProperties<T>
 }
 
-export function snakeCasedPropertiesDeep<T extends Record<string, any>>(obj: T): SnakeCasedPropertiesDeep<T> {
+export const snakeCasedPropertiesDeep = <T extends Record<string, any>>(obj: T): SnakeCasedPropertiesDeep<T> => {
   if (!obj || typeof obj !== 'object') {
     return obj as any
   }
@@ -106,11 +106,11 @@ export function snakeCasedPropertiesDeep<T extends Record<string, any>>(obj: T):
   return result as SnakeCasedPropertiesDeep<T>
 }
 
-export function camelCased(str: string): string {
+export const camelCased = (str: string): string => {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
-export function camelCasedProperties<T extends Record<string, any>>(obj: T): CamelCasedProperties<T> {
+export const camelCasedProperties = <T extends Record<string, any>>(obj: T): CamelCasedProperties<T> => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     return obj as any
   }
@@ -139,7 +139,7 @@ export function camelCasedProperties<T extends Record<string, any>>(obj: T): Cam
   return result as CamelCasedProperties<T>
 }
 
-export function camelCasedPropertiesDeep<T extends Record<string, any>>(obj: T): CamelCasedPropertiesDeep<T> {
+export const camelCasedPropertiesDeep = <T extends Record<string, any>>(obj: T): CamelCasedPropertiesDeep<T> => {
   if (!obj || typeof obj !== 'object') {
     return obj as any
   }
@@ -168,7 +168,7 @@ export const nowIso = (): string => new Date().toISOString()
 /**
  * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
  */
-export function formatDate(value: number | string): string {
+export const formatDate = (value: number | string): string => {
   const d = dayjs(value)
   const now = dayjs()
 

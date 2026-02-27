@@ -2,7 +2,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { forwardRef, type ReactNode } from 'react'
 
-interface StatusCardProps {
+type StatusCardProps = {
   /**
    * The title can be a string or a React node that includes an icon
    * If it's a string, it will be left-aligned

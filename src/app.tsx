@@ -46,7 +46,7 @@ import { isPrPreview } from './lib/platform'
 
 const queryClient = new QueryClient()
 
-function AppContent({ initData }: { initData: InitData }) {
+const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
@@ -60,7 +60,7 @@ function AppContent({ initData }: { initData: InitData }) {
   )
 }
 
-function AppRoutes({ initData }: { initData: InitData }) {
+const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 

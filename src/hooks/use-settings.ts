@@ -134,7 +134,7 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
  *
  * If both conditions match, the query should be invalidated.
  */
-export function shouldInvalidateSettingsSubset(query: { queryKey: readonly unknown[] }, key: string) {
+export const shouldInvalidateSettingsSubset = (query: { queryKey: readonly unknown[] }, key: string) => {
   const keys = query.queryKey
 
   // must be a settings query

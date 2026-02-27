@@ -175,7 +175,9 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   }, [dialogOpen, setPreviewHidden])
 
   const handleOpenInApp = useCallback(() => {
-    if (showPreview) dismissWithAction(showPreview)
+    if (showPreview) {
+      dismissWithAction(showPreview)
+    }
   }, [dismissWithAction, showPreview])
 
   return (
@@ -220,7 +222,9 @@ const SafeLink = memo((props: React.ComponentProps<'a'>) => {
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
-    if (!safeHref) return
+    if (!safeHref) {
+      return
+    }
     context.openExternalLink(safeHref)
   }
 

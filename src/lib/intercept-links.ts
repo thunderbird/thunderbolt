@@ -2,7 +2,9 @@ import { isTauri } from './platform'
 import { isSafeUrl } from './url-utils'
 
 const handler = async (event: MouseEvent) => {
-  if (event.defaultPrevented) return
+  if (event.defaultPrevented) {
+    return
+  }
   const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]')
   if (!anchor) {
     return
@@ -13,7 +15,9 @@ const handler = async (event: MouseEvent) => {
     return
   }
   event.preventDefault()
-  if (!isSafeUrl(anchor.href)) return
+  if (!isSafeUrl(anchor.href)) {
+    return
+  }
 
   if (isTauri()) {
     // Use Tauri's openUrl in Tauri environment

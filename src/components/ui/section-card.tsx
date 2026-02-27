@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 import { Card, CardContent } from './card'
 
-interface SectionCardProps {
+type SectionCardProps = {
   title: string
   children: ReactNode
   className?: string
 }
 
-export function SectionCard({ title, children, className }: SectionCardProps) {
+export const SectionCard = ({ title, children, className }: SectionCardProps) => {
   return (
     <>
       <h3 className="text-lg font-semibold -mb-2">{title}</h3>

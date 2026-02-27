@@ -3,7 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
-interface MobileSidebarProps {
+type MobileSidebarProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: ReactNode

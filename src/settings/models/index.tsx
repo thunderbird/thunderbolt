@@ -35,7 +35,7 @@ import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
-interface AvailableModel {
+type AvailableModel = {
   id: string
   name?: string
   created?: number
@@ -91,7 +91,7 @@ const initialState: ModelState = {
   modelLoadError: null,
 }
 
-function modelReducer(state: ModelState, action: ModelAction): ModelState {
+const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
   switch (action.type) {
     case 'OPEN_DIALOG':
       // Fresh state every time the dialog is opened

@@ -33,7 +33,7 @@ import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useS
 import { v7 as uuidv7 } from 'uuid'
 
 // Task Item Component - Memoized for performance
-interface TaskItemProps {
+type TaskItemProps = {
   task: Task
   isCompleting: boolean
   onComplete: (id: string) => void
@@ -183,7 +183,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
 TaskItem.displayName = 'TaskItem'
 
 // New Task Input Component
-interface NewTaskInputProps {
+type NewTaskInputProps = {
   onAdd: (value: string) => void
   onCancel: () => void
 }

@@ -31,7 +31,7 @@ export const clearMemoizeCache = () => {
  * // later calls reuse the resolved Promise
  * ```
  */
-export function memoize<Fn extends (...args: any[]) => any>(fn: Fn, key?: string): Fn {
+export const memoize = <Fn extends (...args: any[]) => any>(fn: Fn, key?: string): Fn => {
   // 1. Default: cache per **function reference** (WeakMap)
   // 2. Optional: cache per explicit **string key** when callers need to share a value
 

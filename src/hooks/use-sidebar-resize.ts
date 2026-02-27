@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-export interface UseSidebarResizeProps {
+export type UseSidebarResizeProps = {
   /**
    * Direction of the resize handle
    * - 'left': Handle is on left side (for right-positioned panels)
@@ -89,7 +89,7 @@ export interface UseSidebarResizeProps {
   enableToggle?: boolean
 }
 
-interface WidthUnit {
+type WidthUnit = {
   value: number
   unit: 'rem' | 'px'
 }
@@ -97,7 +97,7 @@ interface WidthUnit {
 /**
  * Parse width string into value and unit
  */
-function parseWidth(width: string): WidthUnit {
+const parseWidth = (width: string): WidthUnit => {
   const unit = width.endsWith('rem') ? 'rem' : 'px'
   const value = Number.parseFloat(width)
   return { value, unit }
@@ -106,7 +106,7 @@ function parseWidth(width: string): WidthUnit {
 /**
  * Convert any width to pixels for calculations
  */
-function toPx(width: string): number {
+const toPx = (width: string): number => {
   const { value, unit } = parseWidth(width)
   return unit === 'rem' ? value * 16 : value
 }
@@ -114,7 +114,7 @@ function toPx(width: string): number {
 /**
  * Format width value with unit
  */
-function formatWidth(value: number, unit: 'rem' | 'px'): string {
+const formatWidth = (value: number, unit: 'rem' | 'px'): string => {
   return `${unit === 'rem' ? value.toFixed(1) : Math.round(value)}${unit}`
 }
 
@@ -123,7 +123,7 @@ function formatWidth(value: number, unit: 'rem' | 'px'): string {
  * Works for both sidebar (left side) and artifacts (right side) panels
  * Supports VS Code-like continuous drag to collapse/expand
  */
-export function useSidebarResize({
+export const useSidebarResize = ({
   direction = 'right',
   currentWidth,
   onResize,
@@ -140,7 +140,7 @@ export function useSidebarResize({
   widthCookieName,
   widthCookieMaxAge = 60 * 60 * 24 * 7, // 1 week default
   isNested = false,
-}: UseSidebarResizeProps) {
+}: UseSidebarResizeProps) => {
   // Refs for tracking drag state
   const dragRef = useRef<HTMLButtonElement>(null)
   const startWidth = useRef(0)

@@ -28,7 +28,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 
-interface ServerTools {
+type ServerTools = {
   [serverId: string]: string[]
 }
 

@@ -17,13 +17,13 @@ import { Ellipsis, Trash2 } from 'lucide-react'
 import { type HTMLAttributes } from 'react'
 import { useNavigate } from 'react-router'
 
-interface ChatNavButtonProps extends HTMLAttributes<HTMLDivElement> {
+type ChatNavButtonProps = HTMLAttributes<HTMLDivElement> & {
   chatTitle: string
   threadId: string
   asChild?: boolean
 }
 
-export function ChatNavButton({ chatTitle, threadId, className, asChild = false, ...props }: ChatNavButtonProps) {
+export const ChatNavButton = ({ chatTitle, threadId, className, asChild = false, ...props }: ChatNavButtonProps) => {
   const Comp = asChild ? Slot : 'div'
   const navigate = useNavigate()
 

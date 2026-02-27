@@ -7,7 +7,7 @@
  * @returns A formatted title with capitalized words or "New Chat" if no words are found
  */
 
-export function generateTitle(message: string, options?: { words?: number }): string {
+export const generateTitle = (message: string, options?: { words?: number }): string => {
   // Clean and extract key words
   const cleaned = message
     .replace(/^(hey|hi|hello|please|can you|could you|help me|what|how|why)/i, '')

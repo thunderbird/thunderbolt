@@ -40,7 +40,9 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
-    if (safeUrl === '#') return
+    if (safeUrl === '#') {
+      return
+    }
     openExternalLink(safeUrl)
   }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -32,7 +32,14 @@ export const MagicLinkVerify = () => {
   const email = searchParams.get('email')
   const otp = searchParams.get('otp')
 
+  // Prevent double-verification: refetchSession changes identity after cache update,
+  // which would re-trigger this effect and send the already-consumed OTP again.
+  const hasAttempted = useRef(false)
+
   useEffect(() => {
+    if (hasAttempted.current) return
+    hasAttempted.current = true
+
     const verify = async () => {
       if (!email || !otp) {
         setState({ status: 'error', message: 'Invalid verification link. Please request a new one.' })

@@ -21,10 +21,14 @@ const findOriginalUserText = (chatMessages: ThunderboltUIMessage[], widgetMessag
     .reverse()
     .find((msg) => msg.role === 'user')
 
-  if (!userMessage) return null
+  if (!userMessage) {
+    return null
+  }
 
   const textPart = userMessage.parts?.find((part) => part.type === 'text')
-  if (!textPart || textPart.type !== 'text') return null
+  if (!textPart || textPart.type !== 'text') {
+    return null
+  }
 
   return textPart.text ?? null
 }
@@ -142,7 +146,9 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
   useEffect(() => {
     const handleOAuthComplete = (event: CustomEvent<{ widgetMessageId: string }>) => {
       const { widgetMessageId } = event.detail
-      if (!widgetMessageId || !chatInstance || !chatThreadId) return
+      if (!widgetMessageId || !chatInstance || !chatThreadId) {
+        return
+      }
 
       const storedProvider = sessionStorage.getItem(getOAuthWidgetKey(widgetMessageId, 'provider')) as
         | 'google'
@@ -155,7 +161,9 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
     }
 
     const processRetryForWidget = async (widgetMessageId: string, provider: 'google' | 'microsoft' | null) => {
-      if (oauthRetryHandledRef.current.has(widgetMessageId)) return
+      if (oauthRetryHandledRef.current.has(widgetMessageId)) {
+        return
+      }
 
       // Wait for integration status to confirm the connection
       const confirmedStatus = await waitForProviderConnection(provider, queryClient, integrationStatus)

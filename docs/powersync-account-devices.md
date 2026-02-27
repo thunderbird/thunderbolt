@@ -173,7 +173,7 @@ When the app should reset (account deleted or device revoked), it runs a single 
 
 Triggered in two ways:
 
-1. **Event `POWERSYNC_CREDENTIALS_INVALID`**  
+1. **Event `powersyncCredentialsInvalid`**  
    Dispatched when the token request returns **410** or **403** with body `code: 'DEVICE_DISCONNECTED'`.
 2. **Devices table (current device revoked)**  
    `usePowerSyncCredentialsInvalidListener` uses React Query `getDevice(deviceId)` and key `['devices', deviceId]`. When the synced `devices` row has `revoked_at` set for the current device, the hook runs the same reset flow (immediate, without waiting for next token refresh).

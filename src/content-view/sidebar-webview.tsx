@@ -35,7 +35,9 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
   }
 
   const handleCopyUrl = async () => {
-    if (!config?.url) return
+    if (!config?.url) {
+      return
+    }
     try {
       await navigator.clipboard.writeText(config.url)
       trackEvent('preview_copy_url')
@@ -47,7 +49,10 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
   }
 
   const handleOpenExternal = async () => {
-    if (!config?.url || !isSafeUrl(config.url)) return
+    if (!config?.url || !isSafeUrl(config.url)) {
+      return
+    }
+
     try {
       trackEvent('preview_open_external')
       const { openUrl } = await import('@tauri-apps/plugin-opener')

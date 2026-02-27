@@ -30,8 +30,12 @@ const categorizeModels = (
     const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
 
     const getDisabledReason = () => {
-      if (!isDisabled) return undefined
-      if (model.isConfidential === 1) return 'This model is only available in confidential chats'
+      if (!isDisabled) {
+        return undefined
+      }
+      if (model.isConfidential === 1) {
+        return 'This model is only available in confidential chats'
+      }
       return 'Non-confidential models cannot be used in confidential chats'
     }
 
@@ -53,8 +57,12 @@ const categorizeModels = (
   }
 
   const groups: SearchableMenuGroup<ModelItemData>[] = []
-  if (provided.length > 0) groups.push({ id: 'provided', label: 'Provided Models', items: provided })
-  if (custom.length > 0) groups.push({ id: 'custom', label: 'Custom Models', items: custom })
+  if (provided.length > 0) {
+    groups.push({ id: 'provided', label: 'Provided Models', items: provided })
+  }
+  if (custom.length > 0) {
+    groups.push({ id: 'custom', label: 'Custom Models', items: custom })
+  }
 
   return groups
 }

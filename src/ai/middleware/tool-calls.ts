@@ -2,8 +2,8 @@ import type { LanguageModelV2Middleware, LanguageModelV2StreamPart } from '@ai-s
 import { generateId } from 'ai'
 import type { TransformStreamDefaultController } from 'stream/web'
 
-const MAX_TAG_LEN = 64
-const ARG_BEGIN_SENTINEL = '<|tool_call_argument_begin|>'
+const maxTagLen = 64
+const argBeginSentinel = '<|tool_call_argument_begin|>'
 
 /** Utility that normalises a raw "functions.foo:1" header. */
 const parseToolNameAndId = (raw: string): { toolName: string; toolCallId: string } => {
@@ -29,9 +29,9 @@ const parseToolNameAndId = (raw: string): { toolName: string; toolCallId: string
 
 /** Parse the content accumulated inside a <|tool_call_begin|> … <|tool_call_end|> block. */
 const emitToolCall = (content: string, controller: TransformStreamDefaultController<LanguageModelV2StreamPart>) => {
-  const argIdx = content.indexOf(ARG_BEGIN_SENTINEL)
+  const argIdx = content.indexOf(argBeginSentinel)
   const headerPart = (argIdx === -1 ? content : content.slice(0, argIdx)).trim()
-  const argsRaw = argIdx === -1 ? '' : content.slice(argIdx + ARG_BEGIN_SENTINEL.length).trim()
+  const argsRaw = argIdx === -1 ? '' : content.slice(argIdx + argBeginSentinel.length).trim()
 
   const { toolName, toolCallId } = parseToolNameAndId(headerPart)
 
@@ -62,7 +62,9 @@ export const toolCallsMiddleware: LanguageModelV2Middleware = {
 
     /** Helper: append plain text to the correct destination. */
     const appendText = (text: string) => {
-      if (!text) return
+      if (!text) {
+        return
+      }
       if (stack.length > 0) {
         stack[stack.length - 1].content += text
       } else {
@@ -155,8 +157,8 @@ export const toolCallsMiddleware: LanguageModelV2Middleware = {
           // -----------------------------------------------------------------
           // We ARE collecting a potential tag
           // -----------------------------------------------------------------
-          // First, ensure we don't exceed MAX_TAG_LEN
-          if (tagBuffer.length >= MAX_TAG_LEN) {
+          // First, ensure we don't exceed maxTagLen
+          if (tagBuffer.length >= maxTagLen) {
             appendText(tagBuffer)
             tagBuffer = ''
             // Re-process this char from scratch in the outer loop

@@ -86,7 +86,9 @@ export const saveMessagesWithContextUpdate = async (
     try {
       await db.insert(chatMessagesTable).values(msg)
     } catch (err) {
-      if (!isInsertConflictError(err)) throw err
+      if (!isInsertConflictError(err)) {
+        throw err
+      }
       await db
         .update(chatMessagesTable)
         .set({
@@ -159,7 +161,9 @@ const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> 
 export const deleteChatMessageAndDescendants = async (messageId: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const idsToSoftDelete = await getMessageAndDescendantIds(messageId)
-  if (idsToSoftDelete.length === 0) return
+  if (idsToSoftDelete.length === 0) {
+    return
+  }
 
   const deletedAt = nowIso()
   await db

@@ -1,15 +1,15 @@
 import type { ThunderboltProStatus } from './types'
 
 // Hardcoded constant for testing - can be switched back and forth
-const IS_PRO_USER = true // Set to false to test "Get Pro" button
+const isProUser = true // Set to false to test "Get Pro" button
 
 /**
  * Get the current user's pro status
  */
 export const getProStatus = async (): Promise<ThunderboltProStatus> => {
   return {
-    isProUser: IS_PRO_USER,
-    features: IS_PRO_USER ? ['search', 'web_fetch', 'weather', 'weather_forecast'] : [],
+    isProUser,
+    features: isProUser ? ['search', 'web_fetch', 'weather', 'weather_forecast'] : [],
   }
 }
 

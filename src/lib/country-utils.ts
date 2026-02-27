@@ -4,7 +4,9 @@
  * @returns Country name or null if not found
  */
 export const extractCountryFromLocation = (locationName: string): string | null => {
-  if (!locationName) return null
+  if (!locationName) {
+    return null
+  }
 
   const parts = locationName.split(',').map((part) => part.trim())
   return parts.length > 0 ? parts[parts.length - 1] : null

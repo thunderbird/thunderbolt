@@ -316,6 +316,8 @@ export const getScenarios = (modelNames?: string[], modeNames?: string[]): EvalS
 /** Get the model ID for a given model name */
 export const getModelId = (modelName: string): string => {
   const model = models.find((m) => m.name === modelName)
-  if (!model) throw new Error(`Unknown model: ${modelName}`)
+  if (!model) {
+    throw new Error(`Unknown model: ${modelName}`)
+  }
   return model.id
 }

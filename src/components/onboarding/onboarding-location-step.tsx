@@ -92,7 +92,9 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
   }, [])
 
   useEffect(() => {
-    if (!isInitialized) return
+    if (!isInitialized) {
+      return
+    }
 
     const subscription = form.watch((value) => {
       const hasValidLocation = !!(

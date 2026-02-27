@@ -58,7 +58,9 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
   }, [preferredName.value, preferredName.isLoading, form])
 
   useEffect(() => {
-    if (!isInitialized) return // Don't track changes until initialized
+    if (!isInitialized) {
+      return
+    } // Don't track changes until initialized
 
     const subscription = form.watch((value) => {
       const hasValidName = !!(value.preferredName && value.preferredName.trim().length > 0)

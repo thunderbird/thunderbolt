@@ -58,7 +58,9 @@ const citationPlaceholderRegex = /\{\{CITE:(\d+)\}\}/
 const processTextContent = (children: ReactNode): ReactNode => {
   if (typeof children === 'string') {
     const parts = children.split(brSplitRegex)
-    if (parts.length === 1) return children
+    if (parts.length === 1) {
+      return children
+    }
 
     return parts.map((part, i) => (
       <Fragment key={i}>
@@ -99,7 +101,9 @@ const processTextContent = (children: ReactNode): ReactNode => {
 const processCitationPlaceholders = (children: ReactNode, citations: CitationMap): ReactNode => {
   if (typeof children === 'string') {
     const parts = children.split(citationPlaceholderRegex)
-    if (parts.length === 1) return children
+    if (parts.length === 1) {
+      return children
+    }
 
     return parts
       .map((part, i) => {

@@ -131,7 +131,9 @@ export function MCPProvider({ children }: { children: ReactNode }) {
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
     const server = servers.find((s) => s.id === serverId)
-    if (!server) return
+    if (!server) {
+      return
+    }
 
     if (enabled) {
       connectServer({ ...server, enabled })
@@ -147,7 +149,9 @@ export function MCPProvider({ children }: { children: ReactNode }) {
 
   const reconnectServer = async (serverId: string) => {
     const server = servers.find((s) => s.id === serverId)
-    if (!server) return
+    if (!server) {
+      return
+    }
 
     // Reconnecting MCP server
     disconnectServer(serverId)

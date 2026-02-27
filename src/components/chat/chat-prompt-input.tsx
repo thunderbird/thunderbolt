@@ -71,7 +71,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       try {
         // Prevent submitting while streaming or if input is empty
         const textToSend = input.trim()
-        if (isStreaming || !textToSend) return
+        if (isStreaming || !textToSend) {
+          return
+        }
 
         if (isOverflowing) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)

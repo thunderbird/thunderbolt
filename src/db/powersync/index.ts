@@ -5,5 +5,5 @@ export {
   getPowerSyncInstance,
   isSyncEnabled,
   setSyncEnabled,
-  SYNC_ENABLED_CHANGE_EVENT,
+  syncEnabledChangeEvent,
 } from './database'

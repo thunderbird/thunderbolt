@@ -37,7 +37,9 @@ export const createDefaultModelProfile = async (modelId: string): Promise<void> 
   // Lazy import to avoid circular dependency
   const { defaultModelProfiles, hashModelProfile } = await import('../defaults/model-profiles')
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
-  if (!defaultProfile) return
+  if (!defaultProfile) {
+    return
+  }
 
   const db = DatabaseSingleton.instance.db
   await db
@@ -62,7 +64,9 @@ export const deleteModelProfileForModel = async (modelId: string): Promise<void>
 export const resetModelProfileToDefault = async (modelId: string): Promise<void> => {
   const { defaultModelProfiles, hashModelProfile } = await import('../defaults/model-profiles')
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
-  if (!defaultProfile) return
+  if (!defaultProfile) {
+    return
+  }
 
   const db = DatabaseSingleton.instance.db
   const { defaultHash, ...fields } = defaultProfile as ModelProfile & { defaultHash?: string | null }

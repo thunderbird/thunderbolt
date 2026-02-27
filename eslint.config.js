@@ -95,6 +95,40 @@ export default [
           disallowTypeAnnotations: false,
         },
       ],
+      // Enforce brackets after if statements
+      curly: ['error', 'all'],
+      // Prefer early returns instead of else statements
+      'no-else-return': ['error', { allowElseIf: false }],
+      '@typescript-eslint/naming-convention': [
+        'error',
+        // Enforce camelCase for variables (const, let)
+        {
+          selector: 'variable',
+          format: ['camelCase'],
+          leadingUnderscore: 'allow', // Allow _unused variables
+        },
+        // Allow PascalCase for React components
+        {
+          selector: 'variable',
+          modifiers: ['const'],
+          format: ['camelCase', 'PascalCase'],
+          filter: {
+            // Allow React components (functions that return JSX)
+            regex: '^[A-Z]',
+            match: true,
+          },
+        },
+        // Enforce PascalCase for types, interfaces, classes
+        {
+          selector: 'typeLike',
+          format: ['PascalCase'],
+        },
+        // Enforce camelCase for functions
+        {
+          selector: 'function',
+          format: ['camelCase', 'PascalCase'], // PascalCase for React components
+        },
+      ],
     },
   },
   ...storybook.configs['flat/recommended'],

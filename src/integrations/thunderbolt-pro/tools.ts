@@ -93,7 +93,9 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           fetchLinkPreview({ url: params.url }, httpClient).catch(() => null),
         ])
 
-        if (!result) return result
+        if (!result) {
+          return result
+        }
 
         const ogSiteName = preview?.siteName
         const existingSource = sourceCollector?.find((s) => s.url === result.url)
@@ -115,13 +117,27 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           nextIndex++
         } else if (existingSource) {
           // fetch_content has the authoritative page title — update the existing entry
-          if (result.title) existingSource.title = result.title
-          if (result.text) existingSource.description = result.text.slice(0, 200)
-          if (preview?.image ?? result.image) existingSource.image = preview?.image ?? result.image
-          if (result.favicon) existingSource.favicon = result.favicon
-          if (ogSiteName) existingSource.siteName = ogSiteName
-          if (result.author) existingSource.author = result.author
-          if (result.published_date) existingSource.publishedDate = result.published_date
+          if (result.title) {
+            existingSource.title = result.title
+          }
+          if (result.text) {
+            existingSource.description = result.text.slice(0, 200)
+          }
+          if (preview?.image ?? result.image) {
+            existingSource.image = preview?.image ?? result.image
+          }
+          if (result.favicon) {
+            existingSource.favicon = result.favicon
+          }
+          if (ogSiteName) {
+            existingSource.siteName = ogSiteName
+          }
+          if (result.author) {
+            existingSource.author = result.author
+          }
+          if (result.published_date) {
+            existingSource.publishedDate = result.published_date
+          }
         } else {
           if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
             console.warn(

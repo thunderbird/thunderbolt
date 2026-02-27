@@ -12,11 +12,11 @@ const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> 
 })
 
 export const getOAuthConfig = async (): Promise<OAuthConfig> => {
-  const { client_id } = await fetchBackendConfig()
+  const { client_id: clientId } = await fetchBackendConfig()
   const redirectUri = getOAuthRedirectUri()
 
   return {
-    clientId: client_id,
+    clientId,
     redirectUri,
     scope: [
       'email',
@@ -63,7 +63,9 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
   const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!response.ok) throw new Error('Failed to fetch user info')
+  if (!response.ok) {
+    throw new Error('Failed to fetch user info')
+  }
   return response.json()
 }
 

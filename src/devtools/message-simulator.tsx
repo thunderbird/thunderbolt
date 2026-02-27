@@ -22,7 +22,7 @@ import TOOL_CALL_SSE_CONTENT from '../ai/streaming/sse-logs/004-tool-call.sse?ra
 import START_WITH_REASONING_SSE_CONTENT from '../ai/streaming/sse-logs/005-start-with-reasoning.sse?raw'
 
 // Map of SSE log files to their content
-const SSE_LOG_FILES = {
+const sseLogFiles = {
   'think-tags': THINK_TAGS_SSE_CONTENT,
   'reasoning-property': REASONING_PROPERTY_SSE_CONTENT,
   'malformed-tool-call-think': MALFORMED_TOOL_CALL_THINK_SSE_CONTENT,
@@ -31,7 +31,7 @@ const SSE_LOG_FILES = {
 } as const
 
 // Generate SSE logs array from file names with metadata
-const SSE_LOGS = Object.entries(SSE_LOG_FILES).map(([fileName, content]) => {
+const sseLogs = Object.entries(sseLogFiles).map(([fileName, content]) => {
   const { metadata } = parseEnhancedSseFile(content)
   return {
     value: fileName,
@@ -250,7 +250,7 @@ function SimulatorContent() {
   const setSelectedSse = (value: string) => simulationSse.setValue(value)
 
   const [sseContent, setSseContent] = useState(() => {
-    const selectedLog = SSE_LOGS.find((log) => log.value === selectedSse)
+    const selectedLog = sseLogs.find((log) => log.value === selectedSse)
     return selectedLog?.content || ''
   })
   const [open, setOpen] = useState(false)
@@ -268,7 +268,9 @@ function SimulatorContent() {
   })()
 
   const startSimulation = () => {
-    if (!sseContent.trim()) return
+    if (!sseContent.trim()) {
+      return
+    }
     // Create a new simulation key to force re-mount of SimulatorChat
     setSimulationKey(Date.now())
     setIsRunning(true)
@@ -295,7 +297,7 @@ function SimulatorContent() {
   }
 
   const handleSseSelection = (value: string) => {
-    const selectedLog = SSE_LOGS.find((log) => log.value === value)
+    const selectedLog = sseLogs.find((log) => log.value === value)
     if (selectedLog) {
       setSelectedSse(value)
       setSseContent(selectedLog.content)
@@ -333,7 +335,7 @@ function SimulatorContent() {
                       className="w-[400px] justify-between"
                       disabled={isRunning}
                     >
-                      {selectedSse ? SSE_LOGS.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
+                      {selectedSse ? sseLogs.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
                       <ChevronsUpDown className="opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -343,7 +345,7 @@ function SimulatorContent() {
                       <CommandList>
                         <CommandEmpty>No SSE log found.</CommandEmpty>
                         <CommandGroup>
-                          {SSE_LOGS.map((log) => (
+                          {sseLogs.map((log) => (
                             <CommandItem key={log.value} value={log.value} onSelect={handleSseSelection}>
                               <span className="font-medium">{log.label}</span>
                               <Check

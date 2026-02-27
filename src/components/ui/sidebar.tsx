@@ -25,15 +25,15 @@ import {
   useState,
 } from 'react'
 
-const SIDEBAR_COOKIE_NAME = 'sidebar_state'
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = '16rem'
-const SIDEBAR_WIDTH_ICON = '3rem'
-const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
+const sidebarCookieName = 'sidebar_state'
+const sidebarCookieMaxAge = 60 * 60 * 24 * 7
+const sidebarWidth = '16rem'
+const sidebarWidthIcon = '3rem'
+const sidebarKeyboardShortcut = 'b'
 
 //* new constants for sidebar resizing
-const MIN_SIDEBAR_WIDTH = '14rem'
-const MAX_SIDEBAR_WIDTH = '22rem'
+const minSidebarWidth = '14rem'
+const maxSidebarWidth = '22rem'
 
 type SidebarContextProps = {
   state: 'expanded' | 'collapsed'
@@ -80,7 +80,7 @@ const SidebarProvider = forwardRef<
       className,
       style,
       children,
-      defaultWidth = SIDEBAR_WIDTH,
+      defaultWidth = sidebarWidth,
       ...props
     },
     ref,
@@ -106,7 +106,7 @@ const SidebarProvider = forwardRef<
         }
 
         // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        document.cookie = `${sidebarCookieName}=${openState}; path=/; max-age=${sidebarCookieMaxAge}`
       },
       [setOpenProp, open],
     )
@@ -124,7 +124,7 @@ const SidebarProvider = forwardRef<
     // Adds a keyboard shortcut to toggle the sidebar.
     useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+        if (event.key === sidebarKeyboardShortcut && (event.metaKey || event.ctrlKey)) {
           event.preventDefault()
           toggleSidebar()
         }
@@ -178,7 +178,7 @@ const SidebarProvider = forwardRef<
               {
                 // * update '--sidebar-width' to use the new width state
                 '--sidebar-width': width,
-                '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+                '--sidebar-width-icon': sidebarWidthIcon,
                 ...style,
               } as CSSProperties
             }
@@ -320,7 +320,7 @@ const SidebarRail = forwardRef<
     direction?: 'left' | 'right'
     maxResizeWidth?: string
   }
->(({ className, enableDrag = true, direction = 'right', maxResizeWidth = MAX_SIDEBAR_WIDTH, ...props }, ref) => {
+>(({ className, enableDrag = true, direction = 'right', maxResizeWidth = maxSidebarWidth, ...props }, ref) => {
   const { toggleSidebar, setWidth, state, width, setIsDraggingRail } = useSidebar()
 
   const { dragRef, handleMouseDown } = useSidebarResize({
@@ -330,7 +330,7 @@ const SidebarRail = forwardRef<
     onToggle: toggleSidebar,
     currentWidth: width,
     isCollapsed: state === 'collapsed',
-    minResizeWidth: MIN_SIDEBAR_WIDTH,
+    minResizeWidth: minSidebarWidth,
     maxResizeWidth,
     setIsDraggingRail,
     widthCookieName: 'sidebar:width',

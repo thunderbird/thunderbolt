@@ -138,7 +138,9 @@ export function shouldInvalidateSettingsSubset(query: { queryKey: readonly unkno
   const keys = query.queryKey
 
   // must be a settings query
-  if (!Array.isArray(keys) || keys[0] !== 'settings') return false
+  if (!Array.isArray(keys) || keys[0] !== 'settings') {
+    return false
+  }
 
   // 'subset' = all keys after the prefix
   const subset = keys.slice(1) as string[]
@@ -246,7 +248,9 @@ export function useSettings<T extends SettingSchema>(
 
   // Create lookup by key
   const byKey = useMemo(() => {
-    if (!query.data) return {}
+    if (!query.data) {
+      return {}
+    }
     return query.data.reduce(
       (acc, setting) => {
         acc[setting.key] = setting

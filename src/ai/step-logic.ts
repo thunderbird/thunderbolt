@@ -145,7 +145,9 @@ export const inferenceDefaults = {
 export const getNudgeMessagesFromProfile = (profile: ModelProfile | null, modeName?: string): NudgeMessages => {
   const isSearch = modeName === 'search'
 
-  if (!profile) return isSearch ? searchModeNudges : nudgeMessages
+  if (!profile) {
+    return isSearch ? searchModeNudges : nudgeMessages
+  }
 
   if (isSearch) {
     const hasSearchOverrides = profile.nudgeSearchFinalStep || profile.nudgeSearchPreventive || profile.nudgeSearchRetry

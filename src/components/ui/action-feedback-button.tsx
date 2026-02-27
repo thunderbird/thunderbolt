@@ -33,12 +33,16 @@ export const ActionFeedbackButton = ({
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
     }
   }, [])
 
   const handleClick = useCallback(async () => {
-    if (state !== 'idle') return
+    if (state !== 'idle') {
+      return
+    }
 
     setState('loading')
 

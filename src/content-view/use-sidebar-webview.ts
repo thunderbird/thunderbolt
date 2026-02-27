@@ -43,7 +43,9 @@ export const useSidebarWebview = (
     const updateWebviewPosition = async () => {
       // Use ref instead of local variable to get current state
       const currentWebview = webviewRef.current
-      if (!currentWebview || !containerRef.current || !isActive) return
+      if (!currentWebview || !containerRef.current || !isActive) {
+        return
+      }
 
       const rect = containerRef.current.getBoundingClientRect()
 
@@ -84,12 +86,16 @@ export const useSidebarWebview = (
       try {
         windowRef.current = getCurrentWindow()
         const container = containerRef.current
-        if (!container || !isActive) return
+        if (!container || !isActive) {
+          return
+        }
 
         // Wait for layout to fully settle before measuring
         await new Promise((resolve) => requestAnimationFrame(resolve))
 
-        if (!isActive || !containerRef.current) return
+        if (!isActive || !containerRef.current) {
+          return
+        }
 
         // Get container position relative to viewport
         const rect = containerRef.current.getBoundingClientRect()

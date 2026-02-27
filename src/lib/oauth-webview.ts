@@ -104,7 +104,9 @@ async function waitForCallback(window: WebviewWindow): Promise<{ code: string; s
 
     const unlistenNavigate = await window.listen('tauri://navigate', (event: any) => {
       const url = new URL(event.payload)
-      if (!url.pathname.includes('oauth-callback.html')) return
+      if (!url.pathname.includes('oauth-callback.html')) {
+        return
+      }
 
       const params = url.searchParams
       handleCallback(params.get('code'), params.get('state'), params.get('error') || params.get('error_description'))

@@ -77,10 +77,14 @@ export class TrayManager {
   }
 
   private async handleShowClick() {
-    if (!isTauri() || !this.appWindow) return
+    if (!isTauri() || !this.appWindow) {
+      return
+    }
 
     await loadTauriModules()
-    if (!tauriCore) return
+    if (!tauriCore) {
+      return
+    }
 
     await this.appWindow.show()
     await this.appWindow.setSkipTaskbar(false)
@@ -108,13 +112,19 @@ export class TrayManager {
   }
 
   private async setupWindowBehavior() {
-    if (!isTauri() || !this.appWindow) return
+    if (!isTauri() || !this.appWindow) {
+      return
+    }
 
     await loadTauriModules()
-    if (!tauriCore) return
+    if (!tauriCore) {
+      return
+    }
 
     this.appWindow.onCloseRequested(async (event: any) => {
-      if (!this.appWindow) return
+      if (!this.appWindow) {
+        return
+      }
 
       event.preventDefault()
       await this.appWindow.hide()

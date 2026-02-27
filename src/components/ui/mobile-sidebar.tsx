@@ -78,7 +78,9 @@ export const MobileSidebar = ({
   }, [open, internalOpen, isAnimating, x, side])
 
   const handleClose = async () => {
-    if (isAnimating) return
+    if (isAnimating) {
+      return
+    }
 
     const width = getSidebarWidth()
     setIsAnimating(true)

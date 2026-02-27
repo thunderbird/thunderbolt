@@ -57,7 +57,9 @@ const run = async () => {
   console.log(`  Finish reason: ${parsed.finishReason}`)
   console.log(`  Retries: ${parsed.retryCount}`)
   console.log(`  Text length: ${parsed.text.length} chars`)
-  if (parsed.error) console.log(`  Error: ${parsed.error}`)
+  if (parsed.error) {
+    console.log(`  Error: ${parsed.error}`)
+  }
 
   console.log('\n[5/5] Response analysis:')
   console.log('─'.repeat(60))

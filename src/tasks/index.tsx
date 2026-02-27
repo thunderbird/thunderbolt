@@ -425,7 +425,9 @@ export default function TasksPage() {
           for (let i = Math.min(oldIndex, newIndex); i <= Math.max(oldIndex, newIndex); i++) {
             const taskId = newOrder[i]
             const task = taskMap.get(taskId)
-            if (!task) continue
+            if (!task) {
+              continue
+            }
 
             let order: number
             if (i === 0) {

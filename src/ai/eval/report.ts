@@ -35,17 +35,25 @@ export const summarize = (results: EvalResult[]): EvalSummary => {
 
     byModel[model] ??= { total: 0, passed: 0, passRate: 0 }
     byModel[model].total++
-    if (r.passed) byModel[model].passed++
+    if (r.passed) {
+      byModel[model].passed++
+    }
 
     byMode[mode] ??= { total: 0, passed: 0, passRate: 0 }
     byMode[mode].total++
-    if (r.passed) byMode[mode].passed++
+    if (r.passed) {
+      byMode[mode].passed++
+    }
   }
 
   const rate = (p: number, t: number) => (t === 0 ? 0 : Math.round((p / t) * 100))
 
-  for (const stats of Object.values(byModel)) stats.passRate = rate(stats.passed, stats.total)
-  for (const stats of Object.values(byMode)) stats.passRate = rate(stats.passed, stats.total)
+  for (const stats of Object.values(byModel)) {
+    stats.passRate = rate(stats.passed, stats.total)
+  }
+  for (const stats of Object.values(byMode)) {
+    stats.passRate = rate(stats.passed, stats.total)
+  }
 
   return { total, passed, failed: total - passed, passRate: rate(passed, total), byModel, byMode }
 }

@@ -45,7 +45,9 @@ export const deleteTriggersForPrompt = async (promptId: string): Promise<void> =
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteTriggersForPrompts = async (promptIds: string[]): Promise<void> => {
-  if (promptIds.length === 0) return
+  if (promptIds.length === 0) {
+    return
+  }
 
   const db = DatabaseSingleton.instance.db
   await db

@@ -61,7 +61,9 @@ export const createMessageMetadata = (modelId: string, sourceCollector?: SourceM
       case 'text-start':
       case 'reasoning-end': {
         const id = reasoningStack.pop()
-        if (!id) return { modelId }
+        if (!id) {
+          return { modelId }
+        }
         const startTime = startTimes.get(id)
         const duration = startTime ? Date.now() - startTime : undefined
         return duration ? { reasoningTime: { [id]: duration } } : { modelId }

@@ -25,7 +25,9 @@ const main = async () => {
   await setupTestDatabase()
 
   // Suppress noisy console output from fetch.ts unless --verbose
-  if (!verbose) silenceConsole()
+  if (!verbose) {
+    silenceConsole()
+  }
 
   // Initialize terminal layout with spinner slots matching concurrency
   initLayout(scenarios, scenarioParallel)
@@ -43,7 +45,9 @@ const main = async () => {
   generateReport(results, detailed)
 
   const failCount = results.filter((r) => !r.passed).length
-  if (failCount > 0) process.exit(1)
+  if (failCount > 0) {
+    process.exit(1)
+  }
 }
 
 await main()

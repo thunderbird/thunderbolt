@@ -10,7 +10,9 @@ interface ChatMessagePreviewProps {
 }
 
 export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProps) {
-  if (!messageId && !imapId) throw new Error('Either messageId or imapId must be provided')
+  if (!messageId && !imapId) {
+    throw new Error('Either messageId or imapId must be provided')
+  }
 
   const { setSideview } = useSideview()
 
@@ -20,7 +22,8 @@ export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProp
       if (messageId) {
         // @todo re-implement this
         return null
-      } else if (imapId) {
+      }
+      if (imapId) {
         // @todo re-implement this
         return null
       }
@@ -30,7 +33,9 @@ export function ChatMessagePreview({ messageId, imapId }: ChatMessagePreviewProp
   })
 
   const handleClick = () => {
-    if (message) setSideview('message', message.id)
+    if (message) {
+      setSideview('message', message.id)
+    }
   }
 
   return (

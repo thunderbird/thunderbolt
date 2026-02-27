@@ -12,13 +12,13 @@ import { z } from 'zod'
  * Union of all possible widget types - auto-generated from widget registry
  * Type assertion is safe because we know the schemas are discriminated unions at runtime
  */
-const _WidgetSchema = z.discriminatedUnion(
+const _widgetSchema = z.discriminatedUnion(
   'widget',
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   widgetSchemas as any,
 )
 
-export type Widget = z.infer<typeof _WidgetSchema>
+export type Widget = z.infer<typeof _widgetSchema>
 
 /**
  * Individual widget types - import these from widget folders directly:

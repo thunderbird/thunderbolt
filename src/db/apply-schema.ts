@@ -50,7 +50,9 @@ const buildCreateIndexSQL = (tableName: string, index: Index): string => {
   }
   const unique = config.unique ? 'UNIQUE ' : ''
   const columnNames = config.columns.map((c) => quoteId(c.name)).filter(Boolean)
-  if (columnNames.length === 0) return ''
+  if (columnNames.length === 0) {
+    return ''
+  }
   return `CREATE ${unique}INDEX IF NOT EXISTS ${quoteId(config.name)} ON ${quoteId(tableName)} (${columnNames.join(', ')})`
 }
 

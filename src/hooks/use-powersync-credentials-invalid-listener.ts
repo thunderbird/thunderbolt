@@ -1,6 +1,6 @@
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync'
-import { POWERSYNC_CREDENTIALS_INVALID } from '@/db/powersync/connector'
+import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { useQuery } from '@tanstack/react-query'
@@ -26,7 +26,7 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
 /**
  * Listens for "credentials invalid" and triggers a full app reset in two cases:
  *
- * 1. **Event (POWERSYNC_CREDENTIALS_INVALID)** – Fired when the backend returns 410 (account
+ * 1. **Event (powersyncCredentialsInvalid)** – Fired when the backend returns 410 (account
  *    deleted), 403 (device revoked), or 409 (device id taken by another user) e.g. from the
  *    account-verify endpoint during app init or from PowerSync token refresh. We just run
  *    the reset handler.
@@ -60,27 +60,37 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
     const handler = () => {
-      if (hasTriggeredRef.current) return
+      if (hasTriggeredRef.current) {
+        return
+      }
       hasTriggeredRef.current = true
       void performCredentialsInvalidReset()
     }
 
-    window.addEventListener(POWERSYNC_CREDENTIALS_INVALID, handler)
-    return () => window.removeEventListener(POWERSYNC_CREDENTIALS_INVALID, handler)
+    window.addEventListener(powersyncCredentialsInvalid, handler)
+    return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
   }, [])
 
   // Handle device revoked or device row missing (account deleted) from synced devices table.
   useEffect(() => {
-    if (device != null) hadDeviceOnceRef.current = true
+    if (device != null) {
+      hadDeviceOnceRef.current = true
+    }
 
     const hasToken = Boolean(getAuthToken())
 
-    if (hasTriggeredRef.current) return
-    if (!isFetched || !hasToken || !deviceId) return
+    if (hasTriggeredRef.current) {
+      return
+    }
+    if (!isFetched || !hasToken || !deviceId) {
+      return
+    }
     const revoked = device?.revokedAt != null
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
     const shouldReset = revoked || missingAfterHavingDevice
-    if (!shouldReset) return
+    if (!shouldReset) {
+      return
+    }
     hasTriggeredRef.current = true
     void performCredentialsInvalidReset()
   }, [isFetched, deviceId, device])

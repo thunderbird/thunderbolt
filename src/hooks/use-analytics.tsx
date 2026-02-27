@@ -12,7 +12,9 @@ export const usePageTracking = () => {
   const previousUrl = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!posthog) return
+    if (!posthog) {
+      return
+    }
 
     const origin = isTauri() ? 'tauri://' : window.location.origin
     const fullUrl = origin + location.pathname + location.search
@@ -28,7 +30,9 @@ export const usePageTracking = () => {
   // Track page leave when component unmounts (app closing)
   useEffect(() => {
     return () => {
-      if (!posthog || !previousUrl.current) return
+      if (!posthog || !previousUrl.current) {
+        return
+      }
       posthog.capture('$pageleave', { $current_url: previousUrl.current })
     }
   }, [posthog])

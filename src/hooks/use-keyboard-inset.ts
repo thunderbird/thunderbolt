@@ -18,7 +18,9 @@ import { useEffect } from 'react'
 export const useKeyboardInset = (): void => {
   useEffect(() => {
     const vv = window.visualViewport
-    if (!vv) return // VisualViewport API not supported
+    if (!vv) {
+      return
+    } // VisualViewport API not supported
 
     /**
      * Calculates and sets the CSS variable based on the difference between the

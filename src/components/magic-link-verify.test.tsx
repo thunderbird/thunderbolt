@@ -46,8 +46,12 @@ describe('MagicLinkVerify', () => {
   })
 
   const renderComponent = (email?: string, otp?: string) => {
-    if (email) mockSearchParams.set('email', email)
-    if (otp) mockSearchParams.set('otp', otp)
+    if (email) {
+      mockSearchParams.set('email', email)
+    }
+    if (otp) {
+      mockSearchParams.set('otp', otp)
+    }
 
     const authClient = createMockAuthClient({
       session: null,

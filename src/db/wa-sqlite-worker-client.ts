@@ -53,7 +53,9 @@ export class WaSQLiteWorkerClient {
       const { id, result, error } = event.data
 
       // Skip ready message
-      if (id === -1) return
+      if (id === -1) {
+        return
+      }
 
       const pending = this.pendingRequests.get(id)
       if (!pending) {

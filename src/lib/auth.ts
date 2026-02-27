@@ -105,7 +105,9 @@ export const startOAuthFlow = async (
     await openUrl(authUrl)
   } else {
     popup = window.open(authUrl, '_blank', 'noopener,noreferrer,width=600,height=700')
-    if (!popup) throw new Error('Failed to open authentication window')
+    if (!popup) {
+      throw new Error('Failed to open authentication window')
+    }
     popup.focus()
   }
 
@@ -113,10 +115,15 @@ export const startOAuthFlow = async (
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'oauth-callback') {
         window.removeEventListener('message', handler)
-        if (popup && !popup.closed) popup.close()
+        if (popup && !popup.closed) {
+          popup.close()
+        }
 
-        if (event.data.error) reject(new Error(event.data.error))
-        else resolve({ code: event.data.code, state: event.data.state })
+        if (event.data.error) {
+          reject(new Error(event.data.error))
+        } else {
+          resolve({ code: event.data.code, state: event.data.state })
+        }
       }
     }
 
@@ -132,10 +139,14 @@ export const startOAuthFlow = async (
   })
 
   const { code, state: returnedState } = await callback
-  if (returnedState !== state) throw new Error('OAuth state mismatch')
+  if (returnedState !== state) {
+    throw new Error('OAuth state mismatch')
+  }
 
   const oauthState = await getOAuthState()
-  if (!oauthState.verifier) throw new Error('OAuth code verifier not found')
+  if (!oauthState.verifier) {
+    throw new Error('OAuth code verifier not found')
+  }
 
   const tokens = await exchangeCodeForTokens(provider, code, oauthState.verifier)
   const userInfo = await getUserInfo(provider, tokens.access_token)
@@ -146,7 +157,9 @@ export const startOAuthFlow = async (
 }
 
 export const redirectOAuthFlow = async (provider: OAuthProvider): Promise<never> => {
-  if (isTauri()) throw new Error('redirectOAuthFlow should only be used in the web environment')
+  if (isTauri()) {
+    throw new Error('redirectOAuthFlow should only be used in the web environment')
+  }
 
   const state = uuidv4()
   const codeVerifier = generateCodeVerifier()

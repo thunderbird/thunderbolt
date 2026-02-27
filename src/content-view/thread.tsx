@@ -12,7 +12,9 @@ export function EmailThreadView() {
   const { data: thread, isLoading } = useQuery({
     queryKey: ['thread', sideviewId],
     queryFn: async () => {
-      if (!sideviewId) return null
+      if (!sideviewId) {
+        return null
+      }
 
       // @todo re-implement this
 

@@ -89,10 +89,14 @@ export const MagicLinkVerify = () => {
         className="sm:max-w-md"
         showCloseButton={false}
         onPointerDownOutside={(e) => {
-          if (!canClose) e.preventDefault()
+          if (!canClose) {
+            e.preventDefault()
+          }
         }}
         onEscapeKeyDown={(e) => {
-          if (!canClose) e.preventDefault()
+          if (!canClose) {
+            e.preventDefault()
+          }
         }}
       >
         {state.status === 'verifying' && (

@@ -57,7 +57,9 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
         // For non-settings tables, 'value' is undefined so this check is safely skipped.
         const wouldOverwriteUserValue = (existing as any).value !== null && (defaultItem as any).value === null
 
-        if (wouldOverwriteUserValue) continue
+        if (wouldOverwriteUserValue) {
+          continue
+        }
 
         // Unmodified and default has changed - safe to update to new default
         await db

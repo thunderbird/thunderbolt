@@ -19,7 +19,9 @@ export const UpdateNotification = () => {
   const [dismissed, setDismissed] = useState(false)
 
   // Only show on desktop platforms
-  if (!isDesktop()) return null
+  if (!isDesktop()) {
+    return null
+  }
 
   const isVisible = !dismissed && status !== 'idle' && status !== 'checking'
   const config = statusConfig[status]

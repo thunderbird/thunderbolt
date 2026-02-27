@@ -50,12 +50,12 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
       }
 
       const timeDisplayed = Date.now() - displayStartTimeRef.current
-      const MIN_DISPLAY_TIME = 3000 // 3 seconds minimum
-      const FADE_DELAY = 3000 // 3 seconds after stopping
+      const minDisplayTime = 3000 // 3 seconds minimum
+      const fadeDelay = 3000 // 3 seconds after stopping
 
       // Calculate how long to wait before fading
-      const remainingMinTime = Math.max(0, MIN_DISPLAY_TIME - timeDisplayed)
-      const totalWaitTime = remainingMinTime + FADE_DELAY
+      const remainingMinTime = Math.max(0, minDisplayTime - timeDisplayed)
+      const totalWaitTime = remainingMinTime + fadeDelay
 
       fadeTimeoutRef.current = setTimeout(() => {
         setShouldShow(false)

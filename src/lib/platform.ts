@@ -11,7 +11,9 @@ export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
  * (e.g. https://thunderbolt-pr-368.onrender.com/).
  */
 export const isPrPreview = (): boolean => {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') {
+    return false
+  }
   return prPreviewHostRegex.test(window.location.hostname)
 }
 
@@ -20,7 +22,9 @@ export const isPrPreview = (): boolean => {
  * @returns true if running in Tauri, false otherwise
  */
 export const isTauri = (): boolean => {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') {
+    return false
+  }
   return 'isTauri' in window && isTauriCore()
 }
 
@@ -29,7 +33,9 @@ export const isTauri = (): boolean => {
  * @returns The platform string: 'linux', 'macos', 'ios', 'android', 'windows', etc.
  */
 export const getPlatform = (): 'web' | Platform => {
-  if (typeof window === 'undefined') return 'web'
+  if (typeof window === 'undefined') {
+    return 'web'
+  }
   return 'isTauri' in window ? platform() : 'web'
 }
 
@@ -67,11 +73,14 @@ export const getWebBrowser = (): WebBrowser => {
 
   if (ua.includes('Edg')) {
     return 'edge'
-  } else if (ua.includes('Chrome')) {
+  }
+  if (ua.includes('Chrome')) {
     return 'chrome'
-  } else if (ua.includes('Firefox')) {
+  }
+  if (ua.includes('Firefox')) {
     return 'firefox'
-  } else if (ua.includes('Safari')) {
+  }
+  if (ua.includes('Safari')) {
     return 'safari'
   }
 
@@ -116,17 +125,19 @@ export type Capabilities = {
   native_fetch: boolean
 }
 
-const DEFAULT_CAPABILITIES: Capabilities = { libsql: false, native_fetch: false }
+const defaultCapabilities: Capabilities = { libsql: false, native_fetch: false }
 
 // Fetch once, then memoize for the rest of the session.
 const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
-  if (!isTauri()) return DEFAULT_CAPABILITIES
+  if (!isTauri()) {
+    return defaultCapabilities
+  }
 
   try {
     return await invoke<Capabilities>('capabilities')
   } catch (err) {
     console.error('Failed to retrieve capabilities:', err)
-    return DEFAULT_CAPABILITIES
+    return defaultCapabilities
   }
 }, 'capabilities')
 
@@ -180,10 +191,16 @@ export const getDeviceDisplayName = (): string => {
   const browserDisplay = browser === 'unknown' ? 'Browser' : browser.charAt(0).toUpperCase() + browser.slice(1)
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
   let os = 'Unknown'
-  if (ua.includes('Mac')) os = 'macOS'
-  else if (ua.includes('Win')) os = 'Windows'
-  else if (ua.includes('Linux')) os = 'Linux'
-  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
-  else if (ua.includes('Android')) os = 'Android'
+  if (ua.includes('Mac')) {
+    os = 'macOS'
+  } else if (ua.includes('Win')) {
+    os = 'Windows'
+  } else if (ua.includes('Linux')) {
+    os = 'Linux'
+  } else if (ua.includes('iPhone') || ua.includes('iPad')) {
+    os = 'iOS'
+  } else if (ua.includes('Android')) {
+    os = 'Android'
+  }
   return `${browserDisplay} on ${os}`
 }

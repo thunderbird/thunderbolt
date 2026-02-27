@@ -49,7 +49,9 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 
-  if (!result) return null
+  if (!result) {
+    return null
+  }
 
   const wasTriggeredByAutomation = result.wasTriggeredByAutomation === 1
   const isAutomationDeleted = wasTriggeredByAutomation && !result.prompt
@@ -153,11 +155,15 @@ export const runAutomation = async (promptId: string): Promise<string> => {
 
   const prompt = await getPrompt(promptId)
 
-  if (!prompt) throw new Error('Prompt not found')
+  if (!prompt) {
+    throw new Error('Prompt not found')
+  }
 
   const model = await getModel(prompt.modelId)
 
-  if (!model) throw new Error('Model not found')
+  if (!model) {
+    throw new Error('Model not found')
+  }
 
   const threadId = uuidv7()
 

@@ -189,7 +189,9 @@ export default function AutomationFormModal({
 
   const updatePromptMutation = useMutation({
     mutationFn: async (values: FormData) => {
-      if (!prompt) return
+      if (!prompt) {
+        return
+      }
 
       // Update the prompt with model and title
       await updateAutomation(prompt.id, {

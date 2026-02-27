@@ -36,7 +36,9 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
     <ResponsiveModal
       open={open}
       onOpenChange={(open) => {
-        if (!open) setStep('email')
+        if (!open) {
+          setStep('email')
+        }
         onOpenChange(open)
       }}
     >

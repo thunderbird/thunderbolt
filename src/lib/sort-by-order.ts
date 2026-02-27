@@ -15,11 +15,17 @@ export const sortByOrder = <T>(items: T[], order: string[], getKey: (item: T) =>
     const indexB = order.indexOf(keyB)
 
     // Both in the order list: sort by their position
-    if (indexA !== -1 && indexB !== -1) return indexA - indexB
+    if (indexA !== -1 && indexB !== -1) {
+      return indexA - indexB
+    }
     // Only a is in the order list: a comes first
-    if (indexA !== -1) return -1
+    if (indexA !== -1) {
+      return -1
+    }
     // Only b is in the order list: b comes first
-    if (indexB !== -1) return 1
+    if (indexB !== -1) {
+      return 1
+    }
     // Neither in the order list: sort alphabetically by key
     return keyA.localeCompare(keyB)
   })

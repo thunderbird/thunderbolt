@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { handleCredentialsInvalidIfNeeded, POWERSYNC_CREDENTIALS_INVALID } from './connector'
+import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid } from './connector'
 
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof mock>
@@ -18,7 +18,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: POWERSYNC_CREDENTIALS_INVALID }))
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: powersyncCredentialsInvalid }))
   })
 
   it('dispatches event and returns true for 403 + DEVICE_DISCONNECTED', () => {
@@ -26,7 +26,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: POWERSYNC_CREDENTIALS_INVALID }))
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: powersyncCredentialsInvalid }))
   })
 
   it('dispatches event and returns true for 409 + DEVICE_ID_TAKEN', () => {
@@ -34,7 +34,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: POWERSYNC_CREDENTIALS_INVALID }))
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: powersyncCredentialsInvalid }))
   })
 
   it('dispatches event and returns true for 400 + DEVICE_ID_REQUIRED', () => {
@@ -42,7 +42,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: POWERSYNC_CREDENTIALS_INVALID }))
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: powersyncCredentialsInvalid }))
   })
 
   it('does not dispatch and returns false for 401', () => {

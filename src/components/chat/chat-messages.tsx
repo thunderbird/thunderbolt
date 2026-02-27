@@ -29,7 +29,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
 
   const hasError = useMemo(() => {
-    if (chatError) return true
+    if (chatError) {
+      return true
+    }
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, lastMessage, isStreaming])
 
@@ -69,7 +71,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         if (message.role === 'assistant') {
           // Hide empty assistant messages during errors — these are broken responses
           // that regenerate() will remove. Messages with parts are valid responses.
-          if (hasError && !message.parts?.length) return null
+          if (hasError && !message.parts?.length) {
+            return null
+          }
 
           // Memoize last message check to avoid recalculating on every iteration
           const isLast = message === lastMessage
@@ -84,7 +88,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               isLastMessage={shouldApplyViewport}
             />
           )
-        } else if (message.role === 'user') {
+        }
+        if (message.role === 'user') {
           return <UserMessage key={message.id} message={message} />
         }
 

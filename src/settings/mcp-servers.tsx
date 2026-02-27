@@ -143,7 +143,9 @@ export default function McpServersPage() {
   })
 
   const testConnection = async () => {
-    if (!newServerUrl) return
+    if (!newServerUrl) {
+      return
+    }
 
     setIsTestingConnection(true)
     setConnectionStatus('idle')
@@ -199,7 +201,9 @@ export default function McpServersPage() {
   }
 
   const handleAddServer = () => {
-    if (!newServerUrl) return
+    if (!newServerUrl) {
+      return
+    }
 
     // Extract server name from URL
     const url = new URL(newServerUrl)

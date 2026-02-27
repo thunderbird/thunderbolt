@@ -62,7 +62,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   const [state, dispatch] = useReducer(updateReducer, initialUpdateState)
 
   const checkForUpdates = useCallback(async () => {
-    if (!isDesktop()) return
+    if (!isDesktop()) {
+      return
+    }
 
     dispatch({ type: 'CHECK_START' })
 
@@ -76,7 +78,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   }, [])
 
   const downloadAndInstall = useCallback(async () => {
-    if (!state.update) return
+    if (!state.update) {
+      return
+    }
 
     dispatch({ type: 'DOWNLOAD_START' })
 
@@ -117,7 +121,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
 
   // Check for updates on mount (desktop only)
   useEffect(() => {
-    if (!isDesktop()) return
+    if (!isDesktop()) {
+      return
+    }
 
     // Delay initial check to not block app startup
     const timeout = setTimeout(() => {

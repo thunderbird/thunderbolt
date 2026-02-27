@@ -114,7 +114,9 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
   } = dependencies || {}
 
   useEffect(() => {
-    if (!checkIsTauri()) return
+    if (!checkIsTauri()) {
+      return
+    }
 
     let unlisten: (() => void) | null = null
 

@@ -247,7 +247,9 @@ export const formatDuration = (ms: number): string => {
  * Check if a URL points to localhost
  */
 export const isLocalhostUrl = (url: string | null): boolean => {
-  if (!url) return false
+  if (!url) {
+    return false
+  }
   return url.startsWith('http://localhost')
 }
 
@@ -271,7 +273,9 @@ export const llmContentCharLimit = 16_000
  * Truncate text to prevent context overflow in LLM requests
  */
 export const truncateText = (text: string, maxLength = 4000): string => {
-  if (text.length <= maxLength) return text
+  if (text.length <= maxLength) {
+    return text
+  }
   return text.substring(0, maxLength) + '...[truncated]'
 }
 
@@ -302,19 +306,33 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
   const uniqueColumnNames = new Set(tableConfig.uniqueConstraints.flatMap((uc) => uc.columns.map((col) => col.name)))
 
   for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
-    if (!column?.dataType) continue
+    if (!column?.dataType) {
+      continue
+    }
     // Skip deletedAt (handled separately by caller with new datetime)
-    if (name === 'deletedAt') continue
+    if (name === 'deletedAt') {
+      continue
+    }
     // although the BE ensures that the userId is always present, we gonna keep it for now for backwards compatibility
-    if (name === 'userId') continue
+    if (name === 'userId') {
+      continue
+    }
     // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
-    if (column.primary || pkColumnNames.has(column.name)) continue
+    if (column.primary || pkColumnNames.has(column.name)) {
+      continue
+    }
     // Skip foreign key columns (to maintain referential integrity)
-    if (fkColumnNames.has(column.name)) continue
+    if (fkColumnNames.has(column.name)) {
+      continue
+    }
     // Skip unique columns (functional identifiers)
-    if (column.isUnique || uniqueColumnNames.has(column.name)) continue
+    if (column.isUnique || uniqueColumnNames.has(column.name)) {
+      continue
+    }
     // Skip required (not null) columns
-    if (column.notNull) continue
+    if (column.notNull) {
+      continue
+    }
 
     cleared[name] = null
   }

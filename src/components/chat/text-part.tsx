@@ -38,9 +38,13 @@ const normalizeUrl = (url: string): string => {
 export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => {
   const seen = new Set<string>()
   return parts.filter((part) => {
-    if (part.type !== 'widget' || part.widget.widget !== 'link-preview') return true
+    if (part.type !== 'widget' || part.widget.widget !== 'link-preview') {
+      return true
+    }
     const url = normalizeUrl((part.widget.args as { url: string }).url)
-    if (seen.has(url)) return false
+    if (seen.has(url)) {
+      return false
+    }
     seen.add(url)
     return true
   })
@@ -64,10 +68,14 @@ export const buildSourceCitationPlaceholders = (
     for (const m of match.matchAll(individualCitationRegex)) {
       const n = parseInt(m[1], 10)
       const source = sources[n - 1]
-      if (source) validSources.push(sourceToCitation(source, validSources.length === 0))
+      if (source) {
+        validSources.push(sourceToCitation(source, validSources.length === 0))
+      }
     }
 
-    if (validSources.length === 0) return match
+    if (validSources.length === 0) {
+      return match
+    }
 
     const key = nextKey++
     citations.set(key, validSources)
@@ -116,7 +124,9 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     }
   }, [part.text, hasNewSources, sources])
 
-  if (!part.text) return null
+  if (!part.text) {
+    return null
+  }
 
   if (hasCitations && hasText) {
     return (

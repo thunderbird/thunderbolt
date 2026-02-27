@@ -15,7 +15,9 @@ type CitationWidgetProps = {
 export const CitationWidgetComponent = ({ sources: sourcesJson }: CitationWidgetProps) => {
   const sources = decodeCitationSources(sourcesJson)
 
-  if (!sources) return null
+  if (!sources) {
+    return null
+  }
 
   return <CitationBadge sources={sources} />
 }

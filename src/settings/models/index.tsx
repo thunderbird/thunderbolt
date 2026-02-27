@@ -559,9 +559,9 @@ export default function ModelsPage() {
               ((m as any).supported_parameters.includes('tools') ||
                 (m as any).supported_parameters.includes('tool_choice'))
 
-            const supports_tools = (m as any).supports_tools === true || supportsToolsByParams
+            const supportsTools = (m as any).supports_tools === true || supportsToolsByParams
 
-            return { ...m, supports_tools }
+            return { ...m, supports_tools: supportsTools }
           })
 
           // Sort models alphabetically by ID
@@ -755,7 +755,9 @@ export default function ModelsPage() {
 
   // Calculate whether the currently selected model supports tools
   const supportsToolsSelected = (() => {
-    if (!selectedModelId || selectedModelId === 'custom') return true
+    if (!selectedModelId || selectedModelId === 'custom') {
+      return true
+    }
     const model =
       allAvailableModels.find((m) => m.id === selectedModelId) || availableModels.find((m) => m.id === selectedModelId)
     return (model as any)?.supports_tools === true
@@ -874,7 +876,9 @@ export default function ModelsPage() {
                       (provider && apiKey) ||
                       (provider === 'custom' && url))
 
-                  if (!showModelSelection) return null
+                  if (!showModelSelection) {
+                    return null
+                  }
 
                   return (
                     <FormField

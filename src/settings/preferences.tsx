@@ -245,7 +245,9 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleApplyLocalizationSettings = async () => {
-    if (!pendingCountryUnits) return
+    if (!pendingCountryUnits) {
+      return
+    }
 
     // Apply all localization settings with recomputeHash to establish new baselines
     await Promise.all([
@@ -327,10 +329,14 @@ export default function PreferencesSettingsPage() {
     // If user has a location set, reset to that country's defaults
     if (locationName.value) {
       const country = extractCountryFromLocation(locationName.value)
-      if (!country) return
+      if (!country) {
+        return
+      }
 
       const countryUnitsData = await fetchCountryUnits(country)
-      if (!countryUnitsData) return
+      if (!countryUnitsData) {
+        return
+      }
 
       // Get the value from countryUnitsData using the dataKey
       const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]

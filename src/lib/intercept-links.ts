@@ -4,7 +4,9 @@ import { isSafeUrl } from './url-utils'
 const handler = async (event: MouseEvent) => {
   if (event.defaultPrevented) return
   const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]')
-  if (!anchor) return
+  if (!anchor) {
+    return
+  }
   const url = new URL(anchor.href)
   // app://, file://, or any origin you own stays inside
   if (url.origin === location.origin || url.protocol === 'app:') {

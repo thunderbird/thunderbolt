@@ -52,7 +52,9 @@ const CitationOverlay = ({ popover, close }: { popover: PopoverData | null; clos
   const { isMobile } = useIsMobile()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
-  if (!popover) return null
+  if (!popover) {
+    return null
+  }
 
   const { sources, anchorRect } = popover
 

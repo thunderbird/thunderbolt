@@ -51,7 +51,9 @@ export const OnboardingAuthStep = ({
   useEffect(() => {
     const locationState = location.state as { oauth?: { code?: string; state?: string; error?: string } } | null
     const oauth = locationState?.oauth
-    if (!oauth) return
+    if (!oauth) {
+      return
+    }
 
     const handleCallback = async () => {
       setIsProcessingCallback(true)

@@ -65,7 +65,9 @@ export const isHomepage = (url: string): boolean => {
     if (pathname === '/') {
       // Specific subdomains (not www/m/app) are content apps, not homepages
       const parts = hostname.split('.')
-      if (parts.length >= 3 && !genericSubdomains.has(parts[0])) return false
+      if (parts.length >= 3 && !genericSubdomains.has(parts[0])) {
+        return false
+      }
       return true
     }
     // Check against known section paths

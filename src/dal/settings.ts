@@ -232,7 +232,9 @@ export const createSetting = async (key: string, value: string | null): Promise<
   try {
     await db.insert(settingsTable).values({ key, value })
   } catch (err) {
-    if (!isInsertConflictError(err)) throw err
+    if (!isInsertConflictError(err)) {
+      throw err
+    }
   }
 }
 
@@ -271,7 +273,9 @@ export const updateSettings = async (
   options: { recomputeHash?: boolean; updateHashOnly?: boolean } = {},
 ): Promise<void> => {
   const entries = Object.entries(settings)
-  if (entries.length === 0) return
+  if (entries.length === 0) {
+    return
+  }
 
   const db = DatabaseSingleton.instance.db
 
@@ -303,7 +307,9 @@ export const updateSettings = async (
       try {
         await tx.insert(settingsTable).values(row)
       } catch (err) {
-        if (!isInsertConflictError(err)) throw err
+        if (!isInsertConflictError(err)) {
+          throw err
+        }
         const updateData = options.recomputeHash
           ? { value: row.value, defaultHash: row.defaultHash }
           : { value: row.value }

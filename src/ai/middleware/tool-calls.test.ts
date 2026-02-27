@@ -88,7 +88,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -120,7 +122,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -165,7 +169,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -250,7 +256,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -340,7 +348,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -437,7 +447,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -529,7 +541,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -568,7 +582,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -624,7 +640,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 
@@ -666,7 +684,9 @@ describe('toolCallsMiddleware', () => {
     const reader = stream.getReader()
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       parts.push(value)
     }
 

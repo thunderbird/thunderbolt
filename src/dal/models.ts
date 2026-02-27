@@ -5,6 +5,8 @@ import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Model, ModelRow } from '../types'
 import { getSettings } from './settings'
 import { getLastMessage } from './chat-messages'
+import { deletePromptsForModel } from './prompts'
+import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
 
 const mapModel = (row: ModelRow): Model => {
   return {
@@ -147,9 +149,6 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
 export const deleteModel = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   await db.transaction(async (tx) => {
-    const { deletePromptsForModel } = await import('./prompts')
-    const { deleteModelProfileForModel } = await import('./model-profiles')
-
     await deleteModelProfileForModel(id, tx)
     await deletePromptsForModel(id, tx)
     await tx
@@ -168,7 +167,6 @@ export const createModel = async (
   const db = DatabaseSingleton.instance.db
   await db.transaction(async (tx) => {
     await tx.insert(modelsTable).values(data)
-    const { createDefaultModelProfile } = await import('./model-profiles')
     await createDefaultModelProfile(data.id, tx)
   })
 }

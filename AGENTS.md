@@ -57,6 +57,8 @@ See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: 
 
 Deploying frontend before the sync rules are updated causes silent sync failure — the table works locally but won't replicate across devices.
 
+**Backend migrations checklist:** When adding a new migration, always verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. This is easy to miss when cherry-picking migration files across branches.
+
 ## CORS and API headers
 
 When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Name`), update `backend/src/config/settings.ts` so `corsAllowHeaders` includes them. Otherwise CORS preflight will fail and requests from the browser will be blocked.

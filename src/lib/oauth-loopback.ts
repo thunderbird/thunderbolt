@@ -15,6 +15,9 @@ import { generateCodeChallenge, generateCodeVerifier } from './pkce'
 /** Timeout for the user to complete auth in the browser (5 minutes) */
 const oauthTimeoutMs = 5 * 60 * 1000
 
+/** Sentinel used to distinguish timeout rejections from real errors without fragile string matching */
+const oauthTimeout = Symbol('oauth-timeout')
+
 /**
  * Starts an OAuth flow using an in-house localhost loopback server and the system browser.
  *
@@ -53,9 +56,7 @@ export const startOAuthFlowLoopback = async (
 
     const callbackUrl = await Promise.race([
       urlPromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('OAuth flow timed out')), timeoutMs),
-      ),
+      new Promise<never>((_, reject) => setTimeout(() => reject(oauthTimeout), timeoutMs)),
     ])
 
     const url = new URL(callbackUrl)
@@ -73,7 +74,7 @@ export const startOAuthFlowLoopback = async (
 
     return { tokens, userInfo }
   } catch (err) {
-    if (err instanceof Error && err.message === 'OAuth flow timed out') return null
+    if (err === oauthTimeout) return null
     throw err
   } finally {
     unlisten?.()

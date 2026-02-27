@@ -61,6 +61,14 @@ fn parse_request_path(raw: &str) -> Option<&str> {
 /// 5. The thread exits — the `TcpListener` drops and the port is released
 ///
 /// No async runtime is required. No external HTTP framework is used.
+///
+/// # Security
+///
+/// The server accepts the first connection on the loopback port without validating
+/// the caller. A local process could theoretically race to connect before the browser
+/// redirect arrives. This is a known and accepted risk for all loopback OAuth flows
+/// (RFC 8252 §8.3). PKCE prevents token theft: the attacker cannot exchange the code
+/// without the code verifier, which never leaves the frontend.
 pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
     let (listener, port) = bind_to_port(ports).map_err(|e| e.to_string())?;
 

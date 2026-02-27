@@ -24,7 +24,12 @@ const RESPONSE_HTML: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset
 fn bind_to_port(ports: &[u16]) -> std::io::Result<(TcpListener, u16)> {
     for &port in ports {
         match TcpListener::bind(format!("127.0.0.1:{port}")) {
-            Ok(listener) => return Ok((listener, port)),
+            Ok(listener) => {
+                // Always read the actual bound port from the socket — not the input value.
+                // When port is 0 (OS-assigned), the input value is 0 but the real port differs.
+                let bound_port = listener.local_addr()?.port();
+                return Ok((listener, bound_port));
+            }
             Err(_) => continue,
         }
     }
@@ -93,7 +98,10 @@ mod tests {
     #[test]
     fn parse_request_path_extracts_path_and_query() {
         let raw = "GET /callback?code=abc&state=xyz HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        assert_eq!(parse_request_path(raw), Some("/callback?code=abc&state=xyz"));
+        assert_eq!(
+            parse_request_path(raw),
+            Some("/callback?code=abc&state=xyz")
+        );
     }
 
     #[test]

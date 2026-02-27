@@ -4,8 +4,7 @@ import { getClock } from '@/testing-library'
 // --- Mock all external dependencies BEFORE importing the module under test ---
 
 let mockInvokeImpl: () => Promise<number> = async () => 17421
-let mockListenImpl: (cb: (event: { payload: { url: string } }) => void) => Promise<() => void> =
-  async () => () => {}
+let mockListenImpl: (cb: (event: { payload: { url: string } }) => void) => Promise<() => void> = async () => () => {}
 let mockOpenUrlImpl: (url: string) => Promise<void> = async () => {}
 let mockBuildAuthUrlImpl: () => Promise<string> = async () =>
   'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
@@ -27,8 +26,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 mock.module('@tauri-apps/api/event', () => ({
-  listen: (_event: string, cb: (event: { payload: { url: string } }) => void) =>
-    mockListenImpl(cb),
+  listen: (_event: string, cb: (event: { payload: { url: string } }) => void) => mockListenImpl(cb),
 }))
 
 mock.module('@tauri-apps/plugin-opener', () => ({
@@ -39,11 +37,6 @@ mock.module('./auth', () => ({
   buildAuthUrl: () => mockBuildAuthUrlImpl(),
   exchangeCodeForTokens: () => mockExchangeCodeForTokensImpl(),
   getUserInfo: () => mockGetUserInfoImpl(),
-}))
-
-mock.module('./pkce', () => ({
-  generateCodeVerifier: () => 'mock_verifier',
-  generateCodeChallenge: async () => 'mock_challenge',
 }))
 
 mock.module('uuid', () => ({
@@ -60,8 +53,7 @@ describe('startOAuthFlowLoopback', () => {
     unlistenFn = mock()
     mockInvokeImpl = async () => 17421
     mockOpenUrlImpl = async () => {}
-    mockBuildAuthUrlImpl = async () =>
-      'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
+    mockBuildAuthUrlImpl = async () => 'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
     mockExchangeCodeForTokensImpl = async () => ({
       access_token: 'access_token',
       refresh_token: 'refresh_token',

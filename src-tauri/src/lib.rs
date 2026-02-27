@@ -4,6 +4,7 @@
 pub mod commands;
 #[allow(dead_code)]
 pub mod state;
+pub mod oauth_server;
 
 #[cfg(feature = "bridge")]
 use crate::state::AppState;
@@ -61,6 +62,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::toggle_dock_icon,
             commands::get_env,
             commands::capabilities,
+            commands::start_oauth_server,
             #[cfg(feature = "bridge")]
             commands::init_bridge,
             #[cfg(feature = "bridge")]

@@ -1,4 +1,5 @@
-import { cancel, onUrl, start } from '@fabianlars/tauri-plugin-oauth'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -11,37 +12,27 @@ import {
 } from './auth'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
 
-/** Ports pre-registered as redirect URIs in Google/Microsoft OAuth console */
-const loopbackPorts = [17421, 17422, 17423]
-
-/** Timeout for user to complete auth in the browser (5 minutes) */
+/** Timeout for the user to complete auth in the browser (5 minutes) */
 const oauthTimeoutMs = 5 * 60 * 1000
 
-const completionHtml = `<html>
-  <head><title>Thunderbolt</title></head>
-  <body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
-    <div style="text-align: center; padding: 2rem;">
-      <h2>Authentication Complete</h2>
-      <p>You can close this tab and return to Thunderbolt.</p>
-    </div>
-  </body>
-</html>`
-
 /**
- * Starts an OAuth flow using a localhost loopback server and the system browser.
- * Opens the system browser to the OAuth provider's consent screen, waits for
- * the redirect callback on a localhost port, then exchanges the code for tokens.
+ * Starts an OAuth flow using an in-house localhost loopback server and the system browser.
+ *
+ * Invokes the Rust `start_oauth_server` command to bind a TCP listener on one of the
+ * pre-registered ports (17421–17423) or an OS-assigned fallback. Opens the system browser
+ * to the OAuth provider's consent screen, waits for the `"oauth-callback"` Tauri event,
+ * then validates the response and exchanges the code for tokens.
  *
  * @param provider - The OAuth provider to authenticate with
  * @param timeoutMs - How long to wait for the user to complete auth (default: 5 minutes)
- * @returns Token + user info on success, null on timeout/cancellation
- * @throws On state mismatch, token exchange failure, or port binding failure
+ * @returns Token + user info on success, `null` on timeout/cancellation
+ * @throws On state mismatch, provider error, token exchange failure, or server start failure
  */
 export const startOAuthFlowLoopback = async (
   provider: OAuthProvider,
   timeoutMs = oauthTimeoutMs,
 ): Promise<{ tokens: OAuthTokens; userInfo: OAuthUserInfo } | null> => {
-  const port = await start({ ports: loopbackPorts, response: completionHtml })
+  const port = await invoke<number>('start_oauth_server')
   const redirectUri = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
@@ -53,7 +44,9 @@ export const startOAuthFlowLoopback = async (
     const { promise: urlPromise, resolve: resolveUrl } = Promise.withResolvers<string>()
 
     // Register listener BEFORE opening browser to avoid race condition
-    unlisten = await onUrl((url) => resolveUrl(url))
+    unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
+      resolveUrl(event.payload.url)
+    })
 
     const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
     await openUrl(authUrl)
@@ -84,6 +77,6 @@ export const startOAuthFlowLoopback = async (
     throw err
   } finally {
     unlisten?.()
-    await cancel(port)
+    // No cancel needed — the Rust server shuts itself down after one request
   }
 }

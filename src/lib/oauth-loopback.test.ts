@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 
-// --- Mock all external dependencies before importing the module under test ---
+// --- Mock all external dependencies BEFORE importing the module under test ---
 
-let mockStartImpl: () => Promise<number> = async () => 17421
-let mockCancelImpl: (port: number) => Promise<void> = async () => {}
-let mockOnUrlImpl: (cb: (url: string) => void) => Promise<() => void> = async () => () => {}
+let mockInvokeImpl: () => Promise<number> = async () => 17421
+let mockListenImpl: (cb: (event: { payload: { url: string } }) => void) => Promise<() => void> =
+  async () => () => {}
 let mockOpenUrlImpl: (url: string) => Promise<void> = async () => {}
-let mockBuildAuthUrlImpl: () => Promise<string> = async () => 'https://accounts.google.com/o/oauth2/v2/auth?state=test'
+let mockBuildAuthUrlImpl: () => Promise<string> = async () =>
+  'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
 let mockExchangeCodeForTokensImpl: () => Promise<object> = async () => ({
   access_token: 'access_token',
   refresh_token: 'refresh_token',
@@ -21,10 +22,13 @@ let mockGetUserInfoImpl: () => Promise<object> = async () => ({
   verified_email: true,
 })
 
-mock.module('@fabianlars/tauri-plugin-oauth', () => ({
-  start: () => mockStartImpl(),
-  cancel: (port: number) => mockCancelImpl(port),
-  onUrl: (cb: (url: string) => void) => mockOnUrlImpl(cb),
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: (_cmd: string) => mockInvokeImpl(),
+}))
+
+mock.module('@tauri-apps/api/event', () => ({
+  listen: (_event: string, cb: (event: { payload: { url: string } }) => void) =>
+    mockListenImpl(cb),
 }))
 
 mock.module('@tauri-apps/plugin-opener', () => ({
@@ -53,12 +57,11 @@ describe('startOAuthFlowLoopback', () => {
   let unlistenFn: ReturnType<typeof mock>
 
   beforeEach(() => {
-    // Reset to defaults
     unlistenFn = mock()
-    mockStartImpl = async () => 17421
-    mockCancelImpl = async () => {}
+    mockInvokeImpl = async () => 17421
     mockOpenUrlImpl = async () => {}
-    mockBuildAuthUrlImpl = async () => 'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
+    mockBuildAuthUrlImpl = async () =>
+      'https://accounts.google.com/o/oauth2/v2/auth?state=mock-state-uuid'
     mockExchangeCodeForTokensImpl = async () => ({
       access_token: 'access_token',
       refresh_token: 'refresh_token',
@@ -74,9 +77,9 @@ describe('startOAuthFlowLoopback', () => {
   })
 
   it('happy path: returns tokens and userInfo on successful OAuth callback', async () => {
-    mockOnUrlImpl = async (cb) => {
-      // Simulate browser redirect with valid code and matching state
-      queueMicrotask(() => cb('http://localhost:17421?code=auth_code&state=mock-state-uuid'))
+    mockListenImpl = async (cb) => {
+      // Simulate the Rust server emitting the callback event with valid code + matching state
+      queueMicrotask(() => cb({ payload: { url: 'http://localhost:17421?code=auth_code&state=mock-state-uuid' } }))
       return unlistenFn
     }
 
@@ -89,8 +92,10 @@ describe('startOAuthFlowLoopback', () => {
   })
 
   it('Google error: throws when callback URL contains error_description', async () => {
-    mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() => cb('http://localhost:17421?error=access_denied&error_description=User+denied+access'))
+    mockListenImpl = async (cb) => {
+      queueMicrotask(() =>
+        cb({ payload: { url: 'http://localhost:17421?error=access_denied&error_description=User+denied+access' } }),
+      )
       return unlistenFn
     }
 
@@ -99,8 +104,8 @@ describe('startOAuthFlowLoopback', () => {
   })
 
   it('state mismatch: throws when returned state does not match generated state', async () => {
-    mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() => cb('http://localhost:17421?code=auth_code&state=wrong-state'))
+    mockListenImpl = async (cb) => {
+      queueMicrotask(() => cb({ payload: { url: 'http://localhost:17421?code=auth_code&state=wrong-state' } }))
       return unlistenFn
     }
 
@@ -109,8 +114,8 @@ describe('startOAuthFlowLoopback', () => {
   })
 
   it('missing code: throws when callback URL has no code parameter', async () => {
-    mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() => cb('http://localhost:17421?state=mock-state-uuid'))
+    mockListenImpl = async (cb) => {
+      queueMicrotask(() => cb({ payload: { url: 'http://localhost:17421?state=mock-state-uuid' } }))
       return unlistenFn
     }
 
@@ -118,32 +123,27 @@ describe('startOAuthFlowLoopback', () => {
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
-  it('exchange failure: cancel still called when token exchange throws', async () => {
-    mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() => cb('http://localhost:17421?code=auth_code&state=mock-state-uuid'))
+  it('exchange failure: unlisten still called when token exchange throws', async () => {
+    mockListenImpl = async (cb) => {
+      queueMicrotask(() => cb({ payload: { url: 'http://localhost:17421?code=auth_code&state=mock-state-uuid' } }))
       return unlistenFn
     }
     mockExchangeCodeForTokensImpl = async () => {
       throw new Error('Token exchange failed')
     }
-    const cancelMock = mock(async (_port: number) => {})
-    mockCancelImpl = cancelMock
 
     await expect(startOAuthFlowLoopback('google')).rejects.toThrow('Token exchange failed')
-    expect(cancelMock).toHaveBeenCalledWith(17421)
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
   it('timeout: returns null when browser is not redirected within timeout', async () => {
-    // onUrl callback never fires — simulates user abandoning browser.
-    // The global preload installs @sinonjs/fake-timers, so we tick the clock
-    // to fire the 1ms timeout registered inside startOAuthFlowLoopback.
-    mockOnUrlImpl = async (_cb) => unlistenFn
+    // listen callback never fires — simulates user abandoning the browser window
+    mockListenImpl = async (_cb) => unlistenFn
 
     const clock = getClock()
     const promise = startOAuthFlowLoopback('google', 1)
 
-    // Tick past the 1ms timeout; tickAsync also flushes microtasks
+    // Tick past the 1ms timeout; tickAsync also drains microtasks
     await clock.tickAsync(10)
 
     const result = await promise
@@ -151,17 +151,15 @@ describe('startOAuthFlowLoopback', () => {
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
-  it('cleanup on success: cancel and unlisten are both called after successful flow', async () => {
-    const cancelMock = mock(async (_port: number) => {})
-    mockCancelImpl = cancelMock
-    mockOnUrlImpl = async (cb) => {
-      queueMicrotask(() => cb('http://localhost:17421?code=auth_code&state=mock-state-uuid'))
+  it('cleanup on success: unlisten is called after successful flow', async () => {
+    mockListenImpl = async (cb) => {
+      queueMicrotask(() => cb({ payload: { url: 'http://localhost:17421?code=auth_code&state=mock-state-uuid' } }))
       return unlistenFn
     }
 
     await startOAuthFlowLoopback('google')
 
+    // Rust server shuts itself down — only the TS event listener needs cleanup
     expect(unlistenFn).toHaveBeenCalledTimes(1)
-    expect(cancelMock).toHaveBeenCalledWith(17421)
   })
 })

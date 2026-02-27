@@ -325,6 +325,7 @@ export default function AutomationFormModal({
                   onModelChange={handleModelChange}
                   showSubmitButton={false}
                   noForm
+                  isMobile={false}
                   className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
                 />
               </CardHeader>

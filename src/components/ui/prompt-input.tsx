@@ -20,6 +20,8 @@ type PromptInputProps = {
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
+  /** Required for responsive layout. Parent controls mobile detection for consistency and testability. */
+  isMobile: boolean
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
@@ -47,6 +49,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       isStreaming = false,
       onStop,
       footerStartElements,
+      isMobile,
       chatThread = null,
       models,
       selectedModelId,
@@ -72,7 +75,63 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const showModelSelect = models && models.length > 0 && onModelChange
 
-    const content = (
+    const submitButton =
+      showSubmitButton &&
+      (isStreaming ? (
+        <Button
+          type="button"
+          variant="default"
+          className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          onClick={onStop}
+        >
+          <Square className="size-4" />
+        </Button>
+      ) : (
+        <Button
+          type="submit"
+          variant="default"
+          className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          disabled={isLoading || !value.trim()}
+        >
+          <ArrowUp className="size-4" />
+        </Button>
+      ))
+
+    // Mobile layout: textarea on top, controls below (Claude-style)
+    const mobileContent = (
+      <>
+        <AutosizeTextarea
+          value={value}
+          onChange={handleTextareaChange}
+          onKeyDown={submitOnEnter ? handleKeyDown : undefined}
+          placeholder={placeholder}
+          minHeight={28}
+          maxHeight={240}
+          autoFocus={autoFocus}
+          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 pt-1 pb-0 text-base leading-5"
+        />
+
+        <div className="flex justify-between items-end w-full">
+          <div className="flex items-center gap-2">{footerStartElements}</div>
+
+          <div className="flex gap-2 items-center">
+            {showModelSelect && (
+              <ModelSelect
+                chatThread={chatThread}
+                models={models}
+                selectedModelId={selectedModelId}
+                onModelChange={onModelChange}
+              />
+            )}
+
+            {submitButton}
+          </div>
+        </div>
+      </>
+    )
+
+    // Desktop layout: textarea on top, footer with mode selector and buttons below
+    const desktopContent = (
       <>
         <AutosizeTextarea
           value={value}
@@ -98,30 +157,13 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
               />
             )}
 
-            {showSubmitButton &&
-              (isStreaming ? (
-                <Button
-                  type="button"
-                  variant="default"
-                  className="size-8 rounded-lg flex items-center justify-center"
-                  onClick={onStop}
-                >
-                  <Square className="size-4" />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  variant="default"
-                  className="size-8 rounded-lg flex items-center justify-center"
-                  disabled={isLoading || !value.trim()}
-                >
-                  <ArrowUp className="size-4" />
-                </Button>
-              ))}
+            {submitButton}
           </div>
         </div>
       </>
     )
+
+    const content = isMobile ? mobileContent : desktopContent
 
     return noForm ? (
       <div className={className}>{content}</div>

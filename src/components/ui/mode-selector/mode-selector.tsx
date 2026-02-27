@@ -8,6 +8,7 @@ export type ModeSelectorProps = {
   modes: Mode[]
   selectedMode: Mode | null
   onModeChange: (modeId: string) => void
+  iconOnly?: boolean
 }
 
 const iconMap: Record<string, ReactNode> = {
@@ -37,18 +38,19 @@ const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] =>
   },
 ]
 
-export const ModeSelector = ({ modes, selectedMode, onModeChange }: ModeSelectorProps) => {
+export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = false }: ModeSelectorProps) => {
   const groupedItems = useMemo(() => createModeGroups(modes), [modes])
 
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors text-sm border border-border',
+        'flex items-center rounded-lg cursor-pointer transition-colors text-sm border border-border',
+        iconOnly ? 'size-[34px] justify-center' : 'gap-1 px-2 py-1.5',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
       {selected?.icon ?? <MessageSquare className="size-4" />}
-      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>
+      {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )
 

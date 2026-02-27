@@ -145,21 +145,18 @@ export const resetModelToDefault = async (id: string, defaultModel: Model): Prom
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteModel = async (id: string): Promise<void> => {
-  // Import locally to avoid circular dependency
-  const { deletePromptsForModel } = await import('./prompts')
-
-  // Soft-delete model profile
-  const { deleteModelProfileForModel } = await import('./model-profiles')
-  await deleteModelProfileForModel(id)
-
-  // Soft-delete prompts and their triggers first (replaces onDelete: 'cascade')
-  await deletePromptsForModel(id)
-
   const db = DatabaseSingleton.instance.db
-  await db
-    .update(modelsTable)
-    .set({ ...clearNullableColumns(modelsTable), deletedAt: nowIso() })
-    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+  await db.transaction(async (tx) => {
+    const { deletePromptsForModel } = await import('./prompts')
+    const { deleteModelProfileForModel } = await import('./model-profiles')
+
+    await deleteModelProfileForModel(id, tx)
+    await deletePromptsForModel(id, tx)
+    await tx
+      .update(modelsTable)
+      .set({ ...clearNullableColumns(modelsTable), deletedAt: nowIso() })
+      .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+  })
 }
 
 /**
@@ -169,9 +166,9 @@ export const createModel = async (
   data: Partial<Model> & Pick<Model, 'id' | 'provider' | 'name' | 'model'>,
 ): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  await db.insert(modelsTable).values(data)
-
-  // Auto-create default profile if one exists in seed data
-  const { createDefaultModelProfile } = await import('./model-profiles')
-  await createDefaultModelProfile(data.id)
+  await db.transaction(async (tx) => {
+    await tx.insert(modelsTable).values(data)
+    const { createDefaultModelProfile } = await import('./model-profiles')
+    await createDefaultModelProfile(data.id, tx)
+  })
 }

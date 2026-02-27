@@ -1,4 +1,5 @@
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -46,12 +47,14 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
 
 /**
  * Create a new chat thread
+ * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
  */
 export const createChatThread = async (
   data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>,
   modelId: string,
+  db?: AnyDrizzleDatabase,
 ): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+  const database = db ?? DatabaseSingleton.instance.db
 
   const model = await getModel(modelId)
 
@@ -59,15 +62,19 @@ export const createChatThread = async (
     throw new Error('No model found')
   }
 
-  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
+  await database.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
 }
 
+/**
+ * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
+ */
 export const updateChatThread = async (
   id: string,
   data: Partial<Pick<ChatThread, 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
+  db?: AnyDrizzleDatabase,
 ): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
+  const database = db ?? DatabaseSingleton.instance.db
+  await database.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
 }
 
 /**
@@ -118,14 +125,16 @@ export const getContextSizeForThread = async (threadId: string): Promise<number 
 export const deleteChatThread = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const deletedAt = nowIso()
-  await db
-    .update(chatMessagesTable)
-    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-    .where(and(eq(chatMessagesTable.chatThreadId, id), isNull(chatMessagesTable.deletedAt)))
-  await db
-    .update(chatThreadsTable)
-    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
-    .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(chatMessagesTable)
+      .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+      .where(and(eq(chatMessagesTable.chatThreadId, id), isNull(chatMessagesTable.deletedAt)))
+    await tx
+      .update(chatThreadsTable)
+      .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
+      .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
+  })
 }
 
 /**
@@ -137,12 +146,14 @@ export const deleteChatThread = async (id: string): Promise<void> => {
 export const deleteAllChatThreads = async (): Promise<void> => {
   const db = DatabaseSingleton.instance.db
   const deletedAt = nowIso()
-  await db
-    .update(chatMessagesTable)
-    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-    .where(isNull(chatMessagesTable.deletedAt))
-  await db
-    .update(chatThreadsTable)
-    .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
-    .where(isNull(chatThreadsTable.deletedAt))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(chatMessagesTable)
+      .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
+      .where(isNull(chatMessagesTable.deletedAt))
+    await tx
+      .update(chatThreadsTable)
+      .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
+      .where(isNull(chatThreadsTable.deletedAt))
+  })
 }

@@ -1,4 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelProfilesTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -33,7 +34,7 @@ export const upsertModelProfile = async (
 }
 
 /** Create default profile for a model using seed data */
-export const createDefaultModelProfile = async (modelId: string): Promise<void> => {
+export const createDefaultModelProfile = async (modelId: string, db?: AnyDrizzleDatabase): Promise<void> => {
   // Lazy import to avoid circular dependency
   const { defaultModelProfiles, hashModelProfile } = await import('../defaults/model-profiles')
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
@@ -41,8 +42,8 @@ export const createDefaultModelProfile = async (modelId: string): Promise<void> 
     return
   }
 
-  const db = DatabaseSingleton.instance.db
-  await db
+  const database = db ?? DatabaseSingleton.instance.db
+  await database
     .insert(modelProfilesTable)
     .values({
       ...defaultProfile,
@@ -52,9 +53,9 @@ export const createDefaultModelProfile = async (modelId: string): Promise<void> 
 }
 
 /** Soft-delete profile for a model */
-export const deleteModelProfileForModel = async (modelId: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  await db
+export const deleteModelProfileForModel = async (modelId: string, db?: AnyDrizzleDatabase): Promise<void> => {
+  const database = db ?? DatabaseSingleton.instance.db
+  await database
     .update(modelProfilesTable)
     .set({ ...clearNullableColumns(modelProfilesTable), deletedAt: nowIso() })
     .where(and(eq(modelProfilesTable.modelId, modelId), isNull(modelProfilesTable.deletedAt)))

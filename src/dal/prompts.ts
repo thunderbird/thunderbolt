@@ -1,5 +1,6 @@
 import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import type { AutomationRun, Prompt } from '../types'
@@ -89,13 +90,13 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
  */
 export const deleteAutomation = async (id: string): Promise<void> => {
   const db = DatabaseSingleton.instance.db
-  // Delete triggers first (due to foreign key)
-  await deleteTriggersForPrompt(id)
-  // Soft delete with data scrubbing
-  await db
-    .update(promptsTable)
-    .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-    .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
+  await db.transaction(async (tx) => {
+    await deleteTriggersForPrompt(id, tx)
+    await tx
+      .update(promptsTable)
+      .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
+      .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
+  })
 }
 
 /**
@@ -104,22 +105,18 @@ export const deleteAutomation = async (id: string): Promise<void> => {
  * Scrubs all nullable columns for privacy
  * This replaces the cascade behavior that no longer fires with soft deletes
  */
-export const deletePromptsForModel = async (modelId: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deletePromptsForModel = async (modelId: string, db?: AnyDrizzleDatabase): Promise<void> => {
+  const database = db ?? DatabaseSingleton.instance.db
 
-  // Find all prompts for this model that aren't already deleted
-  const prompts = await db
+  const prompts = await database
     .select({ id: promptsTable.id })
     .from(promptsTable)
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 
   const promptIds = prompts.map((p) => p.id)
 
-  // Soft-delete all triggers for these prompts in a single query
-  await deleteTriggersForPrompts(promptIds)
-
-  // Soft-delete all prompts for this model with data scrubbing
-  await db
+  await deleteTriggersForPrompts(promptIds, database)
+  await database
     .update(promptsTable)
     .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
@@ -154,38 +151,39 @@ export const runAutomation = async (promptId: string): Promise<string> => {
   const db = DatabaseSingleton.instance.db
 
   const prompt = await getPrompt(promptId)
-
   if (!prompt) {
     throw new Error('Prompt not found')
   }
 
   const model = await getModel(prompt.modelId)
-
   if (!model) {
     throw new Error('Model not found')
   }
 
   const threadId = uuidv7()
 
-  await createChatThread(
-    {
-      id: threadId,
-      title: prompt.title ?? 'Automation',
-      triggeredBy: prompt.id,
-      wasTriggeredByAutomation: 1,
-      contextSize: null,
-    },
-    model.id,
-  )
+  await db.transaction(async (tx) => {
+    await createChatThread(
+      {
+        id: threadId,
+        title: prompt.title ?? 'Automation',
+        triggeredBy: prompt.id,
+        wasTriggeredByAutomation: 1,
+        contextSize: null,
+      },
+      model.id,
+      tx,
+    )
 
-  const userMessage = {
-    id: uuidv7(),
-    role: 'user' as const,
-    metadata: { modelId: model.id },
-    parts: [{ type: 'text' as const, text: prompt.prompt }],
-  }
+    const userMessage = {
+      id: uuidv7(),
+      role: 'user' as const,
+      metadata: { modelId: model.id },
+      parts: [{ type: 'text' as const, text: prompt.prompt }],
+    }
 
-  await db.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId, null))
+    await tx.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId, null))
+  })
 
   return threadId
 }

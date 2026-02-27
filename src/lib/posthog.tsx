@@ -63,6 +63,18 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     // Use the cloudUrl proxy for PostHog analytics
     const apiHost = `${cloudUrl}/posthog`
 
+    // Detect if localStorage is accessible
+    const isLocalStorageAvailable = (() => {
+      try {
+        const test = '__storage_test__'
+        localStorage.setItem(test, test)
+        localStorage.removeItem(test)
+        return true
+      } catch {
+        return false
+      }
+    })()
+
     if (!posthogClient) {
       posthogClient = posthog.init(apiKey, {
         opt_out_capturing_by_default: !dataCollection,
@@ -76,7 +88,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         disable_session_recording: true,
         disable_scroll_properties: true,
         capture_performance: false,
-        persistence: 'localStorage',
+        persistence: isLocalStorageAvailable ? 'localStorage' : 'memory',
         before_send: (event) => {
           if (!event) return null
           if (event.event === '$pageview' || event.event === '$pageleave') {

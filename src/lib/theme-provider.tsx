@@ -31,12 +31,22 @@ export function ThemeProvider({
   storageKey = 'ui-theme',
   ...props
 }: ThemeProviderProps) {
-  const savedTheme = window.localStorage.getItem(storageKey)
+  const savedTheme = (() => {
+    try {
+      return window.localStorage.getItem(storageKey)
+    } catch {
+      return null
+    }
+  })()
 
   const [theme, setTheme] = useState<Theme>(isValidTheme(savedTheme) ? savedTheme : defaultTheme)
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, theme)
+    try {
+      window.localStorage.setItem(storageKey, theme)
+    } catch {
+      // localStorage not available - continue without persistence
+    }
   }, [storageKey, theme])
 
   useEffect(() => {

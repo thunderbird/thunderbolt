@@ -54,19 +54,27 @@ export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
  * Check if sync is enabled by user preference
  */
 export const isSyncEnabled = (): boolean => {
-  if (typeof localStorage === 'undefined') return false
-  return localStorage.getItem(syncEnabledKey) === 'true'
+  try {
+    if (typeof localStorage === 'undefined') return false
+    return localStorage.getItem(syncEnabledKey) === 'true'
+  } catch {
+    return false
+  }
 }
 
 /**
  * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
  */
 export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
-  if (typeof localStorage === 'undefined') return
+  try {
+    if (typeof localStorage === 'undefined') return
 
-  // Update localStorage and dispatch event
-  localStorage.setItem(syncEnabledKey, String(enabled))
-  window.dispatchEvent(new CustomEvent(SYNC_ENABLED_CHANGE_EVENT, { detail: enabled }))
+    // Update localStorage and dispatch event
+    localStorage.setItem(syncEnabledKey, String(enabled))
+    window.dispatchEvent(new CustomEvent(SYNC_ENABLED_CHANGE_EVENT, { detail: enabled }))
+  } catch (error) {
+    console.warn('Failed to persist sync preference:', error)
+  }
 
   // Connect or disconnect from PowerSync Cloud
   try {

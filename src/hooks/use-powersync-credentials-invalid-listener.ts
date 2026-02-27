@@ -18,7 +18,11 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
   } catch (error) {
     console.error('Failed to perform credentials invalid reset:', error)
   } finally {
-    localStorage.clear()
+    try {
+      localStorage.clear()
+    } catch {
+      // localStorage not available - continue with reload
+    }
     window.location.reload()
   }
 }

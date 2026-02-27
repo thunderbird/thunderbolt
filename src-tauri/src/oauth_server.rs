@@ -20,23 +20,24 @@ const RESPONSE_HTML: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset
 </html>";
 
 /// Try to bind to one of the given ports in order. Returns the listener and the bound port.
-/// Falls back to OS-assigned port 0 if none of the given ports are available.
+/// Returns an error if none of the given ports are available — no silent fallback to a
+/// random port, because OAuth providers reject redirect URIs on unregistered ports.
 fn bind_to_port(ports: &[u16]) -> std::io::Result<(TcpListener, u16)> {
     for &port in ports {
         match TcpListener::bind(format!("127.0.0.1:{port}")) {
             Ok(listener) => {
-                // Always read the actual bound port from the socket — not the input value.
-                // When port is 0 (OS-assigned), the input value is 0 but the real port differs.
                 let bound_port = listener.local_addr()?.port();
                 return Ok((listener, bound_port));
             }
             Err(_) => continue,
         }
     }
-    // Fallback: let the OS pick a free port
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let port = listener.local_addr()?.port();
-    Ok((listener, port))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AddrInUse,
+        format!(
+            "All OAuth loopback ports are in use ({ports:?}). Close any previous auth tabs and try again."
+        ),
+    ))
 }
 
 /// Extract the request path + query string from the first line of an HTTP request.
@@ -83,6 +84,11 @@ pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
         if let Some(path) = parse_request_path(&request) {
             let url = format!("http://localhost:{port}{path}");
             let _ = app.emit("oauth-callback", OAuthCallbackPayload { url });
+        } else {
+            // Bare TCP probe, zero-byte read, or malformed request — emit an error
+            // so the frontend surfaces it immediately instead of waiting for the 5-min timeout
+            let url = format!("http://localhost:{port}/?error=invalid_request&error_description=Received+unparseable+connection+on+OAuth+loopback+port");
+            let _ = app.emit("oauth-callback", OAuthCallbackPayload { url });
         }
 
         // listener drops here — port is released
@@ -116,22 +122,32 @@ mod tests {
     }
 
     #[test]
-    fn bind_to_port_returns_valid_port_with_fallback() {
-        // Port 0 lets the OS assign a free port — always succeeds
+    fn bind_to_port_returns_valid_port() {
+        // Port 0 lets the OS assign a free port
         let (listener, port) = bind_to_port(&[0]).expect("should bind");
         assert!(port > 0);
         drop(listener);
     }
 
     #[test]
-    fn bind_to_port_prefers_first_available() {
-        // Bind to a specific port first to occupy it, then verify fallback works
+    fn bind_to_port_tries_next_on_conflict() {
+        // Occupy a port, then verify the next port in the list is used
         let (first, first_port) = bind_to_port(&[0]).expect("should bind");
-        // Try to bind to the occupied port — should fall back to OS-assigned
-        let (second, second_port) = bind_to_port(&[first_port, 0]).expect("should fallback");
-        // second_port must be different (first_port is occupied)
+        let (second, second_port) =
+            bind_to_port(&[first_port, 0]).expect("should bind to second port");
         assert_ne!(first_port, second_port);
         drop(first);
         drop(second);
+    }
+
+    #[test]
+    fn bind_to_port_errors_when_all_ports_busy() {
+        // Occupy a port, then try to bind ONLY to that port — should fail
+        let (occupied, occupied_port) = bind_to_port(&[0]).expect("should bind");
+        let result = bind_to_port(&[occupied_port]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
+        drop(occupied);
     }
 }

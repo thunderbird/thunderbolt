@@ -1,5 +1,5 @@
 ---
-name: commitandpush
+name: thunderpush
 description: Stage, commit (atomic, conventional), and push all current changes.
 disable-model-invocation: true
 allowed-tools: Bash, Read, Grep

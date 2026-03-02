@@ -1,11 +1,11 @@
 ---
-name: bot
+name: thunderbot
 description: Pick up a Linear task and work it to PR submission. Automatically selects the best available task or accepts a specific task ID.
 disable-model-invocation: true
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Skill, Agent
 ---
 
-# Bot: Automated Linear Task Worker
+# Thunderbot: Automated Linear Task Worker
 
 You are an autonomous coding agent. Your job is to pick up a Linear task, implement it fully, and submit a PR — with minimal human intervention. Follow every phase below in order.
 
@@ -32,7 +32,7 @@ If `$ARGUMENTS` is empty — auto-select:
 1. List eligible tasks: `linear issue list --state Todo --raw`
 2. For each candidate, run the assessment heuristic:
    ```bash
-   bun run .claude/bot/assess.ts '<issue-json>'
+   bun run .claude/thunderbot/assess.ts '<issue-json>'
    ```
 3. Pick the task with the highest score (from `scoreTask` in assess.ts)
 4. If no "Todo" tasks score well, check "Backlog": `linear issue list --state Backlog --raw`
@@ -45,7 +45,7 @@ If `$ARGUMENTS` is empty — auto-select:
 # Assign to yourself and transition to "In Progress"
 linear issue update <identifier> --state "In Progress"
 # Comment that bot is starting
-linear issue comment add <identifier> --body "[Bot] Starting automated work on this task."
+linear issue comment add <identifier> --body "[Thunderbot] Starting automated work on this task."
 ```
 
 ## Phase 4: Create Isolated Environment
@@ -83,7 +83,7 @@ WORKTREE_PATH="$(pwd)/$WORKTREE_PATH" \
   AGENT_PORT_PG=$AGENT_PORT_PG \
   AGENT_PORT_API=$AGENT_PORT_API \
   AGENT_PORT_VITE=$AGENT_PORT_VITE \
-  docker compose -f .claude/bot/docker-compose.yml -p "bot-$(echo <identifier> | tr '[:upper:]' '[:lower:]')" up -d --build
+  docker compose -f .claude/thunderbot/docker-compose.yml -p "thunderbot-$(echo <identifier> | tr '[:upper:]' '[:lower:]')" up -d --build
 ```
 
 ### Install Dependencies
@@ -286,7 +286,7 @@ GITHUB_USER=$(gh api user --jq '.login')
 gh pr edit "$PR_NUMBER" --add-reviewer "$GITHUB_USER"
 
 # Update Linear
-linear issue comment add <identifier> --body "[Bot] PR ready for review: $(gh pr view $PR_NUMBER --json url --jq '.url')"
+linear issue comment add <identifier> --body "[Thunderbot] PR ready for review: $(gh pr view $PR_NUMBER --json url --jq '.url')"
 linear issue update <identifier> --state "In Review"
 ```
 
@@ -316,7 +316,7 @@ Address real bugs/violations. Ignore style nits and false positives.
 
 ### Tear down Docker stack
 ```bash
-docker compose -f .claude/bot/docker-compose.yml -p "bot-$(echo <identifier> | tr '[:upper:]' '[:lower:]')" down -v
+docker compose -f .claude/thunderbot/docker-compose.yml -p "thunderbot-$(echo <identifier> | tr '[:upper:]' '[:lower:]')" down -v
 ```
 
 ### Report summary
@@ -324,7 +324,7 @@ docker compose -f .claude/bot/docker-compose.yml -p "bot-$(echo <identifier> | t
 Output a clear summary:
 
 ```
-## Bot Report
+## Thunderbot Report
 
 - **Task**: <identifier> — <title>
 - **PR**: <pr-url>

@@ -18,7 +18,7 @@ services:
   backend:
     build:
       context: ${WORKTREE_PATH:-.}
-      dockerfile: .claude/bot/Dockerfile.dev
+      dockerfile: .claude/thunderbot/Dockerfile.dev
     command: bun run --cwd /app/backend dev
     environment:
       PORT: 8000
@@ -38,7 +38,7 @@ services:
   frontend:
     build:
       context: ${WORKTREE_PATH:-.}
-      dockerfile: .claude/bot/Dockerfile.dev
+      dockerfile: .claude/thunderbot/Dockerfile.dev
     command: bun run --cwd /app dev --port 5173 --host 0.0.0.0
     environment:
       VITE_THUNDERBOLT_CLOUD_URL: http://backend:8000/v1

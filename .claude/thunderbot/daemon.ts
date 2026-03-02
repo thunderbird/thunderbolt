@@ -3,7 +3,7 @@ import { join } from 'path'
 import { spawn } from 'child_process'
 import type { DaemonState } from './types'
 
-const STATE_DIR = join(process.env.HOME ?? '~', '.claude', 'bot')
+const STATE_DIR = join(process.env.HOME ?? '~', '.claude', 'thunderbot')
 const STATE_FILE = join(STATE_DIR, 'daemon.state.json')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
 const LOG_FILE = join(STATE_DIR, 'daemon.log')
@@ -112,7 +112,7 @@ const pollAndWork = async (state: DaemonState) => {
     '--print',
     '--dangerously-skip-permissions',
     '-p',
-    `/bot ${candidate.identifier}`,
+    `/thunderbot ${candidate.identifier}`,
   ])
 
   state.activeTasks = state.activeTasks.filter((t) => t !== candidate.identifier)

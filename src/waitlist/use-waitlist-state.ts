@@ -120,7 +120,9 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
 
-      triggerWelcome()
+      if (!isNewUser) {
+        triggerWelcome()
+      }
       onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)

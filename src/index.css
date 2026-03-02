@@ -157,6 +157,10 @@ body {
 }
 
 @media (max-width: 768px) {
+  html {
+    font-size: 120%;
+  }
+
   body {
     width: 100%;
     height: 100%;

@@ -81,6 +81,8 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
   // Keep the last valid context so that transient React Query refetches
   // (e.g. PowerSync invalidating the settings table after auth) don't
   // unmount the entire tree and destroy in-flight flows like MagicLinkVerify.
+  // Note: this briefly serves a stale client if cloudUrl genuinely changes,
+  // but cloudUrl is effectively immutable at runtime (set once during setup).
   const lastValueRef = useRef<AuthContextType | null>(null)
 
   const value = useMemo(() => {

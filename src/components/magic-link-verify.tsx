@@ -37,7 +37,9 @@ export const MagicLinkVerify = () => {
   const hasAttempted = useRef(false)
 
   useEffect(() => {
-    if (hasAttempted.current) return
+    if (hasAttempted.current) {
+      return
+    }
     hasAttempted.current = true
 
     const verify = async () => {

@@ -94,7 +94,7 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-colors text-sm',
+        'flex items-center gap-2 px-4 md:px-3 py-2 md:py-1.5 rounded-full cursor-pointer transition-colors text-base md:text-sm',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
@@ -107,7 +107,7 @@ export const ModelSelector = ({
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
     <div
       className={cn(
-        'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center justify-between px-4 md:px-3 py-2.5 md:py-2 rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',

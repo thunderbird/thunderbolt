@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: thunderbolt
+    ports:
+      - "${AGENT_PORT_PG:-5433}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ${WORKTREE_PATH:-.}
+      dockerfile: .claude/bot/Dockerfile.dev
+    command: bun run --cwd /app/backend dev
+    environment:
+      PORT: 8000
+      HOST: 0.0.0.0
+      DATABASE_DRIVER: postgres
+      DATABASE_URL: postgresql://postgres:dev@postgres:5432/thunderbolt
+      LOG_LEVEL: INFO
+    ports:
+      - "${AGENT_PORT_API:-8000}:8000"
+    volumes:
+      - ${WORKTREE_PATH:-.}:/app
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ${WORKTREE_PATH:-.}
+      dockerfile: .claude/bot/Dockerfile.dev
+    command: bun run --cwd /app dev --port 5173 --host 0.0.0.0
+    environment:
+      VITE_THUNDERBOLT_CLOUD_URL: http://backend:8000/v1
+    ports:
+      - "${AGENT_PORT_VITE:-5173}:5173"
+    volumes:
+      - ${WORKTREE_PATH:-.}:/app
+    working_dir: /app
+    depends_on:
+      - backend
+
+volumes:
+  pg-data:

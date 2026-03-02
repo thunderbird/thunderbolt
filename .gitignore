@@ -42,7 +42,8 @@ evals/
 # Dev Ex custom things
 mise*.toml
 mise.toml
-.claude/**
+.claude/settings.local.json
+.claude/worktrees/
 .zed/**
 .zedscratches/**
 .mcp.json

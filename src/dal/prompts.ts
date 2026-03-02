@@ -171,7 +171,7 @@ export const runAutomation = async (promptId: string): Promise<string> => {
         wasTriggeredByAutomation: 1,
         contextSize: null,
       },
-      model.id,
+      model,
       tx,
     )
 

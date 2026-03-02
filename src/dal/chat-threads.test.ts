@@ -14,6 +14,7 @@ import {
   isChatThreadDeleted,
   updateChatThread,
 } from './chat-threads'
+import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { nowIso } from '@/lib/utils'
@@ -63,10 +64,12 @@ describe('Chat Threads DAL', () => {
     it('should create a new chat thread with the provided ID', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
+      const model = await getModel(modelId)
+      if (!model) throw new Error('Test setup failed')
 
       await createChatThread(
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        modelId,
+        model,
       )
 
       const db = DatabaseSingleton.instance.db
@@ -80,14 +83,16 @@ describe('Chat Threads DAL', () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
       const modelId = await createTestModel()
+      const model = await getModel(modelId)
+      if (!model) throw new Error('Test setup failed')
 
       await createChatThread(
         { id: threadId1, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        modelId,
+        model,
       )
       await createChatThread(
         { id: threadId2, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        modelId,
+        model,
       )
 
       const db = DatabaseSingleton.instance.db
@@ -100,17 +105,19 @@ describe('Chat Threads DAL', () => {
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
+      const model = await getModel(modelId)
+      if (!model) throw new Error('Test setup failed')
 
       await createChatThread(
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        modelId,
+        model,
       )
 
       // Should throw due to UNIQUE constraint
       await expect(
         createChatThread(
           { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-          modelId,
+          model,
         ),
       ).rejects.toThrow()
 

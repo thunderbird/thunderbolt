@@ -3,7 +3,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
-import { type ChatThread } from '@/types'
+import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
 
 /**
@@ -47,21 +47,15 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
 
 /**
  * Create a new chat thread
+ * @param model - Resolved model (caller must fetch via getModel);
  * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
  */
 export const createChatThread = async (
   data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>,
-  modelId: string,
+  model: Model,
   db?: AnyDrizzleDatabase,
 ): Promise<void> => {
   const database = db ?? DatabaseSingleton.instance.db
-
-  const model = await getModel(modelId)
-
-  if (!model) {
-    throw new Error('No model found')
-  }
-
   await database.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
 }
 
@@ -87,6 +81,11 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
     return thread
   }
 
+  const model = await getModel(modelId)
+  if (!model) {
+    throw new Error('No model found')
+  }
+
   await createChatThread(
     {
       id,
@@ -95,7 +94,7 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
     },
-    modelId,
+    model,
   )
 
   return (await getChatThread(id))! // We know the thread exists because we just created it

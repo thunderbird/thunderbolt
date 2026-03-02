@@ -1,6 +1,6 @@
 import type { LinearIssue, TaskAssessment } from './types'
 
-const BLOCKER_LABELS = ['blocked', 'needs-design', 'needs-discussion']
+const BLOCKER_LABELS = ['blocked', 'needs-design', 'needs-discussion', 'human required']
 const COMPLEX_LABELS = ['infra', 'devops', 'database-migration', 'powersync']
 const AUTOMATABLE_KEYWORDS = ['fix', 'bug', 'add', 'implement', 'refactor', 'update', 'remove', 'rename', 'change', 'replace']
 const NON_AUTOMATABLE_KEYWORDS = ['design', 'discuss', 'research', 'meeting', 'investigate', 'explore', 'spike', 'plan']

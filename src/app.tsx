@@ -29,6 +29,7 @@ import { AppErrorScreen } from './components/app-error-screen'
 import { AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
+import { WelcomeDialog } from './components/welcome-dialog'
 import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
@@ -93,6 +94,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
             <>
               <Layout />
               <OnboardingDialog />
+              <WelcomeDialog />
             </>
           }
         >

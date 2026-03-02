@@ -1,8 +1,10 @@
+import { SignInSuccessStep } from '@/components/sign-in/sign-in-success-step'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
+import { useSettings } from '@/hooks/use-settings'
 import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Loader2 } from 'lucide-react'
@@ -21,12 +23,24 @@ import { WaitlistHeader } from './waitlist-header'
 export const WaitlistPage = () => {
   const authClient = useAuth()
   const navigate = useNavigate()
-  const { state, isValidEmail, actions } = useWaitlistState({
-    authClient,
-    onVerified: () => navigate('/', { replace: true }),
-  })
+  const { preferredName } = useSettings({ preferred_name: '' })
+  const { state, isValidEmail, actions } = useWaitlistState({ authClient })
 
   const isVerifying = state.status === 'verifying'
+
+  if (state.status === 'verified') {
+    return (
+      <WaitlistCard>
+        <div className="flex w-full flex-1 flex-col items-center justify-center p-4">
+          <SignInSuccessStep
+            displayName={preferredName.value as string}
+            onContinue={() => navigate('/', { replace: true })}
+            variant="page"
+          />
+        </div>
+      </WaitlistCard>
+    )
+  }
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (

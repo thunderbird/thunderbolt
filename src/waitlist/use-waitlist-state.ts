@@ -6,7 +6,7 @@ import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
-type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'error'
+type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'verified' | 'error'
 
 type State = {
   email: string
@@ -22,6 +22,7 @@ type Action =
   | { type: 'JOIN_SUCCESS' }
   | { type: 'JOIN_ERROR'; payload: string }
   | { type: 'START_VERIFYING' }
+  | { type: 'VERIFY_SUCCESS' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
 
@@ -46,6 +47,8 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
       return { ...state, status: 'verifying', errorMessage: '' }
+    case 'VERIFY_SUCCESS':
+      return { ...state, status: 'verified' }
     case 'VERIFY_ERROR':
       return { ...state, status: 'checkEmail', otp: '', errorMessage: action.payload }
     case 'RESET':
@@ -57,7 +60,6 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
-  onVerified?: () => void
 }
 
 /**
@@ -67,7 +69,7 @@ type UseWaitlistStateOptions = {
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
 
@@ -119,7 +121,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
 
-      onVerified?.()
+      dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
       console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })

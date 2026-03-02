@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import type { DaemonState } from './types'
@@ -14,8 +14,8 @@ const log = (message: string) => {
   const line = `[${timestamp}] ${message}\n`
   process.stdout.write(line)
   try {
-    const fd = Bun.file(LOG_FILE)
-    Bun.write(LOG_FILE, (existsSync(LOG_FILE) ? readFileSync(LOG_FILE, 'utf-8') : '') + line)
+    mkdirSync(STATE_DIR, { recursive: true })
+    appendFileSync(LOG_FILE, line)
   } catch {
     // Best-effort logging
   }
@@ -108,7 +108,7 @@ const pollAndWork = async (state: DaemonState) => {
   saveState(state)
 
   log(`Spawning Claude Code for ${candidate.identifier}...`)
-  const { exitCode: clauadeExit, stdout: claudeOut, stderr: claudeErr } = await runCommand('claude', [
+  const { exitCode: claudeExit, stderr: claudeErr } = await runCommand('claude', [
     '--print',
     '--dangerously-skip-permissions',
     '-p',
@@ -117,12 +117,12 @@ const pollAndWork = async (state: DaemonState) => {
 
   state.activeTasks = state.activeTasks.filter((t) => t !== candidate.identifier)
 
-  if (clauadeExit === 0) {
+  if (claudeExit === 0) {
     state.completedTasks.push(candidate.identifier)
     log(`Completed task: ${candidate.identifier}`)
   } else {
     state.skippedTasks.push(candidate.identifier)
-    log(`Failed task: ${candidate.identifier} (exit ${clauadeExit})`)
+    log(`Failed task: ${candidate.identifier} (exit ${claudeExit})`)
     if (claudeErr) log(`stderr: ${claudeErr.slice(0, 500)}`)
   }
 
@@ -149,11 +149,11 @@ const startDaemon = async () => {
 
   const state = loadState()
 
-  // Initial poll
-  await pollAndWork(state)
-
-  // Recurring poll
-  setInterval(() => pollAndWork(state), POLL_INTERVAL_MS)
+  const poll = async () => {
+    await pollAndWork(state)
+    setTimeout(poll, POLL_INTERVAL_MS)
+  }
+  await poll()
 }
 
 const stopDaemon = () => {
@@ -169,7 +169,6 @@ const stopDaemon = () => {
   }
   process.kill(pid, 'SIGTERM')
   console.log(`Sent SIGTERM to daemon (PID ${pid})`)
-  clearPid()
 }
 
 const showStatus = () => {

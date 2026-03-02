@@ -49,15 +49,7 @@ export const assessTask = (issue: LinearIssue): TaskAssessment => {
     }
   }
 
-  let hasAutomatableKeyword = false
-  for (const keyword of AUTOMATABLE_KEYWORDS) {
-    if (titleAndDesc.includes(keyword)) {
-      hasAutomatableKeyword = true
-      break
-    }
-  }
-
-  if (hasAutomatableKeyword) {
+  if (AUTOMATABLE_KEYWORDS.some((keyword) => titleAndDesc.includes(keyword))) {
     confidence += 15
     reasons.push('Contains automatable keyword(s)')
   }

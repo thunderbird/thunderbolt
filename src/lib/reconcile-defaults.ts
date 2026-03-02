@@ -76,24 +76,26 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 }
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
-  // AI models
-  await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+  await db.transaction(async (tx) => {
+    // AI models
+    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel)
 
-  // Model profiles (after models, because they reference model IDs)
-  await reconcileDefaultsForTable(db, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
+    // Model profiles (after models, because they reference model IDs)
+    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
 
-  // Modes
-  await reconcileDefaultsForTable(db, modesTable, defaultModes, hashMode)
+    // Modes
+    await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
 
-  // Tasks
-  await reconcileDefaultsForTable(db, tasksTable, defaultTasks, hashTask)
+    // Tasks
+    await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask)
 
-  // Automations (Prompts)
-  await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
+    // Automations (Prompts)
+    await reconcileDefaultsForTable(tx, promptsTable, defaultAutomations, hashPrompt)
 
-  // Settings
-  await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    // Settings
+    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
 
-  // Initialize anonymous ID for analytics (unique per user)
-  await createSetting('anonymous_id', uuidv7())
+    // Initialize anonymous ID for analytics (unique per user)
+    await createSetting('anonymous_id', uuidv7(), tx)
+  })
 }

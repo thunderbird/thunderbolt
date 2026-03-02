@@ -78,37 +78,39 @@ export const saveMessagesWithContextUpdate = async (
     return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
   })
 
-  // Insert-first pattern for PowerSync compatibility.
-  // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
-  // Try insert first, then update on unique constraint violation to avoid race conditions
-  // when multiple components save messages simultaneously.
-  for (const msg of dbChatMessages) {
-    try {
-      await db.insert(chatMessagesTable).values(msg)
-    } catch (err) {
-      if (!isInsertConflictError(err)) {
-        throw err
+  await db.transaction(async (tx) => {
+    // Insert-first pattern for PowerSync compatibility.
+    // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
+    // Try insert first, then update on unique constraint violation to avoid race conditions
+    // when multiple components save messages simultaneously.
+    for (const msg of dbChatMessages) {
+      try {
+        await tx.insert(chatMessagesTable).values(msg)
+      } catch (err) {
+        if (!isInsertConflictError(err)) {
+          throw err
+        }
+        await tx
+          .update(chatMessagesTable)
+          .set({
+            content: msg.content,
+            parts: msg.parts,
+            role: msg.role,
+            parentId: msg.parentId,
+            metadata: msg.metadata,
+          })
+          .where(eq(chatMessagesTable.id, msg.id))
       }
-      await db
-        .update(chatMessagesTable)
-        .set({
-          content: msg.content,
-          parts: msg.parts,
-          role: msg.role,
-          parentId: msg.parentId,
-          metadata: msg.metadata,
-        })
-        .where(eq(chatMessagesTable.id, msg.id))
     }
-  }
 
-  // Update context size if available in latest message
-  const latestMessage = messages[messages.length - 1]
-  const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
+    // Update context size if available in latest message
+    const latestMessage = messages[messages.length - 1]
+    const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
-  if (metadata?.usage?.totalTokens) {
-    await updateChatThread(threadId, { contextSize: metadata.usage.totalTokens })
-  }
+    if (metadata?.usage?.totalTokens) {
+      await updateChatThread(threadId, { contextSize: metadata.usage.totalTokens }, tx)
+    }
+  })
 
   return dbChatMessages
 }

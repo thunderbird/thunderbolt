@@ -193,6 +193,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       await this.powerSync.connect(connector, {
         connectionMethod: SyncStreamConnectionMethod.HTTP,
+        crudUploadThrottleMs: 5000,
       })
       this._isConnected = true
     } catch (error) {

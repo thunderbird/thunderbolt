@@ -17,6 +17,7 @@
 - Use camelCase for const and variable names
 - Prefer early return over long if statements and nested code
 - Use direct imports: `useEffect` not `React.useEffect`
+- Prefer top-level imports over inline/dynamic imports (`await import(...)`) when no circular dependency exists
 - Prefer async/await over .then/.catch
 - Add JSDoc comments to new utility functions
 - Only comment non-obvious code - avoid useless comments like "// Save data collection mutation" before `saveDataCollection()`

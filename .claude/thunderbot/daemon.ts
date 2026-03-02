@@ -137,18 +137,19 @@ const pollAndWork = async (state: DaemonState) => {
   state.lastPollAt = new Date().toISOString()
   saveState(state)
 
-  const { stdout, exitCode } = await runCommand('linear', ['issue', 'list', '--state', 'unstarted', '--sort', 'priority', '--json'])
+  const { stdout, exitCode } = await runCommand('linear', ['issue', 'list', '--team', 'THU', '--state', 'unstarted', '--sort', 'priority'])
   if (exitCode !== 0) {
     log('Failed to fetch issues from Linear')
     return
   }
 
-  let issues: Array<{ identifier: string; title: string }>
-  try {
-    issues = JSON.parse(stdout)
-  } catch {
-    log('Failed to parse Linear output')
-    return
+  // linear issue list outputs a human-readable table — parse identifiers from it
+  const issues: Array<{ identifier: string; title: string }> = []
+  for (const line of stdout.split('\n')) {
+    const match = line.match(/\b(THU-\d+)\b\s+(.+?)(?:\s{2,}|$)/)
+    if (match) {
+      issues.push({ identifier: match[1], title: match[2].trim() })
+    }
   }
 
   const skipSet = new Set([...state.activeTasks, ...state.completedTasks, ...state.skippedTasks])

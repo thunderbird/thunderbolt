@@ -53,15 +53,17 @@ If `$ARGUMENTS` contains a task ID (e.g., "THU-123"):
 - Fetch that specific task: `linear issue view $ARGUMENTS --json`
 
 If `$ARGUMENTS` is empty — auto-select:
-1. List eligible tasks: `linear issue list --state unstarted --sort priority --json`
-2. For each candidate, run the assessment heuristic:
+1. List eligible tasks: `linear issue list --team THU --state unstarted --sort priority`
+   - Note: `linear issue list` outputs a human-readable table, NOT JSON. Parse the identifiers (e.g., "THU-303") from the table output.
+2. For each candidate identifier, fetch full details: `linear issue view <identifier> --json`
+3. For each candidate, run the assessment heuristic:
    ```bash
    bun run .claude/thunderbot/assess.ts '<issue-json>'
    ```
-3. Pick the task with the highest score (from `scoreTask` in assess.ts)
-4. If no "unstarted" tasks score well, check "backlog": `linear issue list --state backlog --sort priority --json`
-5. If a task looks too large (complexity = "too-large"), stop and ask the human whether to break it into subtasks
-6. Only ask the human if truly no task seems suitable
+4. Pick the task with the highest score (from `scoreTask` in assess.ts)
+5. If no "unstarted" tasks score well, check "backlog": `linear issue list --team THU --state backlog --sort priority`
+6. If a task looks too large (complexity = "too-large"), stop and ask the human whether to break it into subtasks
+7. Only ask the human if truly no task seems suitable
 
 ## Phase 3: Claim the Task
 

@@ -94,7 +94,9 @@ const createTestModel = async () => {
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
   const model = await getModel(modelId)
-  if (!model) throw new Error('Test setup failed')
+  if (!model) {
+    throw new Error('Test setup failed')
+  }
   const threadId = uuidv7()
   await createChatThread(
     {

@@ -65,7 +65,9 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
       const model = await getModel(modelId)
-      if (!model) throw new Error('Test setup failed')
+      if (!model) {
+        throw new Error('Test setup failed')
+      }
 
       await createChatThread(
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
@@ -84,7 +86,9 @@ describe('Chat Threads DAL', () => {
       const threadId2 = uuidv7()
       const modelId = await createTestModel()
       const model = await getModel(modelId)
-      if (!model) throw new Error('Test setup failed')
+      if (!model) {
+        throw new Error('Test setup failed')
+      }
 
       await createChatThread(
         { id: threadId1, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
@@ -106,7 +110,9 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
       const model = await getModel(modelId)
-      if (!model) throw new Error('Test setup failed')
+      if (!model) {
+        throw new Error('Test setup failed')
+      }
 
       await createChatThread(
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },

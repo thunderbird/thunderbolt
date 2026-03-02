@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { modelProfilesTable } from '../db/tables'
+import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { ModelProfile, ModelProfileRow } from '../types'
 
@@ -35,8 +36,6 @@ export const upsertModelProfile = async (
 
 /** Create default profile for a model using seed data */
 export const createDefaultModelProfile = async (modelId: string, db?: AnyDrizzleDatabase): Promise<void> => {
-  // Lazy import to avoid circular dependency
-  const { defaultModelProfiles, hashModelProfile } = await import('../defaults/model-profiles')
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
   if (!defaultProfile) {
     return
@@ -63,7 +62,6 @@ export const deleteModelProfileForModel = async (modelId: string, db?: AnyDrizzl
 
 /** Reset a profile to its default values */
 export const resetModelProfileToDefault = async (modelId: string): Promise<void> => {
-  const { defaultModelProfiles, hashModelProfile } = await import('../defaults/model-profiles')
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
   if (!defaultProfile) {
     return

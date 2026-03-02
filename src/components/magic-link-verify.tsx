@@ -32,15 +32,17 @@ export const MagicLinkVerify = () => {
   const email = searchParams.get('email')
   const otp = searchParams.get('otp')
 
-  // Prevent double-verification: refetchSession changes identity after cache update,
-  // which would re-trigger this effect and send the already-consumed OTP again.
-  const hasAttempted = useRef(false)
+  // Track which email+otp pair was last attempted so we suppress re-submission of
+  // the same (already-consumed) OTP when refetchSession changes identity and
+  // re-triggers this effect, while still allowing a new magic link's OTP through.
+  const lastAttemptedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (hasAttempted.current) {
+    const key = `${email}:${otp}`
+    if (lastAttemptedRef.current === key) {
       return
     }
-    hasAttempted.current = true
+    lastAttemptedRef.current = key
 
     const verify = async () => {
       if (!email || !otp) {

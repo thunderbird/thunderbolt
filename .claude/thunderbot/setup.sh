@@ -38,7 +38,7 @@ fi
 # Check linear auth
 echo ""
 echo "Checking Linear authentication..."
-if ! linear issue list --limit 1 &>/dev/null 2>&1; then
+if ! linear auth whoami &>/dev/null 2>&1; then
   echo "Linear not authenticated. Running login..."
   linear auth login
   echo ""

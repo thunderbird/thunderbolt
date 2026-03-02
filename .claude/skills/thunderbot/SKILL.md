@@ -9,13 +9,37 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Skill, Agent
 
 You are an autonomous coding agent. Your job is to pick up a Linear task, implement it fully, and submit a PR — with minimal human intervention. Follow every phase below in order.
 
+## Phase 0: Check Prerequisites
+
+Before doing anything, verify required tools are installed. Install any that are missing.
+
+```bash
+# Install Linear CLI if missing
+if ! command -v linear &>/dev/null; then
+  echo "Installing Linear CLI..."
+  brew tap schpet/tap && brew install schpet/tap/linear
+fi
+
+# Install GitHub CLI if missing
+if ! command -v gh &>/dev/null; then
+  echo "Installing GitHub CLI..."
+  brew install gh
+fi
+
+# Verify auth
+linear auth whoami &>/dev/null 2>&1 || { echo "ERROR: Linear not authenticated. Run: linear auth login"; exit 1; }
+gh auth status &>/dev/null 2>&1 || { echo "ERROR: GitHub CLI not authenticated. Run: gh auth login"; exit 1; }
+```
+
+If any install fails, stop and tell the user what to install manually.
+
 ## Phase 1: Identify Yourself
 
 Determine who is running this bot and set up identity for the session.
 
 ```bash
 # Get Linear user identity
-linear whoami 2>/dev/null || linear auth status
+linear auth whoami
 
 # Get GitHub username
 gh api user --jq '.login'
@@ -26,16 +50,16 @@ Store both values — you'll use them for task assignment and PR reviewer.
 ## Phase 2: Select a Task
 
 If `$ARGUMENTS` contains a task ID (e.g., "THU-123"):
-- Fetch that specific task: `linear issue view $ARGUMENTS --raw`
+- Fetch that specific task: `linear issue view $ARGUMENTS --json`
 
 If `$ARGUMENTS` is empty — auto-select:
-1. List eligible tasks: `linear issue list --state Todo --raw`
+1. List eligible tasks: `linear issue list --state unstarted --sort priority --json`
 2. For each candidate, run the assessment heuristic:
    ```bash
    bun run .claude/thunderbot/assess.ts '<issue-json>'
    ```
 3. Pick the task with the highest score (from `scoreTask` in assess.ts)
-4. If no "Todo" tasks score well, check "Backlog": `linear issue list --state Backlog --raw`
+4. If no "unstarted" tasks score well, check "backlog": `linear issue list --state backlog --sort priority --json`
 5. If a task looks too large (complexity = "too-large"), stop and ask the human whether to break it into subtasks
 6. Only ask the human if truly no task seems suitable
 
@@ -43,7 +67,7 @@ If `$ARGUMENTS` is empty — auto-select:
 
 ```bash
 # Assign to yourself and transition to "In Progress"
-linear issue update <identifier> --state "In Progress"
+linear issue update <identifier> --state "started" --assignee self
 # Comment that bot is starting
 linear issue comment add <identifier> --body "[Thunderbot] Starting automated work on this task."
 ```

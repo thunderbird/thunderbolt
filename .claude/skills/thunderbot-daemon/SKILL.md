@@ -31,8 +31,11 @@ if [ -f ~/.claude/thunderbot/daemon.pid ]; then
   fi
 fi
 
-# Start daemon in background
-nohup bun run .claude/thunderbot/daemon.ts start > ~/.claude/thunderbot/daemon.log 2>&1 &
+# Ensure state directory exists
+mkdir -p ~/.claude/thunderbot
+
+# Start daemon in background (daemon writes its own log to ~/.claude/thunderbot/daemon.log)
+nohup bun run .claude/thunderbot/daemon.ts start >> ~/.claude/thunderbot/daemon.log 2>&1 &
 echo "Daemon started (PID $!)"
 echo "Logs: ~/.claude/thunderbot/daemon.log"
 echo "State: ~/.claude/thunderbot/daemon.state.json"
@@ -56,7 +59,8 @@ bun run .claude/thunderbot/daemon.ts status
 
 ## Notes
 
-- The daemon polls Linear every 5 minutes for "Todo" tasks
+- The daemon auto-installs missing prerequisites (Linear CLI, GitHub CLI, Claude Code) on start
+- The daemon polls Linear every 5 minutes for "unstarted" tasks
 - Each task is worked by spawning a separate Claude Code process with `/thunderbot <task-id>`
 - State is persisted at `~/.claude/thunderbot/daemon.state.json`
 - Logs are at `~/.claude/thunderbot/daemon.log`

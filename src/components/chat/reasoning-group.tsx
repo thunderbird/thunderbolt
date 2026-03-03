@@ -38,7 +38,7 @@ export const ReasoningGroup = ({
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
 
-  const totalDuration = Object.values(reasoningTime ?? {}).reduce((previous, current) => previous + current, 0)
+  const totalDuration = parts.reduce((sum, part) => sum + (reasoningTime?.[part.id] ?? 0), 0)
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],

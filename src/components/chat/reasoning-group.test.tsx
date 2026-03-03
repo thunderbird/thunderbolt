@@ -308,6 +308,38 @@ describe('ReasoningGroup', () => {
       expect(screen.getByText(/3\.0s|3s/i)).toBeInTheDocument()
     })
 
+    it('should only sum durations for parts in this group, ignoring other groups', () => {
+      const searchTool = createMockToolPart('search', 'output-available', 1000)
+      const readFileTool = createMockToolPart('read_file', 'output-available', 500)
+      const parts: ReasoningGroupItem[] = [
+        { type: 'tool', content: searchTool, id: searchTool.toolCallId },
+        { type: 'tool', content: readFileTool, id: readFileTool.toolCallId },
+      ]
+      const reasoningTime = {
+        [searchTool.toolCallId]: 1000,
+        [readFileTool.toolCallId]: 500,
+        // These belong to a different group in the same message
+        'call-other-tool-1': 5000,
+        'call-other-tool-2': 3000,
+        'reasoning-5': 2000,
+      }
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={reasoningTime}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
+
+      // Total duration should be 1500ms (1000 + 500), NOT 11500ms
+      expect(screen.getByText(/1\.5s/i)).toBeInTheDocument()
+    })
+
     it('should handle parts without duration', () => {
       const searchTool = createMockToolPart('search')
       const readFileTool = createMockToolPart('read_file', 'output-available', 2000)

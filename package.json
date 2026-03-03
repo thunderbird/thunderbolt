@@ -70,6 +70,7 @@
     "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-deep-link": "^2.4.5",
     "@tauri-apps/plugin-fs": "^2.4.4",
+    "@tauri-apps/plugin-haptics": "^2.3.2",
     "@tauri-apps/plugin-http": "^2.5.4",
     "@tauri-apps/plugin-opener": "^2.5.2",
     "@tauri-apps/plugin-os": "^2.3.2",
@@ -99,6 +100,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tauri-plugin-m3": "^0.2.2",
     "uuid": "^11.1.0",
+    "web-haptics": "^0.0.6",
     "zod": "^4.0.17",
     "zustand": "^5.0.8"
   },

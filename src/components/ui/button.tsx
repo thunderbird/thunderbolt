@@ -1,7 +1,8 @@
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { type ComponentProps } from 'react'
+import { useCallback, type ComponentProps } from 'react'
 
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
@@ -32,19 +33,74 @@ const buttonVariants = cva(
   },
 )
 
+const ButtonWithHaptics = ({
+  className,
+  variant,
+  size,
+  asChild,
+  onClick,
+  ...props
+}: Omit<ComponentProps<'button'>, 'onClick'> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+    onClick?: React.MouseEventHandler<HTMLButtonElement>
+  }) => {
+  const Comp = asChild ? Slot : 'button'
+  const { triggerSelection } = useHaptics()
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerSelection()
+      onClick?.(e)
+    },
+    [onClick, triggerSelection],
+  )
+
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      onClick={handleClick}
+      {...props}
+    />
+  )
+}
+
 const Button = ({
   className,
   variant,
   size,
   asChild = false,
+  enableHaptics = false,
+  onClick,
   ...props
 }: ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    enableHaptics?: boolean
   }) => {
-  const Comp = asChild ? Slot : 'button'
+  if (enableHaptics) {
+    return (
+      <ButtonWithHaptics
+        className={className}
+        variant={variant}
+        size={size}
+        asChild={asChild}
+        onClick={onClick}
+        {...props}
+      />
+    )
+  }
 
-  return <Comp data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />
+  const Comp = asChild ? Slot : 'button'
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      onClick={onClick}
+      {...props}
+    />
+  )
 }
 
 export { Button, buttonVariants }

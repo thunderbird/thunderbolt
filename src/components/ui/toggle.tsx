@@ -1,9 +1,10 @@
 'use client'
 
-import { type ComponentProps } from 'react'
+import { useCallback, type ComponentProps } from 'react'
 import * as TogglePrimitive from '@radix-ui/react-toggle'
 import { cva, type VariantProps } from 'class-variance-authority'
 
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 const toggleVariants = cva(
@@ -27,14 +28,60 @@ const toggleVariants = cva(
   },
 )
 
+const ToggleWithHaptics = ({
+  className,
+  variant,
+  size,
+  onPressedChange,
+  ...props
+}: ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants>) => {
+  const { triggerSelection } = useHaptics()
+
+  const handlePressedChange = useCallback(
+    (pressed: boolean) => {
+      triggerSelection()
+      onPressedChange?.(pressed)
+    },
+    [onPressedChange, triggerSelection],
+  )
+
+  return (
+    <TogglePrimitive.Root
+      data-slot="toggle"
+      className={cn(toggleVariants({ variant, size, className }))}
+      {...props}
+      onPressedChange={handlePressedChange}
+    />
+  )
+}
+
 const Toggle = ({
   className,
   variant,
   size,
+  enableHaptics = false,
+  onPressedChange,
   ...props
-}: ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants>) => {
+}: ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants> & { enableHaptics?: boolean }) => {
+  if (enableHaptics) {
+    return (
+      <ToggleWithHaptics
+        className={className}
+        variant={variant}
+        size={size}
+        onPressedChange={onPressedChange}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <TogglePrimitive.Root data-slot="toggle" className={cn(toggleVariants({ variant, size, className }))} {...props} />
+    <TogglePrimitive.Root
+      data-slot="toggle"
+      className={cn(toggleVariants({ variant, size, className }))}
+      {...props}
+      onPressedChange={onPressedChange}
+    />
   )
 }
 

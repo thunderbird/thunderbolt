@@ -6,7 +6,9 @@
 
 ## Quick Start
 
-The easiest way to start development:
+The quickest way to get started is with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). From the repo root, run `claude` and then type `/thunderup` — it installs dependencies, starts Docker, and verifies your environment in one shot. See [docs/claude-code.md](./docs/claude-code.md) for the full list of slash commands.
+
+Alternatively, for a manual setup:
 
 1. Create a `.env` file with:
    ```
@@ -304,5 +306,6 @@ bun run tauri ios dev --force-ip-prompt --host # Be sure to select the IP of you
 
 ## Documentation
 
+- [Claude Code Skills](./docs/claude-code.md) - Slash commands for bootstrapping, code quality, automation, and more
 - [Release Process](./RELEASE.md) - Instructions for creating and publishing new releases
 - [Telemetry](./TELEMETRY.md) - Information about data collection and privacy policy

@@ -249,7 +249,9 @@ export const formatDuration = (ms: number): string => {
  * Returns the total in milliseconds.
  */
 export const computeWallClockTime = (intervals: Array<{ start: number; end: number }>): number => {
-  if (intervals.length === 0) return 0
+  if (intervals.length === 0) {
+    return 0
+  }
 
   const sorted = [...intervals].sort((a, b) => a.start - b.start)
   let totalMs = 0

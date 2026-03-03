@@ -49,7 +49,9 @@ export const ReasoningGroup = ({
     const intervals = parts.flatMap((part) => {
       const start = reasoningStartTimes[part.id]
       const duration = reasoningTime?.[part.id]
-      if (start === undefined || duration === undefined) return []
+      if (start === undefined || duration === undefined) {
+        return []
+      }
       return [{ start, end: start + duration }]
     })
 

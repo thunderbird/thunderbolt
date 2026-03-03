@@ -30,6 +30,7 @@
 - Install latest versions: `bun add <package>@latest`
 - Prefer `ky` over `fetch`
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
+- Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)
 
 ## React Patterns

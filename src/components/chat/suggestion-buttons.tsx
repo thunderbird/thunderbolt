@@ -1,4 +1,5 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
+import { useHaptics } from '@/hooks/use-haptics'
 import { Button } from '../ui/button'
 
 interface SuggestionButtonProps {
@@ -18,6 +19,15 @@ const SuggestionButton = ({ label, prompt, onSelect }: SuggestionButtonProps) =>
 )
 
 export const SuggestionButtons = memo(({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
+  const { triggerLight } = useHaptics()
+
+  const handleSelect = useCallback(
+    (prompt: string) => {
+      triggerLight()
+      onSelectPrompt(prompt)
+    },
+    [triggerLight, onSelectPrompt],
+  )
   const suggestions = [
     { label: 'Check the weather', prompt: 'What is the forecast for this week?' },
     { label: 'Check your to dos', prompt: 'What are my current tasks?' },
@@ -34,7 +44,7 @@ export const SuggestionButtons = memo(({ onSelectPrompt }: { onSelectPrompt: (pr
   return (
     <div className="flex gap-3 justify-start w-full max-w-[696px] mx-auto overflow-x-auto scrollbar-hide pb-px">
       {suggestions.map((suggestion, index) => (
-        <SuggestionButton key={index} label={suggestion.label} prompt={suggestion.prompt} onSelect={onSelectPrompt} />
+        <SuggestionButton key={index} label={suggestion.label} prompt={suggestion.prompt} onSelect={handleSelect} />
       ))}
     </div>
   )

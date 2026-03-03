@@ -1,8 +1,9 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageSquare, Microscope } from 'lucide-react'
-import { useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 
 export type ModeSelectorProps = {
   modes: Mode[]
@@ -39,7 +40,16 @@ const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] =>
 ]
 
 export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = false }: ModeSelectorProps) => {
+  const { triggerLight } = useHaptics()
   const groupedItems = useMemo(() => createModeGroups(modes), [modes])
+
+  const handleModeChange = useCallback(
+    (modeId: string) => {
+      triggerLight()
+      onModeChange(modeId)
+    },
+    [triggerLight, onModeChange],
+  )
 
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
@@ -75,7 +85,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     <SearchableMenu
       items={groupedItems}
       value={selectedMode?.id}
-      onValueChange={onModeChange}
+      onValueChange={handleModeChange}
       searchable={false}
       blurBackdrop
       side="top"

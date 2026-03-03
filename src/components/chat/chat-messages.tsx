@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
+import { useStreamingHaptics } from '@/hooks/use-streaming-haptics'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -25,6 +26,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
+
+  useStreamingHaptics(messages, status)
 
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
 

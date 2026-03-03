@@ -1,9 +1,11 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
+import { useHaptics } from '@/hooks/use-haptics'
+import { useThrottledCallback } from '@/hooks/use-throttle'
 import { type ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
-import { forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, useCallback, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ModelSelect } from './model-select'
 
 type PromptInputProps = {
@@ -57,14 +59,31 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     },
     ref,
   ) => {
+    const { triggerSelection, triggerLight } = useHaptics()
+    const throttledHaptic = useThrottledCallback(triggerSelection, 50)
+
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
       if (!isStreaming) {
+        triggerLight()
         onSubmit?.()
       }
     }
 
-    const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
+    const handleStop = useCallback(() => {
+      triggerLight()
+      onStop?.()
+    }, [triggerLight, onStop])
+
+    const handleTextareaChange = useCallback(
+      (e: ChangeEvent<HTMLTextAreaElement>) => {
+        if (isMobile) {
+          throttledHaptic()
+        }
+        onChange(e.target.value)
+      },
+      [isMobile, onChange, throttledHaptic],
+    )
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey) {
@@ -82,7 +101,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="button"
           variant="default"
           className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          onClick={onStop}
+          onClick={handleStop}
         >
           <Square className="size-4" />
         </Button>

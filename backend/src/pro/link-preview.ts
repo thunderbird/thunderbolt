@@ -138,7 +138,7 @@ const inferImageContentType = (headerContentType: string | null, imageUrl: strin
  * Validates that a URL is safe to fetch (prevents SSRF attacks).
  * Only allows http/https protocols and blocks internal/private IP addresses.
  */
-const validateSafeUrl = (url: string): { valid: boolean; error?: string } => {
+export const validateSafeUrl = (url: string): { valid: boolean; error?: string } => {
   try {
     const parsed = new URL(url)
 

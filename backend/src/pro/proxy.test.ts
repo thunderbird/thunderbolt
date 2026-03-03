@@ -168,7 +168,7 @@ describe('Proxy Routes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
 
       const body = await response.text()
-      expect(body).toBe('Invalid URL provided')
+      expect(body).toBe('Invalid URL')
     })
 
     it('should return 400 when URL has malformed encoding', async () => {
@@ -318,6 +318,49 @@ describe('Proxy Routes', () => {
 
       const body = await response.text()
       expect(body.length).toBe(10000)
+    })
+
+    it('should block requests to localhost', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/proxy/http://127.0.0.1/secret', { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const body = await response.text()
+      expect(body).toBe('Internal URLs are not allowed')
+    })
+
+    it('should block requests to cloud metadata endpoints', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/proxy/http://169.254.169.254/latest/meta-data/', { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const body = await response.text()
+      expect(body).toBe('Internal URLs are not allowed')
+    })
+
+    it('should block requests to private network addresses', async () => {
+      const urls = ['http://10.0.0.1/internal', 'http://192.168.1.1/admin', 'http://172.16.0.1/secret']
+
+      for (const url of urls) {
+        mockFetch.mockClear()
+        const response = await app.handle(new Request(`http://localhost/proxy/${url}`, { method: 'GET' }))
+
+        expect(response.status).toBe(400)
+        expect(mockFetch).not.toHaveBeenCalled()
+      }
+    })
+
+    it('should block non-HTTP protocols', async () => {
+      const response = await app.handle(new Request('http://localhost/proxy/file:///etc/passwd', { method: 'GET' }))
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
     })
 
     it('should not forward headers that are not in the allowed list', async () => {

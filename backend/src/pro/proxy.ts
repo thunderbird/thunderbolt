@@ -2,6 +2,7 @@ import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
+import { validateSafeUrl } from './link-preview'
 
 /**
  * General-purpose proxy routes
@@ -49,12 +50,10 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
         })
       }
 
-      // Validate that it's a valid URL
-      try {
-        new URL(targetUrl)
-      } catch {
+      const validation = validateSafeUrl(targetUrl)
+      if (!validation.valid) {
         ctx.set.status = 400
-        return new Response('Invalid URL provided', {
+        return new Response(validation.error || 'Invalid URL provided', {
           headers: {
             'Content-Type': 'text/plain',
           },

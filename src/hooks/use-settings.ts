@@ -4,7 +4,7 @@ import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 /**
@@ -210,6 +210,7 @@ export function useSettings<T extends SettingSchema>(
       const result = await getSettingsRecords(schema)
       return Object.values(result)
     },
+    placeholderData: keepPreviousData,
   })
 
   const updateMutation = useMutation({

@@ -1,5 +1,5 @@
 import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
-import { triggerWelcome } from '@/components/welcome-dialog'
+import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
@@ -115,13 +115,13 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         return
       }
 
-      await setAuthToken(token)
+      setAuthToken(token)
 
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
 
       if (!isNewUser) {
-        triggerWelcome()
+        useWelcomeStore.getState().trigger()
       }
       onVerified?.()
     } catch (error) {

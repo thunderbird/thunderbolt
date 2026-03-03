@@ -7,7 +7,7 @@ import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
-import { createContext, useContext, useMemo, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
@@ -78,13 +78,6 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
 
   const { cloudUrl } = useSettings({ cloud_url: String })
 
-  // Keep the last valid context so that transient React Query refetches
-  // (e.g. PowerSync invalidating the settings table after auth) don't
-  // unmount the entire tree and destroy in-flight flows like MagicLinkVerify.
-  // Note: this briefly serves a stale client if cloudUrl genuinely changes,
-  // but cloudUrl is effectively immutable at runtime (set once during setup).
-  const lastValueRef = useRef<AuthContextType | null>(null)
-
   const value = useMemo(() => {
     if (overrideClient) {
       return { authClient: overrideClient }
@@ -100,19 +93,11 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
     return { authClient: client }
   }, [cloudUrl.value, cloudUrl.isLoading, overrideClient])
 
-  if (value) {
-    lastValueRef.current = value
-  }
-
-  // Wait for auth client to be ready before rendering children.
-  // Once initialized, keep children mounted during transient reloads
-  // to avoid unmounting in-flight auth flows (e.g. magic link verification).
-  const resolvedValue = value ?? lastValueRef.current
-  if (!resolvedValue) {
+  if (!value) {
     return null
   }
 
-  return <AuthContext.Provider value={resolvedValue}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {

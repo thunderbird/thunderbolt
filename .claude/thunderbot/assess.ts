@@ -1,5 +1,6 @@
 import type { LinearIssue, TaskAssessment } from './types'
 
+const PRIORITY_LABELS = ['good for bot']
 const BLOCKER_LABELS = ['blocked', 'needs-design', 'needs-discussion', 'human required']
 const COMPLEX_LABELS = ['infra', 'devops', 'database-migration', 'powersync']
 const AUTOMATABLE_KEYWORDS = ['fix', 'bug', 'add', 'implement', 'refactor', 'update', 'remove', 'rename', 'change', 'replace']
@@ -71,6 +72,14 @@ export const assessTask = (issue: LinearIssue): TaskAssessment => {
     }
   }
 
+  // Priority labels — explicitly marked as good for automation
+  for (const label of PRIORITY_LABELS) {
+    if (labelNames.includes(label)) {
+      confidence += 20
+      reasons.push(`Has priority label: "${label}"`)
+    }
+  }
+
   // Check for acceptance criteria indicators
   if (issue.description && /- \[[ x]\]/i.test(issue.description)) {
     confidence += 10
@@ -107,6 +116,12 @@ export const scoreTask = (issue: LinearIssue): number => {
   if (!assessment.feasible) return -1
 
   let score = assessment.confidence
+
+  // Strongly prefer tasks labeled "Good For Bot"
+  const labelNames = issue.labels?.nodes?.map((label) => label.name.toLowerCase()) ?? []
+  if (PRIORITY_LABELS.some((label) => labelNames.includes(label))) {
+    score += 50
+  }
 
   // Prefer higher Linear priority (1 = urgent, 4 = low, 0 = no priority)
   if (issue.priority >= 1 && issue.priority <= 4) {

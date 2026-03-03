@@ -204,9 +204,9 @@ Follow the project's CLAUDE.md strictly:
    ```
    Fix any failures before proceeding.
 
-3. Run `/simplify` to review your changes:
+3. Run `/thunderimprove` to review your changes:
    ```
-   Skill(skill="simplify")
+   Skill(skill="thunderimprove")
    ```
    Apply any suggested improvements, then re-run steps 1-2 if changes were made.
 

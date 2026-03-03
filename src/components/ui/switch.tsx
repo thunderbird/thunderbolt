@@ -35,7 +35,7 @@ const SwitchWithHaptics = ({ className, onCheckedChange, ...props }: ComponentPr
 
 const Switch = ({
   className,
-  enableHaptics = false,
+  enableHaptics = true,
   onCheckedChange,
   ...props
 }: ComponentProps<typeof SwitchPrimitive.Root> & { enableHaptics?: boolean }) => {

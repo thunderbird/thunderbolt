@@ -42,7 +42,7 @@ CheckboxWithHaptics.displayName = 'CheckboxWithHaptics'
 const Checkbox = forwardRef<
   ElementRef<typeof CheckboxPrimitive.Root>,
   ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root> & { enableHaptics?: boolean }
->(({ className, enableHaptics = false, onCheckedChange, ...props }, ref) => {
+>(({ className, enableHaptics = true, onCheckedChange, ...props }, ref) => {
   if (enableHaptics) {
     return <CheckboxWithHaptics ref={ref} className={className} onCheckedChange={onCheckedChange} {...props} />
   }

@@ -59,7 +59,7 @@ const Toggle = ({
   className,
   variant,
   size,
-  enableHaptics = false,
+  enableHaptics = true,
   onPressedChange,
   ...props
 }: ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants> & { enableHaptics?: boolean }) => {

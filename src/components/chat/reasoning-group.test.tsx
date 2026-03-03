@@ -340,6 +340,40 @@ describe('ReasoningGroup', () => {
       expect(screen.getByText(/1\.5s/i)).toBeInTheDocument()
     })
 
+    it('should show wall-clock time for parallel tool calls when start times are available', () => {
+      const toolA = createMockToolPart('fetch_url', 'output-available', 1000)
+      const toolB = createMockToolPart('search_web', 'output-available', 1500)
+      const parts: ReasoningGroupItem[] = [
+        { type: 'tool', content: toolA, id: toolA.toolCallId },
+        { type: 'tool', content: toolB, id: toolB.toolCallId },
+      ]
+      const reasoningTime = {
+        [toolA.toolCallId]: 1000,
+        [toolB.toolCallId]: 1500,
+      }
+      // Both tools started at the same time (parallel execution)
+      const reasoningStartTimes = {
+        [toolA.toolCallId]: 5000,
+        [toolB.toolCallId]: 5000,
+      }
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={false}
+          hasTextPart={false}
+          reasoningTime={reasoningTime}
+          reasoningStartTimes={reasoningStartTimes}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
+
+      // Wall-clock time should be 1.5s (the longer parallel call), NOT 2.5s (sum)
+      expect(screen.getByText(/1\.5s/i)).toBeInTheDocument()
+    })
+
     it('should handle parts without duration', () => {
       const searchTool = createMockToolPart('search')
       const readFileTool = createMockToolPart('read_file', 'output-available', 2000)

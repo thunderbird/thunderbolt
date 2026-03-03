@@ -1,6 +1,7 @@
 import { useObjectView } from '@/content-view/context'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { type ReasoningGroupItem } from '@/lib/assistant-message'
+import { computeWallClockTime } from '@/lib/utils'
 import { type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { CheckIcon, Loader2 } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
@@ -14,6 +15,7 @@ type ReasoningGroupProps = {
   isLastPartInMessage: boolean
   hasTextPart: boolean
   reasoningTime: Record<string, number>
+  reasoningStartTimes?: Record<string, number>
 }
 
 export const ReasoningGroup = ({
@@ -22,6 +24,7 @@ export const ReasoningGroup = ({
   isLastPartInMessage,
   hasTextPart,
   reasoningTime,
+  reasoningStartTimes,
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
@@ -38,7 +41,20 @@ export const ReasoningGroup = ({
     ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
     : ''
 
-  const totalDuration = parts.reduce((sum, part) => sum + (reasoningTime?.[part.id] ?? 0), 0)
+  const totalDuration = (() => {
+    if (!reasoningStartTimes) {
+      return parts.reduce((sum, part) => sum + (reasoningTime?.[part.id] ?? 0), 0)
+    }
+
+    const intervals = parts.flatMap((part) => {
+      const start = reasoningStartTimes[part.id]
+      const duration = reasoningTime?.[part.id]
+      if (start === undefined || duration === undefined) return []
+      return [{ start, end: start + duration }]
+    })
+
+    return computeWallClockTime(intervals)
+  })()
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
     dependencies: [parts.length],

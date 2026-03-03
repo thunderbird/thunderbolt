@@ -32,15 +32,17 @@ export const createMessageMetadata = (modelId: string, sourceCollector?: SourceM
 
       case 'tool-call': {
         const id = part.toolCallId ?? part.id ?? 'unknown'
-        startTimes.set(id, Date.now())
-        return { modelId }
+        const now = Date.now()
+        startTimes.set(id, now)
+        return { modelId, reasoningStartTimes: { [id]: now } }
       }
 
       case 'reasoning-start': {
         const id = `reasoning-${reasoningIdCounter++}`
-        startTimes.set(id, Date.now())
+        const now = Date.now()
+        startTimes.set(id, now)
         reasoningStack.push(id)
-        return { modelId }
+        return { modelId, reasoningStartTimes: { [id]: now } }
       }
 
       case 'tool-result': {

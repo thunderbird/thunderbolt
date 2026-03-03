@@ -34,12 +34,13 @@ describe('createMessageMetadata', () => {
   })
 
   describe('tool call timing', () => {
-    it('returns modelId on tool-call start', () => {
+    it('returns modelId and start time on tool-call start', () => {
       const metadata = createMessageMetadata(modelId)
+      Date.now = () => 1000
 
       const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-123' } })
 
-      expect(result).toEqual({ modelId })
+      expect(result).toEqual({ modelId, reasoningStartTimes: { 'call-123': 1000 } })
     })
 
     it('returns duration on tool-result', () => {
@@ -111,12 +112,13 @@ describe('createMessageMetadata', () => {
   })
 
   describe('reasoning timing', () => {
-    it('returns modelId on reasoning-start', () => {
+    it('returns modelId and start time on reasoning-start', () => {
       const metadata = createMessageMetadata(modelId)
+      Date.now = () => 1000
 
       const result = metadata({ part: { type: 'reasoning-start' } })
 
-      expect(result).toEqual({ modelId })
+      expect(result).toEqual({ modelId, reasoningStartTimes: { 'reasoning-0': 1000 } })
     })
 
     it('returns duration on reasoning-end', () => {
@@ -282,20 +284,20 @@ describe('createMessageMetadata', () => {
     it('does not include sources in tool-call events', () => {
       const sourceCollector: SourceMetadata[] = [...mockSources]
       const metadata = createMessageMetadata(modelId, sourceCollector)
+      Date.now = () => 1000
 
       const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1' } })
 
-      expect(result).toEqual({ modelId })
       expect(result).not.toHaveProperty('sources')
     })
 
     it('does not include sources in reasoning events', () => {
       const sourceCollector: SourceMetadata[] = [...mockSources]
       const metadata = createMessageMetadata(modelId, sourceCollector)
+      Date.now = () => 1000
 
       const result = metadata({ part: { type: 'reasoning-start' } })
 
-      expect(result).toEqual({ modelId })
       expect(result).not.toHaveProperty('sources')
     })
   })

@@ -244,6 +244,33 @@ export const formatDuration = (ms: number): string => {
 }
 
 /**
+ * Computes the wall-clock duration covered by a set of potentially overlapping time intervals.
+ * Uses interval union: sorts by start time, merges overlapping intervals, sums their lengths.
+ * Returns the total in milliseconds.
+ */
+export const computeWallClockTime = (intervals: Array<{ start: number; end: number }>): number => {
+  if (intervals.length === 0) return 0
+
+  const sorted = [...intervals].sort((a, b) => a.start - b.start)
+  let totalMs = 0
+  let currentStart = sorted[0].start
+  let currentEnd = sorted[0].end
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start <= currentEnd) {
+      currentEnd = Math.max(currentEnd, sorted[i].end)
+    } else {
+      totalMs += currentEnd - currentStart
+      currentStart = sorted[i].start
+      currentEnd = sorted[i].end
+    }
+  }
+  totalMs += currentEnd - currentStart
+
+  return totalMs
+}
+
+/**
  * Check if a URL points to localhost
  */
 export const isLocalhostUrl = (url: string | null): boolean => {

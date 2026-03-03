@@ -176,7 +176,13 @@ export const aiFetchStreamingResponse = async ({
 
     for (const mcpClient of mcpClients || []) {
       const mcpTools = await mcpClient.tools()
-      Object.assign(toolset, mcpTools)
+      for (const [name, tool] of Object.entries(mcpTools)) {
+        if (toolset[name]) {
+          console.warn(`MCP tool "${name}" shadows a built-in tool and was skipped`)
+          continue
+        }
+        toolset[name] = tool
+      }
     }
   } else {
     console.log('Model does not support tools, skipping tool setup')

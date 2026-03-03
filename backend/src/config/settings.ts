@@ -50,7 +50,7 @@ const settingsSchema = z.object({
     .default(
       'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     ),
-  corsExposeHeaders: z.string().default('mcp-session-id'),
+  corsExposeHeaders: z.string().default('mcp-session-id,set-auth-token'),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -89,7 +89,7 @@ const parseSettings = (): Settings => {
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
       'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
-    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id',
+    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
   }
 
   return settingsSchema.parse(env)

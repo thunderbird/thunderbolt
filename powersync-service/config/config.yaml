@@ -20,7 +20,8 @@ sync_rules:
           - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
+          # Explicit column list excludes api_key — update when adding columns to the models table
+          - SELECT id, provider, name, model, url, is_system, enabled, tool_usage, is_confidential, start_with_reasoning, supports_parallel_tool_calls, context_window, deleted_at, default_hash, vendor, description, user_id FROM powersync.models WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.mcp_servers WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id

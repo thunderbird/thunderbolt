@@ -17,6 +17,11 @@ import { Elysia, t } from 'elysia'
 
 const validTables = new Set<string>(powersyncTableNames)
 
+/** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
+const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
+  devices: ['revoked_at'],
+}
+
 /**
  * PowerSync operation types from the upload queue
  */
@@ -173,6 +178,7 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
       const payload = { ...(op.data ?? {}) } as Record<string, unknown>
       delete payload.id
       delete payload.user_id
+      for (const col of uploadDenyColumns[tableName] ?? []) delete payload[col]
       const rawData: Record<string, unknown> = { ...payload, id: op.id, user_id: userId }
       const schemaValues = toSchemaRecord(rawData, validDbNames, dbNameToKey)
       if (Object.keys(schemaValues).length === 0) return false
@@ -201,6 +207,7 @@ const applyOperation = async (op: PowerSyncOperation, userId: string, database: 
       const patchPayload = { ...op.data } as Record<string, unknown>
       delete patchPayload.id
       delete patchPayload.user_id
+      for (const col of uploadDenyColumns[tableName] ?? []) delete patchPayload[col]
       const schemaPatch = toSchemaRecord(patchPayload, validDbNames, dbNameToKey)
       if (Object.keys(schemaPatch).length === 0) return false
 

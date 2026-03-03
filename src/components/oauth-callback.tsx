@@ -22,7 +22,7 @@ export default function OAuthCallback() {
             type: 'oauth-callback',
             error: errorDescription || error,
           },
-          '*',
+          window.location.origin,
         )
       } else if (code && state) {
         window.opener.postMessage(
@@ -31,7 +31,7 @@ export default function OAuthCallback() {
             code,
             state,
           },
-          '*',
+          window.location.origin,
         )
       }
 

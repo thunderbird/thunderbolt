@@ -68,7 +68,7 @@ UNRESOLVED_THREADS=$(gh api graphql -F "query=@$GQL_DIR/threads.graphql" -f "id=
 
 # Issue-level comments (non-code PR comments from reviewers, not from the PR author)
 PR_AUTHOR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.user.login')
-ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq --arg author "$PR_AUTHOR" '[.[] | select(.user.login != $author and (.body | test("^\\[Thunderbot\\]") | not))]')
+ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq "[.[] | select(.user.login != \"$PR_AUTHOR\" and (.body | test(\"^\\\\[Thunderbot]|^⚡\") | not))]")
 
 # CI status
 gh pr checks "$PR_NUMBER"
@@ -128,22 +128,22 @@ done
 #### Acknowledge issue-level comments
 For each issue comment that was addressed, reply to confirm:
 ```bash
-gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="Addressed in the latest push."
+gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ Addressed in the latest push."
 ```
 
-Only reply once per fix cycle, not per comment. If multiple comments were addressed, one reply covering all of them is fine.
+Only reply once per fix cycle, not per comment. If multiple comments were addressed, one reply covering all of them is fine. Always prefix PR comments with ⚡ so they're recognizable as bot comments and filtered out of future issue-comment counts.
 
 ### 5. Verify Clean
 
 Poll to verify no new issues appear. Check every **15 seconds** (max **3 minutes**):
 
 ```bash
-PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq --arg author "$PR_AUTHOR" '[.[] | select(.user.login != $author and (.body | test("^\\[Thunderbot\\]|^Addressed") | not))] | length')
+PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq "[.[] | select(.user.login != \"$PR_AUTHOR\" and (.body | test(\"^\\\\[Thunderbot]|^⚡\") | not))] | length")
 
 for i in $(seq 1 12); do
   NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 
-  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq --arg author "$PR_AUTHOR" '[.[] | select(.user.login != $author and (.body | test("^\\[Thunderbot\\]|^Addressed") | not))] | length')
+  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq "[.[] | select(.user.login != \"$PR_AUTHOR\" and (.body | test(\"^\\\\[Thunderbot]|^⚡\") | not))] | length")
 
   if [ "$NEW_UNRESOLVED" -gt 0 ] || [ "$NEW_ISSUE_COMMENTS" -gt "$PREV_ISSUE_COUNT" ]; then
     break  # New issues found — loop back to step 1

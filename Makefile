@@ -1,4 +1,4 @@
-.PHONY: help setup install build build-desktop build-android build-ios clean run dev
+.PHONY: help setup install build build-desktop build-android build-ios clean run dev doctor docker-up docker-down docker-status
 
 # Color definitions
 BLUE := \033[0;34m
@@ -20,6 +20,10 @@ help:
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
 	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
+	@echo "  make doctor         - Verify all dev tools and env files are configured"
+	@echo "  make docker-up      - Start docker containers (PowerSync, Mongo, etc.)"
+	@echo "  make docker-down    - Stop docker containers"
+	@echo "  make docker-status  - Show docker container status"
 
 # Setup project - install frontend and backend dependencies
 setup:
@@ -127,3 +131,21 @@ run:
 
 # Alias for run
 dev: run
+
+# Environment doctor
+doctor:
+	@bash scripts/thunderdoctor.sh
+
+# Docker management
+docker-up:
+	@echo "$(BLUE)→ Starting docker containers...$(NC)"
+	docker compose -f powersync-service/docker-compose.yml up -d
+	@echo "$(GREEN)✓ Docker containers started!$(NC)"
+
+docker-down:
+	@echo "$(BLUE)→ Stopping docker containers...$(NC)"
+	docker compose -f powersync-service/docker-compose.yml down
+	@echo "$(GREEN)✓ Docker containers stopped!$(NC)"
+
+docker-status:
+	@bash scripts/docker-status.sh

@@ -151,13 +151,31 @@ linear issue comment add <identifier> --body "<spec content>"
 
 Use this spec to drive all implementation. Every change should trace back to a spec item.
 
-## Phase 6: Implement
+## Phase 6: Plan Implementation
 
-Work through the spec systematically:
+**CRITICAL: Do NOT write any code until you have an approved plan.**
+
+Enter plan mode to design the implementation approach:
+
+```
+EnterPlanMode()
+```
+
+Use the spec from Phase 5 and the codebase exploration results to create a detailed implementation plan. The plan should cover:
+
+- Exact files to create/modify and what changes each needs
+- Order of implementation steps
+- Test strategy
+- Any architectural decisions
+
+Wait for the user to approve the plan before proceeding to Phase 7.
+
+## Phase 7: Implement
+
+Work through the approved plan systematically:
 
 1. **Write tests first** when practical (spec lists test cases)
-2. **Implement changes** — each commit should map to spec items
-3. **Commit message format**: `<identifier>: <description>` (e.g., `THU-312: add login button click handler`)
+2. **Implement changes** — follow the approved plan step by step
 
 ### Strategic Subagent Use
 
@@ -175,16 +193,25 @@ Follow the project's CLAUDE.md strictly:
 - Add JSDoc to new utility functions
 - Test files as `<file>.test.ts` next to source
 
-## Phase 7: Create Draft PR
+### Committing Changes
 
-After the first meaningful commit:
+**Always use `/thunderpush` to commit and push changes.** Never manually run `git add`, `git commit`, or `git push`. Invoke the skill:
+
+```
+Skill(skill="thunderpush")
+```
+
+This ensures atomic, conventional commits with proper formatting.
+
+## Phase 8: Create Draft PR
+
+After the first meaningful commit (pushed via `/thunderpush`):
 
 ```bash
 cd "$WORKTREE_PATH"
-git push -u origin "$BRANCH"
 
 gh pr create --draft \
-  --title "<identifier>: <concise title>" \
+  --title "⚡ <identifier>: <concise title>" \
   --body "$(cat <<'EOF'
 ## Summary
 <2-3 bullet points of what changed>
@@ -204,7 +231,7 @@ EOF
 
 Save the PR number for later steps.
 
-## Phase 8: Quality Checks
+## Phase 9: Quality Checks
 
 Run these sequentially — each may produce changes:
 
@@ -232,12 +259,12 @@ Apply suggested improvements. Re-run tests after changes.
 
 ### After each quality check
 
-If changes were made, commit them:
-```bash
-git add <files> && git commit -m "<identifier>: <quality-step> fixes" && git push
+If changes were made, use `/thunderpush` to commit and push:
+```
+Skill(skill="thunderpush")
 ```
 
-## Phase 9: Finalize PR
+## Phase 10: Finalize PR
 
 ```bash
 PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
@@ -250,7 +277,7 @@ linear issue comment add <identifier> --body "[Thunderbot] PR ready for review: 
 linear issue update <identifier> --state "In Review"
 ```
 
-## Phase 10: CI & Address Feedback
+## Phase 11: CI & Address Feedback
 
 ### Wait for CI
 ```bash
@@ -263,7 +290,7 @@ gh pr checks "$PR_NUMBER" --watch --fail-fast
    gh run list --branch "$BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId' | xargs -I{} gh run view {} --log-failed
    ```
 2. Fix the issue
-3. Commit, push, wait for CI again
+3. Use `/thunderpush` to commit and push, then wait for CI again
 
 ### Check for review comments:
 ```bash
@@ -272,7 +299,7 @@ gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --jq '.[] | "\(.path):\(.line) \(
 ```
 Address real bugs/violations. Ignore style nits and false positives.
 
-## Phase 11: Cleanup & Report
+## Phase 12: Cleanup & Report
 
 ### Tear down Docker stack
 ```bash

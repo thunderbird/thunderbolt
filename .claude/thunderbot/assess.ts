@@ -6,6 +6,10 @@ const COMPLEX_LABELS = ['infra', 'devops', 'database-migration', 'powersync']
 const AUTOMATABLE_KEYWORDS = ['fix', 'bug', 'add', 'implement', 'refactor', 'update', 'remove', 'rename', 'change', 'replace']
 const NON_AUTOMATABLE_KEYWORDS = ['design', 'discuss', 'research', 'meeting', 'investigate', 'explore', 'spike', 'plan']
 
+const BASE_CONFIDENCE = 70
+
+type Signal = { delta: number; reason: string }
+
 /** Match a keyword as a whole word to avoid false positives (e.g. "add" matching "padding") */
 const containsWord = (text: string, word: string): boolean =>
   new RegExp(`\\b${word}\\b`).test(text)
@@ -14,10 +18,45 @@ const containsWord = (text: string, word: string): boolean =>
 export const getLabelNames = (issue: LinearIssue): string[] =>
   issue.labels?.nodes?.map((label) => label.name.toLowerCase()) ?? []
 
+const descriptionSignals = (descLength: number): Signal[] => {
+  if (descLength < 50) return [{ delta: -15, reason: 'Short description (less context for the agent)' }]
+  if (descLength > 200) return [{ delta: 10, reason: 'Detailed description provides good context' }]
+  return []
+}
+
+const nonAutomatableSignals = (titleAndDesc: string): Signal[] =>
+  NON_AUTOMATABLE_KEYWORDS
+    .filter((keyword) => containsWord(titleAndDesc, keyword))
+    .map((keyword) => ({ delta: -10, reason: `Contains non-automatable keyword: "${keyword}"` }))
+
+const automatableSignals = (titleAndDesc: string): Signal[] =>
+  AUTOMATABLE_KEYWORDS.some((keyword) => containsWord(titleAndDesc, keyword))
+    ? [{ delta: 15, reason: 'Contains automatable keyword(s)' }]
+    : []
+
+const estimateSignals = (estimate: number | undefined): Signal[] => {
+  if (estimate && estimate > 5) return [{ delta: -20, reason: `High estimate (${estimate} points) — may be too complex` }]
+  if (estimate && estimate >= 1 && estimate <= 3) return [{ delta: 10, reason: `Reasonable estimate (${estimate} points)` }]
+  return []
+}
+
+const complexLabelSignals = (labelNames: string[]): Signal[] =>
+  COMPLEX_LABELS
+    .filter((label) => labelNames.includes(label))
+    .map((label) => ({ delta: -15, reason: `Complex label: "${label}" — may require special expertise` }))
+
+const priorityLabelSignals = (labelNames: string[]): Signal[] =>
+  PRIORITY_LABELS
+    .filter((label) => labelNames.includes(label))
+    .map((label) => ({ delta: 20, reason: `Has priority label: "${label}"` }))
+
+const checklistSignals = (description: string | undefined): Signal[] =>
+  description && /- \[[ x]\]/i.test(description)
+    ? [{ delta: 10, reason: 'Has checklist/acceptance criteria' }]
+    : []
+
 export const assessTask = (issue: LinearIssue): TaskAssessment => {
   const blockers: string[] = []
-  const reasons: string[] = []
-  let confidence = 70
 
   // Hard blockers
   if (issue.children?.nodes?.length > 0) {
@@ -40,61 +79,18 @@ export const assessTask = (issue: LinearIssue): TaskAssessment => {
   const descLength = issue.description?.length ?? 0
   const titleAndDesc = `${issue.title} ${issue.description ?? ''}`.toLowerCase()
 
-  if (descLength < 50) {
-    confidence -= 15
-    reasons.push('Short description (less context for the agent)')
-  }
+  const signals = [
+    ...descriptionSignals(descLength),
+    ...nonAutomatableSignals(titleAndDesc),
+    ...automatableSignals(titleAndDesc),
+    ...estimateSignals(issue.estimate),
+    ...complexLabelSignals(labelNames),
+    ...priorityLabelSignals(labelNames),
+    ...checklistSignals(issue.description),
+  ]
 
-  if (descLength > 200) {
-    confidence += 10
-    reasons.push('Detailed description provides good context')
-  }
-
-  for (const keyword of NON_AUTOMATABLE_KEYWORDS) {
-    if (containsWord(titleAndDesc, keyword)) {
-      confidence -= 10
-      reasons.push(`Contains non-automatable keyword: "${keyword}"`)
-    }
-  }
-
-  if (AUTOMATABLE_KEYWORDS.some((keyword) => containsWord(titleAndDesc, keyword))) {
-    confidence += 15
-    reasons.push('Contains automatable keyword(s)')
-  }
-
-  if (issue.estimate && issue.estimate > 5) {
-    confidence -= 20
-    reasons.push(`High estimate (${issue.estimate} points) — may be too complex`)
-  }
-
-  if (issue.estimate && issue.estimate >= 1 && issue.estimate <= 3) {
-    confidence += 10
-    reasons.push(`Reasonable estimate (${issue.estimate} points)`)
-  }
-
-  for (const label of COMPLEX_LABELS) {
-    if (labelNames.includes(label)) {
-      confidence -= 15
-      reasons.push(`Complex label: "${label}" — may require special expertise`)
-    }
-  }
-
-  // Priority labels — explicitly marked as good for automation
-  for (const label of PRIORITY_LABELS) {
-    if (labelNames.includes(label)) {
-      confidence += 20
-      reasons.push(`Has priority label: "${label}"`)
-    }
-  }
-
-  // Check for acceptance criteria indicators
-  if (issue.description && /- \[[ x]\]/i.test(issue.description)) {
-    confidence += 10
-    reasons.push('Has checklist/acceptance criteria')
-  }
-
-  confidence = Math.max(0, Math.min(100, confidence))
-
+  const confidence = Math.max(0, Math.min(100, BASE_CONFIDENCE + signals.reduce((sum, s) => sum + s.delta, 0)))
+  const reasons = signals.map((s) => s.reason)
   const complexity = getComplexity(issue)
 
   return {

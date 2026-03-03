@@ -109,7 +109,9 @@ else
   echo -e "  ${FAIL} backend/.env missing — copy from backend/.env.example: cp backend/.env.example backend/.env"
 fi
 
-echo ""
+if [ "$QUIET" = false ]; then
+  echo ""
+fi
 
 # --- Summary ---
 if [ "$has_critical_failure" = true ]; then

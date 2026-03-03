@@ -138,6 +138,8 @@ Only reply once per fix cycle, not per comment. If multiple comments were addres
 Poll to verify no new issues appear. Check every **15 seconds** (max **3 minutes**):
 
 ```bash
+PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq --arg author "$PR_AUTHOR" '[.[] | select(.user.login != $author and (.body | test("^\\[Thunderbot\\]|^Addressed") | not))] | length')
+
 for i in $(seq 1 12); do
   NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 

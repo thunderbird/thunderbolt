@@ -373,6 +373,7 @@ export const ConnectIntegrationWidget = memo(
                 disabled={isConnecting || !state.selectedProvider}
                 className="w-full"
                 size="lg"
+                enableHaptics
               >
                 {isConnecting ? 'Connecting...' : `Connect ${providerName}`}
               </Button>

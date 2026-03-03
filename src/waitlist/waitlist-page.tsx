@@ -73,6 +73,7 @@ export const WaitlistPage = () => {
               onClick={() => actions.handleOtpComplete(state.otp)}
               disabled={isVerifying || state.otp.length !== 6}
               className="h-[46px] w-full rounded-[12px] text-base"
+              enableHaptics
             >
               {isVerifying ? (
                 <>
@@ -119,6 +120,7 @@ export const WaitlistPage = () => {
               type="submit"
               disabled={state.status === 'joining' || !isValidEmail}
               className="h-[46px] w-full rounded-[12px] text-base"
+              enableHaptics
             >
               {state.status === 'joining' ? (
                 <>

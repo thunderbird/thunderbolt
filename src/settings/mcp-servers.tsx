@@ -371,7 +371,11 @@ export default function McpServersPage() {
               <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddServer} disabled={!newServerUrl || connectionStatus !== 'success'}>
+              <Button
+                onClick={handleAddServer}
+                disabled={!newServerUrl || connectionStatus !== 'success'}
+                enableHaptics
+              >
                 Add Server
               </Button>
             </div>
@@ -484,7 +488,12 @@ export default function McpServersPage() {
                             <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(null)}>
                               Cancel
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDeleteServer(server.id)}>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteServer(server.id)}
+                              enableHaptics
+                            >
                               Remove
                             </Button>
                           </div>

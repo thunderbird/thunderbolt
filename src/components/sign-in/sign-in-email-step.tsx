@@ -119,6 +119,7 @@ export const SignInEmailStep = ({
               : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
           }
           disabled={isLoading || !isValidEmail}
+          enableHaptics
         >
           {isLoading ? (
             <>

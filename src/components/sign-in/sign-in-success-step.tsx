@@ -25,7 +25,7 @@ export const SignInSuccessStep = ({ displayName, onContinue, variant }: SignInSu
 
       {/* Continue button */}
       <div className={variant === 'modal' ? 'mt-6 w-full' : 'mt-8 w-full'}>
-        <Button onClick={onContinue} className="w-full">
+        <Button onClick={onContinue} className="w-full" enableHaptics>
           Continue
         </Button>
       </div>

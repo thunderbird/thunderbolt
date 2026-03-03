@@ -212,6 +212,7 @@ export default function ModelDetailPage() {
                     setShowSaved(false)
                   }
                 }}
+                enableHaptics
               >
                 {updateModelMutation.isPending ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
               </Button>

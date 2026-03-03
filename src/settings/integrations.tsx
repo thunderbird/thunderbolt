@@ -258,7 +258,7 @@ export default function IntegrationsPage() {
             {!integration.isConnected && (
               <CardContent>
                 {integration.provider === 'thunderbolt-pro' ? (
-                  <Button onClick={handleGetPro} className="w-full">
+                  <Button onClick={handleGetPro} className="w-full" enableHaptics>
                     {integration.connectLabel}
                   </Button>
                 ) : (

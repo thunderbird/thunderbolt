@@ -51,7 +51,7 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
         {isDatabaseError && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isClearingDatabase}>
+              <Button variant="destructive" disabled={isClearingDatabase} enableHaptics>
                 {isClearingDatabase ? 'Clearing Database...' : 'Clear Local Database'}
               </Button>
             </AlertDialogTrigger>

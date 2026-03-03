@@ -186,7 +186,7 @@ export default function NewModelPage() {
               )}
             />
 
-            <Button type="submit" disabled={createModelMutation.isPending}>
+            <Button type="submit" disabled={createModelMutation.isPending} enableHaptics>
               {createModelMutation.isPending ? 'Adding...' : 'Add Model'}
             </Button>
           </form>

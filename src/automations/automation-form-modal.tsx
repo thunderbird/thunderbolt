@@ -386,7 +386,7 @@ export default function AutomationFormModal({
 
               {/* Footer with Submit Button */}
               <CardFooter className="px-6 pt-4">
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading} enableHaptics>
                   {isLoading ? 'Saving...' : prompt ? 'Update Automation' : 'Create Automation'}
                 </Button>
               </CardFooter>

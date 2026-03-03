@@ -506,7 +506,7 @@ export default function TasksPage() {
                   <CheckCircle2 className="h-12 w-12 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold mb-6">No tasks yet</h3>
-                <Button onClick={() => setIsAddingNew(true)} className="gap-2">
+                <Button onClick={() => setIsAddingNew(true)} className="gap-2" enableHaptics>
                   <Plus className="h-4 w-4" />
                   Add Your First Task
                 </Button>

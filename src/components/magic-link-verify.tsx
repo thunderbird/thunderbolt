@@ -134,7 +134,7 @@ export const MagicLinkVerify = () => {
               <DialogDescription className="text-center">You're now signed in.</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center py-4">
-              <Button onClick={handleContinue} className="w-full">
+              <Button onClick={handleContinue} className="w-full" enableHaptics>
                 Continue
               </Button>
             </div>

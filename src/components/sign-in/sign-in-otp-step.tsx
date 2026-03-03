@@ -92,6 +92,7 @@ export const SignInOtpStep = ({
             onClick={() => onOtpComplete(otp)}
             disabled={isVerifying || otp.length !== 6}
             className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+            enableHaptics
           >
             {isVerifying ? (
               <>

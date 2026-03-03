@@ -1,6 +1,7 @@
-import { type ComponentProps } from 'react'
+import { type ComponentProps, useCallback } from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 
@@ -85,8 +86,16 @@ const AlertDialogDescription = ({ className, ...props }: ComponentProps<typeof A
   )
 }
 
-const AlertDialogAction = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action>) => {
-  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} {...props} />
+const AlertDialogAction = ({ className, onClick, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action>) => {
+  const { triggerSelection } = useHaptics()
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerSelection()
+      onClick?.(e)
+    },
+    [onClick, triggerSelection],
+  )
+  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} onClick={handleClick} {...props} />
 }
 
 const AlertDialogCancel = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Cancel>) => {

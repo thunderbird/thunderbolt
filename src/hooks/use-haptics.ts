@@ -25,6 +25,7 @@ export const useHaptics = () => {
     if (isTauri() && isMobile()) {
       void triggerSelection()
     } else {
+      alert('triggering selection haptic')
       void trigger('selection')
     }
   }, [hapticsEnabled.value, trigger])

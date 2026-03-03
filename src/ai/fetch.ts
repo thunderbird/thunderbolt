@@ -178,7 +178,7 @@ export const aiFetchStreamingResponse = async ({
       const mcpTools = await mcpClient.tools()
       for (const [name, tool] of Object.entries(mcpTools)) {
         if (toolset[name]) {
-          console.warn(`MCP tool "${name}" shadows a built-in tool and was skipped`)
+          console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
           continue
         }
         toolset[name] = tool

@@ -12,7 +12,7 @@ type Signal = { delta: number; reason: string }
 
 /** Match a keyword as a whole word to avoid false positives (e.g. "add" matching "padding") */
 const containsWord = (text: string, word: string): boolean =>
-  new RegExp(`\\b${word}\\b`).test(text)
+  new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text)
 
 /** Extract lowercase label names from an issue */
 export const getLabelNames = (issue: LinearIssue): string[] =>
@@ -34,7 +34,7 @@ const automatableSignals = (titleAndDesc: string): Signal[] =>
     ? [{ delta: 15, reason: 'Contains automatable keyword(s)' }]
     : []
 
-const estimateSignals = (estimate: number | undefined): Signal[] => {
+const estimateSignals = (estimate: number | null): Signal[] => {
   if (estimate && estimate > 5) return [{ delta: -20, reason: `High estimate (${estimate} points) — may be too complex` }]
   if (estimate && estimate >= 1 && estimate <= 3) return [{ delta: 10, reason: `Reasonable estimate (${estimate} points)` }]
   return []

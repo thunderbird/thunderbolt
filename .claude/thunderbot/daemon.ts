@@ -219,7 +219,7 @@ const startDaemon = async () => {
   const existingPid = readPid()
   if (existingPid && isProcessRunning(existingPid)) {
     console.log(`Daemon already running (PID ${existingPid})`)
-    process.exit(1)
+    process.exit(0)
   }
 
   if (!ensurePrerequisites()) {

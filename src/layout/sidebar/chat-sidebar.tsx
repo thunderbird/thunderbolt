@@ -16,6 +16,7 @@ import { ChatList } from './chat-list'
 import { NavigationMenu } from './navigation-menu'
 import { SidebarHeader } from './sidebar-header'
 import type { ChatThread } from './types'
+import { Button } from '@/components/ui/button'
 
 type ChatSidebarContentProps = {
   isMobile: boolean
@@ -66,7 +67,7 @@ export const ChatSidebarContent = ({
   return (
     <SidebarContent className="flex flex-col h-full overflow-hidden">
       <SidebarHeader onToggle={toggleSidebar} />
-
+      <Button enableHaptics>Test</Button>
       <SidebarGroup className="flex-shrink-0">
         <SidebarGroupContent>
           <SidebarMenu>

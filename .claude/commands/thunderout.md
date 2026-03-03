@@ -18,15 +18,15 @@ Leave the current worktree, tear it down, and return to the main repo on the mai
    - Ask whether to proceed (unpushed commits will be lost) or abort so they can push first
    - If the user aborts, stop
 
-5. **Leave the worktree.** `cd` to the main repo path.
+5. **Leave, remove, and switch — all in one command.** The Bash tool's working directory doesn't persist between calls, so run steps 5-7 as a single command to avoid the CWD becoming invalid after the worktree is deleted:
+   ```
+   cd <main-repo-path> && git worktree remove <worktree-path> && git checkout main
+   ```
+   - If `git worktree remove` fails (e.g., dirty state after user chose to proceed), retry with `--force`
+   - If the worktree path no longer exists on disk, run `git worktree prune` instead of `git worktree remove`
 
-6. **Remove the worktree.** Run `git worktree remove <worktree-path>`.
-   - If removal fails (e.g., dirty state after user chose to proceed), use `git worktree remove --force <worktree-path>`
-
-7. **Switch to main branch.** Run `git checkout main`.
-
-8. **Report:**
+6. **Report:**
    - Worktree removed
    - Now on `main` in the main repo
 
-9. After reporting, tell the user to run `/clear` to start with a fresh context.
+7. After reporting, tell the user to run `/clear` to start with a fresh context.

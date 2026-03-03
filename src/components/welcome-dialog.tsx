@@ -16,7 +16,9 @@ export const useWelcomeStore = create<{
   trigger: () => set({ pending: true }),
   consume: () => {
     const val = get().pending
-    if (val) set({ pending: false })
+    if (val) {
+      set({ pending: false })
+    }
     return val
   },
 }))

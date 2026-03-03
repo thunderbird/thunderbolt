@@ -11,6 +11,8 @@ Enter a work context. Creates a worktree, installs deps, or bootstraps the full 
 
 **Worktree creation steps:**
 
+**Pre-check:** If you're already in a worktree (check: `git rev-parse --git-dir` contains `/worktrees/`), stop and tell the user to run `/thunderout` first. Creating a worktree from inside another worktree causes path and branch conflicts.
+
 1. If the argument matches `THU-\d+` (case-insensitive):
    - Run `linear issue view <id> --json --no-pager` to get issue details
    - Extract the `branchName` field from the JSON response
@@ -29,12 +31,15 @@ Enter a work context. Creates a worktree, installs deps, or bootstraps the full 
    - `cd` into the worktree directory
    - `git pull` to get the latest changes
 
-6. `cd` into the worktree directory so subsequent commands run there.
-
-7. Report:
+6. Report:
    - Worktree path
    - Branch name
    - Whether it was created from remote, as a new branch, or already existed
    - Ticket info (if applicable)
 
-8. After reporting, tell the user to run `/compact` to free up context while staying in the worktree.
+7. Tell the user to exit and restart Claude Code from the worktree:
+   ```
+   cd <worktree-path>
+   claude
+   ```
+   Note: `cd` does not persist across Bash tool calls, so the session's working directory cannot be changed mid-session.

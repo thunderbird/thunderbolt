@@ -41,15 +41,18 @@ echo ""
 # --- Tools ---
 echo "Tools:"
 
-check "git" \
-  "git --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: brew install git" \
-  true
-
 check "bun" \
   "bun --version" \
   "install with: curl -fsSL https://bun.sh/install | bash" \
   true
+
+check "cargo" \
+  "cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
+  "install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+
+check "cmake" \
+  "cmake --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
+  "install with: brew install cmake"
 
 check "docker" \
   "docker info >/dev/null 2>&1 && echo \"\$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), running\"" \
@@ -60,21 +63,18 @@ check "gh" \
   "gh auth status >/dev/null 2>&1 && echo \"\$(gh --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), authenticated\"" \
   "install with: brew install gh && gh auth login"
 
+check "git" \
+  "git --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
+  "install with: brew install git" \
+  true
+
 check "linear" \
   "linear auth whoami >/dev/null 2>&1 && echo \"\$(linear --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'), authenticated\"" \
   "install with: brew install schpet/tap/linear && linear auth login"
 
-check "cargo" \
-  "cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-
-check "cmake" \
-  "cmake --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: brew install cmake"
-
 check "render" \
-  "render --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: brew install render"
+  "render whoami -o json >/dev/null 2>&1 && echo \"\$(render --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'), authenticated\"" \
+  "install with: brew install render && render login"
 
 echo ""
 

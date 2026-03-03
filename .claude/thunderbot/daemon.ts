@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { spawn, spawnSync } from 'child_process'
+import { spawn, spawnSync, type ChildProcess } from 'child_process'
 import type { DaemonState } from './types'
 import { PRIORITY_LABELS } from './assess'
 
@@ -111,29 +111,31 @@ const PREREQUISITES: Prerequisite[] = [
   { cmd: 'claude', formula: 'claude-code', label: 'Claude Code CLI' },
 ]
 
-const ensurePrerequisites = (): boolean => {
-  let allOk = true
-  for (const { cmd, formula, tap, label } of PREREQUISITES) {
-    if (commandExists(cmd)) continue
+const ensurePrerequisites = (): boolean =>
+  PREREQUISITES.every(({ cmd, formula, tap, label }) => {
+    if (commandExists(cmd)) return true
     log(`${label} ("${cmd}") not found. Attempting install...`)
     if (!brewInstall(formula, tap)) {
       log(`ERROR: ${label} is required but could not be installed.`)
-      allOk = false
-    } else {
-      log(`${label} installed successfully.`)
+      return false
     }
-  }
-  return allOk
-}
+    log(`${label} installed successfully.`)
+    return true
+  })
+
+// Track the active child process so it can be terminated on daemon shutdown
+let activeChild: ChildProcess | null = null
 
 const runCommand = (cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    activeChild = proc
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     proc.stdout.on('data', (d) => stdout.push(d))
     proc.stderr.on('data', (d) => stderr.push(d))
     proc.on('error', (err) => {
+      activeChild = null
       resolve({
         stdout: '',
         stderr: err.message,
@@ -141,6 +143,7 @@ const runCommand = (cmd: string, args: string[]): Promise<{ stdout: string; stde
       })
     })
     proc.on('close', (code) => {
+      activeChild = null
       resolve({
         stdout: Buffer.concat(stdout).toString(),
         stderr: Buffer.concat(stderr).toString(),
@@ -238,6 +241,10 @@ const startDaemon = async () => {
 
   const shutdown = () => {
     log('Daemon shutting down')
+    if (activeChild) {
+      log('Terminating active child process')
+      activeChild.kill('SIGTERM')
+    }
     clearPid()
     process.exit(0)
   }

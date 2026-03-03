@@ -1,4 +1,4 @@
-.PHONY: help setup install build build-desktop build-android build-ios clean run dev doctor doctor-q docker-up docker-down docker-status
+.PHONY: help setup install build build-desktop build-android build-ios clean run dev doctor doctor-q docker-up docker-down docker-status up env-setup db-migrate db-wait
 
 # Color definitions
 BLUE := \033[0;34m
@@ -9,6 +9,7 @@ NC := \033[0m # No Color
 # Default target
 help:
 	@echo "Available commands:"
+	@echo "  make up             - Complete dev setup: env files, deps, docker, migrations, and servers"
 	@echo "  make setup          - Install frontend and backend dependencies"
 	@echo "  make install        - Install frontend dependencies"
 	@echo "  make run            - Start both backend and frontend development servers"
@@ -152,3 +153,41 @@ docker-down:
 
 docker-status:
 	@bash scripts/docker-status.sh
+
+# Complete development environment setup
+up: env-setup setup docker-up db-wait db-migrate run
+
+# Copy .env.example files if .env doesn't exist
+env-setup:
+	@echo "$(BLUE)→ Setting up environment files...$(NC)"
+	@if [ ! -f .env ]; then \
+		cp .env.example .env && echo "$(GREEN)✓ Created .env from .env.example$(NC)"; \
+	else \
+		echo "$(YELLOW)  .env already exists, skipping$(NC)"; \
+	fi
+	@if [ ! -f backend/.env ]; then \
+		cp backend/.env.example backend/.env && echo "$(GREEN)✓ Created backend/.env from .env.example$(NC)"; \
+	else \
+		echo "$(YELLOW)  backend/.env already exists, skipping$(NC)"; \
+	fi
+
+# Wait for PostgreSQL to be ready (max 30 seconds)
+db-wait:
+	@echo "$(BLUE)→ Waiting for PostgreSQL to be ready...$(NC)"
+	@for i in $$(seq 1 30); do \
+		HEALTH=$$(docker compose -f powersync-service/docker-compose.yml ps postgres --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4); \
+		if [ "$$HEALTH" = "healthy" ]; then \
+			echo "$(GREEN)✓ PostgreSQL is ready!$(NC)"; \
+			exit 0; \
+		fi; \
+		echo "$(YELLOW)  Waiting for PostgreSQL... ($$i/30)$(NC)"; \
+		sleep 1; \
+	done; \
+	echo "$(YELLOW)⚠ PostgreSQL did not become ready in 30 seconds$(NC)"; \
+	exit 1
+
+# Run backend database migrations
+db-migrate:
+	@echo "$(BLUE)→ Running database migrations...$(NC)"
+	cd backend && bun run db migrate
+	@echo "$(GREEN)✓ Database migrations complete!$(NC)"

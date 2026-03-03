@@ -10,6 +10,20 @@ The quickest way to get started is with [Claude Code](https://docs.anthropic.com
 
 Alternatively, for a manual setup:
 
+**Quick manual setup (recommended):**
+```sh
+make up
+```
+
+This single command will:
+1. Copy `.env.example` files to `.env` (if they don't exist)
+2. Install frontend and backend dependencies
+3. Start Docker containers (PostgreSQL, PowerSync)
+4. Wait for PostgreSQL to be ready
+5. Run backend database migrations
+6. Start both backend and frontend development servers
+
+**Minimal frontend-only setup (no backend):**
 1. Create a `.env` file with:
    ```
    VITE_THUNDERBOLT_CLOUD_URL=https://api.thunderbolt.io

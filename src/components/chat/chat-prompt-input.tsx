@@ -1,4 +1,5 @@
 import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
+import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
@@ -52,12 +53,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const [input, setInput] = useState('')
     const formRef = useRef<HTMLFormElement>(null)
+    const { triggerSelection } = useHaptics()
 
     const handleModeChange = useCallback(
       (modeId: string) => {
+        triggerSelection()
         setSelectedMode(chatThreadId, modeId)
       },
-      [chatThreadId, setSelectedMode],
+      [chatThreadId, setSelectedMode, triggerSelection],
     )
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({

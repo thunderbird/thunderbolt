@@ -12,6 +12,7 @@ const SuggestionButton = ({ label, prompt, onSelect }: SuggestionButtonProps) =>
     variant="outline"
     className="bg-card text-sm text-foreground rounded-full px-3 py-1.5 border border-border hover:bg-accent whitespace-nowrap flex-shrink-0 shadow-none"
     onClick={() => onSelect(prompt)}
+    enableHaptics
   >
     {label}
   </Button>

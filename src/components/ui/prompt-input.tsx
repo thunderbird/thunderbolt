@@ -83,6 +83,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           variant="default"
           className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
           onClick={onStop}
+          enableHaptics
         >
           <Square className="size-4" />
         </Button>
@@ -92,6 +93,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           variant="default"
           className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !value.trim()}
+          enableHaptics
         >
           <ArrowUp className="size-4" />
         </Button>

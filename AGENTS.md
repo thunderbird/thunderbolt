@@ -75,7 +75,7 @@ When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Na
 
 - Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
-- Text: `text-[var(--font-size-body)]`, `text-[var(--font-size-sm)]`, `text-[var(--font-size-xs)]`
+- Text: `text-[length:var(--font-size-body)]`, `text-[length:var(--font-size-sm)]`, `text-[length:var(--font-size-xs)]`
 - Padding X: `px-[var(--spacing-x-default)]`, `px-[var(--spacing-x-md)]`, `px-[var(--spacing-x-sm)]`, `px-[var(--spacing-x-lg)]`
 - Padding Y: `py-[var(--spacing-y-default)]`, `py-[var(--spacing-y-md)]`, `py-[var(--spacing-y-sm)]`
 - Gaps: `gap-[var(--gap-default)]`, `gap-[var(--gap-lg)]`, `gap-[var(--gap-sm)]`

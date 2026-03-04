@@ -59,7 +59,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
               </div>
               {isExpanded && (
-                <div className="grid flex-1 text-left text-[var(--font-size-body)] leading-tight">
+                <div className="grid flex-1 text-left text-[length:var(--font-size-body)] leading-tight">
                   <span className="truncate text-muted-foreground">Loading...</span>
                 </div>
               )}
@@ -71,7 +71,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
               </div>
               {isExpanded && (
-                <div className="flex flex-1 flex-col justify-center text-left text-[var(--font-size-body)] leading-tight">
+                <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                   <span className="truncate font-semibold">Sign In</span>
                   <span className="truncate text-xs text-muted-foreground">Sync chats between devices</span>
                 </div>
@@ -90,7 +90,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   </div>
                   {isExpanded && (
                     <>
-                      <div className="flex flex-1 flex-col justify-center text-left text-[var(--font-size-body)] leading-tight">
+                      <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                         {displayName && <span className="truncate font-semibold">{displayName}</span>}
                         <span className="truncate text-xs">{displayEmail}</span>
                       </div>
@@ -106,11 +106,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 sideOffset={4}
               >
                 <DropdownMenuLabel className="p-0 font-normal">
-                  <div className="flex items-center gap-2 px-1 py-[var(--spacing-y-md)] text-left text-[var(--font-size-body)]">
+                  <div className="flex items-center gap-2 px-1 py-[var(--spacing-y-md)] text-left text-[length:var(--font-size-body)]">
                     <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg border border-border">
                       <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
                     </div>
-                    <div className="flex flex-1 flex-col justify-center text-left text-[var(--font-size-body)] leading-tight">
+                    <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                       {displayName && <span className="truncate font-semibold">{displayName}</span>}
                       <span className="truncate text-xs">{displayEmail}</span>
                     </div>

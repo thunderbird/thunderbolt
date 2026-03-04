@@ -204,17 +204,39 @@ Follow the project's CLAUDE.md strictly:
    ```
    Fix any failures before proceeding.
 
-3. Run `/thunderimprove` to review your changes:
+3. **Review changes via subagent** — launch a general-purpose Agent to review and fix code quality issues:
    ```
-   Skill(skill="thunderimprove")
+   Agent(subagent_type="general-purpose", prompt="
+     You are reviewing code changes in $WORKTREE_PATH.
+     Read .claude/commands/thunderimprove.md for the review criteria.
+     Run git diff to see changes, review against those criteria, and fix any issues you find.
+     Do NOT ask for permission — just fix issues and report what you changed.
+     If the code looks good, say so briefly.
+   ")
    ```
-   Apply any suggested improvements, then re-run steps 1-2 if changes were made.
+   If the agent made fixes, re-run steps 1-2.
 
-4. Push and fix:
+4. **Push via subagent** — launch a general-purpose Agent to stage, commit, and push:
    ```
-   Skill(skill="thunderpush")
-   Skill(skill="thunderfix")
+   Agent(subagent_type="general-purpose", prompt="
+     You are in $WORKTREE_PATH.
+     Read .claude/commands/thunderpush.md for instructions.
+     Follow those instructions to stage, commit, and push all changes.
+     Report the commit hash and push result.
+   ")
    ```
+
+5. **Fix PR issues via subagent** — after the PR exists, launch a general-purpose Agent to fix CI and review feedback:
+   ```
+   Agent(subagent_type="general-purpose", prompt="
+     You are in $WORKTREE_PATH.
+     Read .claude/commands/thunderfix.md for the fix loop instructions.
+     Follow those instructions to fix all PR issues (review comments, issue comments, CI failures).
+     Report final status: how many issues fixed, CI result, whether PR is clean.
+   ")
+   ```
+
+**IMPORTANT**: Always use `Agent()` subagents for mid-flow skills, NOT `Skill()`. Using `Skill()` injects the skill prompt into the current conversation and causes the thunderbot flow to lose context. Subagents keep the thunderbot flow in the main context.
 
 Never manually run `git add`, `git commit`, or `git push`. This ensures atomic, conventional commits with proper formatting.
 
@@ -260,11 +282,7 @@ linear issue update <identifier> --state "In Review"
 
 This phase is handled automatically by `/thunderfix` (used in Phase 7). By this point, the last push should have already passed CI and addressed bot feedback.
 
-If the PR was finalized in Phase 9 without a `/thunderfix` cycle (e.g., only `gh pr ready` was run), do a final check:
-
-```
-Skill(skill="thunderfix")
-```
+If the PR was finalized in Phase 9 without a `/thunderfix` cycle (e.g., only `gh pr ready` was run), do a final check using a subagent (same as step 5 in Phase 7's "Committing Changes").
 
 ## Phase 11: Cleanup & Report
 

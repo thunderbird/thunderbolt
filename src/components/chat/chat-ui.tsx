@@ -74,19 +74,17 @@ export default function ChatUI() {
                 className="bottom-2"
               />
             </div>
-          ) : (
-            isMobile && (
-              <motion.div
-                key="logo"
-                className="flex-1 flex items-center justify-center"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                <AppLogo size={48} />
-              </motion.div>
-            )
-          )}
+          ) : isMobile ? (
+            <motion.div
+              key="logo"
+              className="flex-1 flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <AppLogo size={48} />
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
         <motion.div

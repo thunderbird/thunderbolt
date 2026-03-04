@@ -54,7 +54,7 @@ export default function ChatUI() {
           isMobile && 'pb-0',
         )}
       >
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 overflow-hidden">
               <motion.div

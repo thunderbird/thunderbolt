@@ -93,7 +93,7 @@ const DefaultTrigger = <T,>({
 }) => (
   <div
     className={cn(
-      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-full cursor-pointer transition-colors text-[var(--font-size-body)] border',
+      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
       isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
     )}
   >

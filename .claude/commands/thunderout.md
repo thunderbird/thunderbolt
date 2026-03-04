@@ -22,8 +22,14 @@ Leave the current worktree, tear it down, and return to the main repo on the mai
    ```
    cd <main-repo-path> && git worktree remove <worktree-path> && git checkout main
    ```
-   - If `git worktree remove` fails (e.g., dirty state after user chose to proceed), retry with `--force`
-   - If the worktree path no longer exists on disk, run `git worktree prune` instead of `git worktree remove`
+   - If `git worktree remove` fails (e.g., dirty state after user chose to proceed), retry the entire chained command with `--force`:
+     ```
+     cd <main-repo-path> && git worktree remove --force <worktree-path> && git checkout main
+     ```
+   - If the worktree path no longer exists on disk, use `git worktree prune` instead:
+     ```
+     cd <main-repo-path> && git worktree prune && git checkout main
+     ```
 
 6. **Report:**
    - Worktree removed

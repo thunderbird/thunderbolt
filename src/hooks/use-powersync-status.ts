@@ -1,6 +1,6 @@
 import { getPowerSyncInstance } from '@/db/powersync'
-import { mostRecentDate } from '@/lib/utils'
 import type { SyncStatus } from '@powersync/web'
+import dayjs from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
 
 export type PowerSyncConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'not-configured'
@@ -85,7 +85,9 @@ export const usePowerSyncStatus = (): PowerSyncStatusInfo => {
       wasDownloadingRef.current = isDownloading
 
       const powerSyncLastSynced = syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt) : null
-      const lastSyncedAt = mostRecentDate(powerSyncLastSynced, localLastSyncedRef.current)
+      const local = localLastSyncedRef.current
+      const lastSyncedAt =
+        local && (!powerSyncLastSynced || dayjs(local).isAfter(powerSyncLastSynced)) ? local : powerSyncLastSynced
 
       setStatus({
         isPowerSync: true,

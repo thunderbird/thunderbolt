@@ -66,7 +66,7 @@ export const Header = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 md:h-7 md:w-7 cursor-pointer"
+            className="size-[var(--touch-height-sm)] cursor-pointer"
             onClick={toggleSidebar}
           >
             <Menu className="size-[var(--icon-size-default)]" />
@@ -81,7 +81,7 @@ export const Header = () => {
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 md:h-7 md:w-7 cursor-pointer"
+              className="size-[var(--touch-height-sm)] cursor-pointer"
               onClick={handleNewChat}
             >
               <MessageCirclePlus className="size-[var(--icon-size-default)]" />

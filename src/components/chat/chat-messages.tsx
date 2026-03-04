@@ -3,10 +3,11 @@ import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
+import { useHaptics } from '@/hooks/use-haptics'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -23,8 +24,17 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
+  const { triggerNotification } = useHaptics()
 
   const isStreaming = status === 'streaming'
+  const wasStreaming = useRef(false)
+
+  useEffect(() => {
+    if (wasStreaming.current && !isStreaming) {
+      triggerNotification(chatError ? 'error' : 'success')
+    }
+    wasStreaming.current = isStreaming
+  }, [isStreaming, chatError, triggerNotification])
 
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
 

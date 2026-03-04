@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
-import { DatabaseSingleton } from '../db/singleton'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
@@ -9,8 +9,7 @@ import { getChatThread, updateChatThread } from './chat-threads'
 /**
  * Gets a single chat message by ID (excluding soft-deleted)
  */
-export const getMessage = async (messageId: string): Promise<ChatMessage | undefined> => {
-  const db = DatabaseSingleton.instance.db
+export const getMessage = async (db: AnyDrizzleDatabase, messageId: string): Promise<ChatMessage | undefined> => {
   return (await db
     .select()
     .from(chatMessagesTable)
@@ -21,8 +20,7 @@ export const getMessage = async (messageId: string): Promise<ChatMessage | undef
 /**
  * Gets all chat messages for a specific thread (excluding soft-deleted)
  */
-export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> => {
-  const db = DatabaseSingleton.instance.db
+export const getChatMessages = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage[]> => {
   return (await db
     .select()
     .from(chatMessagesTable)
@@ -33,9 +31,7 @@ export const getChatMessages = async (threadId: string): Promise<ChatMessage[]> 
 /**
  * Gets the last message in a thread (excluding soft-deleted)
  */
-export const getLastMessage = async (threadId: string): Promise<ChatMessage | null> => {
-  const db = DatabaseSingleton.instance.db
-
+export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage | null> => {
   const lastMessage = await db
     .select()
     .from(chatMessagesTable)
@@ -55,19 +51,18 @@ export const getLastMessage = async (threadId: string): Promise<ChatMessage | nu
  * @throws Error if thread is not found
  */
 export const saveMessagesWithContextUpdate = async (
+  db: AnyDrizzleDatabase,
   threadId: string,
   messages: ThunderboltUIMessage[],
 ): Promise<ChatMessage[]> => {
-  const db = DatabaseSingleton.instance.db
-
   // Verify thread exists
-  const thread = await getChatThread(threadId)
+  const thread = await getChatThread(db, threadId)
   if (!thread) {
     throw new Error('Thread not found')
   }
 
   // Get the last message in the thread to use as parent for new messages
-  const lastMessage = await getLastMessage(threadId)
+  const lastMessage = await getLastMessage(db, threadId)
   const parentId = lastMessage?.id ?? null
 
   // Convert UI messages to DB messages with parent relationship
@@ -108,7 +103,7 @@ export const saveMessagesWithContextUpdate = async (
     const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
     if (metadata?.usage?.totalTokens) {
-      await updateChatThread(threadId, { contextSize: metadata.usage.totalTokens }, tx)
+      await updateChatThread(tx, threadId, { contextSize: metadata.usage.totalTokens })
     }
   })
 
@@ -119,11 +114,14 @@ export const saveMessagesWithContextUpdate = async (
  * Updates a specific cache field for a message
  * Uses flat key-value storage with camelCase namespace (e.g., "linkPreview/https://example.com")
  */
-export const updateMessageCache = async (messageId: string, cacheKey: string, value: unknown): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-
+export const updateMessageCache = async (
+  db: AnyDrizzleDatabase,
+  messageId: string,
+  cacheKey: string,
+  value: unknown,
+): Promise<void> => {
   // Fetch current message
-  const message = await getMessage(messageId)
+  const message = await getMessage(db, messageId)
 
   if (!message) {
     throw new Error('Message not found')
@@ -134,16 +132,18 @@ export const updateMessageCache = async (messageId: string, cacheKey: string, va
   await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
 }
 
-export const updateMessage = async (messageId: string, message: Partial<ChatMessage>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const updateMessage = async (
+  db: AnyDrizzleDatabase,
+  messageId: string,
+  message: Partial<ChatMessage>,
+): Promise<void> => {
   await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
 }
 
 /**
  * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
  */
-const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> => {
-  const db = DatabaseSingleton.instance.db
+const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: string): Promise<string[]> => {
   const children = (await db
     .select({ id: chatMessagesTable.id })
     .from(chatMessagesTable)
@@ -151,7 +151,7 @@ const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> 
     id: string
   }[]
 
-  const descendantIds = await Promise.all(children.map((c) => getMessageAndDescendantIds(c.id)))
+  const descendantIds = await Promise.all(children.map((c) => getMessageAndDescendantIds(db, c.id)))
   return [messageId, ...descendantIds.flat()]
 }
 
@@ -160,9 +160,8 @@ const getMessageAndDescendantIds = async (messageId: string): Promise<string[]> 
  * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
  * Cascade is handled in the DAL; parent_id is a logical reference only.
  */
-export const deleteChatMessageAndDescendants = async (messageId: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  const idsToSoftDelete = await getMessageAndDescendantIds(messageId)
+export const deleteChatMessageAndDescendants = async (db: AnyDrizzleDatabase, messageId: string): Promise<void> => {
+  const idsToSoftDelete = await getMessageAndDescendantIds(db, messageId)
   if (idsToSoftDelete.length === 0) {
     return
   }

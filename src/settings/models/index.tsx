@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDatabase } from '@/contexts'
 import {
   createModel as createModelDAL,
   deleteModel,
@@ -214,6 +215,7 @@ const formSchema = z
   )
 
 export default function ModelsPage() {
+  const db = useDatabase()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const {
     isAddDialogOpen,
@@ -248,20 +250,20 @@ export default function ModelsPage() {
 
   const { data = [] } = useQuery({
     queryKey: ['models'],
-    query: toCompilableQuery(getAllModels()),
+    query: toCompilableQuery(getAllModels(db)),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await updateModel(id, { enabled: enabled ? 1 : 0 })
+      await updateModel(db, id, { enabled: enabled ? 1 : 0 })
     },
   })
 
   const addModelMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
-      await createModelDAL({
+      await createModelDAL(db, {
         id: uuidv7(),
         ...values,
         apiKey: values.apiKey || null,
@@ -280,7 +282,7 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
-      await deleteModel(id)
+      await deleteModel(db, id)
     },
     onSuccess: () => {
       dispatch({ type: 'CLOSE_DELETE_CONFIRM' })
@@ -293,7 +295,7 @@ export default function ModelsPage() {
       if (!defaultModel) {
         throw new Error('Model is not a default model')
       }
-      await resetModelToDefault(id, defaultModel)
+      await resetModelToDefault(db, id, defaultModel)
     },
   })
 

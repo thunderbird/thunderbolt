@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { DatabaseSingleton } from '../db/singleton'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modesTable } from '../db/tables'
 import type { Mode, ModeRow } from '../types'
 import { getSettings } from './settings'
@@ -10,8 +10,7 @@ const mapMode = (row: ModeRow): Mode => row as Mode
  * Gets all modes from the database (excluding soft-deleted)
  * Sorted by order field
  */
-export const getAllModes = async (): Promise<Mode[]> => {
-  const db = DatabaseSingleton.instance.db
+export const getAllModes = async (db: AnyDrizzleDatabase): Promise<Mode[]> => {
   const results = await db.select().from(modesTable).where(isNull(modesTable.deletedAt)).orderBy(asc(modesTable.order))
 
   return results.map(mapMode)
@@ -20,8 +19,7 @@ export const getAllModes = async (): Promise<Mode[]> => {
 /**
  * Gets the default mode
  */
-export const getDefaultMode = async (): Promise<Mode | null> => {
-  const db = DatabaseSingleton.instance.db
+export const getDefaultMode = async (db: AnyDrizzleDatabase): Promise<Mode | null> => {
   const mode = await db
     .select()
     .from(modesTable)
@@ -34,18 +32,18 @@ export const getDefaultMode = async (): Promise<Mode | null> => {
 /**
  * Gets the currently selected mode from settings, or falls back to the default mode
  */
-export const getSelectedMode = async (): Promise<Mode> => {
-  const settings = await getSettings({ selected_mode: String })
+export const getSelectedMode = async (db: AnyDrizzleDatabase): Promise<Mode> => {
+  const settings = await getSettings(db, { selected_mode: String })
   const selectedModeId = settings.selectedMode
 
   if (selectedModeId) {
-    const mode = await getMode(selectedModeId)
+    const mode = await getMode(db, selectedModeId)
     if (mode) {
       return mode
     }
   }
 
-  const defaultMode = await getDefaultMode()
+  const defaultMode = await getDefaultMode(db)
 
   if (!defaultMode) {
     throw new Error('No default mode found')
@@ -57,8 +55,7 @@ export const getSelectedMode = async (): Promise<Mode> => {
 /**
  * Gets a specific mode by ID (excluding soft-deleted)
  */
-export const getMode = async (id: string): Promise<Mode | null> => {
-  const db = DatabaseSingleton.instance.db
+export const getMode = async (db: AnyDrizzleDatabase, id: string): Promise<Mode | null> => {
   const mode = await db
     .select()
     .from(modesTable)

@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import {
   getAllModes,
   getAvailableModels,
@@ -27,6 +28,7 @@ type UseHydrateChatStoreParams = {
 }
 
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
+  const db = useDatabase()
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
@@ -49,7 +51,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     const title = await generateTitle(textContent)
-    await updateChatThread(threadId, { title })
+    await updateChatThread(db, threadId, { title })
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
@@ -62,10 +64,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     // Fetch thread info to check if we need to generate a title
-    const thread = await getOrCreateChatThread(id, session.selectedModel.id)
+    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id)
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(id, messages)
+    await saveMessagesWithContextUpdate(db, id, messages)
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {
@@ -82,7 +84,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
-    const isDeleted = await isChatThreadDeleted(id)
+    const isDeleted = await isChatThreadDeleted(db, id)
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -92,7 +94,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [modes, models, mcpClients] = await Promise.all([getAllModes(), getAvailableModels(), getEnabledClients()])
+      const [modes, models, mcpClients] = await Promise.all([
+        getAllModes(db),
+        getAvailableModels(db),
+        getEnabledClients(),
+      ])
 
       setMcpClients(mcpClients)
       setModes(modes)
@@ -104,17 +110,17 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     // If the session does not exist, create it below
-    const settings = await getSettings({ selected_model: String })
+    const settings = await getSettings(db, { selected_model: String })
 
     const [defaultModel, selectedMode, chatThread, initialMessages, modes, models, triggerData, mcpClients] =
       await Promise.all([
-        getDefaultModelForThread(id, settings.selectedModel ?? undefined),
-        getSelectedMode(),
-        getChatThread(id),
-        getChatMessages(id),
-        getAllModes(),
-        getAvailableModels(),
-        getTriggerPromptForThread(id),
+        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
+        getSelectedMode(db),
+        getChatThread(db, id),
+        getChatMessages(db, id),
+        getAllModes(db),
+        getAvailableModels(db),
+        getTriggerPromptForThread(db, id),
         getEnabledClients(),
       ])
 

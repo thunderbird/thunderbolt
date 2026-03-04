@@ -8,6 +8,14 @@ import { CitationPopoverProvider } from './citation-popover'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { CitationSource } from '@/types/citation'
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 // Standalone mode (no provider) — CitationBadge owns its Popover/Sheet
 const renderStandalone = (ui: React.ReactElement) => {
   const TestProvider = createTestProvider()

@@ -1,6 +1,6 @@
 import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
-import type { DatabaseType } from '../db/singleton'
+import type { DatabaseType } from '../db/database'
 import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */

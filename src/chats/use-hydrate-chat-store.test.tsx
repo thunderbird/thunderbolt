@@ -5,7 +5,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread } from '@/dal/chat-threads'
@@ -20,7 +20,7 @@ import { MCPProvider } from '@/lib/mcp-provider'
  * Helper function to create a default mode (required for getSelectedMode)
  */
 const createDefaultMode = async () => {
-  const db = DatabaseSingleton.instance.db
+  const db = getDb()
 
   await db.insert(modesTable).values({
     id: 'mode-chat',
@@ -41,7 +41,7 @@ const createDefaultMode = async () => {
  * Helper function to create a system model (required for getDefaultModelForThread)
  */
 const createSystemModel = async () => {
-  const db = DatabaseSingleton.instance.db
+  const db = getDb()
   const modelId = uuidv7()
 
   await db.insert(modelsTable).values({
@@ -67,7 +67,7 @@ const createSystemModel = async () => {
  * Helper function to create a test model
  */
 const createTestModel = async () => {
-  const db = DatabaseSingleton.instance.db
+  const db = getDb()
   const modelId = uuidv7()
 
   await db.insert(modelsTable).values({
@@ -93,12 +93,13 @@ const createTestModel = async () => {
  * Helper function to create a test thread
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
-  const model = await getModel(modelId)
+  const model = await getModel(getDb(), modelId)
   if (!model) {
     throw new Error('Test setup failed')
   }
   const threadId = uuidv7()
   await createChatThread(
+    getDb(),
     {
       id: threadId,
       title,
@@ -262,7 +263,7 @@ describe('useHydrateChatStore', () => {
         createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Hi there' }] }),
       ]
 
-      await saveMessagesWithContextUpdate(threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
 
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,

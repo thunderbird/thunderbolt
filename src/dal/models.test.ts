@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import {
   chatMessagesTable,
   chatThreadsTable,
@@ -46,17 +46,17 @@ describe('Models DAL', () => {
 
   describe('getModel', () => {
     it('should return null when model does not exist', async () => {
-      const model = await getModel('nonexistent-model-id')
+      const model = await getModel(getDb(), 'nonexistent-model-id')
       expect(model).toBe(null)
     })
 
     it('should return null when model ID is empty string', async () => {
-      const model = await getModel('')
+      const model = await getModel(getDb(), '')
       expect(model).toBe(null)
     })
 
     it('should return model when it exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -68,7 +68,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const model = await getModel(modelId)
+      const model = await getModel(getDb(), modelId)
       expect(model).not.toBe(null)
       expect(model?.id).toBe(modelId)
       expect(model?.name).toBe('Test Model')
@@ -77,7 +77,7 @@ describe('Models DAL', () => {
     it('should handle database drivers that return empty object for missing records', async () => {
       // This test verifies that .get() correctly returns undefined
       // instead of {} when no record is found
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Query a non-existent model directly with Drizzle
       const result = await db.select().from(modelsTable).where(eq(modelsTable.id, 'nonexistent')).get()
@@ -89,7 +89,7 @@ describe('Models DAL', () => {
 
   describe('getSelectedModel', () => {
     it('should return system model when no selected_model setting exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a system model
       const systemModelId = uuidv7()
@@ -102,14 +102,14 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const model = await getSelectedModel()
+      const model = await getSelectedModel(getDb())
       expect(model.id).toBe(systemModelId)
       expect(model.name).toBe('System Model')
       expect(model.isSystem).toBe(1)
     })
 
     it('should return selected model when selected_model setting exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a system model
       const systemModelId = uuidv7()
@@ -134,15 +134,15 @@ describe('Models DAL', () => {
       })
 
       // Set the selected model
-      await updateSettings({ selected_model: selectedModelId })
+      await updateSettings(getDb(), { selected_model: selectedModelId })
 
-      const model = await getSelectedModel()
+      const model = await getSelectedModel(getDb())
       expect(model.id).toBe(selectedModelId)
       expect(model.name).toBe('Selected Model')
     })
 
     it('should fall back to system model when selected model is disabled', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a system model
       const systemModelId = uuidv7()
@@ -167,10 +167,10 @@ describe('Models DAL', () => {
       })
 
       // Set the disabled model as selected
-      await updateSettings({ selected_model: disabledModelId })
+      await updateSettings(getDb(), { selected_model: disabledModelId })
 
       // Should fall back to system model since selected model is disabled
-      const model = await getSelectedModel()
+      const model = await getSelectedModel(getDb())
       expect(model.id).toBe(systemModelId)
       expect(model.name).toBe('System Model')
       expect(model.isSystem).toBe(1)
@@ -246,12 +246,12 @@ describe('Models DAL', () => {
 
   describe('getAllModels', () => {
     it('should return empty array when no models exist', async () => {
-      const models = await getAllModels()
+      const models = await getAllModels(getDb())
       expect(models).toEqual([])
     })
 
     it('should return all models', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
 
@@ -274,7 +274,7 @@ describe('Models DAL', () => {
         },
       ])
 
-      const models = await getAllModels()
+      const models = await getAllModels(getDb())
       expect(models).toHaveLength(2)
       expect(models.map((m) => m.id)).toContain(modelId1)
       expect(models.map((m) => m.id)).toContain(modelId2)
@@ -283,7 +283,7 @@ describe('Models DAL', () => {
 
   describe('getAvailableModels', () => {
     it('should return empty array when no enabled models exist', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -295,12 +295,12 @@ describe('Models DAL', () => {
         enabled: 0,
       })
 
-      const models = await getAvailableModels()
+      const models = await getAvailableModels(getDb())
       expect(models).toEqual([])
     })
 
     it('should return only enabled models', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const enabledModelId = uuidv7()
       const disabledModelId = uuidv7()
 
@@ -323,7 +323,7 @@ describe('Models DAL', () => {
         },
       ])
 
-      const models = await getAvailableModels()
+      const models = await getAvailableModels(getDb())
       expect(models).toHaveLength(1)
       expect(models[0]?.id).toBe(enabledModelId)
     })
@@ -331,7 +331,7 @@ describe('Models DAL', () => {
 
   describe('getSystemModel', () => {
     it('should return null when no system model exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -343,12 +343,12 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const systemModel = await getSystemModel()
+      const systemModel = await getSystemModel(getDb())
       expect(systemModel).toBe(null)
     })
 
     it('should return the system model when it exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const systemModelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -360,7 +360,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const systemModel = await getSystemModel()
+      const systemModel = await getSystemModel(getDb())
       expect(systemModel).not.toBe(null)
       expect(systemModel?.id).toBe(systemModelId)
       expect(systemModel?.isSystem).toBe(1)
@@ -369,7 +369,7 @@ describe('Models DAL', () => {
 
   describe('getDefaultModelForThread', () => {
     it('should fall back to system model when thread has no messages', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a system model
       const systemModelId = uuidv7()
@@ -390,12 +390,12 @@ describe('Models DAL', () => {
         isEncrypted: 0,
       })
 
-      const model = await getDefaultModelForThread(threadId)
+      const model = await getDefaultModelForThread(getDb(), threadId)
       expect(model.id).toBe(systemModelId)
     })
 
     it('should return last message model when thread has messages', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create models
       const systemModelId = uuidv7()
@@ -434,12 +434,12 @@ describe('Models DAL', () => {
         modelId: lastUsedModelId,
       })
 
-      const model = await getDefaultModelForThread(threadId)
+      const model = await getDefaultModelForThread(getDb(), threadId)
       expect(model.id).toBe(lastUsedModelId)
     })
 
     it('should fall back correctly when last message model is deleted', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a system model
       const systemModelId = uuidv7()
@@ -484,14 +484,14 @@ describe('Models DAL', () => {
       await db.delete(modelsTable).where(eq(modelsTable.id, deletedModelId))
 
       // Should fall back to system model when the last message's model doesn't exist
-      const model = await getDefaultModelForThread(threadId)
+      const model = await getDefaultModelForThread(getDb(), threadId)
       expect(model.id).toBe(systemModelId)
     })
   })
 
   describe('deleteModel', () => {
     it('should soft delete a model by id (set deletedAt)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -504,13 +504,13 @@ describe('Models DAL', () => {
       })
 
       // Verify model exists
-      const modelBefore = await getModel(modelId)
+      const modelBefore = await getModel(getDb(), modelId)
       expect(modelBefore).not.toBe(null)
 
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify model is soft deleted (not returned by getModel)
-      const modelAfter = await getModel(modelId)
+      const modelAfter = await getModel(getDb(), modelId)
       expect(modelAfter).toBe(null)
 
       // But should still exist in database with deletedAt set
@@ -520,11 +520,11 @@ describe('Models DAL', () => {
     })
 
     it('should not throw when deleting non-existent model', async () => {
-      await expect(deleteModel('non-existent-id')).resolves.toBeUndefined()
+      await expect(deleteModel(getDb(), 'non-existent-id')).resolves.toBeUndefined()
     })
 
     it('should only soft delete the specified model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
 
@@ -547,11 +547,11 @@ describe('Models DAL', () => {
         },
       ])
 
-      await deleteModel(modelId1)
+      await deleteModel(getDb(), modelId1)
 
       // Verify only model 1 is soft deleted
-      const model1 = await getModel(modelId1)
-      const model2 = await getModel(modelId2)
+      const model1 = await getModel(getDb(), modelId1)
+      const model2 = await getModel(getDb(), modelId2)
       expect(model1).toBe(null)
       expect(model2).not.toBe(null)
 
@@ -561,7 +561,7 @@ describe('Models DAL', () => {
     })
 
     it('should not return soft-deleted model via getAllModels', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -574,18 +574,18 @@ describe('Models DAL', () => {
       })
 
       // Verify model exists
-      const modelsBefore = await getAllModels()
+      const modelsBefore = await getAllModels(getDb())
       expect(modelsBefore).toHaveLength(1)
 
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify model is not returned by getAllModels
-      const modelsAfter = await getAllModels()
+      const modelsAfter = await getAllModels(getDb())
       expect(modelsAfter).toHaveLength(0)
     })
 
     it('should not return soft-deleted model via getAvailableModels', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -598,18 +598,18 @@ describe('Models DAL', () => {
       })
 
       // Verify model exists
-      const modelsBefore = await getAvailableModels()
+      const modelsBefore = await getAvailableModels(getDb())
       expect(modelsBefore).toHaveLength(1)
 
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify model is not returned by getAvailableModels
-      const modelsAfter = await getAvailableModels()
+      const modelsAfter = await getAvailableModels(getDb())
       expect(modelsAfter).toHaveLength(0)
     })
 
     it('should preserve original deletedAt datetime for already-deleted model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
@@ -624,7 +624,7 @@ describe('Models DAL', () => {
       })
 
       // Call delete again on already-deleted model
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify original deletedAt is preserved
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -632,7 +632,7 @@ describe('Models DAL', () => {
     })
 
     it('should soft-delete prompts that reference the model (cascade)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
 
@@ -654,14 +654,14 @@ describe('Models DAL', () => {
       })
 
       // Verify prompt exists
-      const promptBefore = await getPrompt(promptId)
+      const promptBefore = await getPrompt(getDb(), promptId)
       expect(promptBefore).not.toBe(null)
 
       // Delete the model
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify prompt is soft-deleted (not returned by getPrompt)
-      const promptAfter = await getPrompt(promptId)
+      const promptAfter = await getPrompt(getDb(), promptId)
       expect(promptAfter).toBe(null)
 
       // But prompt should still exist in database with deletedAt set
@@ -671,7 +671,7 @@ describe('Models DAL', () => {
     })
 
     it('should soft-delete triggers of prompts that reference the model (cascade)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId = uuidv7()
@@ -703,14 +703,14 @@ describe('Models DAL', () => {
       })
 
       // Verify trigger exists and is enabled
-      const triggersBefore = await getAllEnabledTriggers()
+      const triggersBefore = await getAllEnabledTriggers(getDb())
       expect(triggersBefore).toHaveLength(1)
 
       // Delete the model
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify trigger is soft-deleted (not returned by getAllEnabledTriggers)
-      const triggersAfter = await getAllEnabledTriggers()
+      const triggersAfter = await getAllEnabledTriggers(getDb())
       expect(triggersAfter).toHaveLength(0)
 
       // But trigger should still exist in database with deletedAt set
@@ -720,7 +720,7 @@ describe('Models DAL', () => {
     })
 
     it('should not affect prompts referencing other models (cascade only targets matching modelId)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
       const promptId1 = uuidv7()
@@ -739,17 +739,17 @@ describe('Models DAL', () => {
       ])
 
       // Delete only model 1
-      await deleteModel(modelId1)
+      await deleteModel(getDb(), modelId1)
 
       // Verify only prompt 1 is soft-deleted
-      const prompt1 = await getPrompt(promptId1)
-      const prompt2 = await getPrompt(promptId2)
+      const prompt1 = await getPrompt(getDb(), promptId1)
+      const prompt2 = await getPrompt(getDb(), promptId2)
       expect(prompt1).toBe(null)
       expect(prompt2).not.toBe(null)
     })
 
     it('should handle model with multiple prompts and triggers (full cascade)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -781,20 +781,20 @@ describe('Models DAL', () => {
       ])
 
       // Verify all entities exist
-      const promptsBefore = await getAllPrompts()
-      const triggersBefore = await getAllEnabledTriggers()
+      const promptsBefore = await getAllPrompts(getDb())
+      const triggersBefore = await getAllEnabledTriggers(getDb())
       expect(promptsBefore).toHaveLength(2)
       expect(triggersBefore).toHaveLength(3)
 
       // Delete the model
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify all prompts are soft-deleted
-      const promptsAfter = await getAllPrompts()
+      const promptsAfter = await getAllPrompts(getDb())
       expect(promptsAfter).toHaveLength(0)
 
       // Verify all triggers are soft-deleted
-      const triggersAfter = await getAllEnabledTriggers()
+      const triggersAfter = await getAllEnabledTriggers(getDb())
       expect(triggersAfter).toHaveLength(0)
 
       // Verify all records still exist in database with deletedAt set
@@ -809,7 +809,7 @@ describe('Models DAL', () => {
 
   describe('updateModel', () => {
     it('should update model name', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -821,14 +821,14 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateModel(modelId, { name: 'Updated Name' })
+      await updateModel(getDb(), modelId, { name: 'Updated Name' })
 
-      const model = await getModel(modelId)
+      const model = await getModel(getDb(), modelId)
       expect(model?.name).toBe('Updated Name')
     })
 
     it('should update model enabled status', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -840,15 +840,15 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateModel(modelId, { enabled: 0 })
+      await updateModel(getDb(), modelId, { enabled: 0 })
 
       // Model should no longer appear in available models
-      const availableModels = await getAvailableModels()
+      const availableModels = await getAvailableModels(getDb())
       expect(availableModels.map((m) => m.id)).not.toContain(modelId)
     })
 
     it('should soft delete model by setting deletedAt', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -860,10 +860,10 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateModel(modelId, { deletedAt: nowIso() })
+      await updateModel(getDb(), modelId, { deletedAt: nowIso() })
 
       // Model should no longer be returned by getModel
-      const model = await getModel(modelId)
+      const model = await getModel(getDb(), modelId)
       expect(model).toBe(null)
 
       // Model should still exist in database
@@ -873,7 +873,7 @@ describe('Models DAL', () => {
     })
 
     it('should update multiple fields at once', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -885,20 +885,20 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateModel(modelId, { name: 'Updated', provider: 'anthropic', model: 'claude-3' })
+      await updateModel(getDb(), modelId, { name: 'Updated', provider: 'anthropic', model: 'claude-3' })
 
-      const model = await getModel(modelId)
+      const model = await getModel(getDb(), modelId)
       expect(model?.name).toBe('Updated')
       expect(model?.provider).toBe('anthropic')
       expect(model?.model).toBe('claude-3')
     })
 
     it('should not throw when updating non-existent model', async () => {
-      await expect(updateModel('non-existent-id', { name: 'test' })).resolves.toBeUndefined()
+      await expect(updateModel(getDb(), 'non-existent-id', { name: 'test' })).resolves.toBeUndefined()
     })
 
     it('should not update defaultHash field', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -912,7 +912,9 @@ describe('Models DAL', () => {
       })
 
       // Try to update defaultHash (should be ignored)
-      await updateModel(modelId, { name: 'Updated', defaultHash: 'new-hash' } as Parameters<typeof updateModel>[1])
+      await updateModel(getDb(), modelId, { name: 'Updated', defaultHash: 'new-hash' } as Parameters<
+        typeof updateModel
+      >[2])
 
       // Verify defaultHash was not changed
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -925,7 +927,7 @@ describe('Models DAL', () => {
     it('should create a new model', async () => {
       const modelId = uuidv7()
 
-      await createModel({
+      await createModel(getDb(), {
         id: modelId,
         provider: 'openai',
         name: 'New Model',
@@ -933,7 +935,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const model = await getModel(modelId)
+      const model = await getModel(getDb(), modelId)
       expect(model).not.toBe(null)
       expect(model?.name).toBe('New Model')
       expect(model?.provider).toBe('openai')
@@ -942,7 +944,7 @@ describe('Models DAL', () => {
     it('should create a disabled model excluded from getAvailableModels', async () => {
       const modelId = uuidv7()
 
-      await createModel({
+      await createModel(getDb(), {
         id: modelId,
         provider: 'anthropic',
         name: 'Disabled Model',
@@ -950,10 +952,10 @@ describe('Models DAL', () => {
         enabled: 0,
       })
 
-      const availableModels = await getAvailableModels()
+      const availableModels = await getAvailableModels(getDb())
       expect(availableModels.map((m) => m.id)).not.toContain(modelId)
 
-      const allModels = await getAllModels()
+      const allModels = await getAllModels(getDb())
       expect(allModels.map((m) => m.id)).toContain(modelId)
     })
 
@@ -961,20 +963,26 @@ describe('Models DAL', () => {
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
 
-      await createModel({ id: modelId1, provider: 'openai', name: 'Model 1', model: 'gpt-4', enabled: 1 })
-      await createModel({ id: modelId2, provider: 'anthropic', name: 'Model 2', model: 'claude-3', enabled: 1 })
+      await createModel(getDb(), { id: modelId1, provider: 'openai', name: 'Model 1', model: 'gpt-4', enabled: 1 })
+      await createModel(getDb(), {
+        id: modelId2,
+        provider: 'anthropic',
+        name: 'Model 2',
+        model: 'claude-3',
+        enabled: 1,
+      })
 
-      const models = await getAllModels()
+      const models = await getAllModels(getDb())
       expect(models).toHaveLength(2)
     })
   })
 
   describe('createModel auto-profile', () => {
     it('should auto-create a default profile for a known seeded model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Create a model with the same ID as a seeded default (GPT-OSS)
-      await createModel({
+      await createModel(getDb(), {
         id: defaultModelGptOss120b.id,
         provider: 'thunderbolt',
         name: 'GPT OSS',
@@ -992,10 +1000,10 @@ describe('Models DAL', () => {
     })
 
     it('should not create a profile for an unknown model ID', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
-      await createModel({
+      await createModel(getDb(), {
         id: modelId,
         provider: 'openai',
         name: 'Unknown Model',
@@ -1009,7 +1017,7 @@ describe('Models DAL', () => {
 
   describe('deleteModel profile cascade', () => {
     it('should soft-delete the model profile when deleting a model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       // Create a model and manually insert a profile
@@ -1035,7 +1043,7 @@ describe('Models DAL', () => {
       expect(profileBefore?.deletedAt).toBeNull()
 
       // Delete the model
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
       // Verify profile is soft-deleted
       const profileAfter = await db

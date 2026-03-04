@@ -1,11 +1,12 @@
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { PowerSyncDatabase, SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
-import { DatabaseSingleton } from '../singleton'
+import { getDatabaseInstance } from '../database'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
@@ -42,7 +43,7 @@ export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
  */
 export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
   try {
-    const database = DatabaseSingleton.instance.database
+    const database = getDatabaseInstance()
     if ('powerSyncInstance' in database) {
       return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
     }
@@ -76,7 +77,7 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
 
   // Connect or disconnect from PowerSync Cloud
   try {
-    const database = DatabaseSingleton.instance.database
+    const database = getDatabaseInstance()
     if ('connectToSync' in database && 'disconnectFromSync' in database) {
       if (enabled) {
         await (database as { connectToSync: () => Promise<void> }).connectToSync()
@@ -188,7 +189,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
-      const { cloudUrl } = await getSettings({ cloud_url: defaultSettingCloudUrl.value })
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: defaultSettingCloudUrl.value })
       const connector = new ThunderboltConnector(cloudUrl ?? defaultSettingCloudUrl.value)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       await this.powerSync.connect(connector, {

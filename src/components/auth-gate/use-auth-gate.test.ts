@@ -6,6 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { renderHook } from '@testing-library/react'
 import { useAuthGate } from './use-auth-gate'
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 const sessionWithUser = {
   user: { id: '1', email: 'u@example.com', name: 'User' },
 }

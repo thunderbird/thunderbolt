@@ -7,6 +7,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { HttpClient } from './contexts'
+import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
   chatMessagesTable,
   chatThreadsTable,
@@ -21,6 +22,7 @@ import type {
 } from './db/tables'
 
 export type InitData = {
+  db: AnyDrizzleDatabase
   tray: TrayIcon | undefined
   window: Window | undefined
   sideviewType: SideviewType | null

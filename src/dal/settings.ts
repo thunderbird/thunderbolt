@@ -1,6 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { DatabaseSingleton } from '../db/singleton'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
@@ -11,8 +10,7 @@ import type { Setting } from '../types'
 /**
  * Gets all settings from the database
  */
-export const getAllSettings = async (): Promise<Setting[]> => {
-  const db = DatabaseSingleton.instance.db
+export const getAllSettings = async (db: AnyDrizzleDatabase): Promise<Setting[]> => {
   return await db.select().from(settingsTable)
 }
 
@@ -28,11 +26,11 @@ type SettingSchema = Record<
  * Returns a Drizzle query for settings by keys.
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  *
- * When keys is empty, uses sql`1=0` instead of inArray — inArray(column, [])
+ * When keys is empty, uses sql`1=0` instead of inArray -- inArray(column, [])
  * produces invalid SQL (WHERE col IN ()) in SQLite.
  */
-export const getSettingsRecords = (keys: string[]) =>
-  DatabaseSingleton.instance.db
+export const getSettingsRecords = (db: AnyDrizzleDatabase, keys: string[]) =>
+  db
     .select()
     .from(settingsTable)
     .where(keys.length > 0 ? inArray(settingsTable.key, keys) : sql`1=0`)
@@ -90,6 +88,7 @@ type GetSettingsResult<T extends SettingSchema, CamelCase extends boolean> = Cam
  * Returns only the values (not the full Setting records)
  * Values are properly typed based on the schema
  *
+ * @param db - Drizzle database instance
  * @param schema - Object mapping setting keys to either type constructors or default values
  * @param options - Optional configuration
  * @param options.camelCase - If true (default), converts snake_case keys to camelCase in the result
@@ -98,7 +97,7 @@ type GetSettingsResult<T extends SettingSchema, CamelCase extends boolean> = Cam
  * @example
  * ```ts
  * // With camelCase (default)
- * const settings = await getSettings({
+ * const settings = await getSettings(db, {
  *   cloud_url: String,           // Returns as cloudUrl: string | null
  *   max_retries: 3,               // Returns as maxRetries: number (defaults to 3)
  *   is_enabled: true,             // Returns as isEnabled: boolean (defaults to true)
@@ -106,29 +105,34 @@ type GetSettingsResult<T extends SettingSchema, CamelCase extends boolean> = Cam
  * // settings = { cloudUrl: string | null, maxRetries: number, isEnabled: boolean }
  *
  * // Without camelCase
- * const settings = await getSettings({
+ * const settings = await getSettings(db, {
  *   cloud_url: String,
  *   max_retries: 3,
  * }, { camelCase: false })
  * // settings = { cloud_url: string | null, max_retries: number }
  * ```
  */
-export function getSettings<T extends SettingSchema>(schema: T): Promise<GetSettingsResult<T, true>>
 export function getSettings<T extends SettingSchema>(
+  db: AnyDrizzleDatabase,
+  schema: T,
+): Promise<GetSettingsResult<T, true>>
+export function getSettings<T extends SettingSchema>(
+  db: AnyDrizzleDatabase,
   schema: T,
   options: { camelCase: true },
 ): Promise<GetSettingsResult<T, true>>
 export function getSettings<T extends SettingSchema>(
+  db: AnyDrizzleDatabase,
   schema: T,
   options: { camelCase: false },
 ): Promise<GetSettingsResult<T, false>>
 export async function getSettings<T extends SettingSchema>(
+  db: AnyDrizzleDatabase,
   schema: T,
   options: { camelCase?: boolean } = {},
 ): Promise<GetSettingsResult<T, boolean>> {
   const { camelCase = true } = options
   const keys = Object.keys(schema)
-  const db = DatabaseSingleton.instance.db
 
   const results = await Promise.all(
     keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
@@ -183,8 +187,12 @@ export async function getSettings<T extends SettingSchema>(
 /**
  * Gets theme setting with proper typing
  */
-export const getThemeSetting = async (storageKey: string, defaultTheme: string): Promise<string> => {
-  const settings = await getSettings({ [storageKey]: defaultTheme })
+export const getThemeSetting = async (
+  db: AnyDrizzleDatabase,
+  storageKey: string,
+  defaultTheme: string,
+): Promise<string> => {
+  const settings = await getSettings(db, { [storageKey]: defaultTheme })
   const camelKey = camelCased(storageKey)
   return settings[camelKey]
 }
@@ -192,8 +200,7 @@ export const getThemeSetting = async (storageKey: string, defaultTheme: string):
 /**
  * Check if a setting exists in the settings table
  */
-export const hasSetting = async (key: string): Promise<boolean> => {
-  const db = DatabaseSingleton.instance.db
+export const hasSetting = async (db: AnyDrizzleDatabase, key: string): Promise<boolean> => {
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(settingsTable)
@@ -206,12 +213,10 @@ export const hasSetting = async (key: string): Promise<boolean> => {
  * Create a setting only if it doesn't already exist
  * Does nothing if the setting already exists (preserves existing value)
  * Uses insert-then-catch-conflict to avoid TOCTOU race (PowerSync views don't support ON CONFLICT)
- * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
  */
-export const createSetting = async (key: string, value: string | null, db?: AnyDrizzleDatabase): Promise<void> => {
-  const database = db ?? DatabaseSingleton.instance.db
+export const createSetting = async (db: AnyDrizzleDatabase, key: string, value: string | null): Promise<void> => {
   try {
-    await database.insert(settingsTable).values({ key, value })
+    await db.insert(settingsTable).values({ key, value })
   } catch (err) {
     if (!isInsertConflictError(err)) {
       throw err
@@ -242,7 +247,7 @@ const prepareSettingRow = (key: string, value: any, recomputeHash: boolean) => {
  *
  * @example
  * ```ts
- * await updateSettings({
+ * await updateSettings(db, {
  *   oauth_state: 'abc123',
  *   oauth_provider: 'google',
  *   oauth_verifier: 'xyz789',
@@ -250,6 +255,7 @@ const prepareSettingRow = (key: string, value: any, recomputeHash: boolean) => {
  * ```
  */
 export const updateSettings = async (
+  db: AnyDrizzleDatabase,
   settings: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   options: { recomputeHash?: boolean; updateHashOnly?: boolean } = {},
 ): Promise<void> => {
@@ -257,8 +263,6 @@ export const updateSettings = async (
   if (entries.length === 0) {
     return
   }
-
-  const db = DatabaseSingleton.instance.db
 
   // Handle updateHashOnly separately as it requires UPDATE statements
   // Note: SQLite doesn't support batch UPDATE with different values per row,
@@ -305,16 +309,18 @@ export const updateSettings = async (
  * Delete a setting from the settings table
  * Useful for removing user overrides so the code default is used
  */
-export const deleteSetting = async (key: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteSetting = async (db: AnyDrizzleDatabase, key: string): Promise<void> => {
   await db.delete(settingsTable).where(eq(settingsTable.key, key))
 }
 
 /**
  * Reset a setting to its default state
  */
-export const resetSettingToDefault = async (key: string, defaultSetting: Setting): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const resetSettingToDefault = async (
+  db: AnyDrizzleDatabase,
+  key: string,
+  defaultSetting: Setting,
+): Promise<void> => {
   // Compute the hash for the default setting so it shows as unmodified after reset
   const computedHash = hashSetting(defaultSetting)
   const { defaultHash, ...defaultFields } = defaultSetting

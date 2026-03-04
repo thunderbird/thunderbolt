@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { chatThreadsTable, modelsTable, promptsTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
@@ -27,12 +27,12 @@ describe('Prompts DAL', () => {
 
   describe('getAllPrompts', () => {
     it('should return empty array when no prompts exist', async () => {
-      const prompts = await getAllPrompts()
+      const prompts = await getAllPrompts(getDb())
       expect(prompts).toEqual([])
     })
 
     it('should return all prompts when no search query provided', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
 
@@ -59,14 +59,14 @@ describe('Prompts DAL', () => {
         },
       ])
 
-      const prompts = await getAllPrompts()
+      const prompts = await getAllPrompts(getDb())
       expect(prompts).toHaveLength(2)
       expect(prompts.map((p) => p.id)).toContain(promptId1)
       expect(prompts.map((p) => p.id)).toContain(promptId2)
     })
 
     it('should filter by search query', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
 
@@ -93,13 +93,13 @@ describe('Prompts DAL', () => {
         },
       ])
 
-      const prompts = await getAllPrompts('cats')
+      const prompts = await getAllPrompts(getDb(), 'cats')
       expect(prompts).toHaveLength(1)
       expect(prompts[0]?.id).toBe(promptId1)
     })
 
     it('should return empty array when no prompts match search query', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const promptId = uuidv7()
 
       const modelId = uuidv7()
@@ -118,7 +118,7 @@ describe('Prompts DAL', () => {
         modelId: modelId,
       })
 
-      const prompts = await getAllPrompts('dogs')
+      const prompts = await getAllPrompts(getDb(), 'dogs')
       expect(prompts).toEqual([])
     })
   })
@@ -126,13 +126,13 @@ describe('Prompts DAL', () => {
   describe('getTriggerPromptForThread', () => {
     it('should return null when thread does not exist', async () => {
       const threadId = uuidv7()
-      const result = await getTriggerPromptForThread(threadId)
+      const result = await getTriggerPromptForThread(getDb(), threadId)
       expect(result).toBe(null)
     })
 
     it('should return null when thread was not triggered by automation', async () => {
       const threadId = uuidv7()
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       await db.insert(chatThreadsTable).values({
         id: threadId,
@@ -141,7 +141,7 @@ describe('Prompts DAL', () => {
         wasTriggeredByAutomation: 0,
       })
 
-      const result = await getTriggerPromptForThread(threadId)
+      const result = await getTriggerPromptForThread(getDb(), threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(false)
       expect(result?.isAutomationDeleted).toBe(false)
@@ -151,7 +151,7 @@ describe('Prompts DAL', () => {
     it('should return automation info when thread was triggered by automation', async () => {
       const threadId = uuidv7()
       const promptId = uuidv7()
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const modelId = uuidv7()
       await db.insert(modelsTable).values({
@@ -177,7 +177,7 @@ describe('Prompts DAL', () => {
         triggeredBy: promptId,
       })
 
-      const result = await getTriggerPromptForThread(threadId)
+      const result = await getTriggerPromptForThread(getDb(), threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(false)
@@ -186,7 +186,7 @@ describe('Prompts DAL', () => {
 
     it('should return automation info with deleted flag when triggeredBy is null', async () => {
       const threadId = uuidv7()
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       await db.insert(chatThreadsTable).values({
         id: threadId,
@@ -196,7 +196,7 @@ describe('Prompts DAL', () => {
         triggeredBy: null, // No prompt exists
       })
 
-      const result = await getTriggerPromptForThread(threadId)
+      const result = await getTriggerPromptForThread(getDb(), threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(true)
@@ -206,7 +206,7 @@ describe('Prompts DAL', () => {
     it('should return automation info with deleted flag when prompt is soft-deleted', async () => {
       const threadId = uuidv7()
       const promptId = uuidv7()
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const modelId = uuidv7()
       await db.insert(modelsTable).values({
@@ -234,7 +234,7 @@ describe('Prompts DAL', () => {
         triggeredBy: promptId, // References the soft-deleted prompt
       })
 
-      const result = await getTriggerPromptForThread(threadId)
+      const result = await getTriggerPromptForThread(getDb(), threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(true)
@@ -244,7 +244,7 @@ describe('Prompts DAL', () => {
 
   describe('resetAutomationToDefault', () => {
     beforeEach(async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       await db.delete(modelsTable)
       await db.delete(promptsTable)
       await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -252,7 +252,7 @@ describe('Prompts DAL', () => {
     })
 
     it('resets modified automation to default state', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const defaultAutomation = defaultAutomations[0]
 
       // User modifies the automation
@@ -271,7 +271,7 @@ describe('Prompts DAL', () => {
       expect(automation?.prompt).toBe('Modified content')
 
       // Reset to default
-      await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
 
       // Verify it's reset
       automation = (await db
@@ -293,7 +293,7 @@ describe('Prompts DAL', () => {
     })
 
     it('after reset, modification detection works correctly', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const defaultAutomation = defaultAutomations[0]
 
       // Modify
@@ -312,7 +312,7 @@ describe('Prompts DAL', () => {
       }
 
       // Reset
-      await resetAutomationToDefault(defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
 
       // Verify no longer detected as modified
       automation = (await db
@@ -331,7 +331,7 @@ describe('Prompts DAL', () => {
 
   describe('createAutomation', () => {
     it('should create a new automation', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
 
@@ -344,19 +344,19 @@ describe('Prompts DAL', () => {
         enabled: 1,
       })
 
-      await createAutomation({
+      await createAutomation(getDb(), {
         id: promptId,
         title: 'Test Automation',
         prompt: 'Test prompt content',
         modelId: modelId,
       })
 
-      const prompts = await getAllPrompts()
+      const prompts = await getAllPrompts(getDb())
       expect(prompts.map((p) => p.id)).toContain(promptId)
     })
 
     it('should create multiple automations', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -370,10 +370,10 @@ describe('Prompts DAL', () => {
         enabled: 1,
       })
 
-      await createAutomation({ id: promptId1, prompt: 'Prompt 1', modelId: modelId })
-      await createAutomation({ id: promptId2, prompt: 'Prompt 2', modelId: modelId })
+      await createAutomation(getDb(), { id: promptId1, prompt: 'Prompt 1', modelId: modelId })
+      await createAutomation(getDb(), { id: promptId2, prompt: 'Prompt 2', modelId: modelId })
 
-      const prompts = await getAllPrompts()
+      const prompts = await getAllPrompts(getDb())
       expect(prompts).toHaveLength(2)
     })
   })

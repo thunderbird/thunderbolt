@@ -3,17 +3,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
+import { useDatabase } from '@/contexts'
 import { getAllModels, mapModel } from '@/dal'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 export default function ModelsLayout() {
+  const db = useDatabase()
   const navigate = useNavigate()
   const { modelId } = useParams()
 
   const { data = [] } = useQuery({
     queryKey: ['models'],
-    query: toCompilableQuery(getAllModels()),
+    query: toCompilableQuery(getAllModels(db)),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])

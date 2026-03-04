@@ -1,7 +1,6 @@
 import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
@@ -13,8 +12,8 @@ import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
  * Returns a Drizzle query for all prompts, optionally filtered by search query (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getAllPrompts = (searchQuery?: string) => {
-  const query = DatabaseSingleton.instance.db
+export const getAllPrompts = (db: AnyDrizzleDatabase, searchQuery?: string) => {
+  const query = db
     .select()
     .from(promptsTable)
     .where(
@@ -31,9 +30,10 @@ export const getAllPrompts = (searchQuery?: string) => {
 /**
  * Returns information about the automation that triggered a chat thread, if any (excluding soft-deleted)
  */
-export const getTriggerPromptForThread = async (threadId: string): Promise<AutomationRun | null> => {
-  const db = DatabaseSingleton.instance.db
-
+export const getTriggerPromptForThread = async (
+  db: AnyDrizzleDatabase,
+  threadId: string,
+): Promise<AutomationRun | null> => {
   // Fetch the associated prompt and thread info in a single query via join
   // Join condition includes soft-delete check so deleted prompts return null
   const result = await db
@@ -64,8 +64,7 @@ export const getTriggerPromptForThread = async (threadId: string): Promise<Autom
 /**
  * Update an automation/prompt (preserves defaultHash for modification tracking)
  */
-export const updateAutomation = async (id: string, updates: Partial<Prompt>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const updateAutomation = async (db: AnyDrizzleDatabase, id: string, updates: Partial<Prompt>): Promise<void> => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
   await db.update(promptsTable).set(updateFields).where(eq(promptsTable.id, id))
@@ -74,8 +73,11 @@ export const updateAutomation = async (id: string, updates: Partial<Prompt>): Pr
 /**
  * Reset an automation to its default state
  */
-export const resetAutomationToDefault = async (id: string, defaultAutomation: Prompt): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const resetAutomationToDefault = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  defaultAutomation: Prompt,
+): Promise<void> => {
   const { defaultHash, ...defaultFields } = defaultAutomation
   await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
 }
@@ -85,10 +87,9 @@ export const resetAutomationToDefault = async (id: string, defaultAutomation: Pr
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteAutomation = async (id: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteAutomation = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   await db.transaction(async (tx) => {
-    await deleteTriggersForPrompt(id, tx)
+    await deleteTriggersForPrompt(tx, id)
     await tx
       .update(promptsTable)
       .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
@@ -102,25 +103,22 @@ export const deleteAutomation = async (id: string): Promise<void> => {
  * Scrubs all nullable columns for privacy
  * This replaces the cascade behavior that no longer fires with soft deletes
  */
-export const deletePromptsForModel = async (modelId: string, db?: AnyDrizzleDatabase): Promise<void> => {
-  const database = db ?? DatabaseSingleton.instance.db
-
-  const prompts = await database
+export const deletePromptsForModel = async (db: AnyDrizzleDatabase, modelId: string): Promise<void> => {
+  const prompts = await db
     .select({ id: promptsTable.id })
     .from(promptsTable)
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 
   const promptIds = prompts.map((p) => p.id)
 
-  await deleteTriggersForPrompts(promptIds, database)
-  await database
+  await deleteTriggersForPrompts(db, promptIds)
+  await db
     .update(promptsTable)
     .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
     .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 }
 
-export const getPrompt = async (id: string): Promise<Prompt | null> => {
-  const db = DatabaseSingleton.instance.db
+export const getPrompt = async (db: AnyDrizzleDatabase, id: string): Promise<Prompt | null> => {
   const prompt = await db
     .select()
     .from(promptsTable)
@@ -134,9 +132,9 @@ export const getPrompt = async (id: string): Promise<Prompt | null> => {
  * Creates a new prompt/automation
  */
 export const createAutomation = async (
+  db: AnyDrizzleDatabase,
   data: Partial<Prompt> & Pick<Prompt, 'id' | 'prompt' | 'modelId'>,
 ): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
   await db.insert(promptsTable).values(data)
 }
 
@@ -144,15 +142,13 @@ export const createAutomation = async (
  * Runs an automation by creating a new chat thread and seeding it with the prompt
  * @returns The threadId of the newly created chat thread
  */
-export const runAutomation = async (promptId: string): Promise<string> => {
-  const db = DatabaseSingleton.instance.db
-
-  const prompt = await getPrompt(promptId)
+export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): Promise<string> => {
+  const prompt = await getPrompt(db, promptId)
   if (!prompt) {
     throw new Error('Prompt not found')
   }
 
-  const model = await getModel(prompt.modelId)
+  const model = await getModel(db, prompt.modelId)
   if (!model) {
     throw new Error('Model not found')
   }
@@ -161,6 +157,7 @@ export const runAutomation = async (promptId: string): Promise<string> => {
 
   await db.transaction(async (tx) => {
     await createChatThread(
+      tx,
       {
         id: threadId,
         title: prompt.title ?? 'Automation',
@@ -169,7 +166,6 @@ export const runAutomation = async (promptId: string): Promise<string> => {
         contextSize: null,
       },
       model,
-      tx,
     )
 
     const userMessage = {

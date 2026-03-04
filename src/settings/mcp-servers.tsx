@@ -16,7 +16,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
+import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { type McpServer } from '@/types'
@@ -35,7 +35,7 @@ type ServerTools = {
 }
 
 export default function McpServersPage() {
-  const db = DatabaseSingleton.instance.db
+  const db = useDatabase()
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
@@ -51,7 +51,7 @@ export default function McpServersPage() {
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getHttpMcpServers()),
+    query: toCompilableQuery(getHttpMcpServers(db)),
   })
 
   // Fetch tools for connected servers
@@ -116,7 +116,7 @@ export default function McpServersPage() {
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await createMcpServer({
+      await createMcpServer(db, {
         id: uuidv7(),
         name,
         url,
@@ -132,7 +132,7 @@ export default function McpServersPage() {
   })
 
   const deleteServerMutation = useMutation({
-    mutationFn: deleteMcpServer,
+    mutationFn: (id: string) => deleteMcpServer(db, id),
     onSuccess: () => {
       setDeleteConfirmOpen(null)
     },
@@ -389,7 +389,7 @@ export default function McpServersPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <StatusIndicator status={status as any} size="md" />
+                          <StatusIndicator status={status as 'connected' | 'connecting' | 'disconnected'} size="md" />
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">

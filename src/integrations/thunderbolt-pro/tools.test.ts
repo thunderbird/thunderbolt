@@ -1,5 +1,6 @@
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import type { SourceMetadata } from '@/types/source'
 import type { WeatherForecastData } from '@/widgets/weather-forecast'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -70,7 +71,7 @@ const mockWeatherForecastData: WeatherForecastData = {
 describe('Thunderbolt Pro Tools', () => {
   beforeEach(async () => {
     // Set up test database with correct values
-    await updateSettings({
+    await updateSettings(getDb(), {
       cloud_url: 'http://localhost:8000/v1',
       temperature_unit: 'f',
       distance_unit: 'imperial',

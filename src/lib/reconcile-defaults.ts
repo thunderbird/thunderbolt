@@ -96,6 +96,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Initialize anonymous ID for analytics (unique per user)
-    await createSetting('anonymous_id', uuidv7(), tx)
+    await createSetting(tx, 'anonymous_id', uuidv7())
   })
 }

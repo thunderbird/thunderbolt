@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { modelProfilesTable, modelsTable } from '@/db/tables'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -28,12 +28,12 @@ describe('Model Profiles DAL', () => {
 
   describe('getModelProfile', () => {
     it('should return null for non-existent model', async () => {
-      const profile = await getModelProfile('nonexistent-model-id')
+      const profile = await getModelProfile(getDb(), 'nonexistent-model-id')
       expect(profile).toBe(null)
     })
 
     it('should return profile when it exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -51,7 +51,7 @@ describe('Model Profiles DAL', () => {
         maxSteps: 10,
       })
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(modelId)
       expect(profile?.temperature).toBe(0.5)
@@ -59,7 +59,7 @@ describe('Model Profiles DAL', () => {
     })
 
     it('should exclude soft-deleted profiles', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -77,14 +77,14 @@ describe('Model Profiles DAL', () => {
         deletedAt: new Date().toISOString(),
       })
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile).toBe(null)
     })
   })
 
   describe('upsertModelProfile', () => {
     it('should insert a new profile', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -96,9 +96,9 @@ describe('Model Profiles DAL', () => {
         enabled: 1,
       })
 
-      await upsertModelProfile({ modelId, temperature: 0.7, maxSteps: 15 })
+      await upsertModelProfile(getDb(), { modelId, temperature: 0.7, maxSteps: 15 })
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(modelId)
       expect(profile?.temperature).toBe(0.7)
@@ -106,7 +106,7 @@ describe('Model Profiles DAL', () => {
     })
 
     it('should update an existing profile', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -124,9 +124,9 @@ describe('Model Profiles DAL', () => {
         maxSteps: 5,
       })
 
-      await upsertModelProfile({ modelId, temperature: 0.9, maxSteps: 20 })
+      await upsertModelProfile(getDb(), { modelId, temperature: 0.9, maxSteps: 20 })
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile?.temperature).toBe(0.9)
       expect(profile?.maxSteps).toBe(20)
 
@@ -138,7 +138,7 @@ describe('Model Profiles DAL', () => {
 
   describe('deleteModelProfileForModel', () => {
     it('should soft-delete the profile', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -156,13 +156,13 @@ describe('Model Profiles DAL', () => {
       })
 
       // Verify profile exists before deletion
-      const profileBefore = await getModelProfile(modelId)
+      const profileBefore = await getModelProfile(getDb(), modelId)
       expect(profileBefore).not.toBe(null)
 
-      await deleteModelProfileForModel(modelId)
+      await deleteModelProfileForModel(getDb(), modelId)
 
       // Profile should not be returned by getModelProfile
-      const profileAfter = await getModelProfile(modelId)
+      const profileAfter = await getModelProfile(getDb(), modelId)
       expect(profileAfter).toBe(null)
 
       // But record should still exist in database with deletedAt set
@@ -172,7 +172,7 @@ describe('Model Profiles DAL', () => {
     })
 
     it('should preserve original deletedAt for already-deleted profiles', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const originalDeletedAt = new Date(Date.now() - 10000).toISOString()
 
@@ -192,7 +192,7 @@ describe('Model Profiles DAL', () => {
       })
 
       // Call delete again on already-deleted profile
-      await deleteModelProfileForModel(modelId)
+      await deleteModelProfileForModel(getDb(), modelId)
 
       // Verify original deletedAt is preserved
       const rawProfile = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, modelId)).get()
@@ -202,7 +202,7 @@ describe('Model Profiles DAL', () => {
 
   describe('resetModelProfileToDefault', () => {
     it('should restore default values for a known model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const { defaultModelProfileGptOss120b } = await import('@/defaults/model-profiles')
 
       // Insert the actual default model first to satisfy FK constraint
@@ -224,9 +224,9 @@ describe('Model Profiles DAL', () => {
       })
 
       // Reset to defaults
-      await resetModelProfileToDefault(defaultModelGptOss120b.id)
+      await resetModelProfileToDefault(getDb(), defaultModelGptOss120b.id)
 
-      const profile = await getModelProfile(defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
       expect(profile).not.toBe(null)
       expect(profile?.temperature).toBe(defaultModelProfileGptOss120b.temperature)
       expect(profile?.maxSteps).toBe(defaultModelProfileGptOss120b.maxSteps)
@@ -236,7 +236,7 @@ describe('Model Profiles DAL', () => {
     })
 
     it('should do nothing for a model without a default profile', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -254,16 +254,16 @@ describe('Model Profiles DAL', () => {
       })
 
       // Should not throw, and should not modify the profile
-      await resetModelProfileToDefault(modelId)
+      await resetModelProfileToDefault(getDb(), modelId)
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile?.temperature).toBe(0.5)
     })
   })
 
   describe('createDefaultModelProfile', () => {
     it('should create a profile for a known default model', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const { defaultModelProfileGptOss120b, hashModelProfile } = await import('@/defaults/model-profiles')
 
       await db.insert(modelsTable).values({
@@ -275,9 +275,9 @@ describe('Model Profiles DAL', () => {
         enabled: defaultModelGptOss120b.enabled,
       })
 
-      await createDefaultModelProfile(defaultModelGptOss120b.id)
+      await createDefaultModelProfile(getDb(), defaultModelGptOss120b.id)
 
-      const profile = await getModelProfile(defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(defaultModelGptOss120b.id)
       expect(profile?.temperature).toBe(defaultModelProfileGptOss120b.temperature)
@@ -292,7 +292,7 @@ describe('Model Profiles DAL', () => {
     })
 
     it('should do nothing for a model without seed data', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -304,14 +304,14 @@ describe('Model Profiles DAL', () => {
         enabled: 1,
       })
 
-      await createDefaultModelProfile(modelId)
+      await createDefaultModelProfile(getDb(), modelId)
 
-      const profile = await getModelProfile(modelId)
+      const profile = await getModelProfile(getDb(), modelId)
       expect(profile).toBe(null)
     })
 
     it('should not overwrite an existing profile (onConflictDoNothing)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       await db.insert(modelsTable).values({
         id: defaultModelGptOss120b.id,
@@ -329,9 +329,9 @@ describe('Model Profiles DAL', () => {
       })
 
       // Calling createDefaultModelProfile should not overwrite
-      await createDefaultModelProfile(defaultModelGptOss120b.id)
+      await createDefaultModelProfile(getDb(), defaultModelGptOss120b.id)
 
-      const profile = await getModelProfile(defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
       expect(profile?.temperature).toBe(0.99)
     })
   })

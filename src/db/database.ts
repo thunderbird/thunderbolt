@@ -2,29 +2,15 @@ import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface
 
 export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite' | 'powersync'
 
-export class DatabaseSingleton {
-  static #instance: DatabaseSingleton | null = null
-  static #initialized = false
-
+export class Database {
   #database: DatabaseInterface | null = null
-
-  /**
-   * Get the initialized DatabaseSingleton instance.
-   * Initializes the instance if it doesn't exist.
-   * @returns The initialized DatabaseSingleton instance.
-   */
-  public static get instance(): DatabaseSingleton {
-    if (!this.#instance) {
-      this.#instance = new DatabaseSingleton()
-    }
-    return this.#instance
-  }
+  #initialized = false
 
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('wa-sqlite', 'libsql-tauri', or 'bun-sqlite')
-   * @param config - Configuration for the database
+   * @param type - The database type to use ('wa-sqlite', 'libsql-tauri', 'bun-sqlite', or 'powersync')
+   * @param path - The path/filename for the database
    */
   public async initialize({
     type = 'wa-sqlite',
@@ -33,31 +19,27 @@ export class DatabaseSingleton {
     type?: DatabaseType
     path: string
   }): Promise<AnyDrizzleDatabase> {
-    if (DatabaseSingleton.#initialized && this.#database) {
+    if (this.#initialized && this.#database) {
       return this.#database.db
     }
 
     if (type === 'libsql-tauri') {
-      // Lazy load LibSQLTauriDatabase (only used in Tauri/mobile, not browser)
       const { LibSQLTauriDatabase } = await import('./libsql-tauri-database')
       this.#database = new LibSQLTauriDatabase()
     } else if (type === 'bun-sqlite') {
-      // Lazy load BunSQLiteDatabase (only used in tests, not production)
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
     } else if (type === 'powersync') {
-      // Lazy load PowerSync for multi-device sync
       const { PowerSyncDatabaseImpl } = await import('./powersync')
       this.#database = new PowerSyncDatabaseImpl()
     } else {
-      // Default to wa-sqlite for web (best performance with web workers)
       const { WaSQLiteDatabase } = await import('./wa-sqlite-database')
       this.#database = new WaSQLiteDatabase()
     }
 
     await this.#database.initialize(path)
 
-    DatabaseSingleton.#initialized = true
+    this.#initialized = true
 
     const getDbTypeName = (): string => {
       switch (type) {
@@ -82,18 +64,18 @@ export class DatabaseSingleton {
    */
   public get db() {
     if (!this.#database) {
-      throw new Error('DatabaseSingleton not initialized. Call initialize() first.')
+      throw new Error('Database not initialized. Call initialize() first.')
     }
     return this.#database.db
   }
 
   /**
-   * Get the database instance.
+   * Get the underlying database implementation.
    * Throws an error if not initialized.
    */
   public get database() {
     if (!this.#database) {
-      throw new Error('DatabaseSingleton not initialized. Call initialize() first.')
+      throw new Error('Database not initialized. Call initialize() first.')
     }
     return this.#database
   }
@@ -102,7 +84,7 @@ export class DatabaseSingleton {
    * Check if the database is initialized.
    */
   public get isInitialized(): boolean {
-    return DatabaseSingleton.#initialized && this.#database !== null
+    return this.#initialized && this.#database !== null
   }
 
   /**
@@ -112,6 +94,8 @@ export class DatabaseSingleton {
     if (this.#database?.close) {
       await this.#database.close()
     }
+    this.#database = null
+    this.#initialized = false
   }
 
   /**
@@ -123,19 +107,55 @@ export class DatabaseSingleton {
       await this.#database.waitForInitialSync()
     }
   }
+}
 
-  /**
-   * Reset the singleton instance (useful for testing)
-   */
-  public static async reset(): Promise<void> {
-    if (this.#instance && this.#instance.#database && this.#instance.#database.close) {
-      // Must await for PowerSync to properly call disconnectAndClear()
-      await this.#instance.#database.close()
-    }
-    if (this.#instance) {
-      this.#instance.#database = null
-    }
-    this.#instance = null
-    this.#initialized = false
+// --- Module-level instance management ---
+
+let currentInstance: Database | null = null
+
+/**
+ * Register the initialized Database instance for module-level access.
+ * Called once during app initialization.
+ */
+export const setDatabase = (instance: Database): void => {
+  currentInstance = instance
+}
+
+/**
+ * Get the Drizzle database for queries.
+ * Used by DAL functions and other non-React code.
+ */
+export const getDb = (): AnyDrizzleDatabase => {
+  if (!currentInstance) {
+    throw new Error('Database not registered. Call setDatabase() after initialization.')
   }
+  return currentInstance.db
+}
+
+/**
+ * Get the underlying DatabaseInterface implementation.
+ * Used for PowerSync-specific operations.
+ */
+export const getDatabaseInstance = (): DatabaseInterface => {
+  if (!currentInstance) {
+    throw new Error('Database not registered. Call setDatabase() after initialization.')
+  }
+  return currentInstance.database
+}
+
+/**
+ * Check if a database instance has been registered.
+ * Useful for conditional logic in test wrappers.
+ */
+export const isDbRegistered = (): boolean => currentInstance !== null
+
+/**
+ * Reset the module-level database instance.
+ * Closes the connection and clears the reference.
+ */
+export const resetDatabase = async (): Promise<void> => {
+  if (currentInstance) {
+    await currentInstance.close()
+  }
+  currentInstance = null
 }

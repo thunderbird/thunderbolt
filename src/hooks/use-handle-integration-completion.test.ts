@@ -5,7 +5,7 @@ import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/c
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
 import { oauthRetryEvent, getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
@@ -84,7 +84,7 @@ describe('useHandleIntegrationCompletion', () => {
    */
   const createTestThread = async () => {
     const threadId = uuidv7()
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     await db.insert(chatThreadsTable).values({
       id: threadId,
@@ -99,7 +99,7 @@ describe('useHandleIntegrationCompletion', () => {
    * Saves test messages to a thread in the database
    */
   const createTestMessages = async (threadId: string, messages: ThunderboltUIMessage[]) => {
-    await saveMessagesWithContextUpdate(threadId, messages)
+    await saveMessagesWithContextUpdate(getDb(), threadId, messages)
     return messages
   }
 
@@ -118,7 +118,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: '',
       integrations_microsoft_credentials: '',
     })
@@ -145,7 +145,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: '',
       integrations_microsoft_credentials: '',
     })
@@ -174,7 +174,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: '',
       integrations_microsoft_credentials: '',
     })
@@ -204,7 +204,7 @@ describe('useHandleIntegrationCompletion', () => {
     // Use the real store and hydrate it with test data (id is null - no session created)
     resetStore()
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: '',
       integrations_microsoft_credentials: '',
     })
@@ -266,7 +266,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
       integrations_microsoft_credentials: '',
     })
@@ -306,7 +306,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(savedMessage?.metadata?.oauthRetry).toBe(true)
     expect(savedMessage?.parts[0]?.type === 'text' && savedMessage.parts[0].text).toContain('Send me an email')
 
-    const updatedWidgetMessage = await getMessage(widgetMessageId)
+    const updatedWidgetMessage = await getMessage(getDb(), widgetMessageId)
     expect(updatedWidgetMessage).toBeDefined()
     expect(updatedWidgetMessage?.cache).toBeDefined()
     const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
@@ -355,7 +355,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
       integrations_microsoft_credentials: '',
     })
@@ -433,7 +433,7 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     // Start with no credentials
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: '',
       integrations_microsoft_credentials: '',
     })
@@ -465,7 +465,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     // Now add credentials to simulate connection
-    await updateSettings({ integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }) })
+    await updateSettings(getDb(), { integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }) })
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -494,7 +494,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
       integrations_microsoft_credentials: '',
     })
@@ -561,7 +561,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings({
+    await updateSettings(getDb(), {
       integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
       integrations_microsoft_credentials: '',
     })
@@ -641,7 +641,7 @@ describe('useHandleIntegrationCompletion', () => {
         triggerData: null,
       })
 
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
         integrations_microsoft_credentials: '',
       })

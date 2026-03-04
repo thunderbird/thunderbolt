@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -103,6 +104,7 @@ type DeepLinkDependencies = {
  * @param dependencies Optional dependencies for testing (uses real implementations by default)
  */
 export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: DeepLinkDependencies) => {
+  const db = useDatabase()
   const navigate = useNavigate()
 
   // Use injected dependencies or fall back to real implementations
@@ -144,7 +146,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
             // Get the return context from SQLite settings (where mobile flow stores it)
-            const settings = await getSettingsData({ oauth_return_context: String })
+            const settings = await getSettingsData(db, { oauth_return_context: String })
             const target = determineNavigationTarget(settings.oauthReturnContext, oauthData)
 
             navigate(target.path, {

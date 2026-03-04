@@ -1,5 +1,5 @@
 import { deleteTasks as deleteTasksDal, getAllTasks } from '@/dal'
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { tasksTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -12,7 +12,7 @@ export const addTasks = {
     tasks: z.array(z.string()).describe("The tasks to add to the user's task (to do) list."),
   }),
   execute: async (params: { tasks: string[] }) => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     const tasks = await db
       .insert(tasksTable)
       .values(
@@ -34,7 +34,8 @@ export const getTasks = {
   verb: 'Getting tasks',
   parameters: z.object({}),
   execute: async () => {
-    const tasks = await getAllTasks()
+    const db = getDb()
+    const tasks = await getAllTasks(db)
     return tasks
   },
 }
@@ -47,7 +48,8 @@ export const deleteTasks = {
     taskIds: z.array(z.string()).describe("The IDs of the tasks to delete from the user's task (to do) list."),
   }),
   execute: async (params: { taskIds: string[] }) => {
-    await deleteTasksDal(params.taskIds)
+    const db = getDb()
+    await deleteTasksDal(db, params.taskIds)
     return {
       success: true,
     }

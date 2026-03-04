@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { getAllDevices } from '@/dal'
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
 import { useSettings } from '@/hooks/use-settings'
@@ -41,10 +42,11 @@ const revokeDevice = async (deviceId: string, baseUrl: string, token: string): P
 }
 
 export default function DevicesSettingsPage() {
+  const db = useDatabase()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
-    query: toCompilableQuery(getAllDevices()),
+    query: toCompilableQuery(getAllDevices(db)),
   })
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)

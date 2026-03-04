@@ -1,6 +1,8 @@
 import { getSettings, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useOAuthConnect, type OAuthDependencies } from './use-oauth-connect'
@@ -13,7 +15,7 @@ const createMockDependencies = (): OAuthDependencies => ({
   },
   redirectOAuthFlow: async (provider: string) => {
     // Simulate what the real redirectOAuthFlow does before redirecting
-    await updateSettings({
+    await updateSettings(getDb(), {
       oauth_state: 'mock_state_12345',
       oauth_provider: provider,
       oauth_verifier: 'mock_verifier_67890',
@@ -71,13 +73,15 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          setPreferredName: true,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            setPreferredName: true,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -96,12 +100,14 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -119,12 +125,14 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -144,13 +152,15 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          returnContext: 'onboarding',
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            returnContext: 'onboarding',
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -162,8 +172,7 @@ describe('useOAuthConnect', () => {
       })
 
       // Verify return context was stored in sqlite
-      const { getSettings } = await import('@/dal')
-      const settings = await getSettings({ oauth_return_context: String })
+      const settings = await getSettings(getDb(), { oauth_return_context: String })
       expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
@@ -172,7 +181,7 @@ describe('useOAuthConnect', () => {
     it('should handle successful OAuth callback', async () => {
       const callbackData = mockOAuthCallbackData()
       // Setup sqlite settings
-      await updateSettings({
+      await updateSettings(getDb(), {
         oauth_state: callbackData.state!,
         oauth_provider: 'google',
         oauth_verifier: 'mock_verifier_67890',
@@ -181,12 +190,14 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -204,7 +215,7 @@ describe('useOAuthConnect', () => {
     it('should handle state mismatch', async () => {
       const callbackData = mockOAuthCallbackData()
       // Setup sqlite settings with mismatched state
-      await updateSettings({
+      await updateSettings(getDb(), {
         oauth_state: 'different_state',
         oauth_provider: 'google',
         oauth_verifier: 'mock_verifier_67890',
@@ -213,12 +224,14 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       const success = await act(async () => {
@@ -236,12 +249,14 @@ describe('useOAuthConnect', () => {
       const onSuccess = mock()
       const onError = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          onError,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            onError,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       const success = await act(async () => {
@@ -258,12 +273,14 @@ describe('useOAuthConnect', () => {
     it('should handle Microsoft OAuth flow', async () => {
       const onSuccess = mock()
 
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          onSuccess,
-          setPreferredName: false,
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            onSuccess,
+            setPreferredName: false,
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -281,11 +298,13 @@ describe('useOAuthConnect', () => {
 
   describe('returnContext option', () => {
     it('should store correct return context', async () => {
-      const { result } = renderHook(() =>
-        useOAuthConnect({
-          returnContext: 'onboarding',
-          dependencies: mockDeps,
-        }),
+      const { result } = renderHook(
+        () =>
+          useOAuthConnect({
+            returnContext: 'onboarding',
+            dependencies: mockDeps,
+          }),
+        { wrapper: createQueryTestWrapper() },
       )
 
       await act(async () => {
@@ -297,7 +316,7 @@ describe('useOAuthConnect', () => {
       })
 
       // Verify return context was stored in sqlite
-      const settings = await getSettings({ oauth_return_context: String })
+      const settings = await getSettings(getDb(), { oauth_return_context: String })
       expect(settings.oauthReturnContext).toBe('onboarding')
     })
   })
@@ -306,7 +325,9 @@ describe('useOAuthConnect', () => {
     it('should clear error when clearError is called', async () => {
       const errorData = mockOAuthErrorCallbackData()
 
-      const { result } = renderHook(() => useOAuthConnect({ dependencies: mockDeps }))
+      const { result } = renderHook(() => useOAuthConnect({ dependencies: mockDeps }), {
+        wrapper: createQueryTestWrapper(),
+      })
 
       await act(async () => {
         await result.current.processCallback(errorData)

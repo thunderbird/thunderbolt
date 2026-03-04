@@ -1,6 +1,7 @@
 import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
+import { useDatabase } from '@/contexts'
 import { updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
@@ -27,6 +28,7 @@ export const OnboardingAuthStep = ({
   onConnectionChange,
   useOAuthConnectHook,
 }: OnboardingAuthStepProps) => {
+  const db = useDatabase()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -78,7 +80,7 @@ export const OnboardingAuthStep = ({
 
   const handleDisconnect = async () => {
     try {
-      await updateSettings({
+      await updateSettings(db, {
         [`integrations_${provider}_credentials`]: '',
         [`integrations_${provider}_is_enabled`]: 'false',
       })

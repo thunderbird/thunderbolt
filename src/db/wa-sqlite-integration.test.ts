@@ -1,6 +1,6 @@
 import { deleteModel, getModel } from '@/dal/models'
 import { applySchema } from '@/db/apply-schema'
-import { DatabaseSingleton } from '@/db/singleton'
+import { Database, getDb, resetDatabase, setDatabase } from '@/db/database'
 import { modelsTable } from '@/db/tables'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
@@ -14,23 +14,26 @@ import { v7 as uuidv7 } from 'uuid'
  */
 describe('wa-sqlite integration', () => {
   let consoleSpies: ConsoleSpies
+  let database: Database
 
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
 
-    await DatabaseSingleton.instance.initialize({ type: 'wa-sqlite', path: ':memory:' })
-    await applySchema(DatabaseSingleton.instance.db)
+    database = new Database()
+    await database.initialize({ type: 'wa-sqlite', path: ':memory:' })
+    setDatabase(database)
+    await applySchema(getDb())
   }, 10000) // Increase timeout for worker initialization under load
 
   afterAll(async () => {
-    await DatabaseSingleton.instance.close()
-    await DatabaseSingleton.reset()
+    await database.close()
+    await resetDatabase()
     consoleSpies.restore()
   })
 
   describe('basic CRUD operations', () => {
     it('should insert and select records', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -49,7 +52,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should update records', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -67,7 +70,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should soft delete records (DAL)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -78,9 +81,9 @@ describe('wa-sqlite integration', () => {
         contextWindow: 128000,
       })
 
-      await deleteModel(modelId)
+      await deleteModel(getDb(), modelId)
 
-      expect(await getModel(modelId)).toBeNull()
+      expect(await getModel(getDb(), modelId)).toBeNull()
       const raw = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
       expect(raw?.deletedAt).toBeDefined()
     })
@@ -88,7 +91,7 @@ describe('wa-sqlite integration', () => {
 
   describe('empty object bug fix verification', () => {
     it('should return undefined (not empty object) for missing records with .get()', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Query a non-existent model directly with Drizzle
       const result = await db.select().from(modelsTable).where(eq(modelsTable.id, 'nonexistent')).get()
@@ -104,7 +107,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should work correctly with DAL-style query patterns', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Simulate a DAL function pattern: query that returns null for missing data
       const result = await db.select().from(modelsTable).where(eq(modelsTable.id, 'nonexistent-model-id')).get()
@@ -115,7 +118,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should return actual data (not undefined) for existing records', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -141,7 +144,7 @@ describe('wa-sqlite integration', () => {
 
   describe('concurrent operations', () => {
     it('should handle multiple concurrent inserts', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelIds = Array.from({ length: 10 }, () => uuidv7())
 
       // Insert 10 models concurrently
@@ -167,7 +170,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should handle mixed concurrent reads and writes', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
 
@@ -202,7 +205,7 @@ describe('wa-sqlite integration', () => {
 
   describe('schema', () => {
     it('should have expected app tables (schema applied at init, no migrations)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const tablesResult = await db.all(sql`
         SELECT name FROM sqlite_master 
@@ -219,7 +222,7 @@ describe('wa-sqlite integration', () => {
 
   describe('complex queries', () => {
     it('should handle JOINs correctly', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       await db.insert(modelsTable).values({
@@ -237,7 +240,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should handle aggregations', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       // Count all models
       const result = await db.all(sql`SELECT COUNT(*) as count FROM models`)
@@ -246,7 +249,7 @@ describe('wa-sqlite integration', () => {
     })
 
     it('should handle ordering and limiting', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelIds = [uuidv7(), uuidv7(), uuidv7()]
 
       for (let i = 0; i < modelIds.length; i++) {
@@ -267,7 +270,7 @@ describe('wa-sqlite integration', () => {
 
   describe('transactions', () => {
     it('should support basic transactions', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
 
       // Drizzle transaction support

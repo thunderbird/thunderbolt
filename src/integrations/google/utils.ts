@@ -1,5 +1,6 @@
 import { refreshAccessToken } from '@/lib/auth'
 import { getSettings, updateSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import type { DraftEmailParams } from './tools'
 
 // =============================================================================
@@ -127,7 +128,8 @@ export const getGoogleCredentials = async (): Promise<{
   refresh_token?: string
   expires_at?: number
 }> => {
-  const settings = await getSettings({ integrations_google_credentials: String })
+  const db = getDb()
+  const settings = await getSettings(db, { integrations_google_credentials: String })
   const credentialsStr = settings.integrationsGoogleCredentials
   if (!credentialsStr) {
     throw new Error('Google integration not connected')
@@ -167,7 +169,8 @@ export const ensureValidGoogleToken = async (credentials: {
     expires_at: Date.now() + newTokens.expires_in * 1000,
   }
 
-  await updateSettings({ integrations_google_credentials: JSON.stringify(updated) })
+  const db = getDb()
+  await updateSettings(db, { integrations_google_credentials: JSON.stringify(updated) })
 
   return updated.access_token
 }

@@ -1,8 +1,11 @@
+import { DatabaseProvider } from '@/contexts/database-context'
+import { getDb, isDbRegistered } from '@/db/database'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createElement } from 'react'
+import type { ReactNode } from 'react'
 import { PowerSyncMockProvider } from './powersync-mock'
+
 /**
- * Creates a test wrapper with React Query client
+ * Creates a test wrapper with React Query client, PowerSync mock, and DatabaseProvider (when available)
  * Useful for testing hooks that use React Query
  */
 export const createQueryTestWrapper = (options?: {
@@ -25,12 +28,16 @@ export const createQueryTestWrapper = (options?: {
     },
   })
 
-  return ({ children }: { children: React.ReactNode }) => {
-    return createElement(
-      PowerSyncMockProvider,
-      null,
-      createElement(QueryClientProvider, { client: queryClient }, children),
+  return ({ children }: { children: ReactNode }) => {
+    const inner = (
+      <PowerSyncMockProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </PowerSyncMockProvider>
     )
+    if (isDbRegistered()) {
+      return <DatabaseProvider db={getDb()}>{inner}</DatabaseProvider>
+    }
+    return inner
   }
 }
 

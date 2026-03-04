@@ -11,6 +11,7 @@ import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { type OAuthProvider } from '@/lib/auth'
+import { useDatabase } from '@/contexts'
 import { updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
@@ -57,6 +58,7 @@ const parseCredentials = (credentialsJson: string): Integration['credentials'] |
 }
 
 export default function IntegrationsPage() {
+  const db = useDatabase()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -172,7 +174,7 @@ export default function IntegrationsPage() {
 
   const handleDisconnect = async (integration: Integration) => {
     try {
-      await updateSettings({
+      await updateSettings(db, {
         [`integrations_${integration.provider}_credentials`]: '',
         [`integrations_${integration.provider}_is_enabled`]: 'false',
       })
@@ -187,7 +189,7 @@ export default function IntegrationsPage() {
         integration.provider === 'thunderbolt-pro'
           ? 'integrations_pro_is_enabled'
           : `integrations_${integration.provider}_is_enabled`
-      await updateSettings({ [settingKey]: enabled.toString() })
+      await updateSettings(db, { [settingKey]: enabled.toString() })
     } catch (err) {
       console.error('Failed to update integration', err)
     }

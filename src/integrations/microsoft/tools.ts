@@ -1,6 +1,7 @@
 // New file with Microsoft Graph tools
 
 import { getSettings, updateSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import ky, { type KyInstance } from 'ky'
@@ -142,7 +143,8 @@ const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_catego
 // ---------------------------------------------------------------------------
 
 const getMicrosoftCredentials = async () => {
-  const settings = await getSettings({ integrations_microsoft_credentials: String })
+  const db = getDb()
+  const settings = await getSettings(db, { integrations_microsoft_credentials: String })
   const credentialsStr = settings.integrationsMicrosoftCredentials
   if (!credentialsStr) {
     throw new Error('Microsoft integration not connected')
@@ -171,7 +173,8 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
       expires_at: Date.now() + newTokens.expires_in * 1000,
     }
 
-    await updateSettings({ integrations_microsoft_credentials: JSON.stringify(updated) })
+    const db = getDb()
+    await updateSettings(db, { integrations_microsoft_credentials: JSON.stringify(updated) })
 
     return newTokens.access_token
   }

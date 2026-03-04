@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, like, sql } from 'drizzle-orm'
-import { DatabaseSingleton } from '../db/singleton'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { tasksTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Task } from '../types'
@@ -7,8 +7,7 @@ import type { Task } from '../types'
 /**
  * Gets all tasks (excluding soft-deleted)
  */
-export const getAllTasks = async (): Promise<Task[]> => {
-  const db = DatabaseSingleton.instance.db
+export const getAllTasks = async (db: AnyDrizzleDatabase): Promise<Task[]> => {
   return (await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt))) as Task[]
 }
 
@@ -18,8 +17,8 @@ const itemNotEmpty = and(isNotNull(tasksTable.item), sql`trim(${tasksTable.item}
  * Returns a Drizzle query for incomplete tasks, optionally filtered by search query (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasks = (searchQuery?: string) =>
-  DatabaseSingleton.instance.db
+export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string) =>
+  db
     .select()
     .from(tasksTable)
     .where(
@@ -39,8 +38,8 @@ export const getIncompleteTasks = (searchQuery?: string) =>
  * Returns a Drizzle query for the count of incomplete tasks (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasksCount = () =>
-  DatabaseSingleton.instance.db
+export const getIncompleteTasksCount = (db: AnyDrizzleDatabase) =>
+  db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)
     .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty))
@@ -48,8 +47,7 @@ export const getIncompleteTasksCount = () =>
 /**
  * Update a task (preserves defaultHash for modification tracking)
  */
-export const updateTask = async (id: string, updates: Partial<Task>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const updateTask = async (db: AnyDrizzleDatabase, id: string, updates: Partial<Task>): Promise<void> => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, ...updateFields } = updates as Partial<Task> & { defaultHash?: string }
   await db.update(tasksTable).set(updateFields).where(eq(tasksTable.id, id))
@@ -60,8 +58,7 @@ export const updateTask = async (id: string, updates: Partial<Task>): Promise<vo
  * Scrubs all data for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteTask = async (id: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteTask = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   await db
     .update(tasksTable)
     .set({ ...clearNullableColumns(tasksTable), deletedAt: nowIso() })
@@ -73,8 +70,7 @@ export const deleteTask = async (id: string): Promise<void> => {
  * Scrubs all data for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteTasks = async (ids: string[]): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteTasks = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
   await db
     .update(tasksTable)
     .set({ ...clearNullableColumns(tasksTable), deletedAt: nowIso() })
@@ -84,7 +80,9 @@ export const deleteTasks = async (ids: string[]): Promise<void> => {
 /**
  * Creates a new task
  */
-export const createTask = async (data: Pick<Task, 'id' | 'item' | 'order' | 'isComplete'>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const createTask = async (
+  db: AnyDrizzleDatabase,
+  data: Pick<Task, 'id' | 'item' | 'order' | 'isComplete'>,
+): Promise<void> => {
   await db.insert(tasksTable).values(data)
 }

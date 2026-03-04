@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
-import { DatabaseSingleton } from '../db/singleton'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
@@ -7,8 +7,8 @@ import { type McpServer } from '@/types'
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
  */
-export const getAllMcpServers = () => {
-  const query = DatabaseSingleton.instance.db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
+export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
+  const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
 
   return query as typeof query & { execute: () => Promise<McpServer[]> }
 }
@@ -16,8 +16,8 @@ export const getAllMcpServers = () => {
 /**
  * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
  */
-export const getHttpMcpServers = () => {
-  const query = DatabaseSingleton.instance.db
+export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
+  const query = db
     .select()
     .from(mcpServersTable)
     .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
@@ -30,8 +30,7 @@ export const getHttpMcpServers = () => {
  * Scrubs all non-enum data for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteMcpServer = async (id: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteMcpServer = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   await db
     .update(mcpServersTable)
     .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
@@ -41,7 +40,9 @@ export const deleteMcpServer = async (id: string): Promise<void> => {
 /**
  * Creates a new MCP server
  */
-export const createMcpServer = async (data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const createMcpServer = async (
+  db: AnyDrizzleDatabase,
+  data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
+): Promise<void> => {
   await db.insert(mcpServersTable).values(data)
 }

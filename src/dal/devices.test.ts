@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { getAllDevices, getDevice } from './devices'
@@ -19,12 +19,12 @@ describe('Devices DAL', () => {
 
   describe('getDevice', () => {
     it('returns null when no device with that id', async () => {
-      const device = await getDevice('non-existent-id').get()
-      expect(device).toBeUndefined()
+      const device = await getDevice(getDb(), 'non-existent-id')
+      expect(device).toBeNull()
     })
 
     it('returns device when it exists', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const deviceId = 'device-1'
       const now = new Date().toISOString()
 
@@ -36,7 +36,7 @@ describe('Devices DAL', () => {
         createdAt: now,
       })
 
-      const device = await getDevice(deviceId).get()
+      const device = await getDevice(getDb(), deviceId)
       expect(device).not.toBeNull()
       expect(device?.id).toBe(deviceId)
       expect(device?.userId).toBe('user-1')
@@ -47,7 +47,7 @@ describe('Devices DAL', () => {
     })
 
     it('returns device with revokedAt when set', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const deviceId = 'device-revoked'
       const now = new Date().toISOString()
       const revokedAt = new Date(Date.now() + 60 * 1000).toISOString()
@@ -61,19 +61,19 @@ describe('Devices DAL', () => {
         revokedAt,
       })
 
-      const device = await getDevice(deviceId).get()
+      const device = await getDevice(getDb(), deviceId)
       expect(device?.revokedAt).toBe(revokedAt)
     })
   })
 
   describe('getAllDevices', () => {
     it('returns empty array when no devices', async () => {
-      const devices = await getAllDevices()
+      const devices = await getAllDevices(getDb())
       expect(devices).toEqual([])
     })
 
     it('returns all devices ordered by lastSeen desc', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const base = new Date()
       const oldTs = new Date(base.getTime() - 200 * 1000).toISOString()
       const newTs = new Date(base.getTime() + 100 * 1000).toISOString()
@@ -103,7 +103,7 @@ describe('Devices DAL', () => {
         },
       ])
 
-      const devices = await getAllDevices()
+      const devices = await getAllDevices(getDb())
       expect(devices).toHaveLength(3)
       expect(devices[0]?.id).toBe('device-new')
       expect(devices[1]?.id).toBe('device-mid')

@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, afterEach, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useIntegrationStatus } from './use-integration-status'
 import { updateSettings } from '@/dal/settings'
@@ -33,7 +34,7 @@ describe('useIntegrationStatus', () => {
 
   describe('No providers connected', () => {
     it('should return both providers as not connected when credentials are empty', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: '',
       })
@@ -60,7 +61,7 @@ describe('useIntegrationStatus', () => {
     })
 
     it('should return both providers as not connected when credentials are null', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: null,
         integrations_microsoft_credentials: null,
       })
@@ -89,7 +90,7 @@ describe('useIntegrationStatus', () => {
 
   describe('Google provider connected', () => {
     it('should return Google as connected when credentials exist', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
         integrations_microsoft_credentials: '',
       })
@@ -118,7 +119,7 @@ describe('useIntegrationStatus', () => {
 
   describe('Microsoft provider connected', () => {
     it('should return Microsoft as connected when credentials exist', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: JSON.stringify({ access_token: 'test_token' }),
       })
@@ -147,7 +148,7 @@ describe('useIntegrationStatus', () => {
 
   describe('Both providers connected', () => {
     it('should return both providers as connected when both credentials exist', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: JSON.stringify({ access_token: 'google_token' }),
         integrations_microsoft_credentials: JSON.stringify({ access_token: 'microsoft_token' }),
       })
@@ -176,7 +177,7 @@ describe('useIntegrationStatus', () => {
 
   describe('Edge cases', () => {
     it('should treat empty string as not connected', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: '',
       })
@@ -196,7 +197,7 @@ describe('useIntegrationStatus', () => {
     })
 
     it('should correctly identify connection status for different credential states', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: '',
       })
@@ -213,7 +214,7 @@ describe('useIntegrationStatus', () => {
       expect(result1.current.data?.googleConnected).toBe(false)
       expect(result1.current.data?.microsoftConnected).toBe(false)
 
-      await updateSettings({ integrations_google_credentials: JSON.stringify({ access_token: 'new_token' }) })
+      await updateSettings(getDb(), { integrations_google_credentials: JSON.stringify({ access_token: 'new_token' }) })
 
       const { result: result2 } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
@@ -229,7 +230,7 @@ describe('useIntegrationStatus', () => {
     })
 
     it('should return data structure with correct types', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
         integrations_microsoft_credentials: JSON.stringify({ access_token: 'test_token' }),
       })
@@ -263,7 +264,7 @@ describe('useIntegrationStatus', () => {
     })
 
     it('should handle query completion successfully', async () => {
-      await updateSettings({
+      await updateSettings(getDb(), {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: '',
       })

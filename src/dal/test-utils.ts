@@ -1,5 +1,5 @@
 import { applySchema } from '@/db/apply-schema'
-import { DatabaseSingleton } from '@/db/singleton'
+import { Database, resetDatabase, setDatabase } from '@/db/database'
 import { reconcileDefaults } from '../lib/reconcile-defaults'
 
 /**
@@ -15,14 +15,16 @@ import { reconcileDefaults } from '../lib/reconcile-defaults'
  * ```
  */
 export const setupTestDatabase = async () => {
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-  const db = DatabaseSingleton.instance.db
+  const database = new Database()
+  await database.initialize({ type: 'bun-sqlite', path: ':memory:' })
+  setDatabase(database)
+  const db = database.db
   await applySchema(db)
   await reconcileDefaults(db)
 }
 
 /**
- * Tears down the test database and resets the singleton.
+ * Tears down the test database and resets the instance.
  * Should be called in afterAll() to clean up between test files.
  *
  * Usage:
@@ -33,7 +35,7 @@ export const setupTestDatabase = async () => {
  * ```
  */
 export const teardownTestDatabase = async () => {
-  await DatabaseSingleton.reset()
+  await resetDatabase()
 }
 
 /**
@@ -52,7 +54,9 @@ export const teardownTestDatabase = async () => {
  */
 export const resetTestDatabase = async () => {
   await teardownTestDatabase()
-  await DatabaseSingleton.instance.initialize({ type: 'bun-sqlite', path: ':memory:' })
-  const db = DatabaseSingleton.instance.db
+  const database = new Database()
+  await database.initialize({ type: 'bun-sqlite', path: ':memory:' })
+  setDatabase(database)
+  const db = database.db
   await applySchema(db)
 }

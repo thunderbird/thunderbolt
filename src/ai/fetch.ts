@@ -9,6 +9,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getModel, getModelProfile, getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -60,7 +61,8 @@ type AiFetchStreamingResponseOptions = {
 export const createModel = async (modelConfig: Model) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
@@ -137,8 +139,10 @@ export const aiFetchStreamingResponse = async ({
 
   await saveMessages({ id, messages })
 
+  const db = getDb()
+
   // Fetch all settings in a single query (returns camelCase by default)
-  const settings = await getSettings({
+  const settings = await getSettings(db, {
     preferred_name: '',
     location_name: '',
     location_lat: '',
@@ -155,13 +159,13 @@ export const aiFetchStreamingResponse = async ({
     integrations_microsoft_is_enabled: false,
   })
 
-  const model = await getModel(modelId)
+  const model = await getModel(db, modelId)
 
   if (!model) {
     throw new Error('Model not found')
   }
 
-  const profile = await getModelProfile(modelId)
+  const profile = await getModelProfile(db, modelId)
 
   const supportsTools = model.toolUsage !== 0
 

@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { defaultSettings } from '@/defaults/settings'
 import { isSettingModified } from '@/defaults/utils'
 import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal'
@@ -157,13 +158,14 @@ export function useSettings<T extends SettingSchema>(
   schema: T,
   options: { camelCase?: boolean } = {},
 ): UseSettingsSchemaResult<T, boolean> {
+  const db = useDatabase()
   const { camelCase = true } = options
 
   const keys = Object.keys(schema)
 
   const query = useQuery({
     queryKey: ['settings', ...keys],
-    query: toCompilableQuery(getSettingsRecords(keys)),
+    query: toCompilableQuery(getSettingsRecords(db, keys)),
     placeholderData: (previousData) => previousData,
   })
 
@@ -174,9 +176,9 @@ export function useSettings<T extends SettingSchema>(
       options,
     }: {
       key: string
-      value: any
+      value: string | number | boolean | null
       options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
-    }) => updateSettings({ [key]: value }, options),
+    }) => updateSettings(db, { [key]: value }, options),
   })
 
   const resetMutation = useMutation({
@@ -185,7 +187,7 @@ export function useSettings<T extends SettingSchema>(
       if (!defaultSetting) {
         throw new Error(`No default setting found for key: ${key}`)
       }
-      await resetSettingToDefault(key, defaultSetting)
+      await resetSettingToDefault(db, key, defaultSetting)
     },
   })
 

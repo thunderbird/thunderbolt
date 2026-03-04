@@ -1,4 +1,5 @@
 import { getSettings, updateSettings, deleteSetting } from '@/dal'
+import { getDb } from '@/db/database'
 import type { OAuthProvider } from './auth'
 
 /**
@@ -15,7 +16,8 @@ type OAuthState = {
  * Gets all OAuth state from sqlite settings
  */
 export const getOAuthState = async (): Promise<OAuthState> => {
-  const settings = await getSettings({
+  const db = getDb()
+  const settings = await getSettings(db, {
     oauth_state: String,
     oauth_provider: String,
     oauth_verifier: String,
@@ -50,7 +52,8 @@ export const setOAuthState = async (state: Partial<OAuthState>): Promise<void> =
   }
 
   if (Object.keys(settings).length > 0) {
-    await updateSettings(settings)
+    const db = getDb()
+    await updateSettings(db, settings)
   }
 }
 
@@ -58,10 +61,11 @@ export const setOAuthState = async (state: Partial<OAuthState>): Promise<void> =
  * Clears OAuth state from sqlite settings
  */
 export const clearOAuthState = async (): Promise<void> => {
+  const db = getDb()
   await Promise.all([
-    deleteSetting('oauth_state'),
-    deleteSetting('oauth_provider'),
-    deleteSetting('oauth_verifier'),
-    deleteSetting('oauth_return_context'),
+    deleteSetting(db, 'oauth_state'),
+    deleteSetting(db, 'oauth_provider'),
+    deleteSetting(db, 'oauth_verifier'),
+    deleteSetting(db, 'oauth_return_context'),
   ])
 }

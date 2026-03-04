@@ -1,4 +1,5 @@
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
 import { memoize } from '@/lib/memoize'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
@@ -7,7 +8,8 @@ import ky from 'ky'
 import type { MicrosoftUserInfo } from './types'
 
 const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> => {
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky.get(`${cloudUrl}/auth/microsoft/config`).json<AuthProviderBackendConfig>()
 })
 
@@ -42,7 +44,8 @@ export const exchangeCodeForTokens = async (
   redirectUri?: string,
 ): Promise<OAuthTokens> => {
   const config = await getOAuthConfig()
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky
     .post(`${cloudUrl}/auth/microsoft/exchange`, {
       json: { code, code_verifier: codeVerifier, redirect_uri: redirectUri ?? config.redirectUri },
@@ -69,7 +72,8 @@ export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInf
 }
 
 export const refreshAccessToken = async (refreshToken: string): Promise<OAuthTokens> => {
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky
     .post(`${cloudUrl}/auth/microsoft/refresh`, { json: { refresh_token: refreshToken } })
     .json<OAuthTokens>()

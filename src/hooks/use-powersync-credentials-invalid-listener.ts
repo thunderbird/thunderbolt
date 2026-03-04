@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
@@ -45,17 +46,18 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  * the account is deleted, sync wipes the DB so settings/cloudUrl disappear, AuthProvider
  * returns null and never renders children. If the listener lived under those children, it
  * would never run. By running it inside AuthProvider before the `if (!value) return null`,
- * the listener stays active and can trigger reset even when the rest of the app doesn’t
+ * the listener stays active and can trigger reset even when the rest of the app doesn't
  * render.
  */
 export const usePowerSyncCredentialsInvalidListener = (): void => {
+  const db = useDatabase()
   const hasTriggeredRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
   const { data = [], isFetched } = useQuery({
     queryKey: ['devices', deviceId],
-    query: toCompilableQuery(getDevice(deviceId)),
+    query: toCompilableQuery(getDevice(db, deviceId)),
   })
 
   const device = data[0] ?? null

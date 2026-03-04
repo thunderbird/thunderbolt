@@ -1,4 +1,5 @@
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { isTauri } from '@/lib/platform'
 
 /**
@@ -12,7 +13,8 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
     return globalThis.fetch(input, init)
   }
 
-  const { isNativeFetchEnabled } = await getSettings({ is_native_fetch_enabled: false })
+  const db = getDb()
+  const { isNativeFetchEnabled } = await getSettings(db, { is_native_fetch_enabled: false })
 
   if (isNativeFetchEnabled) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')

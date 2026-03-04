@@ -1,6 +1,5 @@
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { DatabaseSingleton } from '../db/singleton'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
@@ -10,8 +9,7 @@ import { getModel } from './models'
  * Checks if a chat thread ID exists as a soft-deleted record.
  * Used to detect when a user visits a URL for a deleted chat.
  */
-export const isChatThreadDeleted = async (id: string): Promise<boolean> => {
-  const db = DatabaseSingleton.instance.db
+export const isChatThreadDeleted = async (db: AnyDrizzleDatabase, id: string): Promise<boolean> => {
   const thread = await db
     .select({ id: chatThreadsTable.id })
     .from(chatThreadsTable)
@@ -23,8 +21,8 @@ export const isChatThreadDeleted = async (id: string): Promise<boolean> => {
 /**
  * Gets all chat threads ordered by creation date (excluding soft-deleted)
  */
-export const getAllChatThreads = () => {
-  const query = DatabaseSingleton.instance.db
+export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
+  const query = db
     .select()
     .from(chatThreadsTable)
     .where(isNull(chatThreadsTable.deletedAt))
@@ -36,8 +34,7 @@ export const getAllChatThreads = () => {
 /**
  * Gets a specific chat thread by ID (excluding soft-deleted)
  */
-export const getChatThread = async (id: string): Promise<ChatThread | null> => {
-  const db = DatabaseSingleton.instance.db
+export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<ChatThread | null> => {
   const thread = await db
     .select()
     .from(chatThreadsTable)
@@ -49,45 +46,47 @@ export const getChatThread = async (id: string): Promise<ChatThread | null> => {
 /**
  * Create a new chat thread
  * @param model - Resolved model (caller must fetch via getModel);
- * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
  */
 export const createChatThread = async (
+  db: AnyDrizzleDatabase,
   data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>,
   model: Model,
-  db?: AnyDrizzleDatabase,
 ): Promise<void> => {
-  const database = db ?? DatabaseSingleton.instance.db
-  await database.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
+  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
 }
 
 /**
- * @param db - Optional database/transaction to use (e.g. when batching within a PowerSync transaction)
+ * Update a chat thread
  */
 export const updateChatThread = async (
+  db: AnyDrizzleDatabase,
   id: string,
   data: Partial<Pick<ChatThread, 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
-  db?: AnyDrizzleDatabase,
 ): Promise<void> => {
-  const database = db ?? DatabaseSingleton.instance.db
-  await database.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
+  await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
 }
 
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID
  */
-export const getOrCreateChatThread = async (id: string, modelId: string): Promise<ChatThread> => {
-  const thread = await getChatThread(id)
+export const getOrCreateChatThread = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  modelId: string,
+): Promise<ChatThread> => {
+  const thread = await getChatThread(db, id)
 
   if (thread?.id) {
     return thread
   }
 
-  const model = await getModel(modelId)
+  const model = await getModel(db, modelId)
   if (!model) {
     throw new Error('No model found')
   }
 
   await createChatThread(
+    db,
     {
       id,
       title: 'New Chat',
@@ -98,7 +97,7 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
     model,
   )
 
-  return (await getChatThread(id))! // We know the thread exists because we just created it
+  return (await getChatThread(db, id))! // We know the thread exists because we just created it
 }
 
 /**
@@ -106,8 +105,8 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
  * @param threadId - The ID of the chat thread
  * @returns The context size in tokens, or null if not found/not known
  */
-export const getContextSizeForThread = (threadId: string) => {
-  return DatabaseSingleton.instance.db
+export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string) => {
+  return db
     .select({ contextSize: chatThreadsTable.contextSize })
     .from(chatThreadsTable)
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
@@ -118,8 +117,7 @@ export const getContextSizeForThread = (threadId: string) => {
  * Also soft-deletes all associated messages that haven't been deleted yet
  * Scrubs all nullable columns for privacy
  */
-export const deleteChatThread = async (id: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const deletedAt = nowIso()
   await db.transaction(async (tx) => {
     await tx
@@ -139,8 +137,7 @@ export const deleteChatThread = async (id: string): Promise<void> => {
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteAllChatThreads = async (): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
+export const deleteAllChatThreads = async (db: AnyDrizzleDatabase): Promise<void> => {
   const deletedAt = nowIso()
   await db.transaction(async (tx) => {
     await tx

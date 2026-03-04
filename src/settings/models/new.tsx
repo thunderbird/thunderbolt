@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useDatabase } from '@/contexts'
 import { createModel } from '@/dal'
 import type { Model } from '@/types'
 
@@ -50,12 +51,13 @@ const formSchema = z
   )
 
 export default function NewModelPage() {
+  const db = useDatabase()
   const navigate = useNavigate()
 
   const createModelMutation = useMutation({
     mutationFn: async (model: Omit<Model, 'id'>) => {
       const id = uuidv7()
-      await createModel({
+      await createModel(db, {
         id,
         ...model,
       })

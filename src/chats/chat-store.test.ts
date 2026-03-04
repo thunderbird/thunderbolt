@@ -1,5 +1,6 @@
 import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import type { Mode } from '@/types'
 import {
   createMockAutomationRun,
@@ -271,7 +272,7 @@ describe('chat-store', () => {
       expect(session?.selectedModel?.id).toBe('model-2')
 
       // Verify updateSettings was called by checking the database
-      const settings = await getSettings({ selected_model: String })
+      const settings = await getSettings(getDb(), { selected_model: String })
       expect(settings.selectedModel).toBe('model-2')
     })
 
@@ -291,7 +292,7 @@ describe('chat-store', () => {
       await useChatStore.getState().setSelectedModel('test-id', 'custom-model-id')
 
       // Verify updateSettings was called by checking the database
-      const settings = await getSettings({ selected_model: String })
+      const settings = await getSettings(getDb(), { selected_model: String })
       expect(settings.selectedModel).toBe('custom-model-id')
     })
 

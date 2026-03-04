@@ -2,6 +2,7 @@ import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dial
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { useDatabase } from '@/contexts'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -19,6 +20,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
  * Main sidebar component that orchestrates between chat and settings sidebars
  */
 export default function Sidebar() {
+  const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
   const { setOpenMobile, state, toggleSidebar } = useSidebar()
@@ -61,7 +63,7 @@ export default function Sidebar() {
 
   const { data, isPending } = useQuery({
     queryKey: ['chatThreads'],
-    query: toCompilableQuery(getAllChatThreads()),
+    query: toCompilableQuery(getAllChatThreads(db)),
     placeholderData: (previousData) => previousData,
   })
 
@@ -75,7 +77,7 @@ export default function Sidebar() {
 
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
-      await deleteChatThread(id)
+      await deleteChatThread(db, id)
     },
     onSuccess: async () => {
       const deletedChatId = threadIdRef.current
@@ -91,7 +93,7 @@ export default function Sidebar() {
 
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
-      await deleteAllChatThreads()
+      await deleteAllChatThreads(db)
     },
     onSuccess: async () => {
       trackEvent('chat_clear_all')

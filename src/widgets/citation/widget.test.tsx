@@ -6,6 +6,14 @@ import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationWidgetComponent } from './widget'
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
 const renderWithProviders = (ui: React.ReactElement) => {
   const TestProvider = createTestProvider()
   return render(ui, {

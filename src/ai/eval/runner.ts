@@ -3,6 +3,7 @@ import { createPrompt } from '@/ai/prompt'
 import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
+import { getDb } from '@/db/database'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { getModelId } from './scenarios'
@@ -23,9 +24,10 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
     return
   }
 
+  const db = getDb()
   const modelId = getModelId(scenario.modelName)
-  const [model, profile] = await Promise.all([getModel(modelId), getModelProfile(modelId)])
-  const settings = await getSettings({
+  const [model, profile] = await Promise.all([getModel(db, modelId), getModelProfile(db, modelId)])
+  const settings = await getSettings(db, {
     preferred_name: '',
     location_name: '',
     location_lat: '',

@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDatabase } from '@/contexts'
 import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
@@ -243,6 +244,8 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
 
 // Main Tasks Page Component
 export default function TasksPage() {
+  const db = useDatabase()
+
   // State
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set())
@@ -276,7 +279,7 @@ export default function TasksPage() {
     isPlaceholderData,
   } = useQuery({
     queryKey: ['tasks', debouncedSearchQuery],
-    query: toCompilableQuery(getIncompleteTasks(debouncedSearchQuery)) as CompilableQuery<Task>,
+    query: toCompilableQuery(getIncompleteTasks(db, debouncedSearchQuery)) as CompilableQuery<Task>,
     placeholderData: (previousData) => previousData,
   })
 
@@ -302,7 +305,7 @@ export default function TasksPage() {
   // Count total tasks (query returns [{ count }])
   const { data: countResult } = useQuery({
     queryKey: ['tasks', 'count'],
-    query: toCompilableQuery(getIncompleteTasksCount()),
+    query: toCompilableQuery(getIncompleteTasksCount(db)),
   })
   const totalCount = countResult?.[0]?.count ?? 0
 
@@ -311,7 +314,7 @@ export default function TasksPage() {
     mutationFn: async (item: string) => {
       const order = tasks.length > 0 ? Math.min(...tasks.map((t) => t.order)) - 100 : 1000
 
-      await createTask({
+      await createTask(db, {
         id: uuidv7(),
         item,
         order,
@@ -325,7 +328,7 @@ export default function TasksPage() {
 
   const updateTaskMutation = useMutation({
     mutationFn: async ({ id, item }: { id: string; item: string }) => {
-      await updateTask(id, { item })
+      await updateTask(db, id, { item })
     },
     onSuccess: (_, values) => {
       trackEvent('task_update_text', { task_id: values.id, new_length: values.item.length })
@@ -333,12 +336,12 @@ export default function TasksPage() {
   })
 
   const deleteTaskMutation = useMutation({
-    mutationFn: deleteTask,
+    mutationFn: (id: string) => deleteTask(db, id),
   })
 
   const updateOrderMutation = useMutation({
     mutationFn: async (updates: { id: string; order: number }[]) => {
-      await Promise.all(updates.map(({ id, order }) => updateTask(id, { order })))
+      await Promise.all(updates.map(({ id, order }) => updateTask(db, id, { order })))
     },
     onSuccess: (_, updates) => {
       trackEvent('task_reorder', {
@@ -350,7 +353,7 @@ export default function TasksPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await updateTask(id, { isComplete: 1 })
+      await updateTask(db, id, { isComplete: 1 })
     },
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })

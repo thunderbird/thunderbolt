@@ -1,4 +1,5 @@
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/widgets/weather-forecast'
 import ky, { type KyInstance } from 'ky'
 import type {
@@ -21,7 +22,8 @@ type HttpClient = Pick<KyInstance, 'get' | 'post'>
  */
 export const search = async (params: SearchParams, httpClient: HttpClient = ky): Promise<SearchResultData[]> => {
   try {
-    const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+    const db = getDb()
+    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .post(`${cloudUrl}/pro/search`, {
         timeout: requestTimeout,
@@ -50,7 +52,8 @@ export const fetchContent = async (
   httpClient: HttpClient = ky,
 ): Promise<FetchContentData> => {
   try {
-    const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+    const db = getDb()
+    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .post(`${cloudUrl}/pro/fetch-content`, {
         timeout: requestTimeout,
@@ -80,7 +83,8 @@ export const fetchLinkPreview = async (
   httpClient: HttpClient = ky,
 ): Promise<LinkPreviewData> => {
   try {
-    const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+    const db = getDb()
+    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`, {
         timeout: requestTimeout,
@@ -102,7 +106,8 @@ export const fetchLinkPreview = async (
  */
 export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpClient = ky): Promise<string> => {
   try {
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
+    const db = getDb()
+    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
       temperature_unit: 'f',
       distance_unit: 'imperial',
@@ -140,7 +145,8 @@ export const getWeatherForecast = async (
   httpClient: HttpClient = ky,
 ): Promise<WeatherForecastData> => {
   try {
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
+    const db = getDb()
+    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
       temperature_unit: 'f',
       distance_unit: 'imperial',
@@ -177,7 +183,8 @@ export const getWeatherForecast = async (
  */
 export const searchLocations = async (params: SearchLocationParams, httpClient: HttpClient = ky): Promise<string> => {
   try {
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings({
+    const db = getDb()
+    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
       temperature_unit: 'f',
       distance_unit: 'imperial',

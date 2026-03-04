@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { oauthRetryEvent, getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useEffect, useRef } from 'react'
@@ -126,6 +127,7 @@ const waitForMessageInChat = async (
  * by sending a new message with the original text and triggering a response.
  */
 export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
+  const db = useDatabase()
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
   const { chatInstance, chatThreadId } = useChatStore(
@@ -199,7 +201,7 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
         })
 
         try {
-          await updateMessageCache(widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
+          await updateMessageCache(db, widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
           queryClient.invalidateQueries({
             queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget'],
           })

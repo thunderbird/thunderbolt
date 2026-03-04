@@ -1,7 +1,7 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
+import { Database, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { DatabaseSingleton } from '@/db/singleton'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
@@ -21,14 +21,14 @@ const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
 }
 
-const initializeDatabase = async (appDirPath: string): Promise<AnyDrizzleDatabase> => {
+const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleDatabase; database: Database }> => {
   const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(databaseType, appDirPath)
 
-  return await DatabaseSingleton.instance.initialize({
-    type: databaseType,
-    path: dbPath,
-  })
+  const database = new Database()
+  const db = await database.initialize({ type: databaseType, path: dbPath })
+  setDatabase(database)
+  return { db, database }
 }
 
 const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
@@ -61,8 +61,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
+  let database: Database
   try {
-    db = await initializeDatabase(appDirPath)
+    const result = await initializeDatabase(appDirPath)
+    db = result.db
+    database = result.database
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
@@ -76,7 +79,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 3: Wait for PowerSync initial sync before reconciling defaults
   // This ensures synced data from the cloud is available before we check for missing defaults
   try {
-    await DatabaseSingleton.instance.waitForInitialSync()
+    await database.waitForInitialSync()
   } catch (error) {
     // Non-critical - log and continue
     console.warn('Failed to wait for initial sync:', error)
@@ -102,7 +105,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     client = httpClient
   } else {
     try {
-      const { cloudUrl } = await getSettings({
+      const { cloudUrl } = await getSettings(db, {
         cloud_url: 'http://localhost:8000/v1',
       })
       client = ky.create({ prefixUrl: cloudUrl })
@@ -139,13 +142,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
 
   // Step 8: Get experimental feature tasks
-  const { experimentalFeatureTasks } = await getSettings({
+  const { experimentalFeatureTasks } = await getSettings(db, {
     experimental_feature_tasks: false,
   })
 
   return {
     success: true,
     data: {
+      db,
       experimentalFeatureTasks,
       sideviewType,
       sideviewId,

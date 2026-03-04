@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { getMessage, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery } from '@tanstack/react-query'
 
@@ -31,13 +32,14 @@ type UseMessageCacheOptions<T> = {
  * ```
  */
 export const useMessageCache = <T>({ messageId, cacheKey, fetchFn, enabled = true }: UseMessageCacheOptions<T>) => {
+  const db = useDatabase()
   const storageKey = cacheKey.join('/')
 
   return useQuery({
     queryKey: ['messageCache', messageId, ...cacheKey],
     queryFn: async () => {
       // 1. Check DB for cached data
-      const message = await getMessage(messageId)
+      const message = await getMessage(db, messageId)
 
       if (!message) {
         throw new Error(`Message ${messageId} not found`)
@@ -53,7 +55,7 @@ export const useMessageCache = <T>({ messageId, cacheKey, fetchFn, enabled = tru
 
       // 3. Not cached - fetch and update DB
       const fetched = await fetchFn()
-      await updateMessageCache(messageId, storageKey, fetched)
+      await updateMessageCache(db, messageId, storageKey, fetched)
 
       return fetched
     },

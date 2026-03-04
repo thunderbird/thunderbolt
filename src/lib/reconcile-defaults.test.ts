@@ -1,8 +1,8 @@
 import { getAllModels } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import { DatabaseSingleton } from '../db/singleton'
 import { modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
@@ -25,7 +25,7 @@ afterAll(async () => {
 
 describe('seedModels', () => {
   test('inserts new defaults on first run', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     const models = (await db.select().from(modelsTable)) as Model[]
@@ -41,7 +41,7 @@ describe('seedModels', () => {
   })
 
   test('updates unmodified rows on re-seed', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     // First seed
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
@@ -60,7 +60,7 @@ describe('seedModels', () => {
   })
 
   test('preserves user modifications', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     // First seed
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
@@ -79,7 +79,7 @@ describe('seedModels', () => {
   })
 
   test('handles mixed scenarios correctly', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Scenario 1: User modifies model 0
@@ -108,24 +108,24 @@ describe('seedModels', () => {
   })
 
   test('soft-deleted models do not appear in getAllModels', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
 
     // Get all models before deletion
-    const modelsBefore = await getAllModels()
+    const modelsBefore = await getAllModels(getDb())
     expect(modelsBefore.length).toBe(defaultModels.length)
 
     // Soft delete a model
     await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[0].id))
 
     // Get all models after deletion - should not include soft-deleted model
-    const modelsAfter = await getAllModels()
+    const modelsAfter = await getAllModels(getDb())
     expect(modelsAfter.length).toBe(defaultModels.length - 1)
     expect(modelsAfter.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
 
     // Re-seed should not restore the deleted model
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
-    const modelsAfterReseed = await getAllModels()
+    const modelsAfterReseed = await getAllModels(getDb())
     expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
     expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
   })
@@ -133,7 +133,7 @@ describe('seedModels', () => {
 
 describe('seedPrompts', () => {
   test('inserts new defaults on first run', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     // Need models for FK constraint
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
     await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
@@ -151,7 +151,7 @@ describe('seedPrompts', () => {
   })
 
   test('updates unmodified prompts on re-seed', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
     await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
@@ -174,7 +174,7 @@ describe('seedPrompts', () => {
   })
 
   test('preserves user modifications', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
     await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
 
@@ -195,7 +195,7 @@ describe('seedPrompts', () => {
 
 describe('reconcileDefaultsForTable', () => {
   test('inserts new defaults on first run', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     const settings = await db.select().from(settingsTable)
@@ -212,7 +212,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('updates unmodified settings on re-seed', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Get an unmodified setting
@@ -234,7 +234,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('preserves user modifications', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // User modifies a setting
@@ -255,7 +255,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('handles mixed scenarios correctly', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
 
     // Scenario 1: User modifies setting 0
@@ -278,7 +278,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('adds defaultHash to settings that lack it', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     // Create a setting without defaultHash (simulates old data or manual creation)
     await db.insert(settingsTable).values({
@@ -309,7 +309,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('preserves user values set via recomputeHash when code default is null', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     // Use a unique test key to avoid conflicts with defaultSettings
     const testKey = 'test_localization_setting'
@@ -357,7 +357,7 @@ describe('reconcileDefaultsForTable', () => {
   })
 
   test('still updates when both existing and default values are null', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     // Setting with null value and matching hash
     const nullSetting = {

@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { resetDatabase } from '@/db/database'
 import { getDatabasePath, getDatabaseType, isOpfsAvailable, isTauri } from './platform'
 
 // Only import Tauri APIs when in Tauri environment
@@ -88,7 +88,7 @@ const resetAppDirOpfs = async (): Promise<void> => {
  */
 export const resetAppDir = async (): Promise<void> => {
   // Must await for PowerSync to properly call disconnectAndClear()
-  await DatabaseSingleton.reset()
+  await resetDatabase()
 
   const appDataDirPath = await createAppDir()
   const databaseType = await getDatabaseType()

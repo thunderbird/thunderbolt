@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
 import { useQuery } from '@tanstack/react-query'
 
@@ -15,10 +16,12 @@ export const useIntegrationStatus = (): {
   isLoading: boolean
   error: Error | null
 } => {
+  const db = useDatabase()
+
   const query = useQuery({
     queryKey: ['integrationStatus'],
     queryFn: async (): Promise<IntegrationStatus> => {
-      const { integrationsGoogleCredentials, integrationsMicrosoftCredentials } = await getSettings({
+      const { integrationsGoogleCredentials, integrationsMicrosoftCredentials } = await getSettings(db, {
         integrations_google_credentials: '',
         integrations_microsoft_credentials: '',
       })

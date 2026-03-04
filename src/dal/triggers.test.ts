@@ -1,4 +1,4 @@
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { modelsTable, promptsTable, triggersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq, inArray } from 'drizzle-orm'
@@ -27,12 +27,12 @@ describe('Triggers DAL', () => {
 
   describe('getAllTriggersForPrompt', () => {
     it('should return empty array when no triggers exist for prompt', async () => {
-      const triggers = await getAllTriggersForPrompt('non-existent-prompt-id')
+      const triggers = await getAllTriggersForPrompt(getDb(), 'non-existent-prompt-id')
       expect(triggers).toHaveLength(0)
     })
 
     it('should return all triggers for a prompt', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId1 = uuidv7()
@@ -58,13 +58,13 @@ describe('Triggers DAL', () => {
         { id: triggerId2, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
       ])
 
-      const triggers = await getAllTriggersForPrompt(promptId)
+      const triggers = await getAllTriggersForPrompt(getDb(), promptId)
       expect(triggers).toHaveLength(2)
       expect(triggers.map((t) => t.id).sort()).toEqual([triggerId1, triggerId2].sort())
     })
 
     it('should only return triggers for the specified prompt', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -89,8 +89,8 @@ describe('Triggers DAL', () => {
         { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '11:00', isEnabled: 1 },
       ])
 
-      const triggersForPrompt1 = await getAllTriggersForPrompt(promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(promptId2)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
 
       expect(triggersForPrompt1).toHaveLength(2)
       expect(triggersForPrompt2).toHaveLength(1)
@@ -99,12 +99,12 @@ describe('Triggers DAL', () => {
 
   describe('getAllEnabledTriggers', () => {
     it('should return empty array when no triggers exist', async () => {
-      const triggers = await getAllEnabledTriggers()
+      const triggers = await getAllEnabledTriggers(getDb())
       expect(triggers).toHaveLength(0)
     })
 
     it('should return only enabled triggers', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const enabledTriggerId = uuidv7()
@@ -130,13 +130,13 @@ describe('Triggers DAL', () => {
         { id: disabledTriggerId, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
       ])
 
-      const triggers = await getAllEnabledTriggers()
+      const triggers = await getAllEnabledTriggers(getDb())
       expect(triggers).toHaveLength(1)
       expect(triggers[0]?.id).toBe(enabledTriggerId)
     })
 
     it('should return enabled triggers from multiple prompts', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -162,13 +162,13 @@ describe('Triggers DAL', () => {
         { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '12:00', isEnabled: 1 },
       ])
 
-      const triggers = await getAllEnabledTriggers()
+      const triggers = await getAllEnabledTriggers(getDb())
       expect(triggers).toHaveLength(3)
       expect(triggers.every((t) => t.isEnabled === 1)).toBe(true)
     })
 
     it('should return empty array when all triggers are disabled', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
 
@@ -192,14 +192,14 @@ describe('Triggers DAL', () => {
         { id: uuidv7(), promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
       ])
 
-      const triggers = await getAllEnabledTriggers()
+      const triggers = await getAllEnabledTriggers(getDb())
       expect(triggers).toHaveLength(0)
     })
   })
 
   describe('deleteTriggersForPrompt', () => {
     it('should soft delete all triggers for a prompt (set deletedAt)', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId1 = uuidv7()
@@ -240,13 +240,13 @@ describe('Triggers DAL', () => {
       ])
 
       // Verify triggers exist via DAL method
-      const triggersBefore = await getAllTriggersForPrompt(promptId)
+      const triggersBefore = await getAllTriggersForPrompt(getDb(), promptId)
       expect(triggersBefore).toHaveLength(2)
 
-      await deleteTriggersForPrompt(promptId)
+      await deleteTriggersForPrompt(getDb(), promptId)
 
       // Verify triggers are soft deleted (not returned by DAL)
-      const triggersAfter = await getAllTriggersForPrompt(promptId)
+      const triggersAfter = await getAllTriggersForPrompt(getDb(), promptId)
       expect(triggersAfter).toHaveLength(0)
 
       // Should still exist in database with deletedAt set (select by id; promptId is cleared by soft delete)
@@ -259,7 +259,7 @@ describe('Triggers DAL', () => {
     })
 
     it('should only soft delete triggers for the specified prompt', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -299,11 +299,11 @@ describe('Triggers DAL', () => {
         },
       ])
 
-      await deleteTriggersForPrompt(promptId1)
+      await deleteTriggersForPrompt(getDb(), promptId1)
 
       // Verify only triggers for promptId1 are soft deleted
-      const triggersForPrompt1 = await getAllTriggersForPrompt(promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(promptId2)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
 
       expect(triggersForPrompt1).toHaveLength(0)
       expect(triggersForPrompt2).toHaveLength(1)
@@ -315,11 +315,11 @@ describe('Triggers DAL', () => {
     })
 
     it('should not throw when no triggers exist for prompt', async () => {
-      await expect(deleteTriggersForPrompt('non-existent-prompt-id')).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompt(getDb(), 'non-existent-prompt-id')).resolves.toBeUndefined()
     })
 
     it('should handle prompt with no triggers', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
 
@@ -340,11 +340,11 @@ describe('Triggers DAL', () => {
       })
 
       // Should not throw
-      await expect(deleteTriggersForPrompt(promptId)).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompt(getDb(), promptId)).resolves.toBeUndefined()
     })
 
     it('should not return soft-deleted triggers via getAllEnabledTriggers', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId = uuidv7()
@@ -373,18 +373,18 @@ describe('Triggers DAL', () => {
       })
 
       // Verify trigger exists in enabled triggers
-      const enabledBefore = await getAllEnabledTriggers()
+      const enabledBefore = await getAllEnabledTriggers(getDb())
       expect(enabledBefore).toHaveLength(1)
 
-      await deleteTriggersForPrompt(promptId)
+      await deleteTriggersForPrompt(getDb(), promptId)
 
       // Verify trigger is not returned after soft deletion
-      const enabledAfter = await getAllEnabledTriggers()
+      const enabledAfter = await getAllEnabledTriggers(getDb())
       expect(enabledAfter).toHaveLength(0)
     })
 
     it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId1 = uuidv7()
@@ -426,7 +426,7 @@ describe('Triggers DAL', () => {
         },
       ])
 
-      await deleteTriggersForPrompt(promptId)
+      await deleteTriggersForPrompt(getDb(), promptId)
 
       // Verify original deletedAt is preserved for already-deleted trigger
       const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
@@ -441,7 +441,7 @@ describe('Triggers DAL', () => {
 
   describe('deleteTriggersForPrompts', () => {
     it('should soft delete triggers for multiple prompts in a single query', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -470,12 +470,12 @@ describe('Triggers DAL', () => {
       ])
 
       // Delete triggers for prompts 1 and 2 only
-      await deleteTriggersForPrompts([promptId1, promptId2])
+      await deleteTriggersForPrompts(getDb(), [promptId1, promptId2])
 
       // Verify triggers for prompts 1 and 2 are soft-deleted
-      const triggersForPrompt1 = await getAllTriggersForPrompt(promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(promptId2)
-      const triggersForPrompt3 = await getAllTriggersForPrompt(promptId3)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
+      const triggersForPrompt3 = await getAllTriggersForPrompt(getDb(), promptId3)
 
       expect(triggersForPrompt1).toHaveLength(0)
       expect(triggersForPrompt2).toHaveLength(0)
@@ -491,15 +491,15 @@ describe('Triggers DAL', () => {
     })
 
     it('should handle empty array without errors', async () => {
-      await expect(deleteTriggersForPrompts([])).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompts(getDb(), [])).resolves.toBeUndefined()
     })
 
     it('should handle non-existent prompt IDs without errors', async () => {
-      await expect(deleteTriggersForPrompts(['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompts(getDb(), ['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
     })
 
     it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId1 = uuidv7()
       const promptId2 = uuidv7()
@@ -540,7 +540,7 @@ describe('Triggers DAL', () => {
         },
       ])
 
-      await deleteTriggersForPrompts([promptId1, promptId2])
+      await deleteTriggersForPrompts(getDb(), [promptId1, promptId2])
 
       // Verify original deletedAt is preserved for already-deleted trigger
       const rawTriggers = await db.select().from(triggersTable)
@@ -555,7 +555,7 @@ describe('Triggers DAL', () => {
 
   describe('createTrigger', () => {
     it('should create a new trigger', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId = uuidv7()
@@ -575,7 +575,7 @@ describe('Triggers DAL', () => {
         modelId: modelId,
       })
 
-      await createTrigger({
+      await createTrigger(getDb(), {
         id: triggerId,
         triggerType: 'time',
         triggerTime: '09:00',
@@ -590,7 +590,7 @@ describe('Triggers DAL', () => {
     })
 
     it('should create multiple triggers for a prompt', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
 
@@ -609,15 +609,27 @@ describe('Triggers DAL', () => {
         modelId: modelId,
       })
 
-      await createTrigger({ id: uuidv7(), triggerType: 'time', triggerTime: '08:00', promptId: promptId, isEnabled: 1 })
-      await createTrigger({ id: uuidv7(), triggerType: 'time', triggerTime: '18:00', promptId: promptId, isEnabled: 1 })
+      await createTrigger(getDb(), {
+        id: uuidv7(),
+        triggerType: 'time',
+        triggerTime: '08:00',
+        promptId: promptId,
+        isEnabled: 1,
+      })
+      await createTrigger(getDb(), {
+        id: uuidv7(),
+        triggerType: 'time',
+        triggerTime: '18:00',
+        promptId: promptId,
+        isEnabled: 1,
+      })
 
       const triggers = await db.select().from(triggersTable)
       expect(triggers).toHaveLength(2)
     })
 
     it('should create a disabled trigger', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
       const modelId = uuidv7()
       const promptId = uuidv7()
       const triggerId = uuidv7()
@@ -637,7 +649,7 @@ describe('Triggers DAL', () => {
         modelId: modelId,
       })
 
-      await createTrigger({
+      await createTrigger(getDb(), {
         id: triggerId,
         triggerType: 'time',
         triggerTime: '10:00',

@@ -8,7 +8,7 @@ import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
-import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
+import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
@@ -152,30 +152,32 @@ export const App = () => {
         value={powerSyncInstance as unknown as ComponentProps<typeof PowerSyncContext.Provider>['value']}
       >
         <QueryClientProvider client={queryClient}>
-          <HttpClientProvider httpClient={initData.httpClient}>
-            <AuthProvider>
-              <SignInModalProvider>
-                <PostHogProvider client={initData.posthogClient}>
-                  <TrayProvider tray={initData.tray} window={initData.window}>
-                    <MCPProvider>
-                      <HapticsProvider>
-                        <SidebarProvider>
-                          <ContentViewProvider
-                            initialSideviewType={initData.sideviewType}
-                            initialSideviewId={initData.sideviewId}
-                          >
-                            <ExternalLinkDialogProvider>
-                              <AppContent initData={initData} />
-                            </ExternalLinkDialogProvider>
-                          </ContentViewProvider>
-                        </SidebarProvider>
-                      </HapticsProvider>
-                    </MCPProvider>
-                  </TrayProvider>
-                </PostHogProvider>
-              </SignInModalProvider>
-            </AuthProvider>
-          </HttpClientProvider>
+          <DatabaseProvider db={initData.db}>
+            <HttpClientProvider httpClient={initData.httpClient}>
+              <AuthProvider>
+                <SignInModalProvider>
+                  <PostHogProvider client={initData.posthogClient}>
+                    <TrayProvider tray={initData.tray} window={initData.window}>
+                      <MCPProvider>
+                        <HapticsProvider>
+                          <SidebarProvider>
+                            <ContentViewProvider
+                              initialSideviewType={initData.sideviewType}
+                              initialSideviewId={initData.sideviewId}
+                            >
+                              <ExternalLinkDialogProvider>
+                                <AppContent initData={initData} />
+                              </ExternalLinkDialogProvider>
+                            </ContentViewProvider>
+                          </SidebarProvider>
+                        </HapticsProvider>
+                      </MCPProvider>
+                    </TrayProvider>
+                  </PostHogProvider>
+                </SignInModalProvider>
+              </AuthProvider>
+            </HttpClientProvider>
+          </DatabaseProvider>
         </QueryClientProvider>
       </PowerSyncContext.Provider>
     )

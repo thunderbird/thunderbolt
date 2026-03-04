@@ -1,3 +1,4 @@
+import { useDatabase } from '@/contexts'
 import { deleteSetting, getSettings, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
@@ -54,36 +55,6 @@ type OAuthCallbackData = {
 }
 
 /**
- * Saves OAuth credentials and enables the integration
- */
-const saveOAuthCredentials = async (
-  provider: OAuthProvider,
-  tokens: { access_token: string; refresh_token?: string; expires_in: number },
-  userInfo: { email: string; name: string; picture?: string },
-  options: { setPreferredName: boolean },
-) => {
-  const credentials = {
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token || '',
-    expires_at: Date.now() + tokens.expires_in * 1000,
-    profile: {
-      email: userInfo.email,
-      name: userInfo.name,
-      picture: userInfo.picture,
-    },
-  }
-
-  await updateSettings({
-    [`integrations_${provider}_credentials`]: JSON.stringify(credentials),
-    [`integrations_${provider}_is_enabled`]: 'true',
-  })
-
-  if (options.setPreferredName && userInfo.name) {
-    await updateSettings({ preferred_name: userInfo.name })
-  }
-}
-
-/**
  * Checks if there's a valid (non-expired) connecting state in sessionStorage.
  */
 const getInitialConnectingState = (key: string | undefined): boolean => {
@@ -108,6 +79,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
  * For web: Redirects to OAuth provider and processes callback on return.
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
+  const db = useDatabase()
   const {
     connectingKey,
     onSuccess,
@@ -142,6 +114,35 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     setIsConnecting(true)
     sessionStorage.setItem(getConnectingKey(key), 'true')
     sessionStorage.setItem(getTimestampKey(key), Date.now().toString())
+  }
+
+  /**
+   * Saves OAuth credentials and enables the integration
+   */
+  const saveCredentials = async (
+    provider: OAuthProvider,
+    tokens: { access_token: string; refresh_token?: string; expires_in: number },
+    userInfo: { email: string; name: string; picture?: string },
+  ) => {
+    const credentials = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token || '',
+      expires_at: Date.now() + tokens.expires_in * 1000,
+      profile: {
+        email: userInfo.email,
+        name: userInfo.name,
+        picture: userInfo.picture,
+      },
+    }
+
+    await updateSettings(db, {
+      [`integrations_${provider}_credentials`]: JSON.stringify(credentials),
+      [`integrations_${provider}_is_enabled`]: 'true',
+    })
+
+    if (setPreferredName && userInfo.name) {
+      await updateSettings(db, { preferred_name: userInfo.name })
+    }
   }
 
   // Clear expired connecting state from sessionStorage on mount
@@ -211,7 +212,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const codeChallenge = await generateCodeChallenge(codeVerifier)
 
           // Store OAuth state for callback validation
-          await updateSettings({
+          await updateSettings(db, {
             oauth_state: state,
             oauth_provider: provider,
             oauth_verifier: codeVerifier,
@@ -237,7 +238,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
             const { tokens, userInfo } = result
 
-            await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
+            await saveCredentials(provider, tokens, userInfo)
 
             clearConnecting(key)
             onSuccess?.()
@@ -247,7 +248,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         }
       } else {
         // For web: Use redirect flow
-        await updateSettings({ oauth_return_context: returnContext })
+        await updateSettings(db, { oauth_return_context: returnContext })
         await redirect(provider)
       }
     } catch (e: unknown) {
@@ -273,7 +274,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     const { code, state: returnedState, error: oauthError } = callbackData
 
     // Get OAuth state from sqlite settings (needed for both success and error cleanup)
-    const settings = await getSettings({
+    const settings = await getSettings(db, {
       oauth_state: String,
       oauth_provider: String,
       oauth_verifier: String,
@@ -316,14 +317,14 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       const tokens = await exchangeTokens(provider, code, codeVerifier)
       const userInfo = await getUser(provider, tokens.access_token)
 
-      await saveOAuthCredentials(provider, tokens, userInfo, { setPreferredName })
+      await saveCredentials(provider, tokens, userInfo)
 
       // Cleanup OAuth state from sqlite
       await Promise.all([
-        deleteSetting('oauth_state'),
-        deleteSetting('oauth_provider'),
-        deleteSetting('oauth_verifier'),
-        deleteSetting('oauth_return_context'),
+        deleteSetting(db, 'oauth_state'),
+        deleteSetting(db, 'oauth_provider'),
+        deleteSetting(db, 'oauth_verifier'),
+        deleteSetting(db, 'oauth_return_context'),
       ])
 
       cleanup()

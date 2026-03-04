@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { useDatabase } from '@/contexts'
 import { deleteModel, updateModel, getModelQuery, mapModel } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
@@ -62,13 +63,14 @@ const formSchema = z
   )
 
 export default function ModelDetailPage() {
+  const db = useDatabase()
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['models', modelId],
-    query: toCompilableQuery(getModelQuery(modelId!)),
+    query: toCompilableQuery(getModelQuery(db, modelId!)),
     enabled: !!modelId,
   })
 
@@ -77,7 +79,7 @@ export default function ModelDetailPage() {
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {
       const { id, ...updates } = model
-      await updateModel(id, updates)
+      await updateModel(db, id, updates)
     },
     onSuccess: () => {
       setShowSaved(true)
@@ -86,7 +88,7 @@ export default function ModelDetailPage() {
   })
 
   const deleteModelMutation = useMutation({
-    mutationFn: deleteModel,
+    mutationFn: (id: string) => deleteModel(db, id),
     onSuccess: () => {
       setShowDeleteDialog(false)
     },

@@ -1,5 +1,6 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
@@ -14,13 +15,14 @@ export const getAvailableTools = async (
   sourceCollector?: SourceMetadata[],
 ): Promise<ToolConfig[]> => {
   // Check Thunderbolt Pro access and integration enabled state
+  const db = getDb()
   const proEnabled = await hasProAccess()
   const {
     experimentalFeatureTasks,
     integrationsProIsEnabled,
     integrationsGoogleIsEnabled,
     integrationsMicrosoftIsEnabled,
-  } = await getSettings({
+  } = await getSettings(db, {
     experimental_feature_tasks: false,
     integrations_pro_is_enabled: false,
     integrations_google_is_enabled: false,

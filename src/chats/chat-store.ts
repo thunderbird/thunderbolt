@@ -1,4 +1,5 @@
 import { updateSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
@@ -98,7 +99,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ sessions: nextSessions })
 
-    updateSettings({ selected_mode: mode.id })
+    const db = getDb()
+    updateSettings(db, { selected_mode: mode.id })
 
     trackEvent('mode_select', { mode: mode.id })
   },
@@ -123,7 +125,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ sessions: nextSessions })
 
-    await updateSettings({ selected_model: model.id })
+    const db = getDb()
+    await updateSettings(db, { selected_model: model.id })
 
     trackEvent('model_select', { model: model.id })
   },

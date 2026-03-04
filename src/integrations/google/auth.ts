@@ -1,4 +1,5 @@
 import { getSettings } from '@/dal'
+import { getDb } from '@/db/database'
 import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
 import { memoize } from '@/lib/memoize'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
@@ -7,7 +8,8 @@ import ky from 'ky'
 import type { GoogleUserInfo } from './types'
 
 const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> => {
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky.get(`${cloudUrl}/auth/google/config`).json<AuthProviderBackendConfig>()
 })
 
@@ -51,7 +53,8 @@ export const exchangeCodeForTokens = async (
   redirectUri?: string,
 ): Promise<OAuthTokens> => {
   const config = await getOAuthConfig()
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky
     .post(`${cloudUrl}/auth/google/exchange`, {
       json: { code, code_verifier: codeVerifier, redirect_uri: redirectUri ?? config.redirectUri },
@@ -70,6 +73,7 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
 }
 
 export const refreshAccessToken = async (refreshToken: string): Promise<OAuthTokens> => {
-  const { cloudUrl } = await getSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   return await ky.post(`${cloudUrl}/auth/google/refresh`, { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
 }

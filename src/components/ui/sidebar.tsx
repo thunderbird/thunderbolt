@@ -533,7 +533,7 @@ const sidebarMenuButtonVariants = cva(
           'bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]',
       },
       size: {
-        default: 'h-[var(--touch-height-default)] text-[length:var(--font-size-body)]',
+        default: 'h-[var(--touch-height-sm)] text-[length:var(--font-size-body)]',
         sm: 'h-[var(--touch-height-sm)] text-xs',
         lg: 'h-[var(--touch-height-xl)] text-[length:var(--font-size-body)] group-data-[collapsible=icon]:p-0!',
       },

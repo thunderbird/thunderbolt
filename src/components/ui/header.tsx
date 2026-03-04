@@ -62,7 +62,7 @@ export const Header = () => {
 
     return (
       <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-[var(--spacing-x-sm)] flex-shrink-0 border-b border-border">
-        <div className="flex items-center w-10 md:w-7">
+        <div className="flex flex-1 items-center">
           <Button
             variant="ghost"
             size="icon"

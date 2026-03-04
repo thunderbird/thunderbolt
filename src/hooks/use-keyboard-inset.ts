@@ -17,7 +17,9 @@ import { useEffect } from 'react'
 export const useKeyboardInset = (): void => {
   useEffect(() => {
     const vv = window.visualViewport
-    if (!vv) return
+    if (!vv) {
+      return
+    }
 
     const update = () => {
       const el = document.documentElement.style

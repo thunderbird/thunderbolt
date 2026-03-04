@@ -1,6 +1,6 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
-import { Database, setDatabase } from '@/db/database'
+import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
@@ -22,6 +22,11 @@ const createAppDirectory = async (): Promise<string> => {
 }
 
 const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleDatabase; database: Database }> => {
+  const existing = getCurrentDatabase()
+  if (existing?.isInitialized) {
+    return { db: existing.db, database: existing }
+  }
+
   const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(databaseType, appDirPath)
 

@@ -150,6 +150,12 @@ export const getDatabaseInstance = (): DatabaseInterface => {
 export const isDbRegistered = (): boolean => currentInstance !== null
 
 /**
+ * Get the current Database wrapper instance, or null if not registered.
+ * Used by initialization code to skip re-initialization when a database is already set up.
+ */
+export const getCurrentDatabase = (): Database | null => currentInstance
+
+/**
  * Reset the module-level database instance.
  * Closes the connection and clears the reference.
  */

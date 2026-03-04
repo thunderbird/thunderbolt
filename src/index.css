@@ -165,11 +165,10 @@ body {
 
   #root {
     position: fixed;
-    top: 0;
+    top: var(--vv-top, 0px);
     left: 0;
     right: 0;
-    bottom: var(--kb, 0px);
-    height: auto;
+    height: var(--vv-height, 100svh);
   }
 }
 

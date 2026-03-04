@@ -61,7 +61,7 @@ export const Header = () => {
     const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
 
     return (
-      <header className="flex h-14 md:h-12 w-full items-center justify-between px-3 md:px-2 flex-shrink-0 border-b border-border">
+      <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-[var(--spacing-x-sm)] flex-shrink-0 border-b border-border">
         <div className="flex items-center w-10 md:w-7">
           <Button
             variant="ghost"
@@ -69,7 +69,7 @@ export const Header = () => {
             className="h-10 w-10 md:h-7 md:w-7 cursor-pointer"
             onClick={toggleSidebar}
           >
-            <Menu className="size-5 md:size-4" />
+            <Menu className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
         </div>
@@ -84,7 +84,7 @@ export const Header = () => {
               className="h-10 w-10 md:h-7 md:w-7 cursor-pointer"
               onClick={handleNewChat}
             >
-              <MessageCirclePlus className="size-5 md:size-4" />
+              <MessageCirclePlus className="size-[var(--icon-size-default)]" />
               <span className="sr-only">New Chat</span>
             </Button>
           )}
@@ -95,7 +95,7 @@ export const Header = () => {
 
   // Desktop: Left-aligned with PowerSync status on the right
   return (
-    <header className="flex h-14 md:h-12 w-full items-center justify-between px-3 md:px-2 flex-shrink-0 border-b border-border">
+    <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-[var(--spacing-x-sm)] flex-shrink-0 border-b border-border">
       <div className="flex items-center">{modelSelector}</div>
       <PowerSyncStatus />
     </header>

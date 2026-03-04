@@ -38,7 +38,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
-                    <PanelLeft className="size-5 md:size-4" />
+                    <PanelLeft className="size-[var(--icon-size-default)]" />
                     <span className="sr-only">Expand Sidebar</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -65,7 +65,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
                 <SidebarMenu>
                   <SidebarMenuItem className="w-auto">
                     <SidebarMenuButton onClick={onToggle} tooltip="Toggle Sidebar" className="cursor-pointer w-8">
-                      <PanelLeft className="size-5 md:size-4" />
+                      <PanelLeft className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">Toggle Sidebar</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

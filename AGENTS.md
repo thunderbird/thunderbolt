@@ -66,3 +66,19 @@ See [docs/powersync-account-devices.md](docs/powersync-account-devices.md#pr-flo
 ## CORS and API headers
 
 When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Name`), update `backend/src/config/settings.ts` so `corsAllowHeaders` includes them. Otherwise CORS preflight will fail and requests from the browser will be blocked.
+
+## Responsive Sizing
+
+**NEVER** use manual responsive classes like `h-11 md:h-9`, `size-5 md:size-4`, or `text-base md:text-sm`.
+
+**ALWAYS** use CSS custom properties that automatically respond to breakpoints:
+
+- Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
+- Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
+- Text: `text-[var(--font-size-body)]`, `text-[var(--font-size-sm)]`, `text-[var(--font-size-xs)]`
+- Padding X: `px-[var(--spacing-x-default)]`, `px-[var(--spacing-x-md)]`, `px-[var(--spacing-x-sm)]`, `px-[var(--spacing-x-lg)]`
+- Padding Y: `py-[var(--spacing-y-default)]`, `py-[var(--spacing-y-md)]`, `py-[var(--spacing-y-sm)]`
+- Gaps: `gap-[var(--gap-default)]`, `gap-[var(--gap-lg)]`, `gap-[var(--gap-sm)]`
+- Minimum heights: `min-h-[var(--min-touch-height)]`
+
+All variables are defined in `/src/index.css` with mobile (larger) and desktop (smaller) values that switch at 768px breakpoint.

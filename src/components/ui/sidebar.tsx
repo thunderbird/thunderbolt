@@ -391,7 +391,7 @@ const SidebarInput = forwardRef<ElementRef<typeof Input>, ComponentProps<typeof 
         ref={ref}
         data-sidebar="input"
         className={cn(
-          'h-10 md:h-8 w-full bg-background shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+          'h-[var(--touch-height-sm)] w-full bg-background shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
           className,
         )}
         {...props}
@@ -402,12 +402,26 @@ const SidebarInput = forwardRef<ElementRef<typeof Input>, ComponentProps<typeof 
 SidebarInput.displayName = 'SidebarInput'
 
 const SidebarHeader = forwardRef<HTMLDivElement, ComponentProps<'div'>>(({ className, ...props }, ref) => {
-  return <div ref={ref} data-sidebar="header" className={cn('flex flex-col gap-2 p-3 md:p-2', className)} {...props} />
+  return (
+    <div
+      ref={ref}
+      data-sidebar="header"
+      className={cn('flex flex-col gap-2 p-[var(--spacing-x-sm)]', className)}
+      {...props}
+    />
+  )
 })
 SidebarHeader.displayName = 'SidebarHeader'
 
 const SidebarFooter = forwardRef<HTMLDivElement, ComponentProps<'div'>>(({ className, ...props }, ref) => {
-  return <div ref={ref} data-sidebar="footer" className={cn('flex flex-col gap-2 p-3 md:p-2', className)} {...props} />
+  return (
+    <div
+      ref={ref}
+      data-sidebar="footer"
+      className={cn('flex flex-col gap-2 p-[var(--spacing-x-sm)]', className)}
+      {...props}
+    />
+  )
 })
 SidebarFooter.displayName = 'SidebarFooter'
 
@@ -461,7 +475,7 @@ const SidebarGroupLabel = forwardRef<HTMLDivElement, ComponentProps<'div'> & { a
         ref={ref}
         data-sidebar="group-label"
         className={cn(
-          'duration-200 flex h-10 md:h-8 shrink-0 items-center rounded-md px-3 md:px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-5 md:[&>svg]:size-4 [&>svg]:shrink-0',
+          'duration-200 flex h-[var(--touch-height-sm)] shrink-0 items-center rounded-md px-[var(--spacing-x-sm)] text-xs font-medium text-sidebar-foreground/70 outline-hidden ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
           'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0',
           className,
         )}
@@ -481,7 +495,7 @@ const SidebarGroupAction = forwardRef<HTMLButtonElement, ComponentProps<'button'
         ref={ref}
         data-sidebar="group-action"
         className={cn(
-          'absolute right-3 top-3.5 flex aspect-square w-6 md:w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-5 md:[&>svg]:size-4 [&>svg]:shrink-0',
+          'absolute right-3 top-3.5 flex aspect-square w-6 md:w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
           // Increases the hit area of the button on mobile.
           'after:absolute after:-inset-2 md:after:hidden',
           'group-data-[collapsible=icon]:hidden',
@@ -510,7 +524,7 @@ const SidebarMenuItem = forwardRef<HTMLLIElement, ComponentProps<'li'>>(({ class
 SidebarMenuItem.displayName = 'SidebarMenuItem'
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2.5 md:p-2 text-left text-base md:text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-9 md:group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-5 md:[&>svg]:size-4 [&>svg]:shrink-0',
+  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-[var(--spacing-y-default)] text-left text-[var(--font-size-body)] outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-9 md:group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -519,9 +533,9 @@ const sidebarMenuButtonVariants = cva(
           'bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]',
       },
       size: {
-        default: 'h-11 md:h-8 text-base md:text-sm',
-        sm: 'h-10 md:h-7 text-xs',
-        lg: 'h-14 md:h-12 text-base md:text-sm group-data-[collapsible=icon]:p-0!',
+        default: 'h-[var(--touch-height-default)] text-[var(--font-size-body)]',
+        sm: 'h-[var(--touch-height-sm)] text-xs',
+        lg: 'h-[var(--touch-height-xl)] text-[var(--font-size-body)] group-data-[collapsible=icon]:p-0!',
       },
     },
     defaultVariants: {
@@ -601,7 +615,7 @@ const SidebarMenuAction = forwardRef<
       ref={ref}
       data-sidebar="menu-action"
       className={cn(
-        'absolute right-1.5 md:right-1 top-2 md:top-1.5 flex aspect-square w-6 md:w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-5 md:[&>svg]:size-4 [&>svg]:shrink-0',
+        'absolute right-1.5 md:right-1 top-2 md:top-1.5 flex aspect-square w-6 md:w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
         // Increases the hit area of the button on mobile.
         'after:absolute after:-inset-2 md:after:hidden',
         'peer-data-[size=sm]/menu-button:top-1.5 md:peer-data-[size=sm]/menu-button:top-1',
@@ -651,10 +665,15 @@ const SidebarMenuSkeleton = forwardRef<
     <div
       ref={ref}
       data-sidebar="menu-skeleton"
-      className={cn('rounded-md h-11 md:h-8 flex gap-2 px-3 md:px-2 items-center', className)}
+      className={cn(
+        'rounded-md h-[var(--touch-height-default)] flex gap-2 px-[var(--spacing-x-sm)] items-center',
+        className,
+      )}
       {...props}
     >
-      {showIcon && <Skeleton className="size-5 md:size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
+      {showIcon && (
+        <Skeleton className="size-[var(--icon-size-default)] rounded-md" data-sidebar="menu-skeleton-icon" />
+      )}
       <Skeleton
         className="h-4 flex-1 max-w-(--skeleton-width)"
         data-sidebar="menu-skeleton-text"

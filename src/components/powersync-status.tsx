@@ -50,15 +50,15 @@ export const PowerSyncStatus = () => {
 
   const getIcon = () => {
     if (!syncEnabled) {
-      return <CloudOff className="size-5 md:size-4 text-muted-foreground" />
+      return <CloudOff className="size-[var(--icon-size-default)] text-muted-foreground" />
     }
     if (isConnecting) {
-      return <Loader2 className="size-5 md:size-4 animate-spin text-muted-foreground" />
+      return <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
     }
     if (!isConnected) {
-      return <CloudOff className="size-5 md:size-4 text-muted-foreground" />
+      return <CloudOff className="size-[var(--icon-size-default)] text-muted-foreground" />
     }
-    return <Cloud className="size-5 md:size-4 text-green-500" />
+    return <Cloud className="size-[var(--icon-size-default)] text-green-500" />
   }
 
   const statusNote = !isAuthenticated
@@ -74,14 +74,14 @@ export const PowerSyncStatus = () => {
           <button
             type="button"
             className={cn(
-              'flex items-center gap-2 px-3 md:px-2 py-2 md:py-1 rounded-md transition-colors min-h-10 md:min-h-0',
+              'flex items-center gap-2 px-[var(--spacing-x-sm)] py-2 md:py-1 rounded-md transition-colors min-h-[var(--min-touch-height)]',
               'hover:bg-accent cursor-pointer select-none outline-none',
             )}
             aria-label="Sync status"
             aria-haspopup="dialog"
           >
             {getIcon()}
-            <span className="text-sm md:text-xs text-muted-foreground hidden sm:inline">{getStatusText()}</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">{getStatusText()}</span>
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" side="bottom">

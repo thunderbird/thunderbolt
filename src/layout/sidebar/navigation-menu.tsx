@@ -26,7 +26,7 @@ export const NavigationMenu = ({
           className="cursor-pointer"
           isActive={currentPath === '/chats/new'}
         >
-          <MessageCirclePlus className="size-5 md:size-4" />
+          <MessageCirclePlus className="size-[var(--icon-size-default)]" />
           <span>New Chat</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -34,7 +34,7 @@ export const NavigationMenu = ({
         <SidebarMenuItem>
           <SidebarMenuButton asChild tooltip="Tasks" isActive={currentPath.startsWith('/tasks')}>
             <NavLink to="/tasks">
-              <CheckSquare className="size-5 md:size-4" />
+              <CheckSquare className="size-[var(--icon-size-default)]" />
               <span>Tasks</span>
             </NavLink>
           </SidebarMenuButton>
@@ -43,7 +43,7 @@ export const NavigationMenu = ({
       <SidebarMenuItem>
         <SidebarMenuButton asChild tooltip="Automations" isActive={currentPath.startsWith('/automations')}>
           <NavLink to="/automations">
-            <Zap className="size-5 md:size-4" />
+            <Zap className="size-[var(--icon-size-default)]" />
             <span>Automations</span>
           </NavLink>
         </SidebarMenuButton>
@@ -55,13 +55,13 @@ export const NavigationMenu = ({
             isActive={currentPath.startsWith('/settings')}
             className="cursor-pointer"
           >
-            <Settings className="size-5 md:size-4" />
+            <Settings className="size-[var(--icon-size-default)]" />
             <span>Settings</span>
           </SidebarMenuButton>
         ) : (
           <SidebarMenuButton asChild tooltip="Settings" isActive={currentPath.startsWith('/settings')}>
             <NavLink to="/settings/preferences">
-              <Settings className="size-5 md:size-4" />
+              <Settings className="size-[var(--icon-size-default)]" />
               <span>Settings</span>
             </NavLink>
           </SidebarMenuButton>

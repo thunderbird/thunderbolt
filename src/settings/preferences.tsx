@@ -843,7 +843,7 @@ export default function PreferencesSettingsPage() {
             <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="secondary" disabled={isResetting} enableHaptics>
+                <Button variant="secondary" disabled={isResetting}>
                   {isResetting ? 'Resetting...' : 'Reset Database'}
                 </Button>
               </AlertDialogTrigger>
@@ -883,7 +883,7 @@ export default function PreferencesSettingsPage() {
             )}
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isDeletingAccount} enableHaptics>
+                <Button variant="destructive" disabled={isDeletingAccount}>
                   {isDeletingAccount ? 'Deleting...' : 'Delete my account'}
                 </Button>
               </AlertDialogTrigger>

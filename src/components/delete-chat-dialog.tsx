@@ -43,7 +43,7 @@ export const DeleteChatDialog = forwardRef<DeleteChatDialogRef, DeleteChatDialog
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-            <Button variant="destructive" onClick={onConfirm} enableHaptics>
+            <Button variant="destructive" onClick={onConfirm}>
               Delete Chat
             </Button>
           </AlertDialogFooter>

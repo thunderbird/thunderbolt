@@ -71,7 +71,7 @@ const Button = ({
   variant,
   size,
   asChild = false,
-  enableHaptics = false,
+  enableHaptics = true,
   onClick,
   ...props
 }: ComponentProps<'button'> &

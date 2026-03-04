@@ -1112,7 +1112,7 @@ export default function ModelsPage() {
                   <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addModelMutation.isPending} enableHaptics>
+                  <Button type="submit" disabled={addModelMutation.isPending}>
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
                 </div>
@@ -1228,12 +1228,7 @@ export default function ModelsPage() {
                               >
                                 Cancel
                               </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteModel(model.id)}
-                                enableHaptics
-                              >
+                              <Button variant="destructive" size="sm" onClick={() => handleDeleteModel(model.id)}>
                                 Remove
                               </Button>
                             </div>
@@ -1277,7 +1272,7 @@ export default function ModelsPage() {
               </div>
               <h3 className="font-medium text-foreground mb-1">No models configured</h3>
               <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
-              <Button onClick={() => handleDialogOpenChange(true)} variant="outline" enableHaptics>
+              <Button onClick={() => handleDialogOpenChange(true)} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Model
               </Button>

@@ -73,7 +73,7 @@ export const ExternalLinkDialog = memo(
                 Open in Sidebar
               </Button>
             )}
-            <Button onClick={handleConfirmClick} disabled={isOpening} enableHaptics>
+            <Button onClick={handleConfirmClick} disabled={isOpening}>
               {onOpenInApp && <ExternalLink className="size-4" />}
               {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open link'}
             </Button>

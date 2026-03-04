@@ -59,7 +59,7 @@ export const Header = () => {
     return (
       <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">
         <div className="flex flex-1 items-center">
-          <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={toggleSidebar} enableHaptics>
+          <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={toggleSidebar}>
             <Menu className="h-5 w-5" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
@@ -69,13 +69,7 @@ export const Header = () => {
 
         <div className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 cursor-pointer"
-              onClick={handleNewChat}
-              enableHaptics
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={handleNewChat}>
               <MessageCirclePlus className="h-5 w-5" />
               <span className="sr-only">New Chat</span>
             </Button>

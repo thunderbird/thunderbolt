@@ -72,7 +72,7 @@ export const UpdateNotification = () => {
 
                 {config.showActions && (
                   <div className="flex gap-2 mt-3">
-                    <Button size="sm" onClick={handlePrimaryAction} enableHaptics>
+                    <Button size="sm" onClick={handlePrimaryAction}>
                       {status === 'available' && 'Download'}
                       {status === 'ready' && 'Restart Now'}
                       {status === 'error' && 'Retry'}

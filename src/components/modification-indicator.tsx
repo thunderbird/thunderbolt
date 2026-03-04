@@ -130,7 +130,7 @@ export const ModificationIndicator = ({
                 Reset to Default
               </Button>
             ) : (
-              <Button size="sm" onClick={handleResetConfirm} className="w-full" enableHaptics>
+              <Button size="sm" onClick={handleResetConfirm} className="w-full">
                 Confirm
               </Button>
             )}

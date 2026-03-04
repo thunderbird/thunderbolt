@@ -162,7 +162,7 @@ export default function AutomationsPage() {
                   <p className="text-muted-foreground mb-4 max-w-md">
                     Create your first automation to get started. Automations can be triggered by time or other events.
                   </p>
-                  <Button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2" enableHaptics>
+                  <Button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2">
                     <Plus className="h-4 w-4" />
                     Create First Automation
                   </Button>

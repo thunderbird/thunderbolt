@@ -1,8 +1,10 @@
 import { act, renderHook } from '@testing-library/react'
 import { createElement } from 'react'
 import { BrowserRouter } from 'react-router'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
   determineNavigationTarget,
   parseOAuthCallback,
@@ -10,7 +12,18 @@ import {
   useDeepLinkListener,
 } from './use-deep-link-listener'
 
-const wrapper = ({ children }: { children: React.ReactNode }) => createElement(BrowserRouter, null, children)
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
+const wrapper = ({ children }: { children: React.ReactNode }) => {
+  const queryWrapper = createQueryTestWrapper()
+  return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
+}
 
 describe('parseOAuthCallback', () => {
   it('parses valid OAuth callback URL with code and state', () => {

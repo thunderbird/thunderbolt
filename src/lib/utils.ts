@@ -165,6 +165,17 @@ export const camelCasedPropertiesDeep = <T extends Record<string, any>>(obj: T):
 /** Current UTC datetime as ISO 8601 string (e.g. for deletedAt). */
 export const nowIso = (): string => new Date().toISOString()
 
+/** Returns the more recent of two nullable dates, or the one that is non-null. */
+export const mostRecentDate = (a: Date | null, b: Date | null): Date | null => {
+  if (!a) {
+    return b
+  }
+  if (!b) {
+    return a
+  }
+  return a.getTime() >= b.getTime() ? a : b
+}
+
 /**
  * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
  */

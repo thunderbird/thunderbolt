@@ -1,4 +1,5 @@
 import { getPowerSyncInstance } from '@/db/powersync'
+import { mostRecentDate } from '@/lib/utils'
 import type { SyncStatus } from '@powersync/web'
 import { useEffect, useRef, useState } from 'react'
 
@@ -17,21 +18,6 @@ export type PowerSyncStatusInfo = {
   hasSynced: boolean
   /** Last sync timestamp */
   lastSyncedAt: Date | null
-}
-
-/**
- * Returns the more recent of two dates, or the one that is non-null.
- * PowerSync's lastSyncedAt only updates on full checkpoint syncs, so we also
- * track when downloads complete to provide a more responsive timestamp.
- */
-export const mostRecentDate = (a: Date | null, b: Date | null): Date | null => {
-  if (!a) {
-    return b
-  }
-  if (!b) {
-    return a
-  }
-  return a.getTime() >= b.getTime() ? a : b
 }
 
 /**

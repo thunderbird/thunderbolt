@@ -5,6 +5,20 @@ import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
 
+// Mock web-haptics/react globally — no vibration API in test environment
+mock.module('web-haptics/react', () => ({
+  useWebHaptics: () => ({ trigger: () => {} }),
+}))
+
+// Mock useHaptics globally — depends on useSettings (QueryClient) and web-haptics
+mock.module('@/hooks/use-haptics', () => ({
+  useHaptics: () => ({
+    triggerSelection: () => {},
+    triggerImpact: () => {},
+    triggerNotification: () => {},
+  }),
+}))
+
 // Mock posthog-js globally to prevent browser detection errors in tests
 // PostHog tries to access browser APIs like navigator.userAgent.match() during module load,
 // which fails in Happy-DOM's test environment

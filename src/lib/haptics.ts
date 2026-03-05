@@ -11,12 +11,8 @@ export const triggerSelection = async (): Promise<void> => {
   if (!isTauri() || !isMobile()) {
     return
   }
-  try {
-    const { selectionFeedback } = await import('@tauri-apps/plugin-haptics')
-    await selectionFeedback()
-  } catch {
-    // Plugin not available (e.g. web build)
-  }
+  const { selectionFeedback } = await import('@tauri-apps/plugin-haptics')
+  await selectionFeedback()
 }
 
 /**
@@ -27,12 +23,8 @@ export const triggerImpact = async (style: ImpactFeedbackStyle = 'light'): Promi
   if (!isTauri() || !isMobile()) {
     return
   }
-  try {
-    const { impactFeedback } = await import('@tauri-apps/plugin-haptics')
-    await impactFeedback(style)
-  } catch {
-    // Plugin not available (e.g. web build)
-  }
+  const { impactFeedback } = await import('@tauri-apps/plugin-haptics')
+  await impactFeedback(style)
 }
 
 /**
@@ -43,10 +35,6 @@ export const triggerNotification = async (type: NotificationFeedbackType): Promi
   if (!isTauri() || !isMobile()) {
     return
   }
-  try {
-    const { notificationFeedback } = await import('@tauri-apps/plugin-haptics')
-    await notificationFeedback(type)
-  } catch {
-    // Plugin not available (e.g. web build)
-  }
+  const { notificationFeedback } = await import('@tauri-apps/plugin-haptics')
+  await notificationFeedback(type)
 }

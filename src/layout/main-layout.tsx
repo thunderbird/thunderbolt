@@ -1,3 +1,5 @@
+import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
+import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { Header } from '@/components/ui/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import {
@@ -97,6 +99,8 @@ export default function Page() {
             }}
           >
             <Header />
+            <DownloadAppBannerMobile />
+            <DownloadAppBannerDesktop />
             <div
               className="flex-1 overflow-auto"
               style={{

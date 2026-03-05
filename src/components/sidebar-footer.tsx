@@ -1,4 +1,16 @@
-import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, Loader2, LogOut, Sparkles, Terminal } from 'lucide-react'
+'use client'
+
+import {
+  BadgeCheck,
+  Bell,
+  ChevronsUpDown,
+  CreditCard,
+  Download,
+  Loader2,
+  LogOut,
+  Sparkles,
+  Terminal,
+} from 'lucide-react'
 import { useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
@@ -21,6 +33,12 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
+import { downloadLinks } from '@/lib/download-links'
+import { getWebOsPlatform, isWebDesktopPlatform, isTauri } from '@/lib/platform'
+
+const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
+
+const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
 
 type SidebarFooterProps = {
   className?: string
@@ -116,6 +134,24 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                     </div>
                   </div>
                 </DropdownMenuLabel>
+                {showAppDownloads && !isTauri() && isWebDesktopPlatform() && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        onClick={() =>
+                          openLink(
+                            downloadLinks[getWebOsPlatform() as 'macos' | 'windows' | 'linux'] ?? downloadLinks.macos,
+                          )
+                        }
+                      >
+                        <Download className="size-4" />
+                        Download App
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem className="cursor-pointer">

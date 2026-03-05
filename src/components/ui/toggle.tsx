@@ -28,7 +28,7 @@ const toggleVariants = cva(
   },
 )
 
-const ToggleWithHaptics = ({
+const Toggle = ({
   className,
   variant,
   size,
@@ -49,38 +49,8 @@ const ToggleWithHaptics = ({
     <TogglePrimitive.Root
       data-slot="toggle"
       className={cn(toggleVariants({ variant, size, className }))}
-      {...props}
       onPressedChange={handlePressedChange}
-    />
-  )
-}
-
-const Toggle = ({
-  className,
-  variant,
-  size,
-  enableHaptics = true,
-  onPressedChange,
-  ...props
-}: ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants> & { enableHaptics?: boolean }) => {
-  if (enableHaptics) {
-    return (
-      <ToggleWithHaptics
-        className={className}
-        variant={variant}
-        size={size}
-        onPressedChange={onPressedChange}
-        {...props}
-      />
-    )
-  }
-
-  return (
-    <TogglePrimitive.Root
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
       {...props}
-      onPressedChange={onPressedChange}
     />
   )
 }

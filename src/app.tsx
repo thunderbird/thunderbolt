@@ -6,6 +6,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
@@ -147,6 +148,7 @@ export const App = () => {
               <PostHogProvider client={initData.posthogClient}>
                 <TrayProvider tray={initData.tray} window={initData.window}>
                   <MCPProvider>
+                    <HapticsProvider>
                     <SidebarProvider>
                       <ContentViewProvider
                         initialSideviewType={initData.sideviewType}
@@ -157,6 +159,7 @@ export const App = () => {
                         </ExternalLinkDialogProvider>
                       </ContentViewProvider>
                     </SidebarProvider>
+                    </HapticsProvider>
                   </MCPProvider>
                 </TrayProvider>
               </PostHogProvider>

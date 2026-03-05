@@ -33,17 +33,16 @@ const buttonVariants = cva(
   },
 )
 
-const ButtonWithHaptics = ({
+const Button = ({
   className,
   variant,
   size,
-  asChild,
+  asChild = false,
   onClick,
   ...props
-}: Omit<ComponentProps<'button'>, 'onClick'> &
+}: ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
-    onClick?: React.MouseEventHandler<HTMLButtonElement>
   }) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
@@ -61,43 +60,6 @@ const ButtonWithHaptics = ({
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       onClick={handleClick}
-      {...props}
-    />
-  )
-}
-
-const Button = ({
-  className,
-  variant,
-  size,
-  asChild = false,
-  enableHaptics = true,
-  onClick,
-  ...props
-}: ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-    enableHaptics?: boolean
-  }) => {
-  if (enableHaptics) {
-    return (
-      <ButtonWithHaptics
-        className={className}
-        variant={variant}
-        size={size}
-        asChild={asChild}
-        onClick={onClick}
-        {...props}
-      />
-    )
-  }
-
-  const Comp = asChild ? Slot : 'button'
-  return (
-    <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      onClick={onClick}
       {...props}
     />
   )

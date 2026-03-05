@@ -10,13 +10,14 @@ mock.module('web-haptics/react', () => ({
   useWebHaptics: () => ({ trigger: () => {} }),
 }))
 
-// Mock useHaptics globally — depends on useSettings (QueryClient) and web-haptics
+// Mock useHaptics globally — the real provider depends on useSettings (QueryClient) and web-haptics
 mock.module('@/hooks/use-haptics', () => ({
   useHaptics: () => ({
     triggerSelection: () => {},
     triggerImpact: () => {},
     triggerNotification: () => {},
   }),
+  HapticsProvider: ({ children }: { children: unknown }) => children,
 }))
 
 // Mock posthog-js globally to prevent browser detection errors in tests

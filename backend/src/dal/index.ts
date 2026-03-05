@@ -11,4 +11,4 @@ export { getActiveSessionByToken } from './sessions'
 export { getWaitlistByEmail, getWaitlistStatusByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'
 
 // PowerSync
-export { applyOperation, toSchemaRecord } from './powersync'
+export { applyOperation } from './powersync'

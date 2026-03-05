@@ -30,7 +30,7 @@ const TIMESTAMP_DB_COLUMNS = new Set(['deleted_at', 'last_seen', 'created_at', '
  * Convert payload with DB column names to schema keys and filter to valid columns only.
  * Timestamp columns arrive as ISO strings from JSON; convert to Date for Drizzle.
  */
-export const toSchemaRecord = (
+const toSchemaRecord = (
   dbRecord: Record<string, unknown>,
   validDbNames: Set<string>,
   dbNameToKey: Record<string, string>,

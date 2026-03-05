@@ -1,11 +1,14 @@
 import { createContext, useCallback, useContext } from 'react'
 import { useWebHaptics } from 'web-haptics/react'
 import { useSettings } from './use-settings'
-import { triggerImpact, triggerNotification, triggerSelection } from '@/lib/haptics'
+import {
+  triggerImpact,
+  triggerNotification,
+  triggerSelection,
+  type ImpactFeedbackStyle,
+  type NotificationFeedbackType,
+} from '@/lib/haptics'
 import { isMobile, isTauri } from '@/lib/platform'
-
-type ImpactFeedbackStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid'
-type NotificationFeedbackType = 'success' | 'warning' | 'error'
 
 type HapticsContextValue = {
   triggerSelection: () => void

@@ -66,6 +66,7 @@ export const ChatSidebarContent = ({
   return (
     <SidebarContent className="flex flex-col h-full overflow-hidden">
       <SidebarHeader onToggle={toggleSidebar} />
+
       <SidebarGroup className="flex-shrink-0">
         <SidebarGroupContent>
           <SidebarMenu>

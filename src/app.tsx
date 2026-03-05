@@ -149,16 +149,16 @@ export const App = () => {
                 <TrayProvider tray={initData.tray} window={initData.window}>
                   <MCPProvider>
                     <HapticsProvider>
-                    <SidebarProvider>
-                      <ContentViewProvider
-                        initialSideviewType={initData.sideviewType}
-                        initialSideviewId={initData.sideviewId}
-                      >
-                        <ExternalLinkDialogProvider>
-                          <AppContent initData={initData} />
-                        </ExternalLinkDialogProvider>
-                      </ContentViewProvider>
-                    </SidebarProvider>
+                      <SidebarProvider>
+                        <ContentViewProvider
+                          initialSideviewType={initData.sideviewType}
+                          initialSideviewId={initData.sideviewId}
+                        >
+                          <ExternalLinkDialogProvider>
+                            <AppContent initData={initData} />
+                          </ExternalLinkDialogProvider>
+                        </ContentViewProvider>
+                      </SidebarProvider>
                     </HapticsProvider>
                   </MCPProvider>
                 </TrayProvider>

@@ -11,6 +11,7 @@ import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
+import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
 
 /** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
 export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
@@ -109,6 +110,7 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
       // Required for both approaches: SharedWorker creates its own storage and bypasses our adapter.
       // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
       flags: { enableMultiTabs: false, useWebWorker: false },
+      transformers: [encryptionMiddleware],
     }
   }
 
@@ -136,6 +138,7 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
     // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
     flags: { enableMultiTabs: false, useWebWorker: false },
     sync: { worker: '/@powersync/worker/SharedSyncImplementation.umd.js' },
+    transformers: [encryptionMiddleware],
   }
 }
 

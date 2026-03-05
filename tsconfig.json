@@ -22,7 +22,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/src/*": ["./src/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/src/*"]
     },
     /* Types */
     "typeRoots": ["./node_modules/@types", "./src/types"]

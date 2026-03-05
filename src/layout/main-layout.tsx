@@ -16,6 +16,7 @@ import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
 import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { Sideview } from '@/content-view/sideview'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, motion } from 'framer-motion'
 import { Sidebar } from 'lucide-react'
@@ -99,8 +100,12 @@ export default function Page() {
             }}
           >
             <Header />
-            <DownloadAppBannerMobile />
-            <DownloadAppBannerDesktop />
+            {!isTauri() && (
+              <>
+                <DownloadAppBannerMobile />
+                <DownloadAppBannerDesktop />
+              </>
+            )}
             <div
               className="flex-1 overflow-auto"
               style={{

@@ -61,6 +61,10 @@
         }
       ]
     },
+    "haptics:allow-selection-feedback",
+    "haptics:allow-impact-feedback",
+    "haptics:allow-notification-feedback",
+    "haptics:allow-vibrate",
     "fs:default",
     "fs:allow-app-write-recursive",
     {

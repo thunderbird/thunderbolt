@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { MobileSidebar } from '@/components/ui/mobile-sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useHaptics } from '@/hooks/use-haptics'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebarResize } from '@/hooks/use-sidebar-resize'
 import { mergeButtonRefs } from '@/lib/merge-button-refs'
@@ -536,9 +537,18 @@ const SidebarMenuButton = forwardRef<
     isActive?: boolean
     tooltip?: string | ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>
->(({ asChild = false, isActive = false, variant = 'default', size = 'default', tooltip, className, ...props }, ref) => {
+>(({ asChild = false, isActive = false, variant = 'default', size = 'default', tooltip, className, onClick, ...props }, ref) => {
   const Comp = asChild ? Slot : 'button'
   const { isMobile, state } = useSidebar()
+  const { triggerSelection } = useHaptics()
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerSelection()
+      onClick?.(e)
+    },
+    [onClick, triggerSelection],
+  )
 
   const button = (
     <Comp
@@ -547,6 +557,7 @@ const SidebarMenuButton = forwardRef<
       data-size={size}
       data-active={isActive}
       className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+      onClick={handleClick}
       {...props}
     />
   )

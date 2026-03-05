@@ -1,10 +1,11 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ChevronDown, Lock, Plus } from 'lucide-react'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
   models: Model[]
@@ -134,9 +135,14 @@ export const ModelSelector = ({
     </button>
   ) : undefined
 
-  const handleModelChange = (id: string) => {
-    onModelChange(id)
-  }
+  const { triggerSelection } = useHaptics()
+  const handleModelChange = useCallback(
+    (id: string) => {
+      triggerSelection()
+      onModelChange(id)
+    },
+    [onModelChange, triggerSelection],
+  )
 
   return (
     <SearchableMenu

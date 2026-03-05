@@ -24,6 +24,8 @@ export const DownloadAppBannerDesktop = () => {
 
   const handleDownload = () => {
     window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+    setDismissed(true)
+    dismissDownloadBanner()
   }
 
   const handleDismiss = () => {

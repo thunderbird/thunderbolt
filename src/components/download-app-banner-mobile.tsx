@@ -24,6 +24,8 @@ export const DownloadAppBannerMobile = () => {
 
   const handleDownload = () => {
     window.open(storeUrl, '_blank', 'noopener,noreferrer')
+    setDismissed(true)
+    dismissDownloadBanner()
   }
 
   const handleDismiss = () => {

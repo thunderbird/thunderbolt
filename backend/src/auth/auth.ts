@@ -1,13 +1,11 @@
+import { createWaitlistEntry, getUserByEmail, getWaitlistStatusByEmail, markUserNotNew } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { user } from '@/db/auth-schema'
 import * as schema from '@/db/schema'
-import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
-import { eq } from 'drizzle-orm'
 import { sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -67,7 +65,7 @@ export const createAuth = (database: typeof DbType) =>
         const isNewUser = (sessionUser as { isNew?: boolean }).isNew ?? true
 
         if (isNewUser) {
-          await database.update(user).set({ isNew: false }).where(eq(user.id, sessionUser.id))
+          await markUserNotNew(database, sessionUser.id)
         }
 
         return ctx.json({
@@ -93,36 +91,25 @@ export const createAuth = (database: typeof DbType) =>
           const normalizedEmail = normalizeEmail(email)
 
           // Check if user already has an account (existing users bypass waitlist)
-          const existingUser = await database
-            .select({ id: user.id })
-            .from(user)
-            .where(eq(user.email, normalizedEmail))
-            .limit(1)
+          const existingUser = await getUserByEmail(database, normalizedEmail)
 
           // If user doesn't exist, check waitlist status
-          if (existingUser.length === 0) {
-            const waitlistEntry = await database
-              .select({ status: waitlist.status })
-              .from(waitlist)
-              .where(eq(waitlist.email, normalizedEmail))
-              .limit(1)
+          if (!existingUser) {
+            const waitlistEntry = await getWaitlistStatusByEmail(database, normalizedEmail)
 
             // For non-approved users, send appropriate email but don't reveal status
             // (they'll see the OTP screen but won't receive the actual code)
-            if (waitlistEntry.length === 0 || waitlistEntry[0].status !== 'approved') {
+            if (!waitlistEntry || waitlistEntry.status !== 'approved') {
               console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
 
-              if (waitlistEntry.length === 0) {
+              if (!waitlistEntry) {
                 // Add to waitlist if not already there (helpful UX)
                 // Use onConflictDoNothing to handle rare race condition gracefully
-                await database
-                  .insert(waitlist)
-                  .values({
-                    id: crypto.randomUUID(),
-                    email: normalizedEmail,
-                    status: 'pending',
-                  })
-                  .onConflictDoNothing()
+                await createWaitlistEntry(database, {
+                  id: crypto.randomUUID(),
+                  email: normalizedEmail,
+                  status: 'pending',
+                })
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
               } else {
                 // On waitlist but not approved — send a "not ready yet" email

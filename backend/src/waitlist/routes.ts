@@ -1,11 +1,9 @@
 import type { Auth } from '@/auth/auth'
+import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistByEmail } from '@/dal'
 import type { db } from '@/db/client'
-import { user } from '@/db/auth-schema'
-import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { autoApprovedDomains } from '@/lib/constants'
-import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import {
   sendWaitlistJoinedEmail as defaultSendJoinedEmail,
@@ -54,30 +52,26 @@ export const createWaitlistRoutes = ({ database, auth, emailService = defaultEma
       const email = normalizeEmail(body.email)
 
       // Check if user already has a BetterAuth account (they're "approved" by default)
-      const existingUser = await database.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
+      const existingUser = await getUserByEmail(database, email)
 
-      if (existingUser.length > 0) {
+      if (existingUser) {
         await sendApprovedMagicLinkEmail(auth, email)
         return { success: true }
       }
 
       // Check if email already exists on the waitlist
-      const existing = await database
-        .select({ id: waitlist.id, status: waitlist.status })
-        .from(waitlist)
-        .where(eq(waitlist.email, email))
-        .limit(1)
+      const existing = await getWaitlistByEmail(database, email)
 
       // If entry exists, handle based on status
-      if (existing.length > 0) {
-        if (existing[0].status === 'approved') {
+      if (existing) {
+        if (existing.status === 'approved') {
           await sendApprovedMagicLinkEmail(auth, email)
           return { success: true }
         }
 
         // Pending user - check if they now qualify for auto-approval (e.g., feature deployed after they joined)
         if (isAutoApprovedDomain(email)) {
-          await database.update(waitlist).set({ status: 'approved' }).where(eq(waitlist.id, existing[0].id))
+          await approveWaitlistEntry(database, existing.id)
           await sendApprovedMagicLinkEmail(auth, email)
         } else {
           await emailService.sendReminderEmail({ email })
@@ -89,7 +83,7 @@ export const createWaitlistRoutes = ({ database, auth, emailService = defaultEma
       const isAutoApproved = isAutoApprovedDomain(email)
 
       // Add new entry to waitlist
-      await database.insert(waitlist).values({
+      await createWaitlistEntry(database, {
         id: crypto.randomUUID(),
         email,
         status: isAutoApproved ? 'approved' : 'pending',

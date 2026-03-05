@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Enter work context (worktree, deps, or bootstrap)"
+---
+
 Enter a work context. Creates a worktree, installs deps, or bootstraps the full dev environment. Argument is passed via $ARGUMENTS.
 
 **Argument parsing:**

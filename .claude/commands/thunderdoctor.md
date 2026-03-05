@@ -1,5 +1,6 @@
-Run `make doctor` to verify all dev tools and environment files are configured correctly.
+---
+disable-model-invocation: true
+description: "Verify dev tools and environment"
+---
 
-If anything fails, explain what's missing and provide the exact install command for the user's platform (macOS/brew by default).
-
-Do not prompt for confirmation — just run the check and report results.
+Run `make doctor`. If failures, explain what's missing and provide the install command.

@@ -1,3 +1,9 @@
+---
+disable-model-invocation: true
+context: fork
+description: "Fix PR review comments and CI failures"
+---
+
 Fix all PR issues (review comments + issue comments + CI failures) and monitor until clean.
 
 A PR must already exist on the current branch.

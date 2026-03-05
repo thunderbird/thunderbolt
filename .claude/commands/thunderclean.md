@@ -1,3 +1,6 @@
-Run `make clean` to remove build artifacts (dist, node_modules, Rust target).
+---
+disable-model-invocation: true
+description: "Remove build artifacts"
+---
 
-After completion, confirm what was removed.
+Run `make clean`. Confirm what was removed.

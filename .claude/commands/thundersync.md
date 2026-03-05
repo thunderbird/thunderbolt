@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Sync skills with upstream thunderbot repo"
+---
+
 Sync thunderbot skills between this repo and the upstream thunderbot repo via git subtree.
 
 ## Instructions

@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Leave worktree and return to main"
+---
+
 Leave the current worktree, tear it down, and return to the main repo on the main branch.
 
 **Steps:**

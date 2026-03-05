@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Submit feedback as a GitHub issue"
+---
+
 Submit feedback about Thunderbolt as a GitHub issue.
 
 **Steps:**

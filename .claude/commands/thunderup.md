@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Bootstrap the dev environment"
+---
+
 Bootstrap the Thunderbolt dev environment. Accepts an optional argument via $ARGUMENTS.
 
 **Argument parsing:**

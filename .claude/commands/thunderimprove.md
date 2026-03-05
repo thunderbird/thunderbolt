@@ -1,3 +1,9 @@
+---
+disable-model-invocation: true
+context: fork
+description: "Review changed code for quality and fix issues"
+---
+
 Review changed code for reuse, quality, and efficiency, then fix any issues found.
 
 ## What to Review

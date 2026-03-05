@@ -1,3 +1,9 @@
+---
+disable-model-invocation: true
+context: fork
+description: "Stage, commit, and push changes"
+---
+
 Stage, commit (atomic, conventional), and push all current changes.
 
 ## Steps

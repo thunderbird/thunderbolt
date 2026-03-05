@@ -1,6 +1,6 @@
-Stop docker containers for the project.
+---
+disable-model-invocation: true
+description: "Stop docker containers"
+---
 
-Steps:
-1. Run `make docker-status` to show what's currently running
-2. Run `make docker-down` to stop all containers
-3. Confirm containers are stopped
+Run `make docker-status`, then `make docker-down`. Confirm stopped.

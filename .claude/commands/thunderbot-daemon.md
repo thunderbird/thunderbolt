@@ -1,3 +1,8 @@
+---
+disable-model-invocation: true
+description: "Control the background thunderbot daemon"
+---
+
 Control the background thunderbot daemon that automatically polls Linear for tasks and works them.
 
 ## Parse Command

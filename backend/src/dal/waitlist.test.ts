@@ -2,7 +2,7 @@ import { waitlist } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { approveWaitlistEntry, createWaitlistEntry, getWaitlistByEmail, getWaitlistStatusByEmail } from './waitlist'
+import { approveWaitlistEntry, createWaitlistEntry, getWaitlistByEmail } from './waitlist'
 
 describe('waitlist DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -27,19 +27,6 @@ describe('waitlist DAL', () => {
 
     it('returns null when not found', async () => {
       const result = await getWaitlistByEmail(db, 'nobody@test.com')
-      expect(result).toBeNull()
-    })
-  })
-
-  describe('getWaitlistStatusByEmail', () => {
-    it('returns status when found', async () => {
-      await db.insert(waitlist).values({ id: 'w2', email: 'w2@test.com', status: 'approved' })
-      const result = await getWaitlistStatusByEmail(db, 'w2@test.com')
-      expect(result).toEqual({ status: 'approved' })
-    })
-
-    it('returns null when not found', async () => {
-      const result = await getWaitlistStatusByEmail(db, 'nobody@test.com')
       expect(result).toBeNull()
     })
   })

@@ -11,15 +11,6 @@ export const getWaitlistByEmail = async (database: typeof DbType, email: string)
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Get waitlist status by email. Returns null if not found. */
-export const getWaitlistStatusByEmail = async (database: typeof DbType, email: string) =>
-  database
-    .select({ status: waitlist.status })
-    .from(waitlist)
-    .where(eq(waitlist.email, email))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
 /** Create a new waitlist entry. Uses onConflictDoNothing for race-condition safety. */
 export const createWaitlistEntry = async (
   database: typeof DbType,

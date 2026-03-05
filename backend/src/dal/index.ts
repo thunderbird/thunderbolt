@@ -8,7 +8,7 @@ export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users
 export { getActiveSessionByToken } from './sessions'
 
 // Waitlist
-export { getWaitlistByEmail, getWaitlistStatusByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'
+export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'
 
 // PowerSync
 export { applyOperation } from './powersync'

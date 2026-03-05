@@ -1,4 +1,4 @@
-import { createWaitlistEntry, getUserByEmail, getWaitlistStatusByEmail, markUserNotNew } from '@/dal'
+import { createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
@@ -95,7 +95,7 @@ export const createAuth = (database: typeof DbType) =>
 
           // If user doesn't exist, check waitlist status
           if (!existingUser) {
-            const waitlistEntry = await getWaitlistStatusByEmail(database, normalizedEmail)
+            const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
 
             // For non-approved users, send appropriate email but don't reveal status
             // (they'll see the OTP screen but won't receive the actual code)

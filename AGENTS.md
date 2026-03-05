@@ -75,6 +75,8 @@
 
 See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
 
+See [docs/powersync-sync-middleware.md](docs/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), adding new transformers, and the future E2E encryption key-passing pattern.
+
 **Deploying new synced tables (two-PR process):**
 
 1. **PR 1 (backend-only):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and `config.yaml` sync rule. Merge → run migration → update PowerSync Cloud dashboard rules.

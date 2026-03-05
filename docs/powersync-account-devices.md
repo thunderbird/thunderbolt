@@ -12,6 +12,8 @@ This document consolidates documentation for:
 
 PowerSync provides offline-first sync between the backend (PostgreSQL) and clients (SQLite). Data is scoped by `user_id` from the JWT. The backend issues PowerSync JWTs and can apply client uploads (PUT/PATCH/DELETE) to Postgres. Production uses PowerSync Cloud; local development uses the Docker stack in `powersync-service/`.
 
+For the sync data transformation middleware and custom SharedWorker (E2E encryption pipeline), see [docs/powersync-sync-middleware.md](powersync-sync-middleware.md).
+
 ---
 
 ## 2. Synced tables

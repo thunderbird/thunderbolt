@@ -57,6 +57,48 @@ export const isMobile = (): boolean => {
   return currentPlatform === 'ios' || currentPlatform === 'android'
 }
 
+export type WebOsPlatform = 'macos' | 'windows' | 'linux' | 'ios' | 'android' | 'unknown'
+
+/**
+ * Detects the user's OS when running in a web browser via navigator.userAgent.
+ * @returns The web OS platform, or 'unknown' when running in Tauri or when the UA cannot be parsed.
+ */
+export const getWebOsPlatform = (): WebOsPlatform => {
+  if (isTauri() || typeof navigator === 'undefined') {
+    return 'unknown'
+  }
+  const ua = navigator.userAgent
+  // Check mobile platforms first — their UAs also contain desktop OS strings
+  if (/iPhone|iPad/.test(ua)) {
+    return 'ios'
+  }
+  if (/Android/.test(ua)) {
+    return 'android'
+  }
+  if (/Mac/.test(ua)) {
+    return 'macos'
+  }
+  if (/Win/.test(ua)) {
+    return 'windows'
+  }
+  if (/Linux/.test(ua)) {
+    return 'linux'
+  }
+  return 'unknown'
+}
+
+/** Returns true when the web browser is running on a mobile OS (iOS or Android). */
+export const isWebMobilePlatform = (): boolean => {
+  const p = getWebOsPlatform()
+  return p === 'ios' || p === 'android'
+}
+
+/** Returns true when the web browser is running on a desktop OS (macOS, Windows, Linux). */
+export const isWebDesktopPlatform = (): boolean => {
+  const p = getWebOsPlatform()
+  return p === 'macos' || p === 'windows' || p === 'linux'
+}
+
 type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
 
 /**

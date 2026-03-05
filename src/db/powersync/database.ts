@@ -10,6 +10,7 @@ import { getDatabaseInstance } from '../database'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
+import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 
 /** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
 export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
@@ -105,6 +106,9 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
     return {
       database: { dbFilename },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
+      // Required for both approaches: SharedWorker creates its own storage and bypasses our adapter.
+      // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
+      flags: { enableMultiTabs: false, useWebWorker: false },
     }
   }
 
@@ -123,10 +127,14 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
       dbFilename: dbFilename,
       vfs: WASQLiteVFS.OPFSCoopSyncVFS,
       worker: '/@powersync/worker/WASQLiteDB.umd.js',
-      flags: { enableMultiTabs: false },
+      // Required for both approaches: SharedWorker creates its own storage and bypasses our adapter.
+      // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
+      flags: { enableMultiTabs: false, useWebWorker: false },
     }),
     schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-    flags: { enableMultiTabs: false },
+    // Required for both approaches: SharedWorker creates its own storage and bypasses our adapter.
+    // Ref: https://docs.powersync.com/client-sdks/reference/javascript-web#available-flags
+    flags: { enableMultiTabs: false, useWebWorker: false },
     sync: { worker: '/@powersync/worker/SharedSyncImplementation.umd.js' },
   }
 }
@@ -167,7 +175,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
     const options = getPowerSyncOptions(path)
 
-    this.powerSync = new PowerSyncDatabase(options)
+    this.powerSync = new ThunderboltPowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
     // Cast instance: drizzle-driver expects AbstractPowerSyncDatabase from root @powersync/common; PowerSyncDatabase is from @powersync/web (nested common).

@@ -32,7 +32,9 @@ export const HapticsProvider = ({ children }: { children: React.ReactNode }) => 
   const enabled = hapticsEnabled.value === true
 
   const triggerSelectionHaptic = useCallback(() => {
-    if (!enabled) return
+    if (!enabled) {
+      return
+    }
     if (isTauri() && isMobile()) {
       void triggerSelection()
     } else {
@@ -42,7 +44,9 @@ export const HapticsProvider = ({ children }: { children: React.ReactNode }) => 
 
   const triggerImpactHaptic = useCallback(
     (style: ImpactFeedbackStyle = 'light') => {
-      if (!enabled) return
+      if (!enabled) {
+        return
+      }
       if (isTauri() && isMobile()) {
         void triggerImpact(style)
       } else {
@@ -54,7 +58,9 @@ export const HapticsProvider = ({ children }: { children: React.ReactNode }) => 
 
   const triggerNotificationHaptic = useCallback(
     (type: NotificationFeedbackType) => {
-      if (!enabled) return
+      if (!enabled) {
+        return
+      }
       if (isTauri() && isMobile()) {
         void triggerNotification(type)
       } else {

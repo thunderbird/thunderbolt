@@ -1,3 +1,4 @@
+import { impactFeedback, notificationFeedback, selectionFeedback } from '@tauri-apps/plugin-haptics'
 import { isMobile, isTauri } from './platform'
 
 type ImpactFeedbackStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid'
@@ -11,7 +12,6 @@ export const triggerSelection = async (): Promise<void> => {
   if (!isTauri() || !isMobile()) {
     return
   }
-  const { selectionFeedback } = await import('@tauri-apps/plugin-haptics')
   await selectionFeedback()
 }
 
@@ -23,7 +23,6 @@ export const triggerImpact = async (style: ImpactFeedbackStyle = 'light'): Promi
   if (!isTauri() || !isMobile()) {
     return
   }
-  const { impactFeedback } = await import('@tauri-apps/plugin-haptics')
   await impactFeedback(style)
 }
 
@@ -35,6 +34,5 @@ export const triggerNotification = async (type: NotificationFeedbackType): Promi
   if (!isTauri() || !isMobile()) {
     return
   }
-  const { notificationFeedback } = await import('@tauri-apps/plugin-haptics')
   await notificationFeedback(type)
 }

@@ -64,11 +64,13 @@ mutation($id: ID!) {
 }
 GQL
 
-# jq filter for non-author, non-bot issue comments.
-# Written to a file because != is mangled by shell expansion in inline jq.
+# jq filter for actionable issue comments (exclude bot comments only).
+# Does NOT filter by PR author — in thunderbot flows the human IS the PR author,
+# so their review feedback must be included.
+# Written to a file because operators are mangled by shell expansion in inline jq.
 cat > "$GQL_DIR/issue_comments.jq" << 'JQ'
 [.[] | select(
-  .user.login != $author and
+  (.user.type == "User") and
   (.body | startswith("[Thunderbot]") or startswith("⚡") | not)
 )]
 JQ
@@ -88,9 +90,8 @@ PR_NODE_ID=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.node_id')
 # Review thread comments (code-level)
 UNRESOLVED_THREADS=$(gh api graphql -F "query=@$GQL_DIR/threads.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false)')
 
-# Issue-level comments (non-code PR comments from reviewers, not from the PR author)
-PR_AUTHOR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.user.login')
-ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq --arg author "$PR_AUTHOR" -f "$GQL_DIR/issue_comments.jq")
+# Issue-level comments (non-code PR comments from humans, excluding bot messages)
+ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
 
 # CI status
 gh pr checks "$PR_NUMBER"
@@ -150,7 +151,7 @@ done
 #### Minimize addressed issue-level comments
 Minimize each non-author, non-bot issue comment as "resolved" so they collapse in the PR timeline:
 ```bash
-COMMENT_NODE_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -r --arg author "$PR_AUTHOR" -f "$GQL_DIR/issue_comments.jq" | jq -r '.[].node_id')
+COMMENT_NODE_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -r -f "$GQL_DIR/issue_comments.jq" | jq -r '.[].node_id')
 
 for COMMENT_ID in $COMMENT_NODE_IDS; do
   gh api graphql -F "query=@$GQL_DIR/minimize.graphql" -f "id=$COMMENT_ID"
@@ -167,12 +168,12 @@ gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ Addressed i
 Poll to verify no new issues appear. Check every **15 seconds** (max **3 minutes**):
 
 ```bash
-PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq --arg author "$PR_AUTHOR" -f "$GQL_DIR/issue_comments.jq" | jq 'length')
+PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
 
 for i in $(seq 1 12); do
   NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 
-  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq --arg author "$PR_AUTHOR" -f "$GQL_DIR/issue_comments.jq" | jq 'length')
+  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
 
   if [ "$NEW_UNRESOLVED" -gt 0 ] || [ "$NEW_ISSUE_COMMENTS" -gt "$PREV_ISSUE_COUNT" ]; then
     break  # New issues found — loop back to step 1

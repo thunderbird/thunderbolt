@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
 import { tasksTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -12,36 +12,38 @@ export const getAllTasks = async (): Promise<Task[]> => {
   return (await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt))) as Task[]
 }
 
+const itemNotEmpty = and(isNotNull(tasksTable.item), sql`trim(${tasksTable.item}) != ''`)
+
 /**
- * Gets all incomplete tasks, optionally filtered by search query (excluding soft-deleted)
+ * Returns a Drizzle query for incomplete tasks, optionally filtered by search query (excluding soft-deleted).
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasks = async (searchQuery?: string): Promise<Task[]> => {
-  const db = DatabaseSingleton.instance.db
-  const result = (await db
+export const getIncompleteTasks = (searchQuery?: string) =>
+  DatabaseSingleton.instance.db
     .select()
     .from(tasksTable)
     .where(
       searchQuery
-        ? and(eq(tasksTable.isComplete, 0), like(tasksTable.item, `%${searchQuery}%`), isNull(tasksTable.deletedAt))
-        : and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt)),
+        ? and(
+            eq(tasksTable.isComplete, 0),
+            like(tasksTable.item, `%${searchQuery}%`),
+            isNull(tasksTable.deletedAt),
+            itemNotEmpty,
+          )
+        : and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty),
     )
     .orderBy(asc(tasksTable.order), desc(tasksTable.id))
-    .limit(50)) as Task[]
-
-  return result.filter((task) => task.item && task.item.trim() !== '')
-}
+    .limit(50)
 
 /**
- * Gets the count of incomplete tasks (excluding soft-deleted)
+ * Returns a Drizzle query for the count of incomplete tasks (excluding soft-deleted).
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasksCount = async (): Promise<number> => {
-  const db = DatabaseSingleton.instance.db
-  const [{ count }] = await db
+export const getIncompleteTasksCount = () =>
+  DatabaseSingleton.instance.db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)
-    .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt)))
-  return count
-}
+    .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty))
 
 /**
  * Update a task (preserves defaultHash for modification tracking)

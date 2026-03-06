@@ -131,7 +131,7 @@ describe('Tasks DAL', () => {
 
   describe('getIncompleteTasksCount', () => {
     it('should return 0 when no incomplete tasks exist', async () => {
-      const count = await getIncompleteTasksCount()
+      const [{ count }] = await getIncompleteTasksCount()
       expect(count).toBe(0)
     })
 
@@ -162,7 +162,7 @@ describe('Tasks DAL', () => {
         },
       ])
 
-      const count = await getIncompleteTasksCount()
+      const [{ count }] = await getIncompleteTasksCount()
       expect(count).toBe(2)
     })
   })
@@ -465,7 +465,7 @@ describe('Tasks DAL', () => {
       const incompleteTasks = await getIncompleteTasks()
       expect(incompleteTasks).toHaveLength(0)
 
-      const count = await getIncompleteTasksCount()
+      const [{ count }] = await getIncompleteTasksCount()
       expect(count).toBe(0)
     })
   })

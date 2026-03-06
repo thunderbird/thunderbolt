@@ -27,10 +27,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import { type CompilableQuery } from '@powersync/web'
 
 // Task Item Component - Memoized for performance
 type TaskItemProps = {
@@ -240,8 +243,6 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
 
 // Main Tasks Page Component
 export default function TasksPage() {
-  const queryClient = useQueryClient()
-
   // State
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set())
@@ -268,14 +269,14 @@ export default function TasksPage() {
     easing: 'ease-out',
   }
 
-  // Fetch tasks
+  // Fetch tasks via PowerSync for reactive/live updates
   const {
     data: tasks = [],
     isLoading,
     isPlaceholderData,
   } = useQuery({
     queryKey: ['tasks', debouncedSearchQuery],
-    queryFn: () => getIncompleteTasks(debouncedSearchQuery),
+    query: toCompilableQuery(getIncompleteTasks(debouncedSearchQuery)) as CompilableQuery<Task>,
     placeholderData: (previousData) => previousData,
   })
 
@@ -298,11 +299,12 @@ export default function TasksPage() {
     return tasks
   }, [tasks, optimisticOrder])
 
-  // Count total tasks
-  const { data: totalCount = 0 } = useQuery({
+  // Count total tasks (query returns [{ count }])
+  const { data: countResult } = useQuery({
     queryKey: ['tasks', 'count'],
-    queryFn: getIncompleteTasksCount,
+    query: toCompilableQuery(getIncompleteTasksCount()),
   })
+  const totalCount = countResult?.[0]?.count ?? 0
 
   // Mutations
   const addTaskMutation = useMutation({
@@ -318,7 +320,6 @@ export default function TasksPage() {
     },
     onSuccess: (_, item) => {
       trackEvent('task_add', { task_length: item.length })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 
@@ -328,15 +329,11 @@ export default function TasksPage() {
     },
     onSuccess: (_, values) => {
       trackEvent('task_update_text', { task_id: values.id, new_length: values.item.length })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 
   const deleteTaskMutation = useMutation({
     mutationFn: deleteTask,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
   })
 
   const updateOrderMutation = useMutation({
@@ -357,7 +354,6 @@ export default function TasksPage() {
     },
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 

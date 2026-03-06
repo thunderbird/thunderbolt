@@ -166,6 +166,7 @@ body {
   #root {
     position: fixed;
     inset: 0;
+    height: auto;
   }
 }
 

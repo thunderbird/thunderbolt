@@ -45,14 +45,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
     const isStreaming = status === 'streaming'
 
+    // Use a stable "new" key for unsaved chats so the draft persists across /chats/new navigations
+    const draftKey = chatThread ? chatThreadId : 'new'
     const [showOverflowModal, setShowOverflowModal] = useState(false)
-    const [input, setInput, clearDraft] = useDraftInput(chatThreadId)
+    const [input, setInput, clearDraft] = useDraftInput(draftKey)
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
 

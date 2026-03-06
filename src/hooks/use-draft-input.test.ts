@@ -133,6 +133,23 @@ describe('useDraftInput', () => {
     expect(localStorage.getItem('draft:thread-1')).toBeNull()
   })
 
+  it('flushes pending draft on thread switch', () => {
+    fakeTimers()
+    const { result, rerender } = renderHook(({ id }) => useDraftInput(id), {
+      initialProps: { id: 'thread-1' },
+    })
+
+    act(() => {
+      result.current[1]('unsaved text')
+    })
+
+    // Switch threads before debounce fires
+    rerender({ id: 'thread-2' })
+
+    // The pending draft for thread-1 should have been flushed
+    expect(localStorage.getItem('draft:thread-1')).toBe('unsaved text')
+  })
+
   it('loads correct draft when chatThreadId changes', () => {
     localStorage.setItem('draft:thread-1', 'draft one')
     localStorage.setItem('draft:thread-2', 'draft two')

@@ -28,6 +28,7 @@ export const useDraftInput = (chatThreadId: string) => {
   const [input, setInputState] = useState(() => readDraft(chatThreadId))
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chatThreadIdRef = useRef(chatThreadId)
+  const pendingValueRef = useRef<string | null>(null)
 
   // When the chat thread changes, load that thread's draft
   useEffect(() => {
@@ -35,15 +36,21 @@ export const useDraftInput = (chatThreadId: string) => {
     setInputState(readDraft(chatThreadId))
 
     return () => {
+      // Flush any pending debounced write before switching threads
       if (timerRef.current) {
         clearTimeout(timerRef.current)
         timerRef.current = null
+      }
+      if (pendingValueRef.current !== null) {
+        writeDraft(chatThreadIdRef.current, pendingValueRef.current)
+        pendingValueRef.current = null
       }
     }
   }, [chatThreadId])
 
   const setInput = useCallback((value: string) => {
     setInputState(value)
+    pendingValueRef.current = value
 
     if (timerRef.current) {
       clearTimeout(timerRef.current)
@@ -52,11 +59,13 @@ export const useDraftInput = (chatThreadId: string) => {
     timerRef.current = setTimeout(() => {
       writeDraft(chatThreadIdRef.current, value)
       timerRef.current = null
+      pendingValueRef.current = null
     }, debounceMs)
   }, [])
 
   const clearDraft = useCallback(() => {
     setInputState('')
+    pendingValueRef.current = null
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null

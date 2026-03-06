@@ -30,8 +30,10 @@ import { isAutomationModified } from '@/defaults/utils'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
-import type { Prompt, Trigger } from '@/types'
+import type { Prompt } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
 import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
@@ -244,14 +246,11 @@ type PromptCardProps = {
 
 const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onReset }: PromptCardProps) => {
   const db = DatabaseSingleton.instance.db
-  const queryClient = useQueryClient()
 
-  // Query triggers for this prompt
-  const { data: triggers = [] } = useQuery({
+  // Query triggers for this prompt via PowerSync for reactive/live updates
+  const { data: triggers = [] } = usePowerSyncQuery({
     queryKey: ['triggers', prompt.id],
-    queryFn: async (): Promise<Trigger[]> => {
-      return getAllTriggersForPrompt(prompt.id)
-    },
+    query: toCompilableQuery(getAllTriggersForPrompt(prompt.id)),
   })
 
   // For now, use the first trigger's enabled state, or true if no triggers
@@ -271,9 +270,6 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
           .set({ isEnabled: enabled ? 1 : 0 })
           .where(eq(triggersTable.id, primaryTrigger.id))
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['triggers', prompt.id] })
     },
   })
 

@@ -240,7 +240,6 @@ export default function AutomationFormModal({
         new_model: values.modelId,
       })
       queryClient.invalidateQueries({ queryKey: ['prompts'] })
-      queryClient.invalidateQueries({ queryKey: ['triggers'] })
       onOpenChange(false)
       onSuccess?.()
     },

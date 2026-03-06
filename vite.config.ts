@@ -71,11 +71,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),
-      // Force single @powersync/react instance so PowerSyncContext is shared (usePowerSyncQuery needs it)
-      '@powersync/react': path.resolve(__dirname, 'node_modules/@powersync/react'),
-      // Exposes PowerSync internal lib path so our custom SharedWorker can extend
-      // SharedSyncImplementation (not in public exports map).
-      'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib/src'),
     },
     conditions: ['browser'],
   },

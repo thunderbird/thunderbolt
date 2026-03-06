@@ -31,7 +31,7 @@ const powersyncSettings: Settings = {
   corsAllowHeaders: '',
   corsExposeHeaders: '',
   waitlistEnabled: false,
-  autoApprovedDomains: '',
+  waitlistAutoApproveDomains: '',
   powersyncUrl: 'https://powersync.example.com',
   powersyncJwtKid: 'test-kid',
   powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',

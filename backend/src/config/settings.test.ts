@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
-  getAutoApprovedDomainsList,
+  getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
   getSettings,
@@ -45,38 +45,38 @@ describe('Config Settings', () => {
     })
   })
 
-  describe('getAutoApprovedDomainsList', () => {
+  describe('getWaitlistAutoApproveDomains', () => {
     it('should split comma-separated domains', () => {
-      const settings = { autoApprovedDomains: 'mozilla.org,thunderbird.net,mozilla.ai' }
-      const domains = getAutoApprovedDomainsList(settings as any)
+      const settings = { waitlistAutoApproveDomains: 'mozilla.org,thunderbird.net,mozilla.ai' }
+      const domains = getWaitlistAutoApproveDomains(settings as any)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net', 'mozilla.ai'])
     })
 
     it('should handle single domain', () => {
-      const settings = { autoApprovedDomains: 'mozilla.org' }
-      const domains = getAutoApprovedDomainsList(settings as any)
+      const settings = { waitlistAutoApproveDomains: 'mozilla.org' }
+      const domains = getWaitlistAutoApproveDomains(settings as any)
 
       expect(domains).toEqual(['mozilla.org'])
     })
 
     it('should trim whitespace and lowercase domains', () => {
-      const settings = { autoApprovedDomains: ' Mozilla.ORG , Thunderbird.NET ' }
-      const domains = getAutoApprovedDomainsList(settings as any)
+      const settings = { waitlistAutoApproveDomains: ' Mozilla.ORG , Thunderbird.NET ' }
+      const domains = getWaitlistAutoApproveDomains(settings as any)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
     })
 
     it('should filter out empty domains', () => {
-      const settings = { autoApprovedDomains: 'mozilla.org,,thunderbird.net,' }
-      const domains = getAutoApprovedDomainsList(settings as any)
+      const settings = { waitlistAutoApproveDomains: 'mozilla.org,,thunderbird.net,' }
+      const domains = getWaitlistAutoApproveDomains(settings as any)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
     })
 
     it('should handle empty string', () => {
-      const settings = { autoApprovedDomains: '' }
-      const domains = getAutoApprovedDomainsList(settings as any)
+      const settings = { waitlistAutoApproveDomains: '' }
+      const domains = getWaitlistAutoApproveDomains(settings as any)
 
       expect(domains).toEqual([])
     })

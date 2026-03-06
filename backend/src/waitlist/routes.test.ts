@@ -10,11 +10,11 @@ describe('Waitlist API', () => {
   let app: Awaited<ReturnType<typeof createApp>>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
-  let savedAutoApprovedDomains: string | undefined
+  let savedWaitlistDomains: string | undefined
 
   beforeEach(async () => {
-    savedAutoApprovedDomains = process.env.AUTO_APPROVED_DOMAINS
-    process.env.AUTO_APPROVED_DOMAINS = 'mozilla.org,thunderbird.net,mozilla.ai,mozilla.com'
+    savedWaitlistDomains = process.env.WAITLIST_AUTO_APPROVE_DOMAINS
+    process.env.WAITLIST_AUTO_APPROVE_DOMAINS = 'mozilla.org,thunderbird.net,mozilla.ai,mozilla.com'
     clearSettingsCache()
     const testEnv = await createTestDb()
     db = testEnv.db
@@ -23,10 +23,10 @@ describe('Waitlist API', () => {
   })
 
   afterEach(async () => {
-    if (savedAutoApprovedDomains !== undefined) {
-      process.env.AUTO_APPROVED_DOMAINS = savedAutoApprovedDomains
+    if (savedWaitlistDomains !== undefined) {
+      process.env.WAITLIST_AUTO_APPROVE_DOMAINS = savedWaitlistDomains
     } else {
-      delete process.env.AUTO_APPROVED_DOMAINS
+      delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
     }
     clearSettingsCache()
     await cleanup()

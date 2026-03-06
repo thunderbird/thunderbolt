@@ -56,7 +56,7 @@ describe('Main Routes', () => {
         'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
       corsExposeHeaders: 'mcp-session-id',
       waitlistEnabled: false,
-      autoApprovedDomains: '',
+      waitlistAutoApproveDomains: '',
       powersyncUrl: '',
       powersyncJwtKid: '',
       powersyncJwtSecret: '',

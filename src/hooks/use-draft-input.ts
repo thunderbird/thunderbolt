@@ -1,23 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
+import { useLocalStorage } from './use-local-storage'
 
 const draftKeyPrefix = 'draft:'
-const debounceMs = 300
-
-/** Get the localStorage key for a chat thread's draft. */
-const getDraftKey = (chatThreadId: string) => `${draftKeyPrefix}${chatThreadId}`
-
-/** Read a draft from localStorage. */
-const readDraft = (chatThreadId: string): string => localStorage.getItem(getDraftKey(chatThreadId)) ?? ''
-
-/** Write a draft to localStorage (or remove if empty). */
-const writeDraft = (chatThreadId: string, value: string) => {
-  const key = getDraftKey(chatThreadId)
-  if (value) {
-    localStorage.setItem(key, value)
-  } else {
-    localStorage.removeItem(key)
-  }
-}
 
 /**
  * Persists prompt input text to localStorage, keyed by chat thread ID.
@@ -25,53 +9,11 @@ const writeDraft = (chatThreadId: string, value: string) => {
  * Returns [input, setInput, clearDraft] — drop-in replacement for useState('').
  */
 export const useDraftInput = (chatThreadId: string) => {
-  const [input, setInputState] = useState(() => readDraft(chatThreadId))
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const chatThreadIdRef = useRef(chatThreadId)
-  const pendingValueRef = useRef<string | null>(null)
-
-  // When the chat thread changes, load that thread's draft
-  useEffect(() => {
-    chatThreadIdRef.current = chatThreadId
-    setInputState(readDraft(chatThreadId))
-
-    return () => {
-      // Flush any pending debounced write before switching threads
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
-      if (pendingValueRef.current !== null) {
-        writeDraft(chatThreadIdRef.current, pendingValueRef.current)
-        pendingValueRef.current = null
-      }
-    }
-  }, [chatThreadId])
-
-  const setInput = useCallback((value: string) => {
-    setInputState(value)
-    pendingValueRef.current = value
-
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-    }
-
-    timerRef.current = setTimeout(() => {
-      writeDraft(chatThreadIdRef.current, value)
-      timerRef.current = null
-      pendingValueRef.current = null
-    }, debounceMs)
-  }, [])
+  const [input, setInput] = useLocalStorage(`${draftKeyPrefix}${chatThreadId}`, '', { debounceMs: 300 })
 
   const clearDraft = useCallback(() => {
-    setInputState('')
-    pendingValueRef.current = null
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    writeDraft(chatThreadIdRef.current, '')
-  }, [])
+    setInput('', { immediate: true })
+  }, [setInput])
 
   return [input, setInput, clearDraft] as const
 }

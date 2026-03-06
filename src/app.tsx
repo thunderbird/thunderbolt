@@ -144,7 +144,11 @@ export const App = () => {
 
     const powerSyncInstance = getPowerSyncInstance()
     return (
-      <PowerSyncContext.Provider value={powerSyncInstance}>
+      <PowerSyncContext.Provider
+        // TODO: refactor database instance to always return PowerSyncDatabase - we no longer have other database types
+        // @ts-ignore
+        value={powerSyncInstance}
+      >
         <QueryClientProvider client={queryClient}>
           <HttpClientProvider httpClient={initData.httpClient}>
             <AuthProvider>

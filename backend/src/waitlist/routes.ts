@@ -4,7 +4,7 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { autoApprovedDomains } from '@/lib/constants'
+import { getAutoApprovedDomainsList, getSettings } from '@/config/settings'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import {
@@ -33,7 +33,7 @@ const defaultEmailService: WaitlistEmailService = {
 const isAutoApprovedDomain = (email: string): boolean => {
   const parts = email.split('@')
   const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
-  return domain ? autoApprovedDomains.includes(domain) : false
+  return domain ? getAutoApprovedDomainsList(getSettings()).includes(domain) : false
 }
 
 /** Trigger Better Auth's OTP flow for approved users. */

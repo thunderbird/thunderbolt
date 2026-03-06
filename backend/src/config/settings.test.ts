@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { clearSettingsCache, getCorsMethodsList, getCorsOriginsList, getSettings } from './settings'
+import {
+  clearSettingsCache,
+  getAutoApprovedDomainsList,
+  getCorsMethodsList,
+  getCorsOriginsList,
+  getSettings,
+} from './settings'
 
 describe('Config Settings', () => {
   describe('getCorsOriginsList', () => {
@@ -36,6 +42,43 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings as any)
 
       expect(origins).toEqual([])
+    })
+  })
+
+  describe('getAutoApprovedDomainsList', () => {
+    it('should split comma-separated domains', () => {
+      const settings = { autoApprovedDomains: 'mozilla.org,thunderbird.net,mozilla.ai' }
+      const domains = getAutoApprovedDomainsList(settings as any)
+
+      expect(domains).toEqual(['mozilla.org', 'thunderbird.net', 'mozilla.ai'])
+    })
+
+    it('should handle single domain', () => {
+      const settings = { autoApprovedDomains: 'mozilla.org' }
+      const domains = getAutoApprovedDomainsList(settings as any)
+
+      expect(domains).toEqual(['mozilla.org'])
+    })
+
+    it('should trim whitespace and lowercase domains', () => {
+      const settings = { autoApprovedDomains: ' Mozilla.ORG , Thunderbird.NET ' }
+      const domains = getAutoApprovedDomainsList(settings as any)
+
+      expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
+    })
+
+    it('should filter out empty domains', () => {
+      const settings = { autoApprovedDomains: 'mozilla.org,,thunderbird.net,' }
+      const domains = getAutoApprovedDomainsList(settings as any)
+
+      expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
+    })
+
+    it('should handle empty string', () => {
+      const settings = { autoApprovedDomains: '' }
+      const domains = getAutoApprovedDomainsList(settings as any)
+
+      expect(domains).toEqual([])
     })
   })
 

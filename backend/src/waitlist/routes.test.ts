@@ -1,5 +1,6 @@
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
+import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -9,8 +10,12 @@ describe('Waitlist API', () => {
   let app: Awaited<ReturnType<typeof createApp>>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  let savedAutoApprovedDomains: string | undefined
 
   beforeEach(async () => {
+    savedAutoApprovedDomains = process.env.AUTO_APPROVED_DOMAINS
+    process.env.AUTO_APPROVED_DOMAINS = 'mozilla.org,thunderbird.net,mozilla.ai,mozilla.com'
+    clearSettingsCache()
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
@@ -18,6 +23,12 @@ describe('Waitlist API', () => {
   })
 
   afterEach(async () => {
+    if (savedAutoApprovedDomains !== undefined) {
+      process.env.AUTO_APPROVED_DOMAINS = savedAutoApprovedDomains
+    } else {
+      delete process.env.AUTO_APPROVED_DOMAINS
+    }
+    clearSettingsCache()
     await cleanup()
   })
 

@@ -6,25 +6,27 @@ import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Trigger } from '../types'
 
 /**
- * Gets all triggers for a prompt (excluding soft-deleted)
+ * Returns a Drizzle query for all triggers for a prompt (excluding soft-deleted).
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getAllTriggersForPrompt = async (promptId: string): Promise<Trigger[]> => {
-  const db = DatabaseSingleton.instance.db
-  return (await db
+export const getAllTriggersForPrompt = (promptId: string) => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(triggersTable)
-    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))) as Trigger[]
+    .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
+  return query as typeof query & { execute: () => Promise<Trigger[]> }
 }
 
 /**
- * Gets all enabled triggers (excluding soft-deleted)
+ * Returns a Drizzle query for all enabled triggers (excluding soft-deleted).
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
-  const db = DatabaseSingleton.instance.db
-  return (await db
+export const getAllEnabledTriggers = () => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(triggersTable)
-    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))) as Trigger[]
+    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))
+  return query as typeof query & { execute: () => Promise<Trigger[]> }
 }
 
 /**

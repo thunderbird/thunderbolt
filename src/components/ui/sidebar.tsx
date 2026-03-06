@@ -537,48 +537,53 @@ const SidebarMenuButton = forwardRef<
     isActive?: boolean
     tooltip?: string | ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>
->(({ asChild = false, isActive = false, variant = 'default', size = 'default', tooltip, className, onClick, ...props }, ref) => {
-  const Comp = asChild ? Slot : 'button'
-  const { isMobile, state } = useSidebar()
-  const { triggerSelection } = useHaptics()
+>(
+  (
+    { asChild = false, isActive = false, variant = 'default', size = 'default', tooltip, className, onClick, ...props },
+    ref,
+  ) => {
+    const Comp = asChild ? Slot : 'button'
+    const { isMobile, state } = useSidebar()
+    const { triggerSelection } = useHaptics()
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      triggerSelection()
-      onClick?.(e)
-    },
-    [onClick, triggerSelection],
-  )
+    const handleClick = useCallback(
+      (e: React.MouseEvent<HTMLButtonElement>) => {
+        triggerSelection()
+        onClick?.(e)
+      },
+      [onClick, triggerSelection],
+    )
 
-  const button = (
-    <Comp
-      ref={ref}
-      data-sidebar="menu-button"
-      data-size={size}
-      data-active={isActive}
-      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
-      onClick={handleClick}
-      {...props}
-    />
-  )
+    const button = (
+      <Comp
+        ref={ref}
+        data-sidebar="menu-button"
+        data-size={size}
+        data-active={isActive}
+        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        onClick={handleClick}
+        {...props}
+      />
+    )
 
-  if (!tooltip) {
-    return button
-  }
-
-  if (typeof tooltip === 'string') {
-    tooltip = {
-      children: tooltip,
+    if (!tooltip) {
+      return button
     }
-  }
 
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right" align="center" hidden={state !== 'collapsed' || isMobile} {...tooltip} />
-    </Tooltip>
-  )
-})
+    if (typeof tooltip === 'string') {
+      tooltip = {
+        children: tooltip,
+      }
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="right" align="center" hidden={state !== 'collapsed' || isMobile} {...tooltip} />
+      </Tooltip>
+    )
+  },
+)
 SidebarMenuButton.displayName = 'SidebarMenuButton'
 
 const SidebarMenuAction = forwardRef<

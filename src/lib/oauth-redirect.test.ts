@@ -23,13 +23,6 @@ describe('getOAuthRedirectUri', () => {
     })
   })
 
-  it('returns App Link for mobile platforms', () => {
-    const uri = getOAuthRedirectUri()
-
-    // In test environment (not Tauri), should return web callback
-    expect(uri).toContain('/oauth/callback')
-  })
-
   it('returns valid URL format', () => {
     const originalLocation = window.location
     const mockLocation = { origin: 'https://test.example.com' } as Location
@@ -41,10 +34,7 @@ describe('getOAuthRedirectUri', () => {
 
     const uri = getOAuthRedirectUri()
 
-    // Should be a valid URL
     expect(() => new URL(uri)).not.toThrow()
-
-    // Should end with /oauth/callback
     expect(uri).toMatch(/\/oauth\/callback$/)
 
     // Restore
@@ -53,5 +43,11 @@ describe('getOAuthRedirectUri', () => {
       writable: true,
       configurable: true,
     })
+  })
+
+  it('always uses /oauth/callback path (never oauth-callback.html)', () => {
+    const uri = getOAuthRedirectUri()
+    expect(uri).not.toContain('oauth-callback.html')
+    expect(uri).toContain('/oauth/callback')
   })
 })

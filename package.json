@@ -49,6 +49,7 @@
     "@openrouter/ai-sdk-provider": "^1.1.2",
     "@powersync/drizzle-driver": "^0.7.2",
     "@powersync/react": "^1.8.2",
+    "@powersync/tanstack-react-query": "^0.2.1",
     "@powersync/web": "^1.32.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

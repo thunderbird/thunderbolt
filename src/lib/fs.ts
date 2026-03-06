@@ -63,24 +63,41 @@ const resetAppDirTauri = async (): Promise<void> => {
   await remove(appDataDirPath, { recursive: true })
 }
 
+const opfsResetTimeoutMs = 8_000
+
 /**
- * Resets app data directory in web environment using OPFS
+ * Resets app data directory in web environment using OPFS.
+ *
+ * Wrapped in a timeout because OPFS operations (getDirectory, entries, removeEntry)
+ * can hang indefinitely on some platforms — notably Tauri iOS WKWebView, where
+ * the File System Access API behaves unreliably. If we hang, the reset never
+ * completes and the finally block (localStorage.clear + reload) never runs,
+ * leaving the app in a broken state. The timeout ensures we bail and the caller
+ * can still run its finally block.
  */
 const resetAppDirOpfs = async (): Promise<void> => {
-  if (!(await isOpfsAvailable())) {
-    throw new Error('OPFS is not available')
+  const reset = async (): Promise<void> => {
+    if (!(await isOpfsAvailable())) {
+      throw new Error('OPFS is not available')
+    }
+
+    const appDataDirPath = await createAppDir()
+    const root: any = await navigator.storage.getDirectory()
+
+    for await (const [name] of root.entries()) {
+      await root.removeEntry(name, { recursive: true })
+    }
+
+    if (!isTauri()) {
+      await root.getDirectoryHandle(appDataDirPath, { create: true })
+    }
   }
 
-  const appDataDirPath = await createAppDir()
-  const root: any = await navigator.storage.getDirectory()
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`OPFS reset timed out after ${opfsResetTimeoutMs}ms`)), opfsResetTimeoutMs)
+  })
 
-  for await (const [name] of root.entries()) {
-    await root.removeEntry(name, { recursive: true })
-  }
-
-  if (!isTauri()) {
-    await root.getDirectoryHandle(appDataDirPath, { create: true })
-  }
+  await Promise.race([reset(), timeoutPromise])
 }
 
 /**

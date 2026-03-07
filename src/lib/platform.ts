@@ -181,26 +181,34 @@ export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath
  * Returns an auto-filled device display name (e.g. "Chrome on macOS", "Safari on iOS").
  * Used for the synced devices table; not editable by the user.
  */
+const platformDisplayNames: Record<string, string> = {
+  ios: 'iOS',
+  macos: 'macOS',
+  windows: 'Windows',
+  linux: 'Linux',
+  android: 'Android',
+}
+
+const formatPlatformName = (p: string): string => platformDisplayNames[p] ?? p.charAt(0).toUpperCase() + p.slice(1)
+
 export const getDeviceDisplayName = (): string => {
   if (isTauri()) {
-    const p = getPlatform()
-    const name = p.charAt(0).toUpperCase() + p.slice(1)
-    return `Thunderbolt on ${name}`
+    return `Thunderbolt on ${formatPlatformName(getPlatform())}`
   }
   const browser = getWebBrowser()
   const browserDisplay = browser === 'unknown' ? 'Browser' : browser.charAt(0).toUpperCase() + browser.slice(1)
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
   let os = 'Unknown'
   if (ua.includes('Mac')) {
-    os = 'macOS'
+    os = platformDisplayNames.macos
   } else if (ua.includes('Win')) {
-    os = 'Windows'
+    os = platformDisplayNames.windows
   } else if (ua.includes('Linux')) {
-    os = 'Linux'
+    os = platformDisplayNames.linux
   } else if (ua.includes('iPhone') || ua.includes('iPad')) {
-    os = 'iOS'
+    os = platformDisplayNames.ios
   } else if (ua.includes('Android')) {
-    os = 'Android'
+    os = platformDisplayNames.android
   }
   return `${browserDisplay} on ${os}`
 }

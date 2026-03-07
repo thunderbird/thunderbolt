@@ -7,11 +7,13 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 /**
  * Main sidebar component that orchestrates between chat and settings sidebars
@@ -19,7 +21,6 @@ import { SettingsSidebarContent } from './settings-sidebar'
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const queryClient = useQueryClient()
   const { setOpenMobile, state, toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
@@ -60,7 +61,7 @@ export default function Sidebar() {
 
   const { data, isPending } = useQuery({
     queryKey: ['chatThreads'],
-    queryFn: getAllChatThreads,
+    query: toCompilableQuery(getAllChatThreads()),
     placeholderData: (previousData) => previousData,
   })
 
@@ -80,7 +81,6 @@ export default function Sidebar() {
       const deletedChatId = threadIdRef.current
       trackEvent('chat_delete', { chat_id: deletedChatId })
       deleteChatDialogRef.current?.close()
-      await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       threadIdRef.current = null
 
       if (deletedChatId === currentChatThreadId) {
@@ -96,7 +96,6 @@ export default function Sidebar() {
     onSuccess: async () => {
       trackEvent('chat_clear_all')
       deleteAllChatsDialogRef.current?.close()
-      await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
       navigate('/chats/new')
     },
   })

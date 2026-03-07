@@ -31,7 +31,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
@@ -41,7 +41,6 @@ import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 
 export default function AutomationsPage() {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null)
@@ -72,7 +71,7 @@ export default function AutomationsPage() {
       const prompt = prompts.find((p) => p.id === promptId)
 
       const threadId = await runAutomation(promptId)
-      queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+
       navigate(`/chats/${threadId}`)
       trackEvent('automation_run', {
         automation_id: promptId,

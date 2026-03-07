@@ -23,13 +23,14 @@ export const isChatThreadDeleted = async (id: string): Promise<boolean> => {
 /**
  * Gets all chat threads ordered by creation date (excluding soft-deleted)
  */
-export const getAllChatThreads = async (): Promise<ChatThread[]> => {
-  const db = DatabaseSingleton.instance.db
-  return (await db
+export const getAllChatThreads = () => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(chatThreadsTable)
     .where(isNull(chatThreadsTable.deletedAt))
-    .orderBy(desc(chatThreadsTable.id))) as ChatThread[]
+    .orderBy(desc(chatThreadsTable.id))
+
+  return query as typeof query & { execute: () => Promise<ChatThread[]> }
 }
 
 /**

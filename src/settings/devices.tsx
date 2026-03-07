@@ -51,6 +51,8 @@ export default function DevicesSettingsPage() {
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
 
+  const visibleDevices = devices.filter((d) => d.revokedAt == null || dayjs().diff(dayjs(d.revokedAt), 'hour') < 24)
+
   const revokeMutation = useMutation({
     mutationFn: (deviceId: string) => {
       const token = getAuthToken()
@@ -84,11 +86,11 @@ export default function DevicesSettingsPage() {
       <SectionCard title="Connected devices">
         {isLoading ? (
           <p className="text-muted-foreground py-4">Loading devices…</p>
-        ) : devices.length === 0 ? (
+        ) : visibleDevices.length === 0 ? (
           <p className="text-muted-foreground py-4">No devices yet. Sign in with sync to see devices here.</p>
         ) : (
           <ul className="divide-y divide-border">
-            {devices.map((device) => {
+            {visibleDevices.map((device) => {
               const isCurrent = device.id === currentDeviceId
               const isRevoked = device.revokedAt != null
               return (

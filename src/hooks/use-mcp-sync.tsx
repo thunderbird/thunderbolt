@@ -1,6 +1,7 @@
 import { getAllMcpServers } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
-import { useQuery } from '@tanstack/react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect } from 'react'
 
 export const useMcpSync = () => {
@@ -8,7 +9,7 @@ export const useMcpSync = () => {
 
   const { data: dbServers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    queryFn: getAllMcpServers,
+    query: toCompilableQuery(getAllMcpServers()),
   })
 
   // Sync database servers with MCP provider

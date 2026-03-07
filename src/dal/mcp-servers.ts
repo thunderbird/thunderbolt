@@ -7,22 +7,22 @@ import { type McpServer } from '@/types'
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
  */
-export const getAllMcpServers = async (): Promise<McpServer[]> => {
-  const db = DatabaseSingleton.instance.db
-  return (await db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))) as McpServer[]
+export const getAllMcpServers = () => {
+  const query = DatabaseSingleton.instance.db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
+
+  return query as typeof query & { execute: () => Promise<McpServer[]> }
 }
 
 /**
  * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
  */
-export const getHttpMcpServers = async (): Promise<McpServer[]> => {
-  const db = DatabaseSingleton.instance.db
-  return (await db
+export const getHttpMcpServers = () => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(mcpServersTable)
-    .where(
-      and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)),
-    )) as McpServer[]
+    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
+
+  return query as typeof query & { execute: () => Promise<McpServer[]> }
 }
 
 /**

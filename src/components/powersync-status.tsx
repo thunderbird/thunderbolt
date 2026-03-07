@@ -74,7 +74,7 @@ export const PowerSyncStatus = () => {
           <button
             type="button"
             className={cn(
-              'flex items-center gap-2 px-[var(--spacing-x-sm)] py-2 md:py-1 rounded-md transition-colors min-h-[var(--min-touch-height)]',
+              'flex items-center gap-2 px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)] rounded-md transition-colors min-h-[var(--min-touch-height)]',
               'hover:bg-accent cursor-pointer select-none outline-none',
             )}
             aria-label="Sync status"

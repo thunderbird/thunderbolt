@@ -7,7 +7,6 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
-import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { PanelLeft } from 'lucide-react'
 import { useState } from 'react'
@@ -55,10 +54,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
       {isExpanded && (
         <div className="flex items-center">
           {isMobile ? (
-            <>
-              <PowerSyncStatus />
-              <SidebarCloseButton onClick={onToggle} />
-            </>
+            <SidebarCloseButton onClick={onToggle} />
           ) : (
             <SidebarGroup className="p-0 w-auto">
               <SidebarGroupContent>

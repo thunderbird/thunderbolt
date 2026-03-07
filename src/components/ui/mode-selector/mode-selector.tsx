@@ -47,7 +47,9 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     <div
       className={cn(
         'flex items-center rounded-lg cursor-pointer transition-colors text-sm border border-border',
-        iconOnly ? 'size-11 md:size-[34px] justify-center' : 'gap-1 px-3 md:px-2 py-2 md:py-1.5',
+        iconOnly
+          ? 'size-[var(--touch-height-default)] justify-center'
+          : 'gap-1 px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
@@ -62,7 +64,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-4 md:px-3 py-3 md:py-2.5 rounded-xl transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-xl transition-colors text-left cursor-pointer',
           isSelected ? 'bg-muted' : 'hover:bg-accent/50',
         )}
       >

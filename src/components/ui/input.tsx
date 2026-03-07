@@ -16,9 +16,9 @@ const inputVariants = cva(
       },
       inputSize: {
         default: 'h-[var(--touch-height-default)] w-full',
-        sm: 'h-[var(--touch-height-sm)] text-xs px-[var(--spacing-x-sm)] py-1 md:py-0.5 rounded-md',
+        sm: 'h-[var(--touch-height-sm)] text-xs px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)] rounded-md',
         lg: 'h-[var(--touch-height-lg)] text-base px-[var(--spacing-x-default)] py-[var(--spacing-y-default)] rounded-md',
-        xl: 'h-[var(--touch-height-xl)] text-lg px-6 md:px-5 py-3 md:py-2.5 rounded-lg',
+        xl: 'h-[var(--touch-height-xl)] text-lg px-[var(--spacing-x-lg)] py-[var(--spacing-y-md)] rounded-lg',
       },
       state: {
         default: '',

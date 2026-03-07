@@ -88,6 +88,7 @@ export const Header = () => {
               <span className="sr-only">New Chat</span>
             </Button>
           )}
+          <PowerSyncStatus />
         </div>
       </header>
     )

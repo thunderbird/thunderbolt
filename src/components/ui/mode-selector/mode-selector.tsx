@@ -11,14 +11,16 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
+const iconSize = 'size-[var(--icon-size-default)]'
+
 const iconMap: Record<string, ReactNode> = {
-  'message-square': <MessageSquare className="size-4" />,
-  globe: <Globe className="size-4" />,
-  microscope: <Microscope className="size-4" />,
+  'message-square': <MessageSquare className={iconSize} />,
+  globe: <Globe className={iconSize} />,
+  microscope: <Microscope className={iconSize} />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return iconMap[iconName] ?? <MessageSquare className="size-4" />
+  return iconMap[iconName] ?? <MessageSquare className={iconSize} />
 }
 
 type ModeItemData = {
@@ -49,7 +51,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
-      {selected?.icon ?? <MessageSquare className="size-4" />}
+      {selected?.icon ?? <MessageSquare className={iconSize} />}
       {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )

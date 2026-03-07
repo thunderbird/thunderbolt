@@ -31,8 +31,8 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
 import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
@@ -51,7 +51,7 @@ export default function AutomationsPage() {
 
   const { data: prompts = [], isLoading } = useQuery({
     queryKey: ['prompts', debouncedSearchQuery],
-    queryFn: () => getAllPrompts(debouncedSearchQuery),
+    query: toCompilableQuery(getAllPrompts(debouncedSearchQuery)),
     placeholderData: (previousData) => previousData,
   })
 
@@ -63,7 +63,6 @@ export default function AutomationsPage() {
     mutationFn: deleteAutomation,
     onSuccess: () => {
       trackEvent('automation_delete_confirmed', { automation_id: deletingPromptId })
-      queryClient.invalidateQueries({ queryKey: ['prompts'] })
       setDeletingPromptId(null)
     },
   })
@@ -101,7 +100,6 @@ export default function AutomationsPage() {
       await resetAutomationToDefault(promptId, defaultAutomation)
       // TODO: Add 'automation_reset_to_default' to EventType
       // trackEvent('automation_reset_to_default', { automation_id: promptId })
-      queryClient.invalidateQueries({ queryKey: ['prompts'] })
     }
   }
 
@@ -248,7 +246,7 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
   const db = DatabaseSingleton.instance.db
 
   // Query triggers for this prompt via PowerSync for reactive/live updates
-  const { data: triggers = [] } = usePowerSyncQuery({
+  const { data: triggers = [] } = useQuery({
     queryKey: ['triggers', prompt.id],
     query: toCompilableQuery(getAllTriggersForPrompt(prompt.id)),
   })

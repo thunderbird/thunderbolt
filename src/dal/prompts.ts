@@ -10,25 +10,22 @@ import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
 
 /**
- * Gets all prompts, optionally filtered by search query
+ * Returns a Drizzle query for all prompts, optionally filtered by search query (excluding soft-deleted).
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getAllPrompts = async (searchQuery?: string): Promise<Prompt[]> => {
-  const db = DatabaseSingleton.instance.db
-  if (searchQuery) {
-    return (await db
-      .select()
-      .from(promptsTable)
-      .where(and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt)))
-      .orderBy(asc(promptsTable.id))
-      .limit(50)) as Prompt[]
-  }
-
-  return (await db
+export const getAllPrompts = (searchQuery?: string) => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(promptsTable)
-    .where(isNull(promptsTable.deletedAt))
+    .where(
+      searchQuery
+        ? and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt))
+        : isNull(promptsTable.deletedAt),
+    )
     .orderBy(asc(promptsTable.id))
-    .limit(50)) as Prompt[]
+    .limit(50)
+
+  return query as typeof query & { execute: () => Promise<Prompt[]> }
 }
 
 /**

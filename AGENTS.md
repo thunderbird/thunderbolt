@@ -69,9 +69,7 @@ When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Na
 
 ## Responsive Sizing
 
-**NEVER** use manual responsive classes like `h-11 md:h-9`, `size-5 md:size-4`, or `text-base md:text-sm`.
-
-**ALWAYS** use CSS custom properties that automatically respond to breakpoints:
+**Prefer** CSS custom properties that automatically respond to breakpoints over manual responsive classes like `h-11 md:h-9`, `size-5 md:size-4`, or `text-base md:text-sm`:
 
 - Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`

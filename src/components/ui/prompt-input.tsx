@@ -84,7 +84,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           className="size-[var(--touch-height-sm)] rounded-lg flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
-          <Square className="size-4" />
+          <Square className="size-[var(--icon-size-default)]" />
         </Button>
       ) : (
         <Button
@@ -93,7 +93,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           className="size-[var(--touch-height-sm)] rounded-lg flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !value.trim()}
         >
-          <ArrowUp className="size-4" />
+          <ArrowUp className="size-[var(--icon-size-default)]" />
         </Button>
       ))
 

@@ -6,6 +6,8 @@ import { PowerSyncContext } from '@powersync/react'
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
+import { ResetOverlay } from '@/components/reset-overlay'
+import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
@@ -37,6 +39,7 @@ import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
@@ -133,6 +136,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
 export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
+  const { revokedDeviceOpen, resetOverlay } = useCredentialEvents()
 
   const renderAppContent = () => {
     if (initError) {
@@ -186,6 +190,8 @@ export const App = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="ui_theme">
       {renderAppContent()}
+      <ResetOverlay open={resetOverlay.open} title={resetOverlay.title} description={resetOverlay.description} />
+      <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>
   )
 }

@@ -23,8 +23,8 @@ export const getDevice = async (deviceId: string): Promise<Device | null> => {
 /**
  * Gets all devices for the current user from the local DB (synced via PowerSync).
  */
-export const getAllDevices = async (): Promise<Device[]> => {
-  const db = DatabaseSingleton.instance.db
-  const rows = await db.select().from(devicesTable).orderBy(desc(devicesTable.lastSeen))
-  return rows as Device[]
+export const getAllDevices = () => {
+  const query = DatabaseSingleton.instance.db.select().from(devicesTable).orderBy(desc(devicesTable.lastSeen))
+
+  return query as typeof query & { execute: () => Promise<Device[]> }
 }

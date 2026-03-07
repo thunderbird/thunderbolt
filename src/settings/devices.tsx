@@ -4,7 +4,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,8 @@ import dayjs from 'dayjs'
 import ky from 'ky'
 import { Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -39,11 +41,10 @@ const revokeDevice = async (deviceId: string, baseUrl: string, token: string): P
 }
 
 export default function DevicesSettingsPage() {
-  const queryClient = useQueryClient()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
-    queryFn: getAllDevices,
+    query: toCompilableQuery(getAllDevices()),
   })
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
@@ -57,7 +58,6 @@ export default function DevicesSettingsPage() {
       return revokeDevice(deviceId, cloudUrl.value, token)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['devices'] })
       setRevokeTarget(null)
     },
   })

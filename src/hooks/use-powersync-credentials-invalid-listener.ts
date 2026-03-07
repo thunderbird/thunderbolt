@@ -105,7 +105,9 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
 
     if (revoked) {
-      if (hasTriggeredRef.current) return
+      if (hasTriggeredRef.current) {
+        return
+      }
       hasTriggeredRef.current = true
       window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
       return

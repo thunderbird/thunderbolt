@@ -6,7 +6,7 @@ import { PowerSyncContext } from '@powersync/react'
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
-import { ResetOverlay } from '@/components/reset-overlay'
+import AccountDeleted from '@/components/account-deleted'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
@@ -128,6 +128,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       </Route>
 
       {/* Fallback routes - no guards */}
+      <Route path="/account-deleted" element={<AccountDeleted />} />
       <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/not-found" replace />} />
     </Routes>
@@ -136,7 +137,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
 export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
-  const { revokedDeviceOpen, resetOverlay } = useCredentialEvents()
+  const { revokedDeviceOpen } = useCredentialEvents()
 
   const renderAppContent = () => {
     if (initError) {
@@ -190,7 +191,6 @@ export const App = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="ui_theme">
       {renderAppContent()}
-      <ResetOverlay open={resetOverlay.open} title={resetOverlay.title} description={resetOverlay.description} />
       <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>
   )

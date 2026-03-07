@@ -3,7 +3,7 @@ import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
-import { showResetOverlayEvent, showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
+import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -12,10 +12,10 @@ import { useEffect, useRef } from 'react'
 
 /**
  * Full app reset when credentials are no longer valid: disable PowerSync sync, clear
- * localStorage (token + device id), reset app directory (DB), then reload. Leaves the user
- * in a clean signed-out state so they can sign in again or use the app offline.
+ * localStorage (token + device id), reset app directory (DB), then navigate away.
+ * Leaves the user in a clean signed-out state so they can sign in again or use the app offline.
  */
-const performCredentialsInvalidReset = async (): Promise<void> => {
+const performCredentialsInvalidReset = async (redirectTo: string): Promise<void> => {
   try {
     await setSyncEnabled(false)
     await resetAppDir()
@@ -23,12 +23,8 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
     console.error('Failed to perform credentials invalid reset:', error)
   } finally {
     localStorage.clear()
-    window.location.reload()
+    window.location.replace(redirectTo)
   }
-}
-
-const dispatchResetOverlay = (title: string, description: string) => {
-  window.dispatchEvent(new CustomEvent(showResetOverlayEvent, { detail: { title, description } }))
 }
 
 /**
@@ -83,13 +79,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
         return
       }
 
-      if (reason === 'account_deleted') {
-        dispatchResetOverlay('Account deleted', 'Your account has been deleted. Clearing local data...')
-      } else {
-        dispatchResetOverlay('Session expired', 'Your session is no longer valid. Resetting...')
-      }
-
-      void performCredentialsInvalidReset()
+      void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/')
     }
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
@@ -122,8 +112,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     if (missingAfterHavingDevice) {
       hasTriggeredRef.current = true
-      dispatchResetOverlay('Account deleted', 'Your account has been deleted. Clearing local data...')
-      void performCredentialsInvalidReset()
+      void performCredentialsInvalidReset('/account-deleted')
     }
   }, [isFetched, deviceId, device])
 }

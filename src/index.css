@@ -82,7 +82,10 @@
   --min-touch-height: 2.5rem; /* 40px mobile */
 
   /* Switch component specific */
-  --switch-thumb-translate: calc(2.5rem - 1rem - 2px); /* mobile */
+  --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
+  --switch-track-width: 2.75rem; /* 44px mobile */
+  --switch-thumb-size: 1.125rem; /* 18px mobile */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
 }
 
 @media (min-width: 768px) {
@@ -122,7 +125,10 @@
     --min-touch-height: 0; /* No min on desktop */
 
     /* Switch component specific */
-    --switch-thumb-translate: calc(2rem - 1rem - 2px); /* desktop */
+    --switch-track-height: 1.15rem; /* desktop */
+    --switch-track-width: 2rem; /* desktop */
+    --switch-thumb-size: 1rem; /* desktop */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
   }
 }
 

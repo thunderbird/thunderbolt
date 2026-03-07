@@ -2,6 +2,8 @@ import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import type { CredentialsInvalidReason } from '@/db/powersync/connector'
+import { showResetOverlayEvent, showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -25,6 +27,10 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
   }
 }
 
+const dispatchResetOverlay = (title: string, description: string) => {
+  window.dispatchEvent(new CustomEvent(showResetOverlayEvent, { detail: { title, description } }))
+}
+
 /**
  * Listens for "credentials invalid" and triggers a full app reset in two cases:
  *
@@ -35,7 +41,7 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  *
  * 2. **Devices table (synced via PowerSync)** – We have a token and a device id (we consider
  *    ourselves a logged-in device). We watch the current device row:
- *    - **revokedAt set** – User revoked this device from another device; reset.
+ *    - **revokedAt set** – User revoked this device from another device; show revoked modal.
  *    - **Device row missing** – Only reset if we had seen the device in this session and it
  *      then disappeared (account deleted elsewhere; PowerSync synced and wiped user data).
  *      We do not reset when the device is missing on first load: the local DB may not have
@@ -64,11 +70,25 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
-    const handler = () => {
+    const handler = (event: Event) => {
       if (hasTriggeredRef.current) {
         return
       }
       hasTriggeredRef.current = true
+
+      const reason = (event as CustomEvent<{ reason: CredentialsInvalidReason }>).detail?.reason
+
+      if (reason === 'device_revoked') {
+        window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+        return
+      }
+
+      if (reason === 'account_deleted') {
+        dispatchResetOverlay('Account deleted', 'Your account has been deleted. Clearing local data...')
+      } else {
+        dispatchResetOverlay('Session expired', 'Your session is no longer valid. Resetting...')
+      }
+
       void performCredentialsInvalidReset()
     }
 
@@ -90,13 +110,20 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
     if (!isFetched || !hasToken || !deviceId) {
       return
     }
+
     const revoked = device?.revokedAt != null
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
-    const shouldReset = revoked || missingAfterHavingDevice
-    if (!shouldReset) {
+
+    if (revoked) {
+      hasTriggeredRef.current = true
+      window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
       return
     }
-    hasTriggeredRef.current = true
-    void performCredentialsInvalidReset()
+
+    if (missingAfterHavingDevice) {
+      hasTriggeredRef.current = true
+      dispatchResetOverlay('Account deleted', 'Your account has been deleted. Clearing local data...')
+      void performCredentialsInvalidReset()
+    }
   }, [isFetched, deviceId, device])
 }

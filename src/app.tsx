@@ -47,7 +47,7 @@ import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
 import { isPrPreview } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
-import { ComponentProps } from 'react'
+import { type ComponentProps } from 'react'
 
 const queryClient = new QueryClient()
 

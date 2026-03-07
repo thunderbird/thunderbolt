@@ -1,5 +1,6 @@
 import { getSettings } from '@/dal'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
+import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { PowerSyncDatabase, SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
@@ -81,7 +82,11 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
       if (enabled) {
         await (database as { connectToSync: () => Promise<void> }).connectToSync()
       } else {
-        await (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync()
+        await withTimeout(
+          (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync(),
+          10_000,
+          'disconnectFromSync',
+        )
       }
     }
   } catch (error) {

@@ -1,5 +1,6 @@
 import { resetDatabase } from '@/db/database'
 import { getDatabasePath, getDatabaseType, isOpfsAvailable, isTauri } from './platform'
+import { withTimeout } from './timeout'
 
 // Only import Tauri APIs when in Tauri environment
 let tauriPath: any = null
@@ -72,13 +73,17 @@ const resetAppDirOpfs = async (): Promise<void> => {
   }
 
   const appDataDirPath = await createAppDir()
+
+  console.info('[resetAppDirOpfs] Getting OPFS root directory')
   const root: any = await navigator.storage.getDirectory()
 
   for await (const [name] of root.entries()) {
+    console.info(`[resetAppDirOpfs] Removing entry: ${name}`)
     await root.removeEntry(name, { recursive: true })
   }
 
   if (!isTauri()) {
+    console.info(`[resetAppDirOpfs] Recreating app directory: ${appDataDirPath}`)
     await root.getDirectoryHandle(appDataDirPath, { create: true })
   }
 }
@@ -88,7 +93,7 @@ const resetAppDirOpfs = async (): Promise<void> => {
  */
 export const resetAppDir = async (): Promise<void> => {
   // Must await for PowerSync to properly call disconnectAndClear()
-  await resetDatabase()
+  await withTimeout(resetDatabase(), 10_000, 'DatabaseSingleton.reset')
 
   const appDataDirPath = await createAppDir()
   const databaseType = await getDatabaseType()
@@ -103,7 +108,7 @@ export const resetAppDir = async (): Promise<void> => {
     await resetAppDirTauri()
   } else if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
     // Both wa-sqlite and PowerSync use OPFS
-    await resetAppDirOpfs()
+    await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
   } else {
     throw new Error(`Unsupported database type: ${databaseType}`)
   }

@@ -3,13 +3,17 @@ export {
   createModel,
   deleteModel,
   getAllModels,
+  getAllModelsQuery,
   getAvailableModels,
+  getAvailableModelsQuery,
   getDefaultModelForThread,
   getModel,
+  getModelQuery,
   getSelectedModel,
   getSystemModel,
   resetModelToDefault,
   updateModel,
+  mapModel,
 } from './models'
 
 // Settings

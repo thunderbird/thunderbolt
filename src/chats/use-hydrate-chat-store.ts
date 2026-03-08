@@ -52,9 +52,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const title = await generateTitle(textContent)
     await updateChatThread(threadId, { title })
-
-    // Also invalidate chat threads to update the sidebar
-    queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {

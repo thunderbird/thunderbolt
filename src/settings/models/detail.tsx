@@ -1,6 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
 import { z } from 'zod'
@@ -19,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { deleteModel, getModel, updateModel } from '@/dal'
+import { deleteModel, updateModel, getModelQuery, mapModel } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -62,14 +64,15 @@ const formSchema = z
 export default function ModelDetailPage() {
   const { modelId } = useParams()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const queryClient = useQueryClient()
   const [showSaved, setShowSaved] = useState(false)
 
-  const { data: model, isLoading } = useQuery({
+  const { data = [], isLoading } = useQuery({
     queryKey: ['models', modelId],
-    queryFn: () => getModel(modelId!),
+    query: toCompilableQuery(getModelQuery(modelId!)),
     enabled: !!modelId,
   })
+
+  const model = useMemo(() => data.map(mapModel)[0], [data])
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {
@@ -77,7 +80,6 @@ export default function ModelDetailPage() {
       await updateModel(id, updates)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
     },
@@ -86,7 +88,6 @@ export default function ModelDetailPage() {
   const deleteModelMutation = useMutation({
     mutationFn: deleteModel,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
       setShowDeleteDialog(false)
     },
   })

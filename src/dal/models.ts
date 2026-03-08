@@ -7,7 +7,7 @@ import { getSettings } from './settings'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
 
-const mapModel = (row: ModelRow): Model => {
+export const mapModel = (row: ModelRow): Model => {
   return {
     ...row,
     api_key: row.apiKey || undefined,
@@ -19,14 +19,16 @@ const mapModel = (row: ModelRow): Model => {
  * Gets all models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
-export const getAllModels = async (): Promise<Model[]> => {
-  const db = DatabaseSingleton.instance.db
-  const results = await db
+export const getAllModelsQuery = () => {
+  return DatabaseSingleton.instance.db
     .select()
     .from(modelsTable)
     .where(isNull(modelsTable.deletedAt))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+}
 
+export const getAllModels = async (): Promise<Model[]> => {
+  const results = await getAllModelsQuery()
   return results.map(mapModel)
 }
 
@@ -34,26 +36,31 @@ export const getAllModels = async (): Promise<Model[]> => {
  * Gets all available (enabled) models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
-export const getAvailableModels = async (): Promise<Model[]> => {
-  const db = DatabaseSingleton.instance.db
-  const results = await db
+export const getAvailableModelsQuery = () => {
+  return DatabaseSingleton.instance.db
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+}
+
+export const getAvailableModels = async (): Promise<Model[]> => {
+  const results = await getAvailableModelsQuery()
   return results.map(mapModel)
+}
+
+export const getModelQuery = (id: string) => {
+  return DatabaseSingleton.instance.db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 }
 
 /**
  * Gets a specific model by ID (excluding soft-deleted)
  */
 export const getModel = async (id: string): Promise<Model | null> => {
-  const db = DatabaseSingleton.instance.db
-  const model = await db
-    .select()
-    .from(modelsTable)
-    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
-    .get()
+  const model = await getModelQuery(id).get()
   return model ? mapModel(model) : null
 }
 

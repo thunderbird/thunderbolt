@@ -1,7 +1,6 @@
 'use client'
 
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
-import { usePowerSyncInvalidation } from '@/hooks/use-powersync-invalidation'
 import { useSettings } from '@/hooks/use-settings'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -68,13 +67,6 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
   // and keeps running so that when the device row disappears or is revoked, we trigger a
   // full reset and reload.
   usePowerSyncCredentialsInvalidListener()
-
-  // Watch PowerSync tables and invalidate React Query when they change (local writes or sync).
-  // Must run here (before the early return) so that when we return null, the devices table
-  // is still watched. Otherwise the useQuery(['devices', deviceId]) in the credentials
-  // listener would never be invalidated when PowerSync syncs (e.g. device revoked or removed),
-  // and we wouldn't detect the change.
-  usePowerSyncInvalidation()
 
   const { cloudUrl } = useSettings({ cloud_url: String })
 

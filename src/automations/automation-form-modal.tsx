@@ -17,7 +17,7 @@ import {
   createTrigger,
   deleteTriggersForPrompt,
   getAllTriggersForPrompt,
-  getAvailableModelsQuery,
+  getAvailableModels,
   getSelectedModel,
   mapModel,
   updateAutomation,
@@ -63,7 +63,7 @@ export default function AutomationFormModal({
 
   const { data = [] } = usePowerSyncQuery({
     queryKey: ['models', 'availableModels'],
-    query: toCompilableQuery(getAvailableModelsQuery()),
+    query: toCompilableQuery(getAvailableModels()),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])

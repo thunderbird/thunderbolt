@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   createModel as createModelDAL,
   deleteModel,
-  getAllModelsQuery,
+  getAllModels,
   mapModel,
   resetModelToDefault,
   updateModel,
@@ -248,7 +248,7 @@ export default function ModelsPage() {
 
   const { data = [] } = useQuery({
     queryKey: ['models'],
-    query: toCompilableQuery(getAllModelsQuery()),
+    query: toCompilableQuery(getAllModels()),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])

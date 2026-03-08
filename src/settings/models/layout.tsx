@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
-import { getAllModelsQuery, mapModel } from '@/dal'
+import { getAllModels, mapModel } from '@/dal'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
@@ -13,7 +13,7 @@ export default function ModelsLayout() {
 
   const { data = [] } = useQuery({
     queryKey: ['models'],
-    query: toCompilableQuery(getAllModelsQuery()),
+    query: toCompilableQuery(getAllModels()),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])

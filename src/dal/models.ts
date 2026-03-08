@@ -19,7 +19,7 @@ export const mapModel = (row: ModelRow): Model => {
  * Gets all models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
-export const getAllModelsQuery = () => {
+export const getAllModels = () => {
   return DatabaseSingleton.instance.db
     .select()
     .from(modelsTable)
@@ -27,26 +27,16 @@ export const getAllModelsQuery = () => {
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 }
 
-export const getAllModels = async (): Promise<Model[]> => {
-  const results = await getAllModelsQuery()
-  return results.map(mapModel)
-}
-
 /**
  * Gets all available (enabled) models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
-export const getAvailableModelsQuery = () => {
+export const getAvailableModels = () => {
   return DatabaseSingleton.instance.db
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
-}
-
-export const getAvailableModels = async (): Promise<Model[]> => {
-  const results = await getAvailableModelsQuery()
-  return results.map(mapModel)
 }
 
 export const getModelQuery = (id: string) => {

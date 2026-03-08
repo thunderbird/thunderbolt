@@ -106,15 +106,11 @@ export const getOrCreateChatThread = async (id: string, modelId: string): Promis
  * @param threadId - The ID of the chat thread
  * @returns The context size in tokens, or null if not found/not known
  */
-export const getContextSizeForThread = async (threadId: string): Promise<number | null> => {
-  const db = DatabaseSingleton.instance.db
-  const thread = await db
+export const getContextSizeForThread = (threadId: string) => {
+  return DatabaseSingleton.instance.db
     .select({ contextSize: chatThreadsTable.contextSize })
     .from(chatThreadsTable)
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
-    .get()
-
-  return thread?.contextSize ?? null
 }
 
 /**

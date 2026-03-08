@@ -16,7 +16,6 @@ import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
@@ -33,8 +32,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   const [isReady, setIsReady] = useState(false)
 
   const { getEnabledClients } = useMCP()
-
-  const queryClient = useQueryClient()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
@@ -69,9 +66,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(id, messages)
-
-    // Invalidate context size query to trigger re-fetch
-    queryClient.invalidateQueries({ queryKey: ['contextSize', id] })
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {
@@ -151,7 +145,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setMcpClients(mcpClients)
     setModes(modes)
-    setModels(models)
+    setModels(models.map(mapModel))
 
     setIsReady(true)
   }

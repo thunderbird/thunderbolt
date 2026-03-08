@@ -36,7 +36,7 @@ describe('Devices DAL', () => {
         createdAt: now,
       })
 
-      const device = await getDevice(deviceId)
+      const device = await getDevice(deviceId).get()
       expect(device).not.toBeNull()
       expect(device?.id).toBe(deviceId)
       expect(device?.userId).toBe('user-1')
@@ -61,7 +61,7 @@ describe('Devices DAL', () => {
         revokedAt,
       })
 
-      const device = await getDevice(deviceId)
+      const device = await getDevice(deviceId).get()
       expect(device?.revokedAt).toBe(revokedAt)
     })
   })

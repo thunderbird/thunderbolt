@@ -17,8 +17,9 @@ import {
   createTrigger,
   deleteTriggersForPrompt,
   getAllTriggersForPrompt,
-  getAvailableModels,
+  getAvailableModelsQuery,
   getSelectedModel,
+  mapModel,
   updateAutomation,
 } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
@@ -26,9 +27,11 @@ import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import type { Model, Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -57,12 +60,13 @@ export default function AutomationFormModal({
   onSuccess,
 }: AutomationFormModalProps) {
   const db = DatabaseSingleton.instance.db
-  const queryClient = useQueryClient()
 
-  const { data: models = [] } = useQuery<Model[]>({
+  const { data = [] } = usePowerSyncQuery({
     queryKey: ['models', 'availableModels'],
-    queryFn: getAvailableModels,
+    query: toCompilableQuery(getAvailableModelsQuery()),
   })
+
+  const models = useMemo(() => data.map(mapModel), [data])
 
   const { data: selectedModel } = useQuery<Model>({
     queryKey: ['models', 'selectedModel'],
@@ -181,7 +185,6 @@ export default function AutomationFormModal({
         model: values.modelId,
         triggerType: values.triggerType,
       })
-      queryClient.invalidateQueries({ queryKey: ['prompts'] })
       onOpenChange(false)
       onSuccess?.()
     },
@@ -239,7 +242,6 @@ export default function AutomationFormModal({
         old_model: prompt?.modelId,
         new_model: values.modelId,
       })
-      queryClient.invalidateQueries({ queryKey: ['prompts'] })
       onOpenChange(false)
       onSuccess?.()
     },

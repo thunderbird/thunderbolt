@@ -19,14 +19,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
+import {
+  createModel as createModelDAL,
+  deleteModel,
+  getAllModelsQuery,
+  mapModel,
+  resetModelToDefault,
+  updateModel,
+} from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import ky from 'ky'
 import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
@@ -205,7 +214,6 @@ const formSchema = z
   )
 
 export default function ModelsPage() {
-  const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const {
     isAddDialogOpen,
@@ -238,17 +246,16 @@ export default function ModelsPage() {
     }
   }, [isAddDialogOpen])
 
-  const { data: models = [] } = useQuery({
+  const { data = [] } = useQuery({
     queryKey: ['models'],
-    queryFn: getAllModels,
+    query: toCompilableQuery(getAllModelsQuery()),
   })
+
+  const models = useMemo(() => data.map(mapModel), [data])
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
       await updateModel(id, { enabled: enabled ? 1 : 0 })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
     },
   })
 
@@ -266,7 +273,6 @@ export default function ModelsPage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
       dispatch({ type: 'CLOSE_DIALOG' })
       form.reset()
     },
@@ -277,7 +283,6 @@ export default function ModelsPage() {
       await deleteModel(id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
       dispatch({ type: 'CLOSE_DELETE_CONFIRM' })
     },
   })
@@ -289,9 +294,6 @@ export default function ModelsPage() {
         throw new Error('Model is not a default model')
       }
       await resetModelToDefault(id, defaultModel)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['models'] })
     },
   })
 

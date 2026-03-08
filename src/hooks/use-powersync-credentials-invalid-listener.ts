@@ -3,7 +3,8 @@ import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
-import { useQuery } from '@tanstack/react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
 
 /**
@@ -52,10 +53,12 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
-  const { data: device, isFetched } = useQuery({
+  const { data = [], isFetched } = useQuery({
     queryKey: ['devices', deviceId],
-    queryFn: () => getDevice(deviceId),
+    query: toCompilableQuery(getDevice(deviceId)),
   })
+
+  const device = data[0] ?? null
 
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {

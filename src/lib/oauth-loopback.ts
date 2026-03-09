@@ -64,20 +64,28 @@ export const startOAuthFlowLoopback = async (
 
     const url = new URL(callbackUrl)
     const error = url.searchParams.get('error_description') ?? url.searchParams.get('error')
-    if (error) throw new Error(error)
+    if (error) {
+      throw new Error(error)
+    }
 
     const code = url.searchParams.get('code')
     const returnedState = url.searchParams.get('state')
 
-    if (!code || !returnedState) throw new Error('Missing code or state in OAuth callback')
-    if (returnedState !== state) throw new Error('OAuth state mismatch')
+    if (!code || !returnedState) {
+      throw new Error('Missing code or state in OAuth callback')
+    }
+    if (returnedState !== state) {
+      throw new Error('OAuth state mismatch')
+    }
 
     const tokens = await exchangeCodeForTokens(provider, code, codeVerifier, redirectUri)
     const userInfo = await getUserInfo(provider, tokens.access_token)
 
     return { tokens, userInfo }
   } catch (err) {
-    if (err === oauthTimeout) return null
+    if (err === oauthTimeout) {
+      return null
+    }
     throw err
   } finally {
     unlisten?.()

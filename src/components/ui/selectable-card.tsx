@@ -1,9 +1,10 @@
 import { cn } from '@/lib/utils'
+import { type ReactNode } from 'react'
 
 export type SelectableCardProps = {
   selected: boolean
   onSelect: () => void
-  icon: React.ReactNode
+  icon: ReactNode
   title: string
   description: string
   variant?: 'default' | 'destructive'

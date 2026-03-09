@@ -138,6 +138,16 @@ export default [
           selector: "ExpressionStatement > Literal[value='use client']",
           message: "'use client' is not needed in Vite — remove it.",
         },
+        {
+          selector: "MemberExpression[object.name='React']",
+          message:
+            "React namespace access is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
+        },
+        {
+          selector: "TSQualifiedName[left.name='React']",
+          message:
+            "React namespace access in types is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
+        },
       ],
     },
   },

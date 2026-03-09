@@ -94,7 +94,7 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        'flex items-center gap-2 px-[var(--spacing-x-md)] h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >

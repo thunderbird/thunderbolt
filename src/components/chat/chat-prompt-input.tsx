@@ -52,8 +52,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
     // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)
-    // Either condition means the user likely has a virtual keyboard where Enter should insert a newline.
-    const hasVirtualKeyboard = isMobile || isPlatformMobile()
+    // Either condition means we prefer mobile-style input where Enter inserts a newline.
+    const shouldInsertNewlineOnEnter = isMobile || isPlatformMobile()
 
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const [input, setInput] = useState('')
@@ -148,7 +148,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}
-          submitOnEnter={!isStreaming && !hasVirtualKeyboard}
+          submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
           className={cn(
             'flex flex-col bg-background dark:bg-input/30 border dark:border-input rounded-2xl w-full',
             isMobile ? 'gap-0 p-4' : 'gap-2 p-3',

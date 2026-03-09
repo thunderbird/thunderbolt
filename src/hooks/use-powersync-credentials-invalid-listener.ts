@@ -53,7 +53,8 @@ const performCredentialsInvalidReset = async (redirectTo: string): Promise<void>
  */
 export const usePowerSyncCredentialsInvalidListener = (): void => {
   const db = useDatabase()
-  const hasTriggeredRef = useRef(false)
+  const hasTriggeredResetRef = useRef(false)
+  const hasDispatchedRevokedModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
@@ -67,18 +68,21 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
     const handler = (event: Event) => {
-      if (hasTriggeredRef.current) {
+      if (hasTriggeredResetRef.current) {
         return
       }
-      hasTriggeredRef.current = true
 
       const reason = (event as CustomEvent<{ reason: CredentialsInvalidReason }>).detail?.reason
 
       if (reason === 'device_revoked') {
-        window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+        if (!hasDispatchedRevokedModalRef.current) {
+          hasDispatchedRevokedModalRef.current = true
+          window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+        }
         return
       }
 
+      hasTriggeredResetRef.current = true
       void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/')
     }
 
@@ -94,7 +98,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     const hasToken = Boolean(getAuthToken())
 
-    if (hasTriggeredRef.current || !isFetched || !hasToken || !deviceId) {
+    if (hasTriggeredResetRef.current || !isFetched || !hasToken || !deviceId) {
       return
     }
 
@@ -102,13 +106,15 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
 
     if (revoked) {
-      hasTriggeredRef.current = true
-      window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+      if (!hasDispatchedRevokedModalRef.current) {
+        hasDispatchedRevokedModalRef.current = true
+        window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+      }
       return
     }
 
     if (missingAfterHavingDevice) {
-      hasTriggeredRef.current = true
+      hasTriggeredResetRef.current = true
       void performCredentialsInvalidReset('/account-deleted')
     }
   }, [isFetched, deviceId, device])

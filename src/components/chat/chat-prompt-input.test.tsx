@@ -190,6 +190,27 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('submitOnEnter', () => {
+    it('should disable submit on enter when mobile viewport', () => {
+      const { mockUseChat } = setupStore()
+
+      const { container } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />,
+        { wrapper: TestWrapper },
+      )
+
+      const textarea = container.querySelector('textarea')!
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+      const preventDefaultSpy = mock(() => {})
+      Object.defineProperty(enterEvent, 'preventDefault', { value: preventDefaultSpy })
+
+      textarea.dispatchEvent(enterEvent)
+
+      // On mobile, Enter should NOT be prevented (it creates a newline naturally)
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+  })
+
   describe('dependency injection', () => {
     it('should accept injected useChat', () => {
       const { mockUseChat } = setupStore()

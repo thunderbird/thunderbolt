@@ -1,6 +1,6 @@
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader } from '@/components/ui/sidebar'
 
-export function AppSidebar() {
+export const AppSidebar = () => {
   return (
     <Sidebar>
       <SidebarHeader />

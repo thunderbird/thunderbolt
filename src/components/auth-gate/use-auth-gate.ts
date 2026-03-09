@@ -19,7 +19,9 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const resolvedRef = useRef<ResolvedState | null>(null)
 
   if (isPending) {
-    if (resolvedRef.current) return resolvedRef.current
+    if (resolvedRef.current) {
+      return resolvedRef.current
+    }
     return { status: 'loading' }
   }
 

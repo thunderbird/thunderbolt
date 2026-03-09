@@ -26,13 +26,17 @@ export const decodeCitationSources = (sourcesStr: string): CitationSource[] | nu
     try {
       const parsed = JSON.parse(json)
 
-      if (!Array.isArray(parsed)) return null
+      if (!Array.isArray(parsed)) {
+        return null
+      }
 
       // Validate each source — all-or-nothing validation
       const validatedSources: CitationSource[] = []
       for (const item of parsed) {
         const result = citationSourceSchema.safeParse(item)
-        if (!result.success) return null
+        if (!result.success) {
+          return null
+        }
         validatedSources.push(result.data)
       }
 
@@ -43,7 +47,9 @@ export const decodeCitationSources = (sourcesStr: string): CitationSource[] | nu
   }
 
   const trimmed = sourcesStr.trim()
-  if (trimmed.startsWith('[')) return parseJson(trimmed)
+  if (trimmed.startsWith('[')) {
+    return parseJson(trimmed)
+  }
 
   // Fallback: base64-encoded JSON (backward compatibility)
   try {

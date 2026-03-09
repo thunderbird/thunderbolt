@@ -1,7 +1,8 @@
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { type ComponentProps } from 'react'
+import { useCallback, type ComponentProps } from 'react'
 
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
@@ -32,19 +33,36 @@ const buttonVariants = cva(
   },
 )
 
-function Button({
+const Button = ({
   className,
   variant,
   size,
   asChild = false,
+  onClick,
   ...props
 }: ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
-  }) {
+  }) => {
   const Comp = asChild ? Slot : 'button'
+  const { triggerSelection } = useHaptics()
 
-  return <Comp data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerSelection()
+      onClick?.(e)
+    },
+    [onClick, triggerSelection],
+  )
+
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      onClick={handleClick}
+      {...props}
+    />
+  )
 }
 
 export { Button, buttonVariants }

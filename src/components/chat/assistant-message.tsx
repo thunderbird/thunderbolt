@@ -36,6 +36,7 @@ export const mountMessageParts = (
   isStreaming: boolean,
   messageId: string,
   reasoningTime: Record<string, number>,
+  reasoningStartTimes?: Record<string, number>,
   sources?: SourceMetadata[],
 ) => {
   const partElements: ReactNode[] = []
@@ -64,6 +65,7 @@ export const mountMessageParts = (
             isLastPartInMessage={isLastPart}
             hasTextPart={hasTextPart}
             reasoningTime={reasoningTime}
+            reasoningStartTimes={reasoningStartTimes}
           />,
         )
         break
@@ -93,6 +95,12 @@ export const AssistantMessage = memo(
       [JSON.stringify(message.metadata?.reasoningTime)],
     )
 
+    const reasoningStartTimes = useMemo(
+      () => message.metadata?.reasoningStartTimes,
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [JSON.stringify(message.metadata?.reasoningStartTimes)],
+    )
+
     const sources = useMemo(
       () => message.metadata?.sources,
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,8 +109,8 @@ export const AssistantMessage = memo(
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
     const partElements: ReactNode[] = useMemo(
-      () => mountMessageParts(groupedParts, isStreaming, message.id, reasoningTime, sources),
-      [groupedParts, isStreaming, message.id, reasoningTime, sources],
+      () => mountMessageParts(groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources),
+      [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources],
     )
 
     return (

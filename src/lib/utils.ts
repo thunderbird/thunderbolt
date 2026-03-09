@@ -11,15 +11,15 @@ import {
   type SnakeCasedPropertiesDeep,
 } from 'type-fest'
 
-export function cn(...inputs: ClassValue[]) {
+export const cn = (...inputs: ClassValue[]) => {
   return twMerge(clsx(inputs))
 }
 
-export function uuidv7ToDate(uuid: string) {
+export const uuidv7ToDate = (uuid: string) => {
   return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
 }
 
-export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage {
+export const convertDbChatMessageToUIMessage = (message: ChatMessage): UIMessage => {
   return {
     id: message.id,
     parts: message.parts ?? [],
@@ -28,11 +28,11 @@ export function convertDbChatMessageToUIMessage(message: ChatMessage): UIMessage
   }
 }
 
-export function convertUIMessageToDbChatMessage(
+export const convertUIMessageToDbChatMessage = (
   message: UIMessage,
   chatThreadId: string,
   parentId?: string | null,
-): ChatMessage {
+): ChatMessage => {
   const metadata = message.metadata as UIMessageMetadata | undefined
 
   return {
@@ -50,11 +50,11 @@ export function convertUIMessageToDbChatMessage(
   }
 }
 
-export function snakeCased(str: string): string {
+export const snakeCased = (str: string): string => {
   return str.replace(/([A-Z])/g, (match) => `_${match.toLowerCase()}`)
 }
 
-export function snakeCasedProperties<T extends Record<string, any>>(obj: T): SnakeCasedProperties<T> {
+export const snakeCasedProperties = <T extends Record<string, any>>(obj: T): SnakeCasedProperties<T> => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     return obj as any
   }
@@ -83,7 +83,7 @@ export function snakeCasedProperties<T extends Record<string, any>>(obj: T): Sna
   return result as SnakeCasedProperties<T>
 }
 
-export function snakeCasedPropertiesDeep<T extends Record<string, any>>(obj: T): SnakeCasedPropertiesDeep<T> {
+export const snakeCasedPropertiesDeep = <T extends Record<string, any>>(obj: T): SnakeCasedPropertiesDeep<T> => {
   if (!obj || typeof obj !== 'object') {
     return obj as any
   }
@@ -106,11 +106,11 @@ export function snakeCasedPropertiesDeep<T extends Record<string, any>>(obj: T):
   return result as SnakeCasedPropertiesDeep<T>
 }
 
-export function camelCased(str: string): string {
+export const camelCased = (str: string): string => {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
-export function camelCasedProperties<T extends Record<string, any>>(obj: T): CamelCasedProperties<T> {
+export const camelCasedProperties = <T extends Record<string, any>>(obj: T): CamelCasedProperties<T> => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     return obj as any
   }
@@ -139,7 +139,7 @@ export function camelCasedProperties<T extends Record<string, any>>(obj: T): Cam
   return result as CamelCasedProperties<T>
 }
 
-export function camelCasedPropertiesDeep<T extends Record<string, any>>(obj: T): CamelCasedPropertiesDeep<T> {
+export const camelCasedPropertiesDeep = <T extends Record<string, any>>(obj: T): CamelCasedPropertiesDeep<T> => {
   if (!obj || typeof obj !== 'object') {
     return obj as any
   }
@@ -168,7 +168,7 @@ export const nowIso = (): string => new Date().toISOString()
 /**
  * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
  */
-export function formatDate(value: number | string): string {
+export const formatDate = (value: number | string): string => {
   const d = dayjs(value)
   const now = dayjs()
 
@@ -244,10 +244,41 @@ export const formatDuration = (ms: number): string => {
 }
 
 /**
+ * Computes the wall-clock duration covered by a set of potentially overlapping time intervals.
+ * Uses interval union: sorts by start time, merges overlapping intervals, sums their lengths.
+ * Returns the total in milliseconds.
+ */
+export const computeWallClockTime = (intervals: Array<{ start: number; end: number }>): number => {
+  if (intervals.length === 0) {
+    return 0
+  }
+
+  const sorted = [...intervals].sort((a, b) => a.start - b.start)
+  let totalMs = 0
+  let currentStart = sorted[0].start
+  let currentEnd = sorted[0].end
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start <= currentEnd) {
+      currentEnd = Math.max(currentEnd, sorted[i].end)
+    } else {
+      totalMs += currentEnd - currentStart
+      currentStart = sorted[i].start
+      currentEnd = sorted[i].end
+    }
+  }
+  totalMs += currentEnd - currentStart
+
+  return totalMs
+}
+
+/**
  * Check if a URL points to localhost
  */
 export const isLocalhostUrl = (url: string | null): boolean => {
-  if (!url) return false
+  if (!url) {
+    return false
+  }
   return url.startsWith('http://localhost')
 }
 
@@ -271,7 +302,9 @@ export const llmContentCharLimit = 16_000
  * Truncate text to prevent context overflow in LLM requests
  */
 export const truncateText = (text: string, maxLength = 4000): string => {
-  if (text.length <= maxLength) return text
+  if (text.length <= maxLength) {
+    return text
+  }
   return text.substring(0, maxLength) + '...[truncated]'
 }
 
@@ -302,19 +335,33 @@ export const clearNullableColumns = <T extends SQLiteTableWithColumns<any>>(tabl
   const uniqueColumnNames = new Set(tableConfig.uniqueConstraints.flatMap((uc) => uc.columns.map((col) => col.name)))
 
   for (const [name, column] of Object.entries(table) as [string, SQLiteColumn][]) {
-    if (!column?.dataType) continue
+    if (!column?.dataType) {
+      continue
+    }
     // Skip deletedAt (handled separately by caller with new datetime)
-    if (name === 'deletedAt') continue
+    if (name === 'deletedAt') {
+      continue
+    }
     // although the BE ensures that the userId is always present, we gonna keep it for now for backwards compatibility
-    if (name === 'userId') continue
+    if (name === 'userId') {
+      continue
+    }
     // Skip primary key columns (single-column via .primaryKey() or composite via primaryKey())
-    if (column.primary || pkColumnNames.has(column.name)) continue
+    if (column.primary || pkColumnNames.has(column.name)) {
+      continue
+    }
     // Skip foreign key columns (to maintain referential integrity)
-    if (fkColumnNames.has(column.name)) continue
+    if (fkColumnNames.has(column.name)) {
+      continue
+    }
     // Skip unique columns (functional identifiers)
-    if (column.isUnique || uniqueColumnNames.has(column.name)) continue
+    if (column.isUnique || uniqueColumnNames.has(column.name)) {
+      continue
+    }
     // Skip required (not null) columns
-    if (column.notNull) continue
+    if (column.notNull) {
+      continue
+    }
 
     cleared[name] = null
   }

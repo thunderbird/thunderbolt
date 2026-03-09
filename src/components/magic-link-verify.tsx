@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -32,7 +32,18 @@ export const MagicLinkVerify = () => {
   const email = searchParams.get('email')
   const otp = searchParams.get('otp')
 
+  // Track which email+otp pair was last attempted so we suppress re-submission of
+  // the same (already-consumed) OTP when refetchSession changes identity and
+  // re-triggers this effect, while still allowing a new magic link's OTP through.
+  const lastAttemptedRef = useRef<string | null>(null)
+
   useEffect(() => {
+    const key = `${email}:${otp}`
+    if (lastAttemptedRef.current === key) {
+      return
+    }
+    lastAttemptedRef.current = key
+
     const verify = async () => {
       if (!email || !otp) {
         setState({ status: 'error', message: 'Invalid verification link. Please request a new one.' })
@@ -89,10 +100,14 @@ export const MagicLinkVerify = () => {
         className="sm:max-w-md"
         showCloseButton={false}
         onPointerDownOutside={(e) => {
-          if (!canClose) e.preventDefault()
+          if (!canClose) {
+            e.preventDefault()
+          }
         }}
         onEscapeKeyDown={(e) => {
-          if (!canClose) e.preventDefault()
+          if (!canClose) {
+            e.preventDefault()
+          }
         }}
       >
         {state.status === 'verifying' && (

@@ -69,7 +69,9 @@ export const useAutoScroll = ({
    */
   const scrollToPosition = useCallback(
     (targetScrollTop: number, smoothScroll?: boolean, programmatic = false): boolean => {
-      if (!scrollContainer) return false
+      if (!scrollContainer) {
+        return false
+      }
 
       // Set flag for programmatic scrolls
       if (programmatic) {
@@ -121,7 +123,9 @@ export const useAutoScroll = ({
 
   const scrollToBottom = useCallback(
     (smoothScroll?: boolean, programmatic = false): boolean => {
-      if (!scrollContainer) return false
+      if (!scrollContainer) {
+        return false
+      }
       const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight
       return scrollToPosition(targetScrollTop, smoothScroll, programmatic)
     },
@@ -139,7 +143,9 @@ export const useAutoScroll = ({
    */
   const scrollToElement = useCallback(
     (selector: string, offsetFromTop = 0, smoothScroll?: boolean, programmatic = false): boolean => {
-      if (!scrollContainer) return false
+      if (!scrollContainer) {
+        return false
+      }
 
       const element = scrollContainer.querySelector(selector)
       if (!element) {
@@ -171,7 +177,9 @@ export const useAutoScroll = ({
 
   // IntersectionObserver for bottom detection - runs when elements are available
   useEffect(() => {
-    if (!scrollTarget || !scrollContainer) return
+    if (!scrollTarget || !scrollContainer) {
+      return
+    }
 
     let isFirstObservation = true
 

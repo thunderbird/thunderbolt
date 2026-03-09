@@ -175,11 +175,11 @@ const execSqlInternal = async (
   // Return results based on mode
   if (returnMode === 'run') {
     return { rows: [] }
-  } else if (returnMode === 'get') {
-    return { rows: results.length > 0 ? results[0] : undefined }
-  } else {
-    return { rows: results }
   }
+  if (returnMode === 'get') {
+    return { rows: results.length > 0 ? results[0] : undefined }
+  }
+  return { rows: results }
 }
 
 /**

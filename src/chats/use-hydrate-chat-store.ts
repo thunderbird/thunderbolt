@@ -37,14 +37,18 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
-    if (!firstUserMessage) return
+    if (!firstUserMessage) {
+      return
+    }
 
     const textContent = firstUserMessage.parts
       ?.filter((part) => part.type === 'text')
       .map((part) => (part.type === 'text' ? part.text : ''))
       .join(' ')
 
-    if (!textContent) return
+    if (!textContent) {
+      return
+    }
 
     const title = await generateTitle(textContent)
     await updateChatThread(threadId, { title })
@@ -58,7 +62,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const session = sessions.get(id)
 
-    if (!session) throw new Error('No session found')
+    if (!session) {
+      throw new Error('No session found')
+    }
 
     // Fetch thread info to check if we need to generate a title
     const thread = await getOrCreateChatThread(id, session.selectedModel.id)

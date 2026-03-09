@@ -93,7 +93,7 @@
 
         // Fallback to postMessage for web flow
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(data, '*')
+          window.opener.postMessage(data, window.location.origin)
           sendAndClose()
           return
         }

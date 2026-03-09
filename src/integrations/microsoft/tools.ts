@@ -111,10 +111,18 @@ export type OneDriveFileContent = {
 
 /** Categorize MIME type for LLM context when file type is unsupported */
 const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_category'] => {
-  if (mime === 'application/pdf') return 'pdf'
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
+  if (mime === 'application/pdf') {
+    return 'pdf'
+  }
+  if (mime.startsWith('image/')) {
+    return 'image'
+  }
+  if (mime.startsWith('video/')) {
+    return 'video'
+  }
+  if (mime.startsWith('audio/')) {
+    return 'audio'
+  }
   if (
     mime.includes('officedocument') ||
     mime.includes('msword') ||
@@ -123,7 +131,9 @@ const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_catego
   ) {
     return 'office'
   }
-  if (mime.includes('octet-stream') || mime.includes('binary')) return 'binary'
+  if (mime.includes('octet-stream') || mime.includes('binary')) {
+    return 'binary'
+  }
   return 'unknown'
 }
 
@@ -134,7 +144,9 @@ const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_catego
 const getMicrosoftCredentials = async () => {
   const settings = await getSettings({ integrations_microsoft_credentials: String })
   const credentialsStr = settings.integrationsMicrosoftCredentials
-  if (!credentialsStr) throw new Error('Microsoft integration not connected')
+  if (!credentialsStr) {
+    throw new Error('Microsoft integration not connected')
+  }
 
   try {
     return JSON.parse(credentialsStr)
@@ -147,7 +159,9 @@ const getMicrosoftCredentials = async () => {
 const ensureValidToken = async (credentials: { access_token: string; refresh_token: string; expires_at?: number }) => {
   const now = Date.now()
   if (credentials.expires_at && credentials.expires_at < now) {
-    if (!credentials.refresh_token) throw new Error('Access token expired and no refresh token available')
+    if (!credentials.refresh_token) {
+      throw new Error('Access token expired and no refresh token available')
+    }
 
     const { refreshAccessToken } = await import('@/lib/auth')
     const newTokens = await refreshAccessToken('microsoft', credentials.refresh_token)
@@ -174,9 +188,15 @@ export const listMessages = async (params: ListMessagesParams, httpClient: KyIns
   const accessToken = await ensureValidToken(credentials)
 
   const searchParams = new URLSearchParams()
-  if (params.top) searchParams.set('$top', params.top.toString())
-  if (params.skipToken) searchParams.set('$skiptoken', params.skipToken)
-  if (params.filter) searchParams.set('$filter', params.filter)
+  if (params.top) {
+    searchParams.set('$top', params.top.toString())
+  }
+  if (params.skipToken) {
+    searchParams.set('$skiptoken', params.skipToken)
+  }
+  if (params.filter) {
+    searchParams.set('$filter', params.filter)
+  }
 
   const response = await httpClient
     .get('https://graph.microsoft.com/v1.0/me/messages', {
@@ -203,7 +223,9 @@ export const getMessage = async (params: GetMessageParams, httpClient: KyInstanc
     ? '$select=subject,body,bodyPreview,from,toRecipients,receivedDateTime'
     : ''
   const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${params.id}`)
-  if (selectParams) url.searchParams.set('$select', selectParams.replace('$select=', ''))
+  if (selectParams) {
+    url.searchParams.set('$select', selectParams.replace('$select=', ''))
+  }
 
   const message = await httpClient
     .get(url.toString(), {

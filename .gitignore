@@ -43,6 +43,10 @@ evals/
 mise*.toml
 mise.toml
 .claude/**
+!.claude/commands/
+!.claude/commands/**
+!.claude/agents/
+!.claude/agents/**
 .zed/**
 .zedscratches/**
 .mcp.json

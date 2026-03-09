@@ -43,13 +43,17 @@ export const LinkPreviewSkeleton = () => {
 
 /** Builds a proxied image URL via /proxy-image (when direct image URL is known) */
 const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
-  if (!imageUrl || !cloudUrl?.trim()) return null
+  if (!imageUrl || !cloudUrl?.trim()) {
+    return null
+  }
   return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
 }
 
 /** Builds an image URL via /image (extracts og:image from page and proxies it in one request) */
 const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | null => {
-  if (!pageUrl || !cloudUrl?.trim()) return null
+  if (!pageUrl || !cloudUrl?.trim()) {
+    return null
+  }
   return `${cloudUrl}/pro/link-preview/image/${encodeURIComponent(pageUrl)}`
 }
 
@@ -121,7 +125,9 @@ const FetchLinkPreview = ({
   }
 
   if (error || !data) {
-    if (error) console.warn('Link preview failed:', url)
+    if (error) {
+      console.warn('Link preview failed:', url)
+    }
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }
 

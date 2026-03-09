@@ -11,7 +11,7 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog'
 
-interface ContextOverflowModalProps {
+type ContextOverflowModalProps = {
   isOpen: boolean
   onClose: () => void
   onNewChat: () => void

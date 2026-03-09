@@ -24,7 +24,9 @@ export const useTriggerScheduler = () => {
           const [h, m] = t.triggerTime.split(':').map(Number)
           const next = new Date()
           next.setHours(h, m, 0, 0)
-          if (next < new Date()) next.setDate(next.getDate() + 1)
+          if (next < new Date()) {
+            next.setDate(next.getDate() + 1)
+          }
           const delay = next.getTime() - Date.now()
           timers.current.push(
             setTimeout(() => runAutomation(t.promptId).catch(console.error), delay) as unknown as number,

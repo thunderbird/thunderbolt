@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
-export function DatetimePreview({ timestamp }: { timestamp: number }) {
+export const DatetimePreview = ({ timestamp }: { timestamp: number }) => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (

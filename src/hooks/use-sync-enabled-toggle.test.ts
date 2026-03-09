@@ -12,7 +12,7 @@ mock.module('@/db/powersync', () => ({
   getPowerSyncInstance: () => null,
   isSyncEnabled: () => false,
   setSyncEnabled: mockSetSyncEnabled,
-  SYNC_ENABLED_CHANGE_EVENT: 'powersync_sync_enabled_change',
+  syncEnabledChangeEvent: 'powersync_sync_enabled_change',
 }))
 
 mock.module('@/lib/posthog', () => ({

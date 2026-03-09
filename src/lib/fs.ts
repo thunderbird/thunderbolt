@@ -50,9 +50,8 @@ const createAppDirOpfs = async (): Promise<string> => {
 export const createAppDir = async (): Promise<string> => {
   if (isTauri()) {
     return await createAppDirTauri()
-  } else {
-    return await createAppDirOpfs()
   }
+  return await createAppDirOpfs()
 }
 
 /**

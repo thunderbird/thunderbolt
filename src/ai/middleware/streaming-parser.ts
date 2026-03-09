@@ -2,8 +2,8 @@ import type { LanguageModelV2Middleware, LanguageModelV2StreamPart } from '@ai-s
 import { generateId } from 'ai'
 import type { TransformStreamDefaultController } from 'stream/web'
 
-const MAX_TAG_LEN = 64
-const ARG_BEGIN_SENTINEL = '<|tool_call_argument_begin|>'
+const maxTagLen = 64
+const argBeginSentinel = '<|tool_call_argument_begin|>'
 
 /** Utility that normalises a raw "functions.foo:1" header. */
 const parseToolNameAndId = (raw: string): { toolName: string; toolCallId: string } => {
@@ -59,7 +59,9 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
 
     /** Helper: emit text immediately to the current context */
     const emitText = (text: string, controller: TransformStreamDefaultController<LanguageModelV2StreamPart>) => {
-      if (!text) return
+      if (!text) {
+        return
+      }
 
       if (stack.length > 0) {
         const currentNode = stack[stack.length - 1]
@@ -123,9 +125,9 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
 
           if (name === 'tool_call') {
             // Emit the complete tool call
-            const argIdx = node.content.indexOf(ARG_BEGIN_SENTINEL)
+            const argIdx = node.content.indexOf(argBeginSentinel)
             const headerPart = (argIdx === -1 ? node.content : node.content.slice(0, argIdx)).trim()
-            const argsRaw = argIdx === -1 ? '' : node.content.slice(argIdx + ARG_BEGIN_SENTINEL.length).trim()
+            const argsRaw = argIdx === -1 ? '' : node.content.slice(argIdx + argBeginSentinel.length).trim()
 
             const { toolName, toolCallId } = parseToolNameAndId(headerPart)
 
@@ -187,7 +189,7 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
               continue
             }
 
-            if (htmlTagBuffer.length > MAX_TAG_LEN) {
+            if (htmlTagBuffer.length > maxTagLen) {
               // Too long, not a real tag
               emitText(htmlTagBuffer, controller)
               htmlTagBuffer = ''
@@ -210,7 +212,7 @@ export const streamingParserMiddleware: LanguageModelV2Middleware = {
               continue
             }
 
-            if (tagBuffer.length >= MAX_TAG_LEN) {
+            if (tagBuffer.length >= maxTagLen) {
               emitText(tagBuffer, controller)
               tagBuffer = ''
               // Re-process this char from scratch

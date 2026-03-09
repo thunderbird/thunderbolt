@@ -35,11 +35,6 @@ pub async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Resul
     Ok(())
 }
 
-#[command]
-pub fn get_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_default()
-}
-
 #[cfg(feature = "bridge")]
 #[command]
 pub async fn init_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {

@@ -85,9 +85,11 @@ export const SignInForm = ({
 
   // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).
   // Intentionally mount-only: skipToOtp comes from location.state and is stable for the component's lifetime.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    if (skipToOtp) onEmailSent?.()
+    if (skipToOtp) {
+      onEmailSent?.()
+    }
   }, [])
 
   const handleGoBack = useCallback(() => {

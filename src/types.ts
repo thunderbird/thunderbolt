@@ -85,6 +85,7 @@ export type UIMessageMetadata = {
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
   reasoningTime?: Record<string, number>
+  reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]
 }
 

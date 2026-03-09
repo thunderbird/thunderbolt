@@ -16,7 +16,7 @@ export const resetPosthogClient = () => {
   posthogClient = null
 }
 
-const ROUTE_PATTERNS = ['/chats/:chatThreadId'] as const
+const routePatterns = ['/chats/:chatThreadId'] as const
 
 /**
  * Replaces dynamic URL segments with their parameter placeholders so analytics do not collect raw IDs.
@@ -32,9 +32,11 @@ export const sanitizeUrl = (url: string): string => {
     }
   })()
 
-  for (const pattern of ROUTE_PATTERNS) {
+  for (const pattern of routePatterns) {
     const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
-    if (regex.test(pathname)) return url.replace(pathname, pattern)
+    if (regex.test(pathname)) {
+      return url.replace(pathname, pattern)
+    }
   }
 
   return url
@@ -78,7 +80,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         capture_performance: false,
         persistence: 'localStorage',
         before_send: (event) => {
-          if (!event) return null
+          if (!event) {
+            return null
+          }
           if (event.event === '$pageview' || event.event === '$pageleave') {
             if (typeof event.properties?.$current_url === 'string') {
               event.properties.$current_url = sanitizeUrl(event.properties.$current_url)

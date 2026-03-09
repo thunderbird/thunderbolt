@@ -35,7 +35,7 @@ import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
-interface AvailableModel {
+type AvailableModel = {
   id: string
   name?: string
   created?: number
@@ -91,7 +91,7 @@ const initialState: ModelState = {
   modelLoadError: null,
 }
 
-function modelReducer(state: ModelState, action: ModelAction): ModelState {
+const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
   switch (action.type) {
     case 'OPEN_DIALOG':
       // Fresh state every time the dialog is opened
@@ -559,9 +559,9 @@ export default function ModelsPage() {
               ((m as any).supported_parameters.includes('tools') ||
                 (m as any).supported_parameters.includes('tool_choice'))
 
-            const supports_tools = (m as any).supports_tools === true || supportsToolsByParams
+            const supportsTools = (m as any).supports_tools === true || supportsToolsByParams
 
-            return { ...m, supports_tools }
+            return { ...m, supports_tools: supportsTools }
           })
 
           // Sort models alphabetically by ID
@@ -755,7 +755,9 @@ export default function ModelsPage() {
 
   // Calculate whether the currently selected model supports tools
   const supportsToolsSelected = (() => {
-    if (!selectedModelId || selectedModelId === 'custom') return true
+    if (!selectedModelId || selectedModelId === 'custom') {
+      return true
+    }
     const model =
       allAvailableModels.find((m) => m.id === selectedModelId) || availableModels.find((m) => m.id === selectedModelId)
     return (model as any)?.supports_tools === true
@@ -874,7 +876,9 @@ export default function ModelsPage() {
                       (provider && apiKey) ||
                       (provider === 'custom' && url))
 
-                  if (!showModelSelection) return null
+                  if (!showModelSelection) {
+                    return null
+                  }
 
                   return (
                     <FormField

@@ -5,14 +5,16 @@ import { ArrowRightToLine, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
 import { useSideview } from './context'
 
-export function EmailThreadView() {
+export const EmailThreadView = () => {
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
   const { sideviewId, sideviewType: _, setSideview } = useSideview()
 
   const { data: thread, isLoading } = useQuery({
     queryKey: ['thread', sideviewId],
     queryFn: async () => {
-      if (!sideviewId) return null
+      if (!sideviewId) {
+        return null
+      }
 
       // @todo re-implement this
 

@@ -21,7 +21,9 @@ export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
 export const getPowerSyncDatabaseConfig = (): PowerSyncDatabaseConfig => {
   const isWeb = getPlatform() === 'web'
   const isSafari = getWebBrowser() === 'safari'
-  if (isWeb && !isSafari) return 'default'
+  if (isWeb && !isSafari) {
+    return 'default'
+  }
   return 'safari-tauri'
 }
 
@@ -32,7 +34,7 @@ const syncEnabledKey = 'powersync_sync_enabled'
 const initialSyncTimeoutMs = 10_000
 
 /** Custom event name for sync enabled changes */
-export const SYNC_ENABLED_CHANGE_EVENT = 'powersync_sync_enabled_change'
+export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
 
 /**
  * Get PowerSync instance from singleton if available.
@@ -54,7 +56,9 @@ export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
  * Check if sync is enabled by user preference
  */
 export const isSyncEnabled = (): boolean => {
-  if (typeof localStorage === 'undefined') return false
+  if (typeof localStorage === 'undefined') {
+    return false
+  }
   return localStorage.getItem(syncEnabledKey) === 'true'
 }
 
@@ -62,11 +66,13 @@ export const isSyncEnabled = (): boolean => {
  * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
  */
 export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
-  if (typeof localStorage === 'undefined') return
+  if (typeof localStorage === 'undefined') {
+    return
+  }
 
   // Update localStorage and dispatch event
   localStorage.setItem(syncEnabledKey, String(enabled))
-  window.dispatchEvent(new CustomEvent(SYNC_ENABLED_CHANGE_EVENT, { detail: enabled }))
+  window.dispatchEvent(new CustomEvent(syncEnabledChangeEvent, { detail: enabled }))
 
   // Connect or disconnect from PowerSync Cloud
   try {
@@ -187,6 +193,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       await this.powerSync.connect(connector, {
         connectionMethod: SyncStreamConnectionMethod.HTTP,
+        crudUploadThrottleMs: 5000,
       })
       this._isConnected = true
     } catch (error) {

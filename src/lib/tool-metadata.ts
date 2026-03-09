@@ -69,13 +69,24 @@ const formatVerb = (verb: string, maxLength: number = 40, input: unknown = {}): 
 const detectCategory = (toolName: string): ToolCategory => {
   const name = toolName.toLowerCase()
 
-  if (/search|find|query|lookup|grep|codebase_search/.test(name)) return 'search'
-  if (/fetch|get|retrieve|load|read|file_search/.test(name)) return 'data'
-  if (/create|add|insert|generate|make|edit|write|delete|remove|update|modify|change|set|replace/.test(name))
+  if (/search|find|query|lookup|grep|codebase_search/.test(name)) {
+    return 'search'
+  }
+  if (/fetch|get|retrieve|load|read|file_search/.test(name)) {
+    return 'data'
+  }
+  if (/create|add|insert|generate|make|edit|write|delete|remove|update|modify|change|set|replace/.test(name)) {
     return 'action'
-  if (/analyze|process|calculate|compute|evaluate/.test(name)) return 'analysis'
-  if (/send|email|message|notify|communicate/.test(name)) return 'communication'
-  if (/weather|forecast|temperature|climate/.test(name)) return 'weather'
+  }
+  if (/analyze|process|calculate|compute|evaluate/.test(name)) {
+    return 'analysis'
+  }
+  if (/send|email|message|notify|communicate/.test(name)) {
+    return 'communication'
+  }
+  if (/weather|forecast|temperature|climate/.test(name)) {
+    return 'weather'
+  }
 
   return 'unknown'
 }

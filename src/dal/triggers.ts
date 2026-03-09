@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { triggersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -31,9 +32,9 @@ export const getAllEnabledTriggers = async (): Promise<Trigger[]> => {
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteTriggersForPrompt = async (promptId: string): Promise<void> => {
-  const db = DatabaseSingleton.instance.db
-  await db
+export const deleteTriggersForPrompt = async (promptId: string, db?: AnyDrizzleDatabase): Promise<void> => {
+  const database = db ?? DatabaseSingleton.instance.db
+  await database
     .update(triggersTable)
     .set({ ...clearNullableColumns(triggersTable), deletedAt: nowIso() })
     .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
@@ -44,11 +45,13 @@ export const deleteTriggersForPrompt = async (promptId: string): Promise<void> =
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteTriggersForPrompts = async (promptIds: string[]): Promise<void> => {
-  if (promptIds.length === 0) return
+export const deleteTriggersForPrompts = async (promptIds: string[], db?: AnyDrizzleDatabase): Promise<void> => {
+  if (promptIds.length === 0) {
+    return
+  }
 
-  const db = DatabaseSingleton.instance.db
-  await db
+  const database = db ?? DatabaseSingleton.instance.db
+  await database
     .update(triggersTable)
     .set({ ...clearNullableColumns(triggersTable), deletedAt: nowIso() })
     .where(and(inArray(triggersTable.promptId, promptIds), isNull(triggersTable.deletedAt)))

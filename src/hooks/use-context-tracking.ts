@@ -3,14 +3,14 @@ import { getContextSizeForThread } from '@/dal'
 import type { Model } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 
-interface UseContextTrackingProps {
+type UseContextTrackingProps = {
   model: Model
   chatThreadId?: string
   currentInput: string
   onOverflow?: () => void
 }
 
-interface UseContextTrackingReturn {
+type UseContextTrackingReturn = {
   usedTokens: number | null
   maxTokens: number | null
   isContextKnown: boolean

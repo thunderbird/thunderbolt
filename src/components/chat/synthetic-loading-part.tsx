@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 
-interface SyntheticLoadingPartProps {
+type SyntheticLoadingPartProps = {
   message?: string
   isStreaming?: boolean
 }

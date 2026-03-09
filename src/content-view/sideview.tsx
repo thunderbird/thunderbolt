@@ -5,13 +5,15 @@ import { useSideview } from './context'
 /**
  * Sideview component - displays content based on sideview type
  */
-export function Sideview() {
+export const Sideview = () => {
   const { sideviewId, sideviewType } = useSideview()
 
   const { data: _object } = useQuery({
     queryKey: ['sideview', sideviewType, sideviewId],
     queryFn: async () => {
-      if (!sideviewId || !sideviewType) return null
+      if (!sideviewId || !sideviewType) {
+        return null
+      }
 
       switch (sideviewType) {
         case 'message':

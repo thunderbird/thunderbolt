@@ -7,7 +7,9 @@ import { WaSQLiteWorkerClient } from './wa-sqlite-worker-client'
  * Checks if an object is empty (has no own properties or all properties are undefined)
  */
 const isEmptyObject = (obj: unknown): boolean => {
-  if (!obj || typeof obj !== 'object') return false
+  if (!obj || typeof obj !== 'object') {
+    return false
+  }
   const keys = Object.keys(obj)
   return keys.length === 0 || keys.every((key) => (obj as Record<string, unknown>)[key] === undefined)
 }

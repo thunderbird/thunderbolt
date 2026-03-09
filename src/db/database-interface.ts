@@ -1,7 +1,7 @@
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core'
 import type * as schema from './schema'
 
-export interface DatabaseInterface {
+export type DatabaseInterface = {
   db: BaseSQLiteDatabase<'async', any, typeof schema>
   initialize(path: string): Promise<void>
   close?(): Promise<void>

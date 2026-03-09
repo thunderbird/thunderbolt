@@ -58,7 +58,9 @@ const citationPlaceholderRegex = /\{\{CITE:(\d+)\}\}/
 const processTextContent = (children: ReactNode): ReactNode => {
   if (typeof children === 'string') {
     const parts = children.split(brSplitRegex)
-    if (parts.length === 1) return children
+    if (parts.length === 1) {
+      return children
+    }
 
     return parts.map((part, i) => (
       <Fragment key={i}>
@@ -99,7 +101,9 @@ const processTextContent = (children: ReactNode): ReactNode => {
 const processCitationPlaceholders = (children: ReactNode, citations: CitationMap): ReactNode => {
   if (typeof children === 'string') {
     const parts = children.split(citationPlaceholderRegex)
-    if (parts.length === 1) return children
+    if (parts.length === 1) {
+      return children
+    }
 
     return parts
       .map((part, i) => {
@@ -171,7 +175,9 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   }, [dialogOpen, setPreviewHidden])
 
   const handleOpenInApp = useCallback(() => {
-    if (showPreview) dismissWithAction(showPreview)
+    if (showPreview) {
+      dismissWithAction(showPreview)
+    }
   }, [dismissWithAction, showPreview])
 
   return (
@@ -216,7 +222,9 @@ const SafeLink = memo((props: React.ComponentProps<'a'>) => {
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
-    if (!safeHref) return
+    if (!safeHref) {
+      return
+    }
     context.openExternalLink(safeHref)
   }
 

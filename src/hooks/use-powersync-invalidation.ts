@@ -5,8 +5,12 @@ import { useEffect } from 'react'
 
 /** Maps PowerSync internal table names (with prefixes) back to base table names */
 const toBaseTableName = (name: string): string => {
-  if (name.startsWith('ps_data_local__')) return name.slice('ps_data_local__'.length)
-  if (name.startsWith('ps_data__')) return name.slice('ps_data__'.length)
+  if (name.startsWith('ps_data_local__')) {
+    return name.slice('ps_data_local__'.length)
+  }
+  if (name.startsWith('ps_data__')) {
+    return name.slice('ps_data__'.length)
+  }
   return name
 }
 
@@ -46,7 +50,9 @@ export const usePowerSyncInvalidation = (tables?: string[]) => {
     const tablesToWatch = (tables ?? Object.keys(powersyncTableToQueryKeys)).filter(
       (t): t is PowerSyncTableName => t in powersyncTableToQueryKeys,
     )
-    if (tablesToWatch.length === 0) return
+    if (tablesToWatch.length === 0) {
+      return
+    }
 
     const dispose = powerSync.onChange(
       {
@@ -54,7 +60,9 @@ export const usePowerSyncInvalidation = (tables?: string[]) => {
           const changedBaseNames = new Set(event.changedTables.map(toBaseTableName))
           for (const tableName of changedBaseNames) {
             const queryKeys = powersyncTableToQueryKeys[tableName as PowerSyncTableName]
-            if (!queryKeys) continue
+            if (!queryKeys) {
+              continue
+            }
             for (const queryKey of queryKeys) {
               queryClient.invalidateQueries({ queryKey })
             }

@@ -126,7 +126,9 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (isLoggingOut) return
+    if (isLoggingOut) {
+      return
+    }
     if (!newOpen) {
       setSelectedOption('keep')
     }

@@ -10,7 +10,7 @@ import type { FC } from 'react'
  */
 export type StatusState = 'online' | 'offline' | 'connected' | 'disconnected' | 'connecting' | 'neutral'
 
-export interface StatusIndicatorProps {
+export type StatusIndicatorProps = {
   /**
    * The current state that should be visualised.
    */

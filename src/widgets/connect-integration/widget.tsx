@@ -68,7 +68,9 @@ const isProviderConnected = (
   provider: OAuthProvider | null,
   integrationStatus: { googleConnected: boolean; microsoftConnected: boolean } | null,
 ): boolean => {
-  if (!provider || !integrationStatus) return false
+  if (!provider || !integrationStatus) {
+    return false
+  }
   return provider === 'google' ? integrationStatus.googleConnected : integrationStatus.microsoftConnected
 }
 
@@ -156,7 +158,9 @@ export const ConnectIntegrationWidget = memo(
     }, [location.state, messageId])
 
     const handleConnect = async () => {
-      if (!state.selectedProvider) return
+      if (!state.selectedProvider) {
+        return
+      }
 
       sessionStorage.setItem(getOAuthWidgetKey(messageId, 'provider'), state.selectedProvider)
 
@@ -282,7 +286,9 @@ export const ConnectIntegrationWidget = memo(
       )
     }
 
-    if (!state.selectedProvider) return null
+    if (!state.selectedProvider) {
+      return null
+    }
 
     const providerName = getProviderName(state.selectedProvider)
     const IconComponent = getIconComponent(state.selectedProvider, service)

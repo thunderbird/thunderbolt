@@ -37,8 +37,11 @@ export const ExternalLinkDialog = memo(
       try {
         await onConfirm()
       } catch (error) {
-        if (onOpenError) onOpenError(error)
-        else console.error('External link confirm failed:', error)
+        if (onOpenError) {
+          onOpenError(error)
+        } else {
+          console.error('External link confirm failed:', error)
+        }
       }
     }, [onConfirm, onOpenError])
 

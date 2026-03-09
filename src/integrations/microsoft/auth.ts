@@ -12,11 +12,11 @@ const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> 
 })
 
 export const getOAuthConfig = async (): Promise<OAuthConfig> => {
-  const { client_id } = await fetchBackendConfig()
+  const { client_id: clientId } = await fetchBackendConfig()
   const redirectUri = getOAuthRedirectUri()
 
   return {
-    clientId: client_id,
+    clientId,
     redirectUri,
     scope: 'https://graph.microsoft.com/mail.read User.Read offline_access',
   }
@@ -54,7 +54,9 @@ export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInf
   const response = await fetch('https://graph.microsoft.com/v1.0/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!response.ok) throw new Error('Failed to fetch user info')
+  if (!response.ok) {
+    throw new Error('Failed to fetch user info')
+  }
   const data = await response.json()
   return {
     id: data.id,

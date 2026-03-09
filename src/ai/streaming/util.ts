@@ -32,22 +32,31 @@ const parseYamlFrontMatter = (yamlContent: string): Record<string, any> => {
 
   for (const line of lines) {
     const trimmedLine = line.trim()
-    if (!trimmedLine || trimmedLine.startsWith('#')) continue
+    if (!trimmedLine || trimmedLine.startsWith('#')) {
+      continue
+    }
 
     const colonIndex = trimmedLine.indexOf(':')
-    if (colonIndex === -1) continue
+    if (colonIndex === -1) {
+      continue
+    }
 
     const key = trimmedLine.slice(0, colonIndex).trim()
     const valueStr = trimmedLine.slice(colonIndex + 1).trim()
 
     // Parse common YAML values
     let value: any = valueStr
-    if (valueStr === 'true') value = true
-    else if (valueStr === 'false') value = false
-    else if (valueStr === 'null') value = null
-    else if (/^-?\d+$/.test(valueStr)) value = parseInt(valueStr, 10)
-    else if (/^-?\d*\.\d+$/.test(valueStr)) value = parseFloat(valueStr)
-    else if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
+    if (valueStr === 'true') {
+      value = true
+    } else if (valueStr === 'false') {
+      value = false
+    } else if (valueStr === 'null') {
+      value = null
+    } else if (/^-?\d+$/.test(valueStr)) {
+      value = parseInt(valueStr, 10)
+    } else if (/^-?\d*\.\d+$/.test(valueStr)) {
+      value = parseFloat(valueStr)
+    } else if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
       value = valueStr.slice(1, -1)
     } else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
       value = valueStr.slice(1, -1)

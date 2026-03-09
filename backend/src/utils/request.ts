@@ -13,6 +13,8 @@ export const defaultRequestDenylist = [
   /^x-forwarded-/i,
   'x-real-ip',
   'content-length',
+  'authorization',
+  'cookie',
 ]
 
 /**

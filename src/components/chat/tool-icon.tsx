@@ -22,7 +22,9 @@ type ToolIconProps = {
  * Extracts favicon URL from tool output for search and fetch_content tools
  */
 export const extractFaviconUrl = (toolName: string, output: unknown): string | null => {
-  if (toolName !== 'fetch_content' && toolName !== 'search') return null
+  if (toolName !== 'fetch_content' && toolName !== 'search') {
+    return null
+  }
 
   const parsedOutput = typeof output === 'string' ? JSON.parse(output) : output
 

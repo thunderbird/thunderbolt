@@ -24,14 +24,24 @@ export const PowerSyncStatus = () => {
   const isConnecting = connectionStatus === 'connecting'
 
   const getStatusText = () => {
-    if (!syncEnabled) return 'Sync disabled'
-    if (isConnecting) return 'Connecting...'
-    if (!isConnected) return 'Offline'
+    if (!syncEnabled) {
+      return 'Sync disabled'
+    }
+    if (isConnecting) {
+      return 'Connecting...'
+    }
+    if (!isConnected) {
+      return 'Offline'
+    }
     if (hasSynced && lastSyncedAt) {
       const seconds = Math.floor((Date.now() - lastSyncedAt.getTime()) / 1000)
-      if (seconds < 60) return 'Just synced'
+      if (seconds < 60) {
+        return 'Just synced'
+      }
       const minutes = Math.floor(seconds / 60)
-      if (minutes < 60) return `Synced ${minutes}m ago`
+      if (minutes < 60) {
+        return `Synced ${minutes}m ago`
+      }
       const hours = Math.floor(minutes / 60)
       return `Synced ${hours}h ago`
     }

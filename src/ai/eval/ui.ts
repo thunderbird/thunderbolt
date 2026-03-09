@@ -201,8 +201,11 @@ const stopAllSpinners = () => {
 
 export const printResult = (result: EvalResult) => {
   completedCount++
-  if (result.passed) passedCount++
-  else failedCount++
+  if (result.passed) {
+    passedCount++
+  } else {
+    failedCount++
+  }
 
   const id = truncate(result.scenario.id, idWidth)
   const promptShort = truncate(result.scenario.prompt, promptMaxWidth)
@@ -211,11 +214,15 @@ export const printResult = (result: EvalResult) => {
   const icon = result.passed ? `${esc.green}✓${esc.reset}` : `${esc.red}✗${esc.reset}`
 
   const metrics: string[] = []
-  if (result.citations.length > 0)
+  if (result.citations.length > 0) {
     metrics.push(`${result.citations.length} cite${result.citations.length !== 1 ? 's' : ''}`)
-  if (result.widgets.length > 0)
+  }
+  if (result.widgets.length > 0) {
     metrics.push(`${result.widgets.length} widget${result.widgets.length !== 1 ? 's' : ''}`)
-  if (result.linkPreviewUrls.length > 0) metrics.push(`${result.linkPreviewUrls.length} links`)
+  }
+  if (result.linkPreviewUrls.length > 0) {
+    metrics.push(`${result.linkPreviewUrls.length} links`)
+  }
   const metricsStr = metrics.length > 0 ? `  ${esc.dim}${metrics.join('  ')}${esc.reset}` : ''
 
   // Push result line

@@ -93,8 +93,6 @@ export const AuthProvider = ({ children, authClient: overrideClient }: AuthProvi
     return { authClient: client }
   }, [cloudUrl.value, cloudUrl.isLoading, overrideClient])
 
-  // Wait for auth client to be ready before rendering children
-  // This prevents useSession from triggering requests to wrong URL
   if (!value) {
     return null
   }

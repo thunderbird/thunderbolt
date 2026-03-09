@@ -7,28 +7,28 @@
  * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
-const DEVICE_ID_KEY = 'thunderbolt_device_id'
-const AUTH_TOKEN_KEY = 'thunderbolt_auth_token'
+const deviceIdKey = 'thunderbolt_device_id'
+const authTokenKey = 'thunderbolt_auth_token'
 
 /** Get or create device_id (from localStorage). */
 export const getDeviceId = (): string => {
-  let id = localStorage.getItem(DEVICE_ID_KEY)
+  let id = localStorage.getItem(deviceIdKey)
   if (!id) {
     id = crypto.randomUUID()
-    localStorage.setItem(DEVICE_ID_KEY, id)
+    localStorage.setItem(deviceIdKey, id)
   }
   return id
 }
 
 /** Get the current auth token (sync, from localStorage). */
-export const getAuthToken = (): string | null => localStorage.getItem(AUTH_TOKEN_KEY)
+export const getAuthToken = (): string | null => localStorage.getItem(authTokenKey)
 
 /** Store the auth token in localStorage. Use clearAuthToken() to remove. */
 export const setAuthToken = (token: string): void => {
-  localStorage.setItem(AUTH_TOKEN_KEY, token)
+  localStorage.setItem(authTokenKey, token)
 }
 
 /** Clear the auth token (for sign-out). */
 export const clearAuthToken = (): void => {
-  localStorage.removeItem(AUTH_TOKEN_KEY)
+  localStorage.removeItem(authTokenKey)
 }

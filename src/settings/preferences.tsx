@@ -126,6 +126,7 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
+    hapticsEnabled,
     distanceUnit,
     temperatureUnit,
     dateFormat,
@@ -139,6 +140,7 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: true,
     experimental_feature_tasks: false,
+    haptics_enabled: true,
     distance_unit: 'imperial',
     temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
@@ -245,7 +247,9 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleApplyLocalizationSettings = async () => {
-    if (!pendingCountryUnits) return
+    if (!pendingCountryUnits) {
+      return
+    }
 
     // Apply all localization settings with recomputeHash to establish new baselines
     await Promise.all([
@@ -327,10 +331,14 @@ export default function PreferencesSettingsPage() {
     // If user has a location set, reset to that country's defaults
     if (locationName.value) {
       const country = extractCountryFromLocation(locationName.value)
-      if (!country) return
+      if (!country) {
+        return
+      }
 
       const countryUnitsData = await fetchCountryUnits(country)
-      if (!countryUnitsData) return
+      if (!countryUnitsData) {
+        return
+      }
 
       // Get the value from countryUnitsData using the dataKey
       const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]
@@ -352,6 +360,27 @@ export default function PreferencesSettingsPage() {
           <label className="text-sm font-medium">Theme</label>
           <ThemeToggle />
           <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Haptic Feedback">
+        <div className="flex-row flex items-center gap-4">
+          <div className="flex-1">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={hapticsEnabled.isModified}
+              onReset={hapticsEnabled.reset}
+            >
+              Haptic feedback
+            </ModificationIndicator>
+            <p className="text-sm text-muted-foreground">
+              Trigger haptic feedback when interacting with buttons, switches, and other controls.
+            </p>
+          </div>
+          <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
         </div>
       </SectionCard>
 

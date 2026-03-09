@@ -184,7 +184,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: '' } })
     eventHandler(event as Event)
@@ -212,7 +214,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: 'widget-1' } })
     eventHandler(event as Event)
@@ -280,7 +284,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
@@ -367,7 +373,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
@@ -443,7 +451,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event)
@@ -506,7 +516,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
@@ -571,7 +583,9 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) throw new Error('Event handler not found')
+    if (!eventHandler) {
+      throw new Error('Event handler not found')
+    }
 
     const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
     eventHandler(event as Event)
@@ -645,7 +659,9 @@ describe('useHandleIntegrationCompletion', () => {
       })
 
       const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-      if (!eventHandler) throw new Error('Event handler not found')
+      if (!eventHandler) {
+        throw new Error('Event handler not found')
+      }
 
       const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
       eventHandler(event as Event)

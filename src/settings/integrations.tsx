@@ -53,7 +53,9 @@ const integrationSettingsKeys = [
 ] as const
 
 const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
-  if (!credentialsJson) return undefined
+  if (!credentialsJson) {
+    return undefined
+  }
   try {
     return JSON.parse(credentialsJson) as Integration['credentials']
   } catch (e) {
@@ -159,7 +161,9 @@ export default function IntegrationsPage() {
   // Handle OAuth callback when navigated back from /oauth/callback
   useEffect(() => {
     const oauth = (location.state as { oauth?: { code?: string; state?: string; error?: string } } | null)?.oauth
-    if (!oauth) return
+    if (!oauth) {
+      return
+    }
 
     const handleCallback = async () => {
       setIsProcessingCallback(true)

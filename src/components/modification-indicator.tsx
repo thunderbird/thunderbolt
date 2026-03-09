@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { type ElementType, type ReactNode, useState } from 'react'
 
-interface ModificationIndicatorProps {
+type ModificationIndicatorProps = {
   /**
    * Whether the item has been modified from its default
    */

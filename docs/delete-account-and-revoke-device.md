@@ -76,7 +76,7 @@ When the app should reset (account deleted or device revoked), it runs a single 
 
 This is triggered in two ways:
 
-1. **Event `POWERSYNC_CREDENTIALS_INVALID`**  
+1. **Event `powersyncCredentialsInvalid`**  
    The PowerSync connector dispatches this when:
    - The token request returns **410** (account deleted), or
    - The token request returns **403** with body `code: 'DEVICE_DISCONNECTED'` (and a token was sent).  

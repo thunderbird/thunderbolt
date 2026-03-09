@@ -40,7 +40,9 @@ export const getSelectedMode = async (): Promise<Mode> => {
 
   if (selectedModeId) {
     const mode = await getMode(selectedModeId)
-    if (mode) return mode
+    if (mode) {
+      return mode
+    }
   }
 
   const defaultMode = await getDefaultMode()

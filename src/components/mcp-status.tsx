@@ -1,7 +1,7 @@
 import { useMCP } from '@/lib/mcp-provider'
 import { AlertCircle, CheckCircle, XCircle } from 'lucide-react'
 
-export function MCPStatus() {
+export const MCPStatus = () => {
   const { servers } = useMCP()
 
   const connectedServers = servers.filter((s) => s.isConnected && s.enabled)

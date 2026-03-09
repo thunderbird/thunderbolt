@@ -1,7 +1,7 @@
 import { cn, formatNumber } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
-interface ContextUsageIndicatorProps {
+type ContextUsageIndicatorProps = {
   usedTokens: number
   maxTokens: number
   className?: string

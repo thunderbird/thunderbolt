@@ -10,6 +10,7 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
+import { AppLogo } from '../app-logo'
 
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
@@ -53,9 +54,9 @@ export default function ChatUI() {
           isMobile && 'pb-0',
         )}
       >
-        <AnimatePresence>
-          {hasMessages && (
-            <div className="relative flex-1 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {hasMessages ? (
+            <div key="messages" className="relative flex-1 overflow-hidden">
               <motion.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
@@ -73,11 +74,21 @@ export default function ChatUI() {
                 className="bottom-2"
               />
             </div>
-          )}
+          ) : isMobile ? (
+            <motion.div
+              key="logo"
+              className="flex-1 flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <AppLogo size={64} className="opacity-60" />
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
         <motion.div
-          className={cn('p-4 flex', !hasMessages && 'flex-1 items-center')}
+          className={cn('p-4 flex', !hasMessages && !isMobile && 'flex-1 items-center')}
           initial={false}
           layout
           transition={{

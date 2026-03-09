@@ -3,10 +3,11 @@ import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
+import { useHaptics } from '@/hooks/use-haptics'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -23,13 +24,24 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
+  const { triggerNotification } = useHaptics()
 
   const isStreaming = status === 'streaming'
+  const wasStreaming = useRef(false)
+
+  useEffect(() => {
+    if (wasStreaming.current && !isStreaming) {
+      triggerNotification(chatError ? 'error' : 'success')
+    }
+    wasStreaming.current = isStreaming
+  }, [isStreaming, chatError, triggerNotification])
 
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
 
   const hasError = useMemo(() => {
-    if (chatError) return true
+    if (chatError) {
+      return true
+    }
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, lastMessage, isStreaming])
 
@@ -69,7 +81,9 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         if (message.role === 'assistant') {
           // Hide empty assistant messages during errors — these are broken responses
           // that regenerate() will remove. Messages with parts are valid responses.
-          if (hasError && !message.parts?.length) return null
+          if (hasError && !message.parts?.length) {
+            return null
+          }
 
           // Memoize last message check to avoid recalculating on every iteration
           const isLast = message === lastMessage
@@ -84,7 +98,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               isLastMessage={shouldApplyViewport}
             />
           )
-        } else if (message.role === 'user') {
+        }
+        if (message.role === 'user') {
           return <UserMessage key={message.id} message={message} />
         }
 

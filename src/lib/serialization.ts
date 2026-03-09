@@ -22,9 +22,15 @@ export const inferTypeFromSchema = (
   }
 
   // Otherwise infer from the primitive default value's type
-  if (typeof schemaValue === 'string') return String
-  if (typeof schemaValue === 'boolean') return Boolean
-  if (typeof schemaValue === 'number') return Number
+  if (typeof schemaValue === 'string') {
+    return String
+  }
+  if (typeof schemaValue === 'boolean') {
+    return Boolean
+  }
+  if (typeof schemaValue === 'number') {
+    return Number
+  }
 
   // Objects, arrays, null, etc. don't have type hints - use JSON fallback
   return undefined
@@ -43,7 +49,9 @@ export const inferTypeFromSchema = (
  * serializeValue({ foo: 'bar' }) → '{"foo":"bar"}'
  */
 export const serializeValue = (value: any): string | null => {
-  if (value === null || value === undefined) return null
+  if (value === null || value === undefined) {
+    return null
+  }
 
   // Store strings as-is without JSON encoding for cleaner storage
   if (typeof value === 'string') {
@@ -71,7 +79,9 @@ export const deserializeValue = (
   value: string | null | undefined,
   typeHint?: StringConstructor | BooleanConstructor | NumberConstructor,
 ): unknown => {
-  if (value === null || value === undefined) return null
+  if (value === null || value === undefined) {
+    return null
+  }
 
   // If we have a type hint, use it for direct deserialization
   if (typeHint === String) {

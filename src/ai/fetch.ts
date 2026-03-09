@@ -81,7 +81,9 @@ export const createModel = async (modelConfig: Model) => {
       return anthropic(modelConfig.model)
     }
     case 'openai': {
-      if (!modelConfig.apiKey) throw new Error('No API key provided')
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
       const openai = createOpenAI({
         apiKey: modelConfig.apiKey,
         fetch,
@@ -89,7 +91,9 @@ export const createModel = async (modelConfig: Model) => {
       return openai(modelConfig.model)
     }
     case 'custom': {
-      if (!modelConfig.url) throw new Error('No URL provided for custom provider')
+      if (!modelConfig.url) {
+        throw new Error('No URL provided for custom provider')
+      }
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: modelConfig.url,
@@ -99,7 +103,9 @@ export const createModel = async (modelConfig: Model) => {
       return openaiCompatible(modelConfig.model)
     }
     case 'openrouter': {
-      if (!modelConfig.apiKey) throw new Error('No API key provided')
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
       const openrouter = createOpenAICompatible({
@@ -151,7 +157,9 @@ export const aiFetchStreamingResponse = async ({
 
   const model = await getModel(modelId)
 
-  if (!model) throw new Error('Model not found')
+  if (!model) {
+    throw new Error('Model not found')
+  }
 
   const profile = await getModelProfile(modelId)
 
@@ -168,7 +176,13 @@ export const aiFetchStreamingResponse = async ({
 
     for (const mcpClient of mcpClients || []) {
       const mcpTools = await mcpClient.tools()
-      Object.assign(toolset, mcpTools)
+      for (const [name, tool] of Object.entries(mcpTools)) {
+        if (toolset[name]) {
+          console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
+          continue
+        }
+        toolset[name] = tool
+      }
     }
   } else {
     console.log('Model does not support tools, skipping tool setup')

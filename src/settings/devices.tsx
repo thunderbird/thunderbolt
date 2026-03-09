@@ -21,7 +21,9 @@ import { Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 const formatLastSeen = (ts: string | null): string => {
-  if (ts == null) return '—'
+  if (ts == null) {
+    return '—'
+  }
   const date = dayjs(ts)
   const now = dayjs()
   const diffMs = date.diff(now)
@@ -49,7 +51,9 @@ export default function DevicesSettingsPage() {
   const revokeMutation = useMutation({
     mutationFn: (deviceId: string) => {
       const token = getAuthToken()
-      if (!token) throw new Error('Not signed in')
+      if (!token) {
+        throw new Error('Not signed in')
+      }
       return revokeDevice(deviceId, cloudUrl.value, token)
     },
     onSuccess: () => {
@@ -63,7 +67,9 @@ export default function DevicesSettingsPage() {
   }
 
   const confirmRevoke = () => {
-    if (revokeTarget) revokeMutation.mutate(revokeTarget)
+    if (revokeTarget) {
+      revokeMutation.mutate(revokeTarget)
+    }
   }
 
   return (

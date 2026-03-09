@@ -6,6 +6,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
@@ -29,6 +30,7 @@ import { AppErrorScreen } from './components/app-error-screen'
 import { AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
+import { WelcomeDialog } from './components/welcome-dialog'
 import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
@@ -46,7 +48,7 @@ import { isPrPreview } from './lib/platform'
 
 const queryClient = new QueryClient()
 
-function AppContent({ initData }: { initData: InitData }) {
+const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
@@ -60,7 +62,7 @@ function AppContent({ initData }: { initData: InitData }) {
   )
 }
 
-function AppRoutes({ initData }: { initData: InitData }) {
+const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 
@@ -93,6 +95,7 @@ function AppRoutes({ initData }: { initData: InitData }) {
             <>
               <Layout />
               <OnboardingDialog />
+              <WelcomeDialog />
             </>
           }
         >
@@ -145,16 +148,18 @@ export const App = () => {
               <PostHogProvider client={initData.posthogClient}>
                 <TrayProvider tray={initData.tray} window={initData.window}>
                   <MCPProvider>
-                    <SidebarProvider>
-                      <ContentViewProvider
-                        initialSideviewType={initData.sideviewType}
-                        initialSideviewId={initData.sideviewId}
-                      >
-                        <ExternalLinkDialogProvider>
-                          <AppContent initData={initData} />
-                        </ExternalLinkDialogProvider>
-                      </ContentViewProvider>
-                    </SidebarProvider>
+                    <HapticsProvider>
+                      <SidebarProvider>
+                        <ContentViewProvider
+                          initialSideviewType={initData.sideviewType}
+                          initialSideviewId={initData.sideviewId}
+                        >
+                          <ExternalLinkDialogProvider>
+                            <AppContent initData={initData} />
+                          </ExternalLinkDialogProvider>
+                        </ContentViewProvider>
+                      </SidebarProvider>
+                    </HapticsProvider>
                   </MCPProvider>
                 </TrayProvider>
               </PostHogProvider>

@@ -84,7 +84,9 @@ export const isNewAuthUser = (user: unknown): boolean =>
  * sync, local ops do not conflict with cloud data.
  */
 export const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
-  if (isNewUser) return
+  if (isNewUser) {
+    return
+  }
 
   try {
     const database = DatabaseSingleton.instance.database
@@ -126,7 +128,9 @@ export const useSignInFormState = ({
     e.preventDefault()
 
     const trimmedEmail = state.email.trim()
-    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) return
+    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) {
+      return
+    }
 
     dispatch({ type: 'START_SENDING' })
 
@@ -152,7 +156,9 @@ export const useSignInFormState = ({
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 6) return
+    if (value.length !== 6) {
+      return
+    }
 
     dispatch({ type: 'START_VERIFYING' })
 
@@ -197,7 +203,9 @@ export const useSignInFormState = ({
   /** Resends the verification email. Returns true on success, false on failure. */
   const handleResend = async (): Promise<boolean> => {
     const trimmedEmail = state.email.trim()
-    if (!trimmedEmail) return false
+    if (!trimmedEmail) {
+      return false
+    }
 
     // Clear any previous error
     dispatch({ type: 'SET_ERROR', payload: '' })

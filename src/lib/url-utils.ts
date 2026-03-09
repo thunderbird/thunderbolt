@@ -16,7 +16,9 @@ export const isSafeUrl = (url: string): boolean => {
  * Falls back to the original URL if no proxy base is provided.
  */
 export const getProxiedFaviconUrl = (faviconUrl: string, proxyBase: string): string => {
-  if (!proxyBase) return faviconUrl
+  if (!proxyBase) {
+    return faviconUrl
+  }
   return `${proxyBase}/pro/proxy/${encodeURIComponent(faviconUrl)}`
 }
 

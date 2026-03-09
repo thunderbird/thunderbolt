@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils'
 import { Fragment, useEffect, useState } from 'react'
 
 // @todo re-implement types
-export function EmailMessageView({ message, isOpen: defaultIsOpen = true }: { message: any; isOpen?: boolean }) {
+export const EmailMessageView = ({ message, isOpen: defaultIsOpen = true }: { message: any; isOpen?: boolean }) => {
   const [isOpen, setIsOpen] = useState(defaultIsOpen)
 
   useEffect(() => {

@@ -182,6 +182,14 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
   userId: null,
 }
 
+export const defaultSettingHapticsEnabled: Setting = {
+  key: 'haptics_enabled',
+  value: 'true',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 /**
  * Array of all default settings for iteration
  */
@@ -206,4 +214,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingUserHasCompletedOnboarding,
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
+  defaultSettingHapticsEnabled,
 ] as const

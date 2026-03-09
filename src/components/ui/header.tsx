@@ -57,24 +57,23 @@ export const Header = () => {
     const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
 
     return (
-      <header className="flex h-12 w-full items-center justify-between px-2 flex-shrink-0 border-b border-border">
-        <div className="flex items-center w-7">
+      <header className="flex h-12 w-full items-center px-2 flex-shrink-0 border-b border-border">
+        <div className="flex flex-1 items-center">
           <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={toggleSidebar}>
             <Menu className="h-5 w-5" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
         </div>
 
-        <div className="flex items-center justify-center flex-1">{modelSelector}</div>
+        <div className="flex shrink-0 items-center justify-center">{modelSelector}</div>
 
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
             <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer" onClick={handleNewChat}>
               <MessageCirclePlus className="h-5 w-5" />
               <span className="sr-only">New Chat</span>
             </Button>
           )}
-          <PowerSyncStatus />
         </div>
       </header>
     )

@@ -20,7 +20,9 @@ type CitationBadgeProps = {
 export const CitationBadge = memo(({ sources, citationId }: CitationBadgeProps) => {
   const ctx = useCitationPopover()
 
-  if (!sources || sources.length === 0) return null
+  if (!sources || sources.length === 0) {
+    return null
+  }
 
   if (ctx && citationId !== undefined) {
     return <ManagedBadge sources={sources} citationId={citationId} />
@@ -51,8 +53,11 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
   const toggle = (rect: DOMRect) => {
-    if (isOpen) ctx.close()
-    else ctx.open(citationId, sources, rect)
+    if (isOpen) {
+      ctx.close()
+    } else {
+      ctx.open(citationId, sources, rect)
+    }
   }
 
   return (
@@ -121,7 +126,8 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetContent
           side="bottom"
-          className="inset-x-1 bottom-4 overflow-hidden rounded-2xl border p-0"
+          className="inset-x-1 overflow-hidden rounded-2xl border p-0"
+          style={{ bottom: 'calc(20px + var(--safe-area-bottom-padding, 0px))' }}
           hideCloseButton
         >
           <SheetHeader className="sr-only">

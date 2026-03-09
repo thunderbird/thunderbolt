@@ -9,7 +9,9 @@ import type { ThunderboltUIMessage } from '@/types'
  * @returns Estimated token count
  */
 export const estimateTokensForText = (text: string): number => {
-  if (!text) return 0
+  if (!text) {
+    return 0
+  }
   // Qwen models roughly follow ~3.5-4 characters per token for English
   // We'll use 3.5 to be slightly conservative
   return Math.ceil(text.length / 3.5)

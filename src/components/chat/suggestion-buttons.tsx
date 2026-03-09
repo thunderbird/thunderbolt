@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Button } from '../ui/button'
 
-interface SuggestionButtonProps {
+type SuggestionButtonProps = {
   label: string
   prompt: string
   onSelect: (prompt: string) => void

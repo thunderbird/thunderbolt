@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 // and other content. We'll manage cursor styles manually on the resize handle.
 ResizablePrimitive.disableGlobalCursorStyles()
 
-function ResizablePanelGroup({ className, ...props }: ComponentProps<typeof ResizablePrimitive.PanelGroup>) {
+const ResizablePanelGroup = ({ className, ...props }: ComponentProps<typeof ResizablePrimitive.PanelGroup>) => {
   return (
     <ResizablePrimitive.PanelGroup
       data-slot="resizable-panel-group"
@@ -18,7 +18,7 @@ function ResizablePanelGroup({ className, ...props }: ComponentProps<typeof Resi
   )
 }
 
-function ResizablePanel({ className, ...props }: ComponentProps<typeof ResizablePrimitive.Panel>) {
+const ResizablePanel = ({ className, ...props }: ComponentProps<typeof ResizablePrimitive.Panel>) => {
   return (
     <ResizablePrimitive.Panel
       data-slot="resizable-panel"
@@ -28,13 +28,13 @@ function ResizablePanel({ className, ...props }: ComponentProps<typeof Resizable
   )
 }
 
-function ResizableHandle({
+const ResizableHandle = ({
   withHandle,
   className,
   ...props
 }: ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
   withHandle?: boolean
-}) {
+}) => {
   return (
     <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"

@@ -4,7 +4,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTheme } from '@/lib/theme-provider'
 import { trackEvent } from '@/lib/posthog'
 
-export function ThemeToggle() {
+export const ThemeToggle = () => {
   const { theme, setTheme } = useTheme()
 
   return (
@@ -13,7 +13,9 @@ export function ThemeToggle() {
       variant="outline"
       value={theme}
       onValueChange={(value) => {
-        if (!value) return
+        if (!value) {
+          return
+        }
         setTheme(value as 'light' | 'dark' | 'system')
         trackEvent('settings_theme_set', { theme: value })
       }}

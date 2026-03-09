@@ -1,4 +1,5 @@
 import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
+import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
 import { setAuthToken } from '@/lib/auth-token'
@@ -77,7 +78,9 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
     e.preventDefault()
 
     const trimmedEmail = state.email.trim()
-    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) return
+    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) {
+      return
+    }
 
     dispatch({ type: 'START_JOINING' })
 
@@ -92,7 +95,9 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 6) return
+    if (value.length !== 6) {
+      return
+    }
 
     dispatch({ type: 'START_VERIFYING' })
 
@@ -114,11 +119,14 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         return
       }
 
-      await setAuthToken(token)
+      setAuthToken(token)
 
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
 
+      if (!isNewUser) {
+        useWelcomeStore.getState().trigger()
+      }
       onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)

@@ -3,7 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
-interface MobileSidebarProps {
+type MobileSidebarProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: ReactNode
@@ -78,7 +78,9 @@ export const MobileSidebar = ({
   }, [open, internalOpen, isAnimating, x, side])
 
   const handleClose = async () => {
-    if (isAnimating) return
+    if (isAnimating) {
+      return
+    }
 
     const width = getSidebarWidth()
     setIsAnimating(true)

@@ -54,11 +54,18 @@ type GroupSectionProps<T> = {
 }
 
 const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSectionProps<T>) => {
-  if (group.items.length === 0) return null
+  if (group.items.length === 0) {
+    return null
+  }
 
   return (
     <div className="flex flex-col gap-1">
-      {group.label && <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>}
+      {group.label && (
+        <div className="px-3 pt-2">
+          <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
+          {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         {group.items.map((item) => (
           <ItemButton
@@ -122,15 +129,21 @@ export const SearchableMenu = <T,>({
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
   const setOpen = (newOpen: boolean) => {
-    if (!isControlled) setInternalOpen(newOpen)
+    if (!isControlled) {
+      setInternalOpen(newOpen)
+    }
     controlledOnOpenChange?.(newOpen)
-    if (!newOpen) setSearchQuery('')
+    if (!newOpen) {
+      setSearchQuery('')
+    }
   }
 
   const selected = value ? findItemById(items, value) : undefined
 
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return items
+    if (!searchQuery.trim()) {
+      return items
+    }
 
     const query = searchQuery.toLowerCase()
 

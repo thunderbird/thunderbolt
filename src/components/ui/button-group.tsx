@@ -27,13 +27,13 @@ const ButtonGroupContext = createContext<VariantProps<typeof buttonVariants>>({
  * </ButtonGroup>
  * ```
  */
-function ButtonGroup({
+const ButtonGroup = ({
   className,
   variant,
   size,
   children,
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof buttonVariants>) {
+}: React.ComponentProps<'div'> & VariantProps<typeof buttonVariants>) => {
   return (
     <div
       data-slot="button-group"
@@ -54,13 +54,13 @@ function ButtonGroup({
  * Individual button item within a ButtonGroup
  * Can override the group's variant and size if needed
  */
-function ButtonGroupItem({
+const ButtonGroupItem = ({
   className,
   children,
   variant,
   size,
   ...props
-}: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants>) {
+}: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants>) => {
   const context = useContext(ButtonGroupContext)
 
   return (

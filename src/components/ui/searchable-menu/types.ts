@@ -14,6 +14,7 @@ export type SearchableMenuItem<T = unknown> = {
 export type SearchableMenuGroup<T = unknown> = {
   id: string
   label: string
+  subtitle?: string
   items: SearchableMenuItem<T>[]
 }
 

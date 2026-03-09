@@ -15,7 +15,9 @@ import type { ParsedStream, ToolCallInfo } from './types'
  */
 export const parseStream = async (response: Response): Promise<ParsedStream> => {
   const reader = response.body?.getReader()
-  if (!reader) return emptyResult('No response body')
+  if (!reader) {
+    return emptyResult('No response body')
+  }
 
   const decoder = new TextDecoder()
   let buffer = ''
@@ -27,7 +29,9 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
 
   const processLine = (line: string) => {
     const trimmed = line.trim()
-    if (!trimmed || trimmed === 'data: [DONE]') return
+    if (!trimmed || trimmed === 'data: [DONE]') {
+      return
+    }
 
     // Strip the "data: " SSE prefix
     const jsonStr = trimmed.startsWith('data: ')
@@ -35,7 +39,9 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
       : trimmed.startsWith('data:')
         ? trimmed.slice(5)
         : null
-    if (!jsonStr) return
+    if (!jsonStr) {
+      return
+    }
 
     const event = JSON.parse(jsonStr) as Record<string, unknown>
 
@@ -53,11 +59,15 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
 
       case 'finish-step':
         stepCount++
-        if (event.finishReason) finishReason = event.finishReason as string
+        if (event.finishReason) {
+          finishReason = event.finishReason as string
+        }
         break
 
       case 'finish':
-        if (event.finishReason) finishReason = event.finishReason as string
+        if (event.finishReason) {
+          finishReason = event.finishReason as string
+        }
         break
     }
   }
@@ -65,17 +75,23 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
-      for (const line of lines) processLine(line)
+      for (const line of lines) {
+        processLine(line)
+      }
     }
 
     // Process any remaining data left in the buffer after the stream ends
-    if (buffer.trim()) processLine(buffer)
+    if (buffer.trim()) {
+      processLine(buffer)
+    }
   } catch (err) {
     return { ...emptyResult(String(err)), text: textParts.join(''), toolCalls, stepCount, retryCount }
   }
@@ -83,7 +99,9 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
   const fullText = textParts.join('')
 
   // Heuristic: if steps completed but no text was produced, at least one retry was attempted
-  if (stepCount > 0 && fullText.trim().length === 0) retryCount++
+  if (stepCount > 0 && fullText.trim().length === 0) {
+    retryCount++
+  }
 
   return { text: fullText, toolCalls, stepCount, retryCount, finishReason }
 }

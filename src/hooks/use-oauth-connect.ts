@@ -87,9 +87,13 @@ const saveOAuthCredentials = async (
  * Checks if there's a valid (non-expired) connecting state in sessionStorage.
  */
 const getInitialConnectingState = (key: string | undefined): boolean => {
-  if (!key) return false
+  if (!key) {
+    return false
+  }
   const wasConnecting = sessionStorage.getItem(getConnectingKey(key)) === 'true'
-  if (!wasConnecting) return false
+  if (!wasConnecting) {
+    return false
+  }
 
   const timestamp = sessionStorage.getItem(getTimestampKey(key))
   const startTime = timestamp ? parseInt(timestamp, 10) : 0
@@ -142,10 +146,14 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
   // Clear expired connecting state from sessionStorage on mount
   useEffect(() => {
-    if (!activeKey) return
+    if (!activeKey) {
+      return
+    }
 
     const wasConnecting = sessionStorage.getItem(getConnectingKey(activeKey)) === 'true'
-    if (!wasConnecting) return
+    if (!wasConnecting) {
+      return
+    }
 
     const timestamp = sessionStorage.getItem(getTimestampKey(activeKey))
     const startTime = timestamp ? parseInt(timestamp, 10) : 0
@@ -158,7 +166,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
   // Active timer to clear connecting state when timeout expires
   useEffect(() => {
-    if (!isConnecting || !activeKey) return
+    if (!isConnecting || !activeKey) {
+      return
+    }
 
     const timestamp = sessionStorage.getItem(getTimestampKey(activeKey))
     const startTime = timestamp ? parseInt(timestamp, 10) : Date.now()

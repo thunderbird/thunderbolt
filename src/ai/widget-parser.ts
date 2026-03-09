@@ -37,13 +37,20 @@ const extractSingleQuotedValue = (str: string, start: number): string | null => 
         i++
         continue
       }
-      if (ch === '"') inString = false
+      if (ch === '"') {
+        inString = false
+      }
       continue
     }
-    if (ch === '"') inString = true
-    else if (ch === '[' || ch === '{') depth++
-    else if (ch === ']' || ch === '}') depth--
-    else if (ch === "'" && depth === 0) return str.slice(start, i)
+    if (ch === '"') {
+      inString = true
+    } else if (ch === '[' || ch === '{') {
+      depth++
+    } else if (ch === ']' || ch === '}') {
+      depth--
+    } else if (ch === "'" && depth === 0) {
+      return str.slice(start, i)
+    }
   }
   return null
 }
@@ -61,12 +68,16 @@ const parseAttributes = (attributesStr: string): Record<string, string> => {
 
     if (quote === '"') {
       const end = attributesStr.indexOf('"', valueStart)
-      if (end === -1) continue
+      if (end === -1) {
+        continue
+      }
       attrs[key] = attributesStr.slice(valueStart, end)
       attrStart.lastIndex = end + 1
     } else {
       const value = extractSingleQuotedValue(attributesStr, valueStart)
-      if (!value) continue
+      if (!value) {
+        continue
+      }
       attrs[key] = value
       attrStart.lastIndex = valueStart + value.length + 1
     }

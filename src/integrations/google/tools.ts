@@ -237,11 +237,21 @@ export type DriveFileContent = {
 
 /** Categorize MIME type for LLM context when file type is unsupported */
 const getDriveFileCategory = (mime: string): DriveFileContent['file_category'] => {
-  if (mime === 'application/pdf') return 'pdf'
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
-  if (mime.includes('octet-stream') || mime.includes('binary')) return 'binary'
+  if (mime === 'application/pdf') {
+    return 'pdf'
+  }
+  if (mime.startsWith('image/')) {
+    return 'image'
+  }
+  if (mime.startsWith('video/')) {
+    return 'video'
+  }
+  if (mime.startsWith('audio/')) {
+    return 'audio'
+  }
+  if (mime.includes('octet-stream') || mime.includes('binary')) {
+    return 'binary'
+  }
   return 'unknown'
 }
 
@@ -668,7 +678,9 @@ export const extractDriveFileId = (input: string): string => {
   ]
   for (const pattern of patterns) {
     const match = input.match(pattern)
-    if (match) return match[1]
+    if (match) {
+      return match[1]
+    }
   }
   return input
 }

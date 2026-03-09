@@ -3,7 +3,7 @@
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 // @todo re-implement types
-export function EmailAddressPreview({ emailAddress }: { emailAddress: any }) {
+export const EmailAddressPreview = ({ emailAddress }: { emailAddress: any }) => {
   if (!emailAddress.name) {
     return <span className="text-sm">{emailAddress.address}</span>
   }

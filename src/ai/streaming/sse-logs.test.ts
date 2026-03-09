@@ -11,12 +11,12 @@ import { normalizeUIMessage, parseEnhancedSseFile, sseToUIMessage } from './util
 /**
  * Discovers all test cases by finding .sse files in the sse-logs directory
  */
-function discoverTestCases(): Array<{
+const discoverTestCases = (): Array<{
   name: string
   streamFile: string
   description?: string
   metadata: Record<string, any>
-}> {
+}> => {
   const sseLogsDir = join(__dirname, 'sse-logs')
 
   try {

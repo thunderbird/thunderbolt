@@ -1,12 +1,12 @@
-const FUNC_CACHE = Symbol.for('memoize.func_cache')
-const KEY_CACHE = Symbol.for('memoize.string_cache')
+const memoizeFuncCache = Symbol.for('memoize.func_cache')
+const memoizeKeyCache = Symbol.for('memoize.string_cache')
 
 /**
  * Clears all memoized values from the global cache
  * This is primarily useful for testing to prevent pollution between tests
  */
 export const clearMemoizeCache = () => {
-  const keyCache: Record<string, unknown> | undefined = (globalThis as any)[KEY_CACHE]
+  const keyCache: Record<string, unknown> | undefined = (globalThis as any)[memoizeKeyCache]
   if (keyCache) {
     Object.keys(keyCache).forEach((key) => delete keyCache[key])
   }
@@ -31,23 +31,28 @@ export const clearMemoizeCache = () => {
  * // later calls reuse the resolved Promise
  * ```
  */
-export function memoize<Fn extends (...args: any[]) => any>(fn: Fn, key?: string): Fn {
+export const memoize = <Fn extends (...args: any[]) => any>(fn: Fn, key?: string): Fn => {
   // 1. Default: cache per **function reference** (WeakMap)
   // 2. Optional: cache per explicit **string key** when callers need to share a value
 
   const funcCache: WeakMap<Function, unknown> =
-    (globalThis as any)[FUNC_CACHE] ?? ((globalThis as any)[FUNC_CACHE] = new WeakMap())
-  const keyCache: Record<string, unknown> = (globalThis as any)[KEY_CACHE] ?? ((globalThis as any)[KEY_CACHE] = {})
+    (globalThis as any)[memoizeFuncCache] ?? ((globalThis as any)[memoizeFuncCache] = new WeakMap())
+  const keyCache: Record<string, unknown> =
+    (globalThis as any)[memoizeKeyCache] ?? ((globalThis as any)[memoizeKeyCache] = {})
 
   return ((...args: any[]) => {
     if (key) {
-      if (key in keyCache) return keyCache[key] as ReturnType<Fn>
+      if (key in keyCache) {
+        return keyCache[key] as ReturnType<Fn>
+      }
       const result = fn(...args)
       keyCache[key] = result
       return result
     }
 
-    if (funcCache.has(fn)) return funcCache.get(fn) as ReturnType<Fn>
+    if (funcCache.has(fn)) {
+      return funcCache.get(fn) as ReturnType<Fn>
+    }
     const result = fn(...args)
     funcCache.set(fn, result)
     return result

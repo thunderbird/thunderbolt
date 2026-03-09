@@ -1,4 +1,4 @@
-import { isSyncEnabled, setSyncEnabled, SYNC_ENABLED_CHANGE_EVENT } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled, syncEnabledChangeEvent } from '@/db/powersync'
 import { trackEvent } from '@/lib/posthog'
 import { useEffect, useState } from 'react'
 
@@ -17,8 +17,8 @@ export const useSyncEnabledToggle = () => {
       setSyncEnabledState(customEvent.detail)
     }
 
-    window.addEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
-    return () => window.removeEventListener(SYNC_ENABLED_CHANGE_EVENT, handleSyncEnabledChange)
+    window.addEventListener(syncEnabledChangeEvent, handleSyncEnabledChange)
+    return () => window.removeEventListener(syncEnabledChangeEvent, handleSyncEnabledChange)
   }, [])
 
   const handleSyncToggle = async (enabled: boolean) => {

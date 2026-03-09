@@ -2,7 +2,7 @@ import { useCallback, useReducer, useRef } from 'react'
 import { isTauri } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
 
-const OPEN_FAILED_MESSAGE = 'Could not open link. Please try again or copy the URL.'
+const openFailedMessage = 'Could not open link. Please try again or copy the URL.'
 
 type DialogState = {
   dialogOpen: boolean
@@ -83,7 +83,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
 
     if (!isSafeUrl(urlToOpen)) {
       console.error('Attempted to open unsafe URL:', urlToOpen)
-      dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
+      dispatch({ type: 'set_error', error: openFailedMessage })
       return
     }
 
@@ -98,20 +98,26 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
         // so we can't use the return value to detect popup-blocked
         window.open(urlToOpen, '_blank', 'noopener,noreferrer')
       }
-      if (pendingUrlRef.current === urlToOpen) dispatch({ type: 'close' })
+      if (pendingUrlRef.current === urlToOpen) {
+        dispatch({ type: 'close' })
+      }
     } catch (error) {
       console.error('Failed to open URL:', error)
-      if (pendingUrlRef.current === urlToOpen) dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
+      if (pendingUrlRef.current === urlToOpen) {
+        dispatch({ type: 'set_error', error: openFailedMessage })
+      }
     }
   }, [])
 
   /** Closes the dialog and invokes `action` with the pending URL. Validates URL with isSafeUrl before invoking (defense-in-depth with handleConfirm). */
   const dismissWithAction = useCallback((action: (url: string) => void) => {
     const url = pendingUrlRef.current
-    if (!url) return
+    if (!url) {
+      return
+    }
     if (!isSafeUrl(url)) {
       console.error('Attempted to open unsafe URL in app:', url)
-      dispatch({ type: 'set_error', error: OPEN_FAILED_MESSAGE })
+      dispatch({ type: 'set_error', error: openFailedMessage })
       return
     }
     pendingUrlRef.current = ''

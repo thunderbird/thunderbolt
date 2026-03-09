@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.58"
+version = "0.1.63"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -81,6 +81,7 @@ thunderbolt-bridge = { package = "thunderbolt-bridge", path = "./thunderbolt_bri
 thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_libsql", optional = true }
 thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
 tauri-plugin-deep-link = "2.3"
+tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 
 [profile.dev]

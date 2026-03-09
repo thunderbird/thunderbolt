@@ -1,22 +1,23 @@
-import { type ComponentProps } from 'react'
+import { type ComponentProps, useCallback } from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 
-function AlertDialog({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Root>) {
+const AlertDialog = ({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Root>) => {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
-function AlertDialogTrigger({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+const AlertDialogTrigger = ({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Trigger>) => {
   return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
 }
 
-function AlertDialogPortal({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Portal>) {
+const AlertDialogPortal = ({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Portal>) => {
   return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
 }
 
-function AlertDialogOverlay({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+const AlertDialogOverlay = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Overlay>) => {
   return (
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
@@ -29,7 +30,7 @@ function AlertDialogOverlay({ className, ...props }: ComponentProps<typeof Alert
   )
 }
 
-function AlertDialogContent({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Content>) {
+const AlertDialogContent = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Content>) => {
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
@@ -45,7 +46,7 @@ function AlertDialogContent({ className, ...props }: ComponentProps<typeof Alert
   )
 }
 
-function AlertDialogHeader({ className, ...props }: ComponentProps<'div'>) {
+const AlertDialogHeader = ({ className, ...props }: ComponentProps<'div'>) => {
   return (
     <div
       data-slot="alert-dialog-header"
@@ -55,7 +56,7 @@ function AlertDialogHeader({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-function AlertDialogFooter({ className, ...props }: ComponentProps<'div'>) {
+const AlertDialogFooter = ({ className, ...props }: ComponentProps<'div'>) => {
   return (
     <div
       data-slot="alert-dialog-footer"
@@ -65,7 +66,7 @@ function AlertDialogFooter({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-function AlertDialogTitle({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Title>) {
+const AlertDialogTitle = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Title>) => {
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
@@ -75,7 +76,7 @@ function AlertDialogTitle({ className, ...props }: ComponentProps<typeof AlertDi
   )
 }
 
-function AlertDialogDescription({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Description>) {
+const AlertDialogDescription = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Description>) => {
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
@@ -85,11 +86,19 @@ function AlertDialogDescription({ className, ...props }: ComponentProps<typeof A
   )
 }
 
-function AlertDialogAction({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action>) {
-  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} {...props} />
+const AlertDialogAction = ({ className, onClick, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action>) => {
+  const { triggerSelection } = useHaptics()
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerSelection()
+      onClick?.(e)
+    },
+    [onClick, triggerSelection],
+  )
+  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} onClick={handleClick} {...props} />
 }
 
-function AlertDialogCancel({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
+const AlertDialogCancel = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Cancel>) => {
   return <AlertDialogPrimitive.Cancel className={cn(buttonVariants({ variant: 'outline' }), className)} {...props} />
 }
 

@@ -10,7 +10,9 @@ import type { DraftEmailParams } from './tools'
  * Parse email address from Gmail API format
  */
 export const parseEmailAddress = (emailStr: string): { name: string; email: string } => {
-  if (!emailStr) return { name: '', email: '' }
+  if (!emailStr) {
+    return { name: '', email: '' }
+  }
 
   // Handle formats like "John Doe <john@example.com>" or just "john@example.com"
   const match = emailStr.match(/^(.+?)\s*<(.+)>$/)
@@ -24,7 +26,9 @@ export const parseEmailAddress = (emailStr: string): { name: string; email: stri
  * Extract header value from Gmail message
  */
 export const getHeader = (message: any, name: string): string => {
-  if (!message?.payload?.headers) return ''
+  if (!message?.payload?.headers) {
+    return ''
+  }
   const header = message.payload.headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())
   return header?.value || ''
 }
@@ -33,7 +37,9 @@ export const getHeader = (message: any, name: string): string => {
  * Extract body from Gmail message payload
  */
 export const extractBody = (payload: any, mimeType: string): string => {
-  if (!payload) return ''
+  if (!payload) {
+    return ''
+  }
 
   if (payload.mimeType === mimeType && payload.body?.data) {
     // Use browser-compatible base64 decoding instead of Node.js Buffer
@@ -48,7 +54,9 @@ export const extractBody = (payload: any, mimeType: string): string => {
   if (payload.parts) {
     for (const part of payload.parts) {
       const body = extractBody(part, mimeType)
-      if (body) return body
+      if (body) {
+        return body
+      }
     }
   }
 
@@ -121,7 +129,9 @@ export const getGoogleCredentials = async (): Promise<{
 }> => {
   const settings = await getSettings({ integrations_google_credentials: String })
   const credentialsStr = settings.integrationsGoogleCredentials
-  if (!credentialsStr) throw new Error('Google integration not connected')
+  if (!credentialsStr) {
+    throw new Error('Google integration not connected')
+  }
 
   try {
     return JSON.parse(credentialsStr)
@@ -145,7 +155,9 @@ export const ensureValidGoogleToken = async (credentials: {
     return credentials.access_token
   }
 
-  if (!credentials.refresh_token) throw new Error('Access token expired and no refresh token available')
+  if (!credentials.refresh_token) {
+    throw new Error('Access token expired and no refresh token available')
+  }
 
   const newTokens = await refreshAccessToken('google', credentials.refresh_token)
 
@@ -181,7 +193,9 @@ export const ensureValidGoogleToken = async (credentials: {
  * transformDriveQuery("(name contains 'budget') or (fullText contains 'finance')")
  */
 export const transformDriveQuery = (query: string): string => {
-  if (!query.trim()) return ''
+  if (!query.trim()) {
+    return ''
+  }
 
   // Return the query as-is - the LLM should generate proper Google Drive API syntax
   return query.trim()

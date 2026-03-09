@@ -21,13 +21,17 @@ export const createChatInstance = (
 ) => {
   const customFetch = Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
-      if (!init) throw new Error('Missing init')
+      if (!init) {
+        throw new Error('Missing init')
+      }
 
       const { mcpClients, sessions } = useChatStore.getState()
 
       const session = sessions.get(id)
 
-      if (!session) throw new Error('No session found')
+      if (!session) {
+        throw new Error('No session found')
+      }
 
       return aiFetchStreamingResponse({
         init,
@@ -74,7 +78,9 @@ export const createChatInstance = (
 
         const session = sessions.get(id)
 
-        if (!session) throw new Error('No session found')
+        if (!session) {
+          throw new Error('No session found')
+        }
 
         await saveMessages({ id, messages: [message] })
 
@@ -157,7 +163,9 @@ export const createChatInstance = (
 
     const session = sessions.get(id)
 
-    if (!session) throw new Error('No session found')
+    if (!session) {
+      throw new Error('No session found')
+    }
 
     const { chatThread, selectedModel } = session
 

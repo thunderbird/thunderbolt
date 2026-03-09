@@ -64,7 +64,9 @@ export const ConnectProviderButton = ({
       onDisconnect?.()
       return
     }
-    if (isConnected || isConnecting) return
+    if (isConnected || isConnecting) {
+      return
+    }
 
     await connect(provider)
   }

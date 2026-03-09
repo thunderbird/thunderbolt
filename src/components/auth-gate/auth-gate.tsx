@@ -29,8 +29,12 @@ type AuthGateProps = {
 export const AuthGate = ({ require, redirectTo }: AuthGateProps) => {
   const state = useAuthGate(require)
 
-  if (state.status === 'loading') return <Loading />
-  if (state.status === 'redirect') return <Navigate to={redirectTo} replace />
+  if (state.status === 'loading') {
+    return <Loading />
+  }
+  if (state.status === 'redirect') {
+    return <Navigate to={redirectTo} replace />
+  }
 
   return <Outlet />
 }

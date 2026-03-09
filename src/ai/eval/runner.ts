@@ -19,7 +19,9 @@ const reset = '\x1b[0m'
 
 const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string | undefined) => {
   const { verbose } = await import('./run')
-  if (!verbose) return
+  if (!verbose) {
+    return
+  }
 
   const modelId = getModelId(scenario.modelName)
   const [model, profile] = await Promise.all([getModel(modelId), getModelProfile(modelId)])
@@ -70,7 +72,9 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
 
 const logVerboseResponse = async (scenario: EvalScenario, responseText: string) => {
   const { verbose } = await import('./run')
-  if (!verbose) return
+  if (!verbose) {
+    return
+  }
 
   console.log(`\n${yellow}--- RESPONSE (${scenario.id}) ---${reset}`)
   console.log(`${dim}${responseText || '(empty response)'}${reset}`)
@@ -87,7 +91,9 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     // Look up the mode by name to get the system prompt
     const { defaultModes } = await import('@/defaults/modes')
     const mode = defaultModes.find((m) => m.name === scenario.modeName)
-    if (!mode) throw new Error(`Unknown mode: ${scenario.modeName}`)
+    if (!mode) {
+      throw new Error(`Unknown mode: ${scenario.modeName}`)
+    }
 
     // No-op message saver — we don't need persistence for evals
     const saveMessages: SaveMessagesFunction = async () => {}

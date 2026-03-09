@@ -9,6 +9,7 @@ import { DatabaseSingleton } from '@/db/singleton'
 import { modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread } from '@/dal/chat-threads'
+import { getModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement } from 'react'
@@ -92,6 +93,10 @@ const createTestModel = async () => {
  * Helper function to create a test thread
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
+  const model = await getModel(modelId)
+  if (!model) {
+    throw new Error('Test setup failed')
+  }
   const threadId = uuidv7()
   await createChatThread(
     {
@@ -101,7 +106,7 @@ const createTestThread = async (modelId: string, title: string = 'Test Thread') 
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
     },
-    modelId,
+    model,
   )
   return threadId
 }

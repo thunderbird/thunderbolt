@@ -25,12 +25,12 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 const isValidTheme = (value: string | null): value is Theme =>
   value === 'dark' || value === 'light' || value === 'system'
 
-export function ThemeProvider({
+export const ThemeProvider = ({
   children,
   defaultTheme = 'system',
   storageKey = 'ui-theme',
   ...props
-}: ThemeProviderProps) {
+}: ThemeProviderProps) => {
   const savedTheme = window.localStorage.getItem(storageKey)
 
   const [theme, setTheme] = useState<Theme>(isValidTheme(savedTheme) ? savedTheme : defaultTheme)
@@ -100,7 +100,9 @@ export function ThemeProvider({
 export const useTheme = () => {
   const context = useContext(ThemeProviderContext)
 
-  if (context === undefined) throw new Error('useTheme must be used within a ThemeProvider')
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider')
+  }
 
   return context
 }

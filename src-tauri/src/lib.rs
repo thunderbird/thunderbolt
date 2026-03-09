@@ -2,9 +2,9 @@
 // The compiler can't see the usage, so we allow dead_code warnings
 #[allow(dead_code)]
 pub mod commands;
+pub mod oauth_server;
 #[allow(dead_code)]
 pub mod state;
-pub mod oauth_server;
 
 #[cfg(feature = "bridge")]
 use crate::state::AppState;

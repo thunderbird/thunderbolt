@@ -98,6 +98,10 @@ pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
             return;
         };
 
+        // On macOS/Windows the accepted stream inherits non-blocking mode from the listener.
+        // Set it back to blocking so the read below waits for the HTTP request data.
+        stream.set_nonblocking(false).ok();
+
         // 4 KB is more than enough for an OAuth redirect request
         let mut buf = [0u8; 4096];
         let n = stream.read(&mut buf).unwrap_or(0);

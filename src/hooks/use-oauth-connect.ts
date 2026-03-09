@@ -191,8 +191,12 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     setError(null)
     const key = connectingKey ?? provider
 
-    if (isTauri() && !isMobile() && loopbackActiveRef.current) return
-    if (isTauri() && !isMobile()) loopbackActiveRef.current = true
+    if (isTauri() && !isMobile() && loopbackActiveRef.current) {
+      return
+    }
+    if (isTauri() && !isMobile()) {
+      loopbackActiveRef.current = true
+    }
 
     startConnecting(key)
 

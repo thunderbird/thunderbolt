@@ -4,8 +4,9 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { SourceCard } from './source-card'
+import { type ReactElement } from 'react'
 
-const renderWithProvider = (ui: React.ReactElement) =>
+const renderWithProvider = (ui: ReactElement) =>
   render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
 
 describe('SourceCard', () => {

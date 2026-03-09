@@ -1,6 +1,6 @@
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { useCallback, type ComponentProps } from 'react'
+import { type MouseEvent, useCallback, type ComponentProps } from 'react'
 
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -48,7 +48,7 @@ const Button = ({
   const { triggerSelection } = useHaptics()
 
   const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
+    (e: MouseEvent<HTMLButtonElement>) => {
       triggerSelection()
       onClick?.(e)
     },

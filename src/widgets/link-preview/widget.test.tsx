@@ -7,6 +7,7 @@ import { render } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
+import type { ReactElement } from 'react'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -16,7 +17,7 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-const renderWithProviders = (ui: React.ReactElement) => {
+const renderWithProviders = (ui: ReactElement) => {
   const TestProvider = createTestProvider()
   return render(ui, {
     wrapper: ({ children }) => (

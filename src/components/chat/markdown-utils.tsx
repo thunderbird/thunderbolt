@@ -1,4 +1,15 @@
-import { createContext, Fragment, memo, useCallback, useEffect, useMemo, useContext, type ReactNode } from 'react'
+import {
+  createContext,
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useContext,
+  type ReactNode,
+  type ComponentProps,
+  type MouseEvent,
+} from 'react'
 import type { Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
@@ -208,7 +219,7 @@ ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
  * Always uses ExternalLinkDialogContext provided by ExternalLinkDialogProvider.
  * Memoized to prevent unnecessary re-renders during streaming.
  */
-const SafeLink = memo((props: React.ComponentProps<'a'>) => {
+const SafeLink = memo((props: ComponentProps<'a'>) => {
   const { href, children, ...restProps } = props
   const context = useContext(ExternalLinkDialogContext)
 
@@ -220,7 +231,7 @@ const SafeLink = memo((props: React.ComponentProps<'a'>) => {
 
   const safeHref = href && isSafeUrl(href) ? href : undefined
 
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     if (!safeHref) {
       return

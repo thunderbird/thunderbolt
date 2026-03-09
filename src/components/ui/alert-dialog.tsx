@@ -1,4 +1,4 @@
-import { type ComponentProps, useCallback } from 'react'
+import { type ComponentProps, type MouseEvent, useCallback } from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 
 import { useHaptics } from '@/hooks/use-haptics'
@@ -89,7 +89,7 @@ const AlertDialogDescription = ({ className, ...props }: ComponentProps<typeof A
 const AlertDialogAction = ({ className, onClick, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action>) => {
   const { triggerSelection } = useHaptics()
   const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
+    (e: MouseEvent<HTMLButtonElement>) => {
       triggerSelection()
       onClick?.(e)
     },

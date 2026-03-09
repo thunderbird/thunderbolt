@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { useAutoScroll } from './use-auto-scroll'
+import type { TouchEvent, WheelEvent } from 'react'
 
 describe('useAutoScroll', () => {
   afterEach(() => {
@@ -133,7 +134,7 @@ describe('useAutoScroll', () => {
 
       // Scroll up (disables auto-scroll)
       act(() => {
-        result.current.scrollHandlers.onWheel({ deltaY: -100 } as React.WheelEvent)
+        result.current.scrollHandlers.onWheel({ deltaY: -100 } as WheelEvent)
       })
 
       const scrollTopBefore = container.scrollTop
@@ -162,7 +163,7 @@ describe('useAutoScroll', () => {
 
       // Scroll down (should NOT disable auto-scroll)
       act(() => {
-        result.current.scrollHandlers.onWheel({ deltaY: 100 } as React.WheelEvent)
+        result.current.scrollHandlers.onWheel({ deltaY: 100 } as WheelEvent)
       })
 
       // Change dependencies - should still auto-scroll
@@ -191,7 +192,7 @@ describe('useAutoScroll', () => {
 
       // Touch - should disable auto-scroll immediately (user wants control)
       act(() => {
-        result.current.scrollHandlers.onTouchStart({} as React.TouchEvent)
+        result.current.scrollHandlers.onTouchStart({} as TouchEvent)
       })
 
       const scrollTopBefore = container.scrollTop

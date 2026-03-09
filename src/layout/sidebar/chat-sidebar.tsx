@@ -10,7 +10,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
-import type { RefObject } from 'react'
+import type { MouseEvent, RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
 import { NavigationMenu } from './navigation-menu'
@@ -34,7 +34,7 @@ type ChatSidebarContentProps = {
   showTasks: boolean
   onCreateNewChat: () => void
   onChatClick: (threadId: string) => void
-  onSearchClick: (e?: React.MouseEvent) => void
+  onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
   onSettingsClick: () => void
 }

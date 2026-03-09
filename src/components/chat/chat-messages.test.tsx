@@ -15,10 +15,11 @@ import { useChatStore } from '@/chats/chat-store'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { ThunderboltUIMessage } from '@/types'
+import { type ReactNode } from 'react'
 
 const createTestWrapper = () => {
   const QueryWrapper = createQueryTestWrapper()
-  return ({ children }: { children: React.ReactNode }) => (
+  return ({ children }: { children: ReactNode }) => (
     <QueryWrapper>
       <ContentViewProvider>
         <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>

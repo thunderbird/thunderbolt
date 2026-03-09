@@ -11,7 +11,7 @@ import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model } from '@/types'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { createElement } from 'react'
+import { createElement, type ReactNode, type RefObject } from 'react'
 import { BrowserRouter } from 'react-router'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
@@ -37,7 +37,7 @@ const createMockUseIsMobile =
     isMobile,
   })
 
-const TestWrapper = ({ children }: { children: React.ReactNode }) => {
+const TestWrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
   return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
 }
@@ -153,7 +153,7 @@ describe('ChatPromptInput', () => {
   describe('ref methods', () => {
     it('should expose focus method that focuses textarea', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
+      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
@@ -175,7 +175,7 @@ describe('ChatPromptInput', () => {
 
     it('should expose setInput method that updates textarea value', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as React.RefObject<ChatPromptInputRef>
+      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,

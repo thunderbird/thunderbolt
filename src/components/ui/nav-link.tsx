@@ -1,6 +1,6 @@
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { forwardRef, type ComponentProps } from 'react'
+import { forwardRef, type MouseEvent, type ComponentProps } from 'react'
 import { Link } from 'react-router'
 
 /**
@@ -10,7 +10,7 @@ export const NavLink = forwardRef<HTMLAnchorElement, ComponentProps<typeof Link>
   const { setOpenMobile } = useSidebar()
   const { isMobile } = useIsMobile()
 
-  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (isMobile) {
       setOpenMobile(false)
     }

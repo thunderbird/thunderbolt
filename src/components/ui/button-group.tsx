@@ -1,5 +1,5 @@
 import { type VariantProps } from 'class-variance-authority'
-import { createContext, useContext } from 'react'
+import { type ComponentProps, createContext, useContext } from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -33,7 +33,7 @@ const ButtonGroup = ({
   size,
   children,
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof buttonVariants>) => {
+}: ComponentProps<'div'> & VariantProps<typeof buttonVariants>) => {
   return (
     <div
       data-slot="button-group"
@@ -60,7 +60,7 @@ const ButtonGroupItem = ({
   variant,
   size,
   ...props
-}: React.ComponentProps<'button'> & VariantProps<typeof buttonVariants>) => {
+}: ComponentProps<'button'> & VariantProps<typeof buttonVariants>) => {
   const context = useContext(ButtonGroupContext)
 
   return (

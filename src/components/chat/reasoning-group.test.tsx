@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react'
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { ReasoningGroup } from './reasoning-group'
+import { type ReactNode } from 'react'
 
 const createMockReasoningPart = (
   state: 'streaming' | 'complete' = 'complete',
@@ -44,7 +45,7 @@ const createMockToolPart = (
   return part
 }
 
-const TestWrapper = ({ children }: { children: React.ReactNode }) => {
+const TestWrapper = ({ children }: { children: ReactNode }) => {
   return <ContentViewProvider>{children}</ContentViewProvider>
 }
 

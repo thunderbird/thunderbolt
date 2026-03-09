@@ -13,6 +13,7 @@
  * That's it! Everything else auto-wires.
  */
 
+import { type ComponentType } from 'react'
 import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as linkPreview from './link-preview'
@@ -82,7 +83,7 @@ export const widgetSchemas = widgetRegistry.map((widget) => widget.module.schema
  */
 export const widgetComponents = Object.fromEntries(
   widgetRegistry.map((widget) => [widget.name, widget.module.Component]),
-) as Record<WidgetName, React.ComponentType<any>>
+) as Record<WidgetName, ComponentType<any>>
 
 /**
  * Union type of all widget cache data - auto-generated from registry

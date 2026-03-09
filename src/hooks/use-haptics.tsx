@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext } from 'react'
+import { createContext, type ReactNode, useCallback, useContext } from 'react'
 import { useWebHaptics } from 'web-haptics/react'
 import { useSettings } from './use-settings'
 import {
@@ -29,7 +29,7 @@ const HapticsContext = createContext<HapticsContextValue>({
  * Wrap this around your app tree. Components using useHaptics() without
  * a provider get silent no-ops, keeping them usable as dumb components.
  */
-export const HapticsProvider = ({ children }: { children: React.ReactNode }) => {
+export const HapticsProvider = ({ children }: { children: ReactNode }) => {
   const { hapticsEnabled } = useSettings({ haptics_enabled: true })
   const { trigger } = useWebHaptics({ debug: import.meta.env.DEV })
   const enabled = hapticsEnabled.value === true

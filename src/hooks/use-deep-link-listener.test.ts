@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -20,7 +20,7 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-const wrapper = ({ children }: { children: React.ReactNode }) => {
+const wrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
   return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
 }

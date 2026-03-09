@@ -19,6 +19,7 @@ import {
   type CSSProperties,
   type ElementRef,
   forwardRef,
+  type MouseEvent,
   useCallback,
   useContext,
   useEffect,
@@ -547,7 +548,7 @@ const SidebarMenuButton = forwardRef<
     const { triggerSelection } = useHaptics()
 
     const handleClick = useCallback(
-      (e: React.MouseEvent<HTMLButtonElement>) => {
+      (e: MouseEvent<HTMLButtonElement>) => {
         triggerSelection()
         onClick?.(e)
       },

@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
+use std::time::Duration;
 use tauri::Emitter;
 
 /// Payload emitted to the frontend when the OAuth callback arrives.
@@ -51,16 +52,18 @@ fn parse_request_path(raw: &str) -> Option<&str> {
     parts.next() // return path
 }
 
+/// How long the server waits for the browser redirect before giving up (6 minutes).
+/// Slightly longer than the frontend's 5-minute timeout so the frontend resolves first.
+const ACCEPT_TIMEOUT: Duration = Duration::from_secs(360);
+
 /// Start the in-house OAuth loopback server. Returns the port it bound to.
 ///
 /// The server:
-/// 1. Binds to `127.0.0.1` on one of the given ports (or OS-assigned port 0 as fallback)
-/// 2. Spawns a `std::thread` that accepts **one** connection
+/// 1. Binds to `127.0.0.1` on one of the given ports
+/// 2. Spawns a thread that accepts **one** connection (with a timeout)
 /// 3. Reads the HTTP GET request, sends the "Authentication Complete" HTML page
 /// 4. Emits `"oauth-callback"` to the Tauri frontend with the full callback URL
-/// 5. The thread exits — the `TcpListener` drops and the port is released
-///
-/// No async runtime is required. No external HTTP framework is used.
+/// 5. The thread exits and the port is released
 ///
 /// # Security
 ///
@@ -73,8 +76,25 @@ pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
     let (listener, port) = bind_to_port(ports).map_err(|e| e.to_string())?;
 
     thread::spawn(move || {
-        // Accept exactly one connection — then the thread exits
-        let Ok((mut stream, _addr)) = listener.accept() else {
+        // Use non-blocking mode with polling to implement an accept timeout.
+        // Without this, abandoned auth flows leak threads and hold ports forever.
+        listener.set_nonblocking(true).ok();
+
+        let start = std::time::Instant::now();
+        let stream = loop {
+            match listener.accept() {
+                Ok((stream, _addr)) => break Some(stream),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if start.elapsed() >= ACCEPT_TIMEOUT {
+                        break None;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Err(_) => break None,
+            }
+        };
+
+        let Some(mut stream) = stream else {
             return;
         };
 

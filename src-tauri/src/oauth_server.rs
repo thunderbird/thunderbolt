@@ -52,9 +52,10 @@ fn parse_request_path(raw: &str) -> Option<&str> {
     parts.next() // return path
 }
 
-/// How long the server waits for the browser redirect before giving up (6 minutes).
-/// Slightly longer than the frontend's 5-minute timeout so the frontend resolves first.
-const ACCEPT_TIMEOUT: Duration = Duration::from_secs(360);
+/// How long the server waits for the browser redirect before giving up.
+/// 5 seconds longer than the frontend's 5-minute timeout so the frontend resolves first,
+/// but short enough to release the port quickly on abandoned flows.
+const ACCEPT_TIMEOUT: Duration = Duration::from_secs(305);
 
 /// Start the in-house OAuth loopback server. Returns the port it bound to.
 ///

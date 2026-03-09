@@ -39,6 +39,7 @@ export const startOAuthFlowLoopback = async (
   const redirectUri = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     const state = uuidv4()
     const codeVerifier = generateCodeVerifier()
@@ -59,7 +60,9 @@ export const startOAuthFlowLoopback = async (
 
     const callbackUrl = await Promise.race([
       urlPromise,
-      new Promise<never>((_, reject) => setTimeout(() => reject(oauthTimeout), timeoutMs)),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(oauthTimeout), timeoutMs)
+      }),
     ])
 
     const url = new URL(callbackUrl)
@@ -88,6 +91,7 @@ export const startOAuthFlowLoopback = async (
     }
     throw err
   } finally {
+    clearTimeout(timeoutId)
     unlisten?.()
     // No cancel needed — the Rust server shuts itself down after one request
   }

@@ -194,9 +194,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     if (isTauri() && !isMobile() && loopbackActiveRef.current) {
       return
     }
-    if (isTauri() && !isMobile()) {
-      loopbackActiveRef.current = true
-    }
 
     startConnecting(key)
 
@@ -227,6 +224,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         } else {
           // For desktop: Use system browser + loopback server flow.
           try {
+            loopbackActiveRef.current = true
             const result = await startLoopback(provider)
 
             if (!result) {
@@ -255,7 +253,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       if (e instanceof Error && e.message === 'Redirecting for OAuth') {
         return
       }
-      loopbackActiveRef.current = false
       clearConnecting(key)
       const message = e instanceof Error ? e.message : 'Failed to complete authentication'
       setError(message)

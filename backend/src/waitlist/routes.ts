@@ -3,7 +3,7 @@ import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistB
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { autoApprovedDomains } from '@/lib/constants'
+import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
 import { Elysia, t } from 'elysia'
 import {
   sendWaitlistJoinedEmail as defaultSendJoinedEmail,
@@ -31,7 +31,7 @@ const defaultEmailService: WaitlistEmailService = {
 const isAutoApprovedDomain = (email: string): boolean => {
   const parts = email.split('@')
   const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
-  return domain ? autoApprovedDomains.includes(domain) : false
+  return domain ? getWaitlistAutoApproveDomains(getSettings()).includes(domain) : false
 }
 
 /** Trigger Better Auth's OTP flow for approved users. */

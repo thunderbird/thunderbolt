@@ -91,6 +91,24 @@ if [ "$QUIET" = false ]; then
   echo "Environment:"
 fi
 
+if [ -L "$PROJECT_ROOT/.claude/agents/thunderbot.md" ]; then
+  if [ "$QUIET" = false ]; then
+    echo -e "  ${PASS} .claude/agents/thunderbot.md symlink"
+  fi
+else
+  has_any_failure=true
+  echo -e "  ${WARN} .claude/agents/thunderbot.md symlink missing — run: make setup-symlinks"
+fi
+
+if [ -L "$PROJECT_ROOT/.claude/commands/thunderbot.md" ]; then
+  if [ "$QUIET" = false ]; then
+    echo -e "  ${PASS} .claude/commands/thunderbot.md symlink"
+  fi
+else
+  has_any_failure=true
+  echo -e "  ${WARN} .claude/commands/thunderbot.md symlink missing — run: make setup-symlinks"
+fi
+
 if [ -f "$PROJECT_ROOT/.env" ]; then
   if [ "$QUIET" = false ]; then
     echo -e "  ${PASS} .env exists"

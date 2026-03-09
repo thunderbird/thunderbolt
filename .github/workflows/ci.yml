@@ -9,7 +9,7 @@ on:
   # Run CI for all PR updates without duplication from push events
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
-    branches: ['*']
+    branches: ['**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

@@ -45,8 +45,8 @@ mise.toml
 .claude/**
 !.claude/commands/
 !.claude/commands/**
-!.claude/thunderbot/
-!.claude/thunderbot/**
+!.claude/agents/
+!.claude/agents/**
 .zed/**
 .zedscratches/**
 .mcp.json

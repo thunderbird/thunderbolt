@@ -142,3 +142,18 @@ pub fn capabilities() -> Capabilities {
         native_fetch: NATIVE_FETCH_ENABLED,
     }
 }
+
+// === OAuth loopback server ===================================================================
+
+/// Ports pre-registered as redirect URIs in the Google / Microsoft OAuth console.
+const OAUTH_PORTS: &[u16] = &[17421, 17422, 17423];
+
+/// Starts the in-house OAuth loopback server and returns the port it bound to.
+///
+/// The Rust server accepts one HTTP connection, sends an "Authentication Complete"
+/// response, emits an `"oauth-callback"` event to the frontend, then shuts down.
+/// No external HTTP framework or Tauri plugin is required.
+#[command]
+pub async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
+    crate::oauth_server::start(app, OAUTH_PORTS)
+}

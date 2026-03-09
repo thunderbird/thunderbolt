@@ -1,4 +1,5 @@
 import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
+import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
@@ -6,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { useDraftInput } from '@/hooks/use-draft-input'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -43,21 +45,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
     const isStreaming = status === 'streaming'
 
+    // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
+    // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)
+    // Either condition means we prefer mobile-style input where Enter inserts a newline.
+    const shouldInsertNewlineOnEnter = isMobile || isPlatformMobile()
+
+    // Use a stable "new" key for unsaved chats so the draft persists across /chats/new navigations
+    const draftKey = chatThread ? chatThreadId : 'new'
     const [showOverflowModal, setShowOverflowModal] = useState(false)
-    const [input, setInput] = useState('')
+    const [input, setInput, clearDraft] = useDraftInput(draftKey)
     const formRef = useRef<HTMLFormElement>(null)
+    const { triggerSelection } = useHaptics()
 
     const handleModeChange = useCallback(
       (modeId: string) => {
+        triggerSelection()
         setSelectedMode(chatThreadId, modeId)
       },
-      [chatThreadId, setSelectedMode],
+      [chatThreadId, setSelectedMode, triggerSelection],
     )
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
@@ -80,8 +91,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        // Clear the input immediately for responsive UX
-        setInput('')
+        // Clear input and persisted draft immediately for responsive UX
+        clearDraft()
 
         await sendMessage({ text: textToSend })
       } catch (error) {
@@ -140,7 +151,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}
-          submitOnEnter={!isStreaming && !isPlatformMobile()}
+          submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
           className={cn(
             'flex flex-col bg-background dark:bg-input/30 border dark:border-input rounded-2xl w-full',
             isMobile ? 'gap-0 p-4' : 'gap-2 p-3',

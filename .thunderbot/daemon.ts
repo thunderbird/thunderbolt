@@ -291,7 +291,7 @@ const showStatus = () => {
   const missing = PREREQUISITES.filter((p) => !commandExists(p.cmd))
   if (missing.length > 0) {
     console.log(`\nMissing tools: ${missing.map((p) => p.label).join(', ')}`)
-    console.log(`Run "/thunderbot-daemon start" to auto-install, or: bash .claude/thunderbot/setup.sh`)
+    console.log(`Run "/thunderbot-daemon start" to auto-install, or: bash .thunderbot/setup.sh`)
   }
 
   try {

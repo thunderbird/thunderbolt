@@ -1,6 +1,7 @@
 import { useSettings } from '@/hooks/use-settings'
 import { getAllEnabledTriggers, runAutomation } from '@/dal'
 import { useEffect, useRef } from 'react'
+import { type Trigger } from '@/types'
 
 export const useTriggerScheduler = () => {
   const { isTriggersEnabled } = useSettings({
@@ -17,7 +18,7 @@ export const useTriggerScheduler = () => {
       timers.current.forEach(clearTimeout)
       timers.current = []
 
-      const triggers = await getAllEnabledTriggers()
+      const triggers = (await getAllEnabledTriggers()) as Trigger[]
 
       triggers.forEach((t) => {
         if (t.triggerTime) {

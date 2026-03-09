@@ -1,50 +1,11 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { useDraftInput } from './use-draft-input'
 
-const fakeTimers = () => {
-  let time = 0
-  const timers: Array<{ id: number; callback: () => void; fireAt: number }> = []
-  let nextId = 1
-
-  globalThis.setTimeout = ((callback: () => void, ms: number) => {
-    const id = nextId++
-    timers.push({ id, callback, fireAt: time + ms })
-    return id
-  }) as unknown as typeof setTimeout
-
-  globalThis.clearTimeout = ((id: number) => {
-    const index = timers.findIndex((t) => t.id === id)
-    if (index !== -1) {
-      timers.splice(index, 1)
-    }
-  }) as unknown as typeof clearTimeout
-
-  return {
-    advance: (ms: number) => {
-      time += ms
-      const ready = timers.filter((t) => t.fireAt <= time)
-      for (const t of ready) {
-        timers.splice(timers.indexOf(t), 1)
-        t.callback()
-      }
-    },
-  }
-}
-
 describe('useDraftInput', () => {
-  let originalSetTimeout: typeof setTimeout
-  let originalClearTimeout: typeof clearTimeout
-
   beforeEach(() => {
     localStorage.clear()
-    originalSetTimeout = globalThis.setTimeout
-    originalClearTimeout = globalThis.clearTimeout
-  })
-
-  afterEach(() => {
-    globalThis.setTimeout = originalSetTimeout
-    globalThis.clearTimeout = originalClearTimeout
   })
 
   it('initializes with empty string when no draft exists', () => {
@@ -59,7 +20,7 @@ describe('useDraftInput', () => {
   })
 
   it('saves draft to localStorage after debounce', () => {
-    const timers = fakeTimers()
+    const clock = getClock()
     const { result } = renderHook(() => useDraftInput('thread-1'))
 
     act(() => {
@@ -70,14 +31,14 @@ describe('useDraftInput', () => {
     expect(localStorage.getItem('draft:thread-1')).toBeNull()
 
     act(() => {
-      timers.advance(300)
+      clock.tick(300)
     })
 
     expect(localStorage.getItem('draft:thread-1')).toBe('hello')
   })
 
   it('debounces rapid typing', () => {
-    const timers = fakeTimers()
+    const clock = getClock()
     const { result } = renderHook(() => useDraftInput('thread-1'))
 
     act(() => {
@@ -91,7 +52,7 @@ describe('useDraftInput', () => {
     })
 
     act(() => {
-      timers.advance(300)
+      clock.tick(300)
     })
 
     // Only the last value should be saved
@@ -99,14 +60,14 @@ describe('useDraftInput', () => {
   })
 
   it('clears draft from localStorage', () => {
-    const timers = fakeTimers()
+    const clock = getClock()
     const { result } = renderHook(() => useDraftInput('thread-1'))
 
     act(() => {
       result.current[1]('some text')
     })
     act(() => {
-      timers.advance(300)
+      clock.tick(300)
     })
     expect(localStorage.getItem('draft:thread-1')).toBe('some text')
 
@@ -120,21 +81,20 @@ describe('useDraftInput', () => {
 
   it('removes key when draft is set to empty string', () => {
     localStorage.setItem('draft:thread-1', 'old')
-    const timers = fakeTimers()
+    const clock = getClock()
     const { result } = renderHook(() => useDraftInput('thread-1'))
 
     act(() => {
       result.current[1]('')
     })
     act(() => {
-      timers.advance(300)
+      clock.tick(300)
     })
 
     expect(localStorage.getItem('draft:thread-1')).toBeNull()
   })
 
   it('flushes pending draft on thread switch', () => {
-    fakeTimers()
     const { result, rerender } = renderHook(({ id }) => useDraftInput(id), {
       initialProps: { id: 'thread-1' },
     })

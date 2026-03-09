@@ -1,8 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
+import { deleteUser, revokeDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { user } from '@/db/auth-schema'
-import { devicesTable } from '@/db/schema'
-import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 
 /**
@@ -29,19 +27,14 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
     })
     .post('/devices/:id/revoke', async ({ params, set, user: sessionUser }) => {
       const userId = sessionUser!.id
-      const deviceId = params.id
-      const now = new Date()
-      await database
-        .update(devicesTable)
-        .set({ revokedAt: now })
-        .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+      await revokeDevice(database, params.id, userId)
       set.status = 204
     })
     .delete('/', async ({ set, user: sessionUser }) => {
       const userId = sessionUser!.id
 
       // tables have cascade delete on user_id and they will be deleted automatically
-      await database.delete(user).where(eq(user.id, userId))
+      await deleteUser(database, userId)
 
       set.status = 204
     })

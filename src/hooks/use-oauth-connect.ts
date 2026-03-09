@@ -192,6 +192,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     const key = connectingKey ?? provider
 
     if (isTauri() && !isMobile() && loopbackActiveRef.current) {
+      // Re-assert connecting state so the button stays in loading state
+      // (the 15s UI timeout may have cleared it while the flow is still active)
+      startConnecting(key)
       return
     }
 

@@ -50,28 +50,28 @@ export default function ChatUI() {
     <div className="h-full w-full">
       <div
         className={cn(
-          'flex flex-col h-full bg-background overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
+          'flex flex-col h-full overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
           isMobile && 'pb-0',
         )}
       >
         <AnimatePresence mode="wait">
           {hasMessages ? (
-            <div key="messages" className="relative flex-1 overflow-hidden">
+            <div key="messages" className="relative flex-1 min-h-0">
               <motion.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="h-full p-4 space-y-4 max-w-dvw overflow-y-auto hide-scrollbar"
+                className="h-full px-3 pt-4 pb-0 md:px-4 space-y-4 max-w-dvw overflow-y-auto hide-scrollbar"
               >
                 <ChatMessages />
-                <div ref={scrollTargetRef} />
+                <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
               </motion.div>
               <ScrollToBottomButton
                 isVisible={!isAtBottom}
                 onClick={() => scrollToBottomAndActivate(true)}
-                className="bottom-2"
+                className="bottom-6 md:bottom-7"
               />
             </div>
           ) : isMobile ? (
@@ -88,7 +88,10 @@ export default function ChatUI() {
         </AnimatePresence>
 
         <motion.div
-          className={cn('p-3 md:p-4 flex', !hasMessages && !isMobile && 'flex-1 items-center')}
+          className={cn(
+            '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
+            !hasMessages && !isMobile && 'flex-1 items-center',
+          )}
           initial={false}
           layout
           transition={{

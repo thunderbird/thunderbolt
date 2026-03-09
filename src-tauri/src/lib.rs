@@ -2,6 +2,7 @@
 // The compiler can't see the usage, so we allow dead_code warnings
 #[allow(dead_code)]
 pub mod commands;
+pub mod oauth_server;
 #[allow(dead_code)]
 pub mod state;
 
@@ -61,6 +62,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
             commands::capabilities,
+            commands::start_oauth_server,
             #[cfg(feature = "bridge")]
             commands::init_bridge,
             #[cfg(feature = "bridge")]

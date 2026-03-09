@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { ThunderboltConnector } from '@/db/powersync/connector'
 
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
@@ -7,7 +8,7 @@ const mockTrackEvent = mock(() => {})
 mock.module('@/db/powersync', () => ({
   AppSchema: {},
   drizzleSchema: {},
-  ThunderboltConnector: class {},
+  ThunderboltConnector,
   PowerSyncDatabaseImpl: class {},
   getPowerSyncInstance: () => null,
   isSyncEnabled: () => false,

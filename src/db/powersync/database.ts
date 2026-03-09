@@ -8,6 +8,7 @@ import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interfac
 import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
+import { setupTasksDecryptionWatcher } from './tasks-decryption-watcher'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 
 /** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
@@ -132,6 +133,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private powerSync: PowerSyncDatabase | null = null
   private _db: AnyDrizzleDatabase | null = null
   private _isConnected = false
+  private cleanupDecryptionWatcher: (() => Promise<void>) | null = null
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -167,6 +169,12 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     this._db = wrapPowerSyncWithDrizzle(this.powerSync as unknown as AbstractPowerSyncDatabase, {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
+
+    // Set up trigger-based decryption watcher for tasks
+    const cleanup = await setupTasksDecryptionWatcher()
+    if (cleanup) {
+      this.cleanupDecryptionWatcher = cleanup
+    }
 
     // Connect to PowerSync Cloud if sync is enabled
     if (isSyncEnabled()) {
@@ -275,6 +283,10 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   async close(): Promise<void> {
+    if (this.cleanupDecryptionWatcher) {
+      await this.cleanupDecryptionWatcher()
+      this.cleanupDecryptionWatcher = null
+    }
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()
       this.powerSync = null

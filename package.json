@@ -44,7 +44,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.1",
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.17.3",
     "@openrouter/ai-sdk-provider": "^1.1.2",
     "@powersync/drizzle-driver": "^0.7.2",

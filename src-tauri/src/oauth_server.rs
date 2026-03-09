@@ -100,7 +100,9 @@ pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
 
         // On macOS/Windows the accepted stream inherits non-blocking mode from the listener.
         // Set it back to blocking so the read below waits for the HTTP request data.
+        // Cap the read at 30 seconds so a half-open connection can't leak the thread forever.
         stream.set_nonblocking(false).ok();
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
 
         // 4 KB is more than enough for an OAuth redirect request
         let mut buf = [0u8; 4096];

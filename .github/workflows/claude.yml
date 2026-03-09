@@ -112,7 +112,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          allowed_bots: 'dependabot[bot],renovate[bot]'
+          allowed_bots: 'dependabot[bot],renovate[bot],cursor[bot]'
           include_fix_links: true
           prompt: |
             Your goal is HIGH-SIGNAL, LOW-NOISE feedback.

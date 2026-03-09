@@ -44,7 +44,10 @@ export const startOAuthFlowLoopback = async (
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallenge(codeVerifier)
 
-    const { promise: urlPromise, resolve: resolveUrl } = Promise.withResolvers<string>()
+    let resolveUrl!: (url: string) => void
+    const urlPromise = new Promise<string>((resolve) => {
+      resolveUrl = resolve
+    })
 
     // Register listener BEFORE opening browser to avoid race condition
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {

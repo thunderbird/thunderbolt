@@ -10,7 +10,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
-import { SelectableCard } from '@/components/ui/selectable-card'
+import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
@@ -18,8 +18,6 @@ import { resetAppDir } from '@/lib/fs'
 type RevokedDeviceModalProps = {
   open: boolean
 }
-
-type DataOption = 'keep' | 'delete'
 
 export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')

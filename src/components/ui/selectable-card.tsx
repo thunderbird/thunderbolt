@@ -1,6 +1,8 @@
 import { cn } from '@/lib/utils'
 import { type ReactNode } from 'react'
 
+export type DataOption = 'keep' | 'delete'
+
 export type SelectableCardProps = {
   selected: boolean
   onSelect: () => void

@@ -10,7 +10,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
-import { SelectableCard } from '@/components/ui/selectable-card'
+import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken } from '@/lib/auth-token'
@@ -20,8 +20,6 @@ type LogoutModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
-
-type DataOption = 'keep' | 'delete'
 
 export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
   const authClient = useAuth()

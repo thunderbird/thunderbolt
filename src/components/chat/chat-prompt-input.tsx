@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { useDraftInput } from '@/hooks/use-draft-input'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -44,7 +45,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
@@ -55,8 +56,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Either condition means we prefer mobile-style input where Enter inserts a newline.
     const shouldInsertNewlineOnEnter = isMobile || isPlatformMobile()
 
+    // Use a stable "new" key for unsaved chats so the draft persists across /chats/new navigations
+    const draftKey = chatThread ? chatThreadId : 'new'
     const [showOverflowModal, setShowOverflowModal] = useState(false)
-    const [input, setInput] = useState('')
+    const [input, setInput, clearDraft] = useDraftInput(draftKey)
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
 
@@ -88,8 +91,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        // Clear the input immediately for responsive UX
-        setInput('')
+        // Clear input and persisted draft immediately for responsive UX
+        clearDraft()
 
         await sendMessage({ text: textToSend })
       } catch (error) {

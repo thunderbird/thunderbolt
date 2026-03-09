@@ -126,7 +126,8 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetContent
           side="bottom"
-          className="inset-x-1 bottom-4 overflow-hidden rounded-2xl border p-0"
+          className="inset-x-1 overflow-hidden rounded-2xl border p-0"
+          style={{ bottom: 'calc(20px + var(--safe-area-bottom-padding, 0px))' }}
           hideCloseButton
         >
           <SheetHeader className="sr-only">

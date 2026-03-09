@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Sync skills with upstream thunderbot repo"
 ---
 

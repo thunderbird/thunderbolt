@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Verify dev tools and environment"
 ---
 

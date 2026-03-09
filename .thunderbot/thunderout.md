@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Leave worktree and return to main"
 ---
 

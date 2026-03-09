@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 context: fork
 description: "Review changed code for quality and fix issues"
 ---

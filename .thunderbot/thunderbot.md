@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Autonomous agent: pick up Linear task, implement, submit PR"
 ---
 

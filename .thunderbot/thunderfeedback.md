@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Submit feedback as a GitHub issue"
 ---
 

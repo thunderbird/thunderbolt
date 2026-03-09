@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Remove build artifacts"
 ---
 

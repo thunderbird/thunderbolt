@@ -31,6 +31,7 @@ const settingsSchema = z.object({
 
   // Waitlist settings
   waitlistEnabled: z.boolean().default(false),
+  waitlistAutoApproveDomains: z.string().default(''),
 
   // PowerSync settings
   powersyncUrl: z.string().default(''),
@@ -76,6 +77,7 @@ const parseSettings = (): Settings => {
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
+    waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
     powersyncUrl: process.env.POWERSYNC_URL || '',
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
     powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
@@ -137,4 +139,12 @@ export const getCorsMethodsList = (settings: Settings): string[] => {
     .split(',')
     .map((method) => method.trim())
     .filter((method) => method.length > 0)
+}
+
+/** Parse comma-separated auto-approved domains into a list */
+export const getWaitlistAutoApproveDomains = (settings: Settings): string[] => {
+  return settings.waitlistAutoApproveDomains
+    .split(',')
+    .map((domain) => domain.trim().toLowerCase())
+    .filter((domain) => domain.length > 0)
 }

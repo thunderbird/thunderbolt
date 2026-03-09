@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 description: "Enter work context (worktree, deps, or bootstrap)"
 ---
 

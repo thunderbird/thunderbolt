@@ -51,6 +51,7 @@ describe('Link Preview Routes', () => {
       corsAllowHeaders: 'Content-Type,Authorization',
       corsExposeHeaders: '',
       waitlistEnabled: false,
+      waitlistAutoApproveDomains: '',
       powersyncUrl: '',
       powersyncJwtKid: '',
       powersyncJwtSecret: '',

@@ -1,5 +1,4 @@
 ---
-disable-model-invocation: true
 context: fork
 description: "Run type-checking, linting, and format-checking"
 ---

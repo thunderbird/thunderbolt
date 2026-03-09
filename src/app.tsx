@@ -139,18 +139,18 @@ export const App = () => {
       return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
     }
 
-    if (!initData) {
+    // TODO: PowerSync is our only database provider, so we can safely assert it's not null.
+    // We may need to refactor the database classes to make this more robust.
+    const powerSyncInstance = getPowerSyncInstance()
+
+    if (!initData || !powerSyncInstance) {
       return <Loading />
     }
 
-    // TODO: PowerSync is our only database provider, so we can safely assert it's not null.
-    // We may need to refactor the database classes to make this more robust.
-    const powerSyncInstance = getPowerSyncInstance()! as unknown as ComponentProps<
-      typeof PowerSyncContext.Provider
-    >['value']
-
     return (
-      <PowerSyncContext.Provider value={powerSyncInstance}>
+      <PowerSyncContext.Provider
+        value={powerSyncInstance as unknown as ComponentProps<typeof PowerSyncContext.Provider>['value']}
+      >
         <QueryClientProvider client={queryClient}>
           <HttpClientProvider httpClient={initData.httpClient}>
             <AuthProvider>

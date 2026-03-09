@@ -1123,7 +1123,7 @@ export default function ModelsPage() {
           const isSystemModel = model.isSystem === 1
 
           return (
-            <Card key={model.id} className="border border-border shadow-sm">
+            <Card key={model.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">

@@ -217,7 +217,7 @@ export default function IntegrationsPage() {
 
       <div className="grid gap-4">
         {integrations.map((integration) => (
-          <Card key={integration.id} className="border border-border shadow-sm">
+          <Card key={integration.id} className="border border-border">
             <CardHeader className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-0 py-2">
               <div className="flex items-center gap-2">
                 {integration.icon}

@@ -118,7 +118,7 @@ export const ResponsiveModal = ({
                 {children}
                 {showCloseButton && (
                   <DialogPrimitive.Close className="ring-offset-background focus:ring-ring absolute right-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
-                    <XIcon className="h-4 w-4" />
+                    <XIcon className="size-[var(--icon-size-default)]" />
                     <span className="sr-only">Close</span>
                   </DialogPrimitive.Close>
                 )}
@@ -232,7 +232,7 @@ export const ResponsiveModalContentComposable = ({
             className="ring-offset-background focus:ring-ring absolute right-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none"
             style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
           >
-            <XIcon className="h-4 w-4" />
+            <XIcon className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Close</span>
           </DialogClose>
         )}

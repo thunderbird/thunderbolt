@@ -1,5 +1,3 @@
-'use client'
-
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'

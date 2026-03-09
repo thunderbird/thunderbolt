@@ -1,5 +1,3 @@
-'use client'
-
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
 import { useSettings } from '@/hooks/use-settings'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'

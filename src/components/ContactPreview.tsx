@@ -1,5 +1,3 @@
-'use client'
-
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 // @todo re-implement types

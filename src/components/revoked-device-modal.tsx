@@ -1,5 +1,3 @@
-'use client'
-
 import { HardDrive, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -39,16 +37,18 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
     try {
       if (selectedOption === 'delete') {
         await resetAppDir()
+      }
+    } catch (error) {
+      console.error('Failed to process device revocation:', error)
+    } finally {
+      if (selectedOption === 'delete') {
         localStorage.clear()
       } else {
         clearAuthToken()
         clearDeviceId()
       }
-    } catch (error) {
-      console.error('Failed to process device revocation:', error)
+      window.location.replace('/')
     }
-
-    window.location.replace('/')
   }
 
   return (

@@ -132,6 +132,13 @@ export default [
       '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
       'func-style': ['error', 'expression', { allowArrowFunctions: true }],
       'max-depth': ['warn', 4],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ExpressionStatement > Literal[value='use client']",
+          message: "'use client' is not needed in Vite — remove it.",
+        },
+      ],
     },
   },
   ...storybook.configs['flat/recommended'],

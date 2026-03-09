@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * This component is from https://shadcnui-expansions.typeart.cc/docs/autosize-textarea
  */

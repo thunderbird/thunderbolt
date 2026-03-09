@@ -241,6 +241,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       if (e instanceof Error && e.message === 'Redirecting for OAuth') {
         return
       }
+      loopbackActiveRef.current = false
       clearConnecting(key)
       const message = e instanceof Error ? e.message : 'Failed to complete authentication'
       setError(message)

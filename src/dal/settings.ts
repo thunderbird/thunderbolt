@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { DatabaseSingleton } from '../db/singleton'
 import { isInsertConflictError } from '../lib/sqlite-errors'
@@ -25,38 +25,17 @@ type SettingSchema = Record<
 >
 
 /**
- * Gets raw setting records for a schema object
- * Returns the full Setting objects with metadata
+ * Returns a Drizzle query for settings by keys.
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
  *
- * @param schema - Object mapping setting keys to either type constructors or default values
- * @returns Record of setting keys to Setting objects
- *
- * @example
- * ```ts
- * const settings = await getSettingsRecords({
- *   cloud_url: String,
- *   max_retries: 3,
- *   is_enabled: true,
- * })
- * // Returns: { cloud_url: Setting, max_retries: Setting, is_enabled: Setting }
- * ```
+ * When keys is empty, uses sql`1=0` instead of inArray — inArray(column, [])
+ * produces invalid SQL (WHERE col IN ()) in SQLite.
  */
-export const getSettingsRecords = async <T extends SettingSchema>(schema: T): Promise<Record<string, Setting>> => {
-  const keys = Object.keys(schema)
-  const db = DatabaseSingleton.instance.db
-  const results = await Promise.all(
-    keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
-  )
-  return results.reduce(
-    (acc, setting) => {
-      if (setting) {
-        acc[setting.key] = setting
-      }
-      return acc
-    },
-    {} as Record<string, Setting>,
-  )
-}
+export const getSettingsRecords = (keys: string[]) =>
+  DatabaseSingleton.instance.db
+    .select()
+    .from(settingsTable)
+    .where(keys.length > 0 ? inArray(settingsTable.key, keys) : sql`1=0`)
 
 /**
  * Helper type to convert snake_case to camelCase

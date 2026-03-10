@@ -13,8 +13,8 @@ import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { type OAuthProvider } from '@/lib/auth'
 import { updateSettings } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
-import { shouldInvalidateSettingsSubset, useSettings } from '@/hooks/use-settings'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSettings } from '@/hooks/use-settings'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -44,14 +44,6 @@ const ThunderboltProIcon = () => (
   </svg>
 )
 
-const integrationSettingsKeys = [
-  'integrations_pro_is_enabled',
-  'integrations_google_is_enabled',
-  'integrations_google_credentials',
-  'integrations_microsoft_is_enabled',
-  'integrations_microsoft_credentials',
-] as const
-
 const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
   if (!credentialsJson) {
     return undefined
@@ -67,7 +59,6 @@ const parseCredentials = (credentialsJson: string): Integration['credentials'] |
 export default function IntegrationsPage() {
   const location = useLocation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
   const [error, setError] = useState<string | null>(null)
   const [isProcessingCallback, setIsProcessingCallback] = useState(() => {
@@ -142,16 +133,7 @@ export default function IntegrationsPage() {
     proStatus?.isProUser,
   ])
 
-  const invalidateIntegrationSettings = () => {
-    for (const key of integrationSettingsKeys) {
-      queryClient.invalidateQueries({
-        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
-      })
-    }
-  }
-
   const { processCallback } = useOAuthConnect({
-    onSuccess: invalidateIntegrationSettings,
     onError: (err) => {
       setError(err.message)
     },
@@ -194,7 +176,6 @@ export default function IntegrationsPage() {
         [`integrations_${integration.provider}_credentials`]: '',
         [`integrations_${integration.provider}_is_enabled`]: 'false',
       })
-      invalidateIntegrationSettings()
     } catch (err) {
       console.error('Failed to disconnect integration', err)
     }
@@ -207,9 +188,6 @@ export default function IntegrationsPage() {
           ? 'integrations_pro_is_enabled'
           : `integrations_${integration.provider}_is_enabled`
       await updateSettings({ [settingKey]: enabled.toString() })
-      queryClient.invalidateQueries({
-        predicate: (query) => shouldInvalidateSettingsSubset(query, settingKey),
-      })
     } catch (err) {
       console.error('Failed to update integration', err)
     }
@@ -266,7 +244,6 @@ export default function IntegrationsPage() {
                     provider={integration.provider as OAuthProvider}
                     isConnected={false}
                     isProcessing={isProcessingCallback}
-                    onSuccess={invalidateIntegrationSettings}
                     onError={(error) => {
                       setError(error.message)
                     }}

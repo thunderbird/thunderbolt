@@ -364,7 +364,7 @@ describe('Chat Threads DAL', () => {
       })
 
       const contextSize = await getContextSizeForThread(threadId).get()
-      expect(contextSize?.contextSize).toBeUndefined()
+      expect(contextSize?.contextSize).toBeNull()
     })
 
     it('should return context size when thread has it set', async () => {

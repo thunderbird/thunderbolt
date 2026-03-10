@@ -1,6 +1,7 @@
 import '@/testing-library'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
@@ -34,6 +35,13 @@ const renderManaged = (ui: React.ReactElement) => {
 }
 
 describe('CitationBadge', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
   it('returns null when sources array is empty', () => {
     const { container } = renderStandalone(<CitationBadge sources={[]} />)
 

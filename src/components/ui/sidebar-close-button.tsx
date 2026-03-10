@@ -7,7 +7,7 @@ export const SidebarCloseButton = ({ onClick, ...props }: ComponentProps<typeof 
     onClick={onClick}
     variant="ghost"
     size="icon"
-    className="size-[var(--touch-height-sm)] rounded-full"
+    className="size-[var(--touch-height-sm)] rounded-[var(--radius-lg)]"
     {...props}
   >
     <X className="size-[var(--icon-size-default)]" />

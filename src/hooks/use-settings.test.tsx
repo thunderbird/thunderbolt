@@ -1,6 +1,18 @@
+import { updateSettings } from '@/dal'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { getClock } from '@/testing-library'
+import '@testing-library/jest-dom'
+import { act, cleanup, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { deserializeValue } from '@/lib/serialization'
-import { describe, expect, it } from 'bun:test'
 import type { BooleanSettingHook, StringSettingHook } from './use-settings'
+import { useSettings } from './use-settings'
+
+const TestSettingsComponent = () => {
+  const { testKey } = useSettings({ test_key: String })
+  return <span data-testid="setting-value">{testKey.value ?? 'null'}</span>
+}
 
 /**
  * Tests for type safety guarantees of useSettings hook
@@ -53,7 +65,7 @@ describe('useSettings type safety', () => {
         reset: async () => {},
         isLoading: false,
         isSaving: false,
-        query: {} as any,
+        query: {} as BooleanSettingHook['query'],
       }
 
       // TypeScript enforces this is boolean
@@ -72,12 +84,52 @@ describe('useSettings type safety', () => {
         reset: async () => {},
         isLoading: false,
         isSaving: false,
-        query: {} as any,
+        query: {} as StringSettingHook['query'],
       }
 
       // TypeScript enforces this is string | null
       const val: string | null = mockStringHook.value
       expect(val).toBe(null)
     })
+  })
+})
+
+describe('useSettings reactivity', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('updates when settings table changes', async () => {
+    await updateSettings({ test_key: 'initial' })
+
+    const { triggerChange } = renderWithReactivity(<TestSettingsComponent />, {
+      tables: ['settings'],
+    })
+
+    await waitForElement(() =>
+      screen.queryByTestId('setting-value')?.textContent === 'initial' ? screen.getByTestId('setting-value') : null,
+    )
+    expect(screen.getByTestId('setting-value').textContent).toBe('initial')
+
+    await updateSettings({ test_key: 'updated' })
+    triggerChange(['settings'])
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByTestId('setting-value').textContent).toBe('updated')
   })
 })

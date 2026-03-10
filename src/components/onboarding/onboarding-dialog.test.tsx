@@ -2,19 +2,12 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { MemoryRouter } from 'react-router'
+import type { ReactNode } from 'react'
 import { OnboardingDialog } from './onboarding-dialog'
-
-// Mock React Router
-const mockNavigate = mock()
-const mockLocation = mock()
-
-mock.module('react-router', () => ({
-  useLocation: () => mockLocation(),
-  useNavigate: () => mockNavigate,
-}))
 
 let consoleSpies: ConsoleSpies
 
@@ -28,43 +21,29 @@ afterAll(async () => {
   consoleSpies.restore()
 })
 
-beforeEach(() => {
-  // Reset and set default mock state before each test to prevent pollution
-  mockNavigate.mockClear()
-  mockLocation.mockClear()
-
-  // Set default location state
-  mockLocation.mockReturnValue({
-    pathname: '/',
-    search: '',
-    hash: '',
-    state: null,
-    key: 'mock-key',
-  })
-})
+beforeEach(() => {})
 
 afterEach(async () => {
   await resetTestDatabase()
-
-  // Reset mocks
-  mockNavigate.mockClear()
-  mockLocation.mockClear()
 })
+
+const createRouterWrapper =
+  (locationState?: unknown) =>
+  ({ children }: { children: ReactNode }) => {
+    const TestProvider = createTestProvider({ mockResponse: mockLocationData })
+    const entries = [{ pathname: '/', state: locationState ?? null }]
+    return (
+      <MemoryRouter initialEntries={entries}>
+        <TestProvider>{children}</TestProvider>
+      </MemoryRouter>
+    )
+  }
 
 describe('OnboardingDialog', () => {
   describe('Component rendering', () => {
     it('should render without crashing', () => {
-      // Ensure location has proper state
-      mockLocation.mockReturnValue({
-        pathname: '/',
-        search: '',
-        hash: '',
-        state: null,
-        key: 'mock-key',
-      })
-
       render(<OnboardingDialog />, {
-        wrapper: createTestProvider({ mockResponse: mockLocationData }),
+        wrapper: createRouterWrapper(),
       })
     })
 
@@ -77,16 +56,8 @@ describe('OnboardingDialog', () => {
         },
       }
 
-      mockLocation.mockReturnValue({
-        pathname: '/',
-        search: '',
-        hash: '',
-        state: oauthState,
-        key: 'mock-key',
-      })
-
       render(<OnboardingDialog />, {
-        wrapper: createTestProvider({ mockResponse: mockLocationData }),
+        wrapper: createRouterWrapper(oauthState),
       })
     })
 
@@ -99,16 +70,8 @@ describe('OnboardingDialog', () => {
         },
       }
 
-      mockLocation.mockReturnValue({
-        pathname: '/',
-        search: '',
-        hash: '',
-        state: oauthErrorState,
-        key: 'mock-key',
-      })
-
       render(<OnboardingDialog />, {
-        wrapper: createTestProvider({ mockResponse: mockLocationData }),
+        wrapper: createRouterWrapper(oauthErrorState),
       })
     })
   })
@@ -116,14 +79,11 @@ describe('OnboardingDialog', () => {
   describe('Integration with database', () => {
     it('should work with real database operations', async () => {
       render(<OnboardingDialog />, {
-        wrapper: createTestProvider({ mockResponse: mockLocationData }),
+        wrapper: createRouterWrapper(),
       })
 
-      // The component should integrate with the real database
-      // This tests the integration without complex mocking
       await waitFor(() => {
-        // Component should render without errors
-        expect(true).toBe(true) // Basic integration test
+        expect(true).toBe(true)
       })
     })
   })

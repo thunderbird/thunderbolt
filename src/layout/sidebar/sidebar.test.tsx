@@ -11,6 +11,7 @@ import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 
@@ -46,7 +47,13 @@ describe('Sidebar reactivity', () => {
         <HttpClientProvider httpClient={createMockHttpClient([])}>
           <AuthProvider authClient={createMockAuthClient()}>
             <SignInModalProvider>
-              <SidebarProvider>{children}</SidebarProvider>
+              <MemoryRouter initialEntries={['/chats/new']}>
+                <SidebarProvider>
+                  <Routes>
+                    <Route path="/*" element={children} />
+                  </Routes>
+                </SidebarProvider>
+              </MemoryRouter>
             </SignInModalProvider>
           </AuthProvider>
         </HttpClientProvider>
@@ -54,8 +61,6 @@ describe('Sidebar reactivity', () => {
     )
 
     const { triggerChange } = renderWithReactivity(<Sidebar />, {
-      route: '/chats/new',
-      routePath: '/*',
       tables: ['chat_threads'],
       wrapper,
     })

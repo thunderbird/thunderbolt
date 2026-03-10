@@ -142,17 +142,25 @@ export const updateMessage = async (
 
 /**
  * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
+ * Uses iterative BFS to avoid stack overflow and N+1 query issues with deep message trees.
  */
 const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: string): Promise<string[]> => {
-  const children = (await db
-    .select({ id: chatMessagesTable.id })
-    .from(chatMessagesTable)
-    .where(and(eq(chatMessagesTable.parentId, messageId), isNull(chatMessagesTable.deletedAt)))) as {
-    id: string
-  }[]
+  const allIds: string[] = []
+  let parentIds: string[] = [messageId]
 
-  const descendantIds = await Promise.all(children.map((c) => getMessageAndDescendantIds(db, c.id)))
-  return [messageId, ...descendantIds.flat()]
+  while (parentIds.length > 0) {
+    allIds.push(...parentIds)
+    const children = (await db
+      .select({ id: chatMessagesTable.id })
+      .from(chatMessagesTable)
+      .where(and(inArray(chatMessagesTable.parentId, parentIds), isNull(chatMessagesTable.deletedAt)))) as {
+      id: string
+    }[]
+
+    parentIds = children.map((c) => c.id)
+  }
+
+  return allIds
 }
 
 /**

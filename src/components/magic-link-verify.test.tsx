@@ -5,18 +5,21 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { ReactNode } from 'react'
+import { MemoryRouter, useLocation } from 'react-router'
 import { MagicLinkVerify } from './magic-link-verify'
 
-// Mock React Router
-const mockSearchParams = new URLSearchParams()
-const mockNavigate = mock()
-
-mock.module('react-router', () => ({
-  useSearchParams: () => [mockSearchParams],
-  useNavigate: () => mockNavigate,
-}))
+/**
+ * Spy component that tracks navigation. When the component calls navigate('/', { replace: true }),
+ * the location changes — we observe it here.
+ */
+const NavigationSpy = ({ onLocationChange }: { onLocationChange: (pathname: string) => void }) => {
+  const location = useLocation()
+  onLocationChange(location.pathname)
+  return null
+}
 
 describe('MagicLinkVerify', () => {
   let consoleSpies: ConsoleSpies
@@ -34,31 +37,26 @@ describe('MagicLinkVerify', () => {
   })
 
   beforeEach(() => {
-    mockNavigate.mockClear()
     mockRefetchSession = mock(() => Promise.resolve({ data: null, error: null }))
     mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
-    mockSearchParams.delete('email')
-    mockSearchParams.delete('otp')
   })
 
   afterEach(async () => {
     await resetTestDatabase()
+    cleanup()
   })
 
   const renderComponent = (email?: string, otp?: string) => {
-    if (email) {
-      mockSearchParams.set('email', email)
-    }
-    if (otp) {
-      mockSearchParams.set('otp', otp)
-    }
+    const params = new URLSearchParams()
+    if (email) params.set('email', email)
+    if (otp) params.set('otp', otp)
+    const url = `/verify${params.toString() ? `?${params.toString()}` : ''}`
 
     const authClient = createMockAuthClient({
       session: null,
       isPending: false,
       signInEmailOtp: mockSignInEmailOtp,
     })
-    // Override useSession to use our mock refetch
     authClient.useSession = () =>
       ({
         data: null,
@@ -67,12 +65,31 @@ describe('MagicLinkVerify', () => {
         error: null,
         refetch: mockRefetchSession,
       }) as ReturnType<typeof authClient.useSession>
-    return render(<MagicLinkVerify />, {
-      wrapper: createTestProvider({ authClient }),
-    })
+
+    let lastPathname = '/verify'
+    const TestProvider = createTestProvider({ authClient })
+
+    const result = render(
+      <>
+        <MagicLinkVerify />
+        <NavigationSpy
+          onLocationChange={(p) => {
+            lastPathname = p
+          }}
+        />
+      </>,
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <MemoryRouter initialEntries={[url]}>
+            <TestProvider>{children}</TestProvider>
+          </MemoryRouter>
+        ),
+      },
+    )
+
+    return { ...result, getLastPathname: () => lastPathname }
   }
 
-  // Helper to wait for state changes
   const waitForStateChange = async () => {
     await act(async () => {
       await getClock().runAllAsync()
@@ -112,7 +129,6 @@ describe('MagicLinkVerify', () => {
 
   describe('verification loading state', () => {
     it('shows loading state initially', () => {
-      // Set up a signIn that never resolves to keep loading state
       mockSignInEmailOtp.mockReturnValue(new Promise(() => {}))
 
       renderComponent('user@example.com', '123456')
@@ -140,7 +156,7 @@ describe('MagicLinkVerify', () => {
     })
 
     it('navigates to home on continue click', async () => {
-      renderComponent('user@example.com', '123456')
+      const { getLastPathname } = renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
@@ -148,7 +164,7 @@ describe('MagicLinkVerify', () => {
       const continueButton = screen.getByRole('button', { name: 'Continue' })
       fireEvent.click(continueButton)
 
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
+      expect(getLastPathname()).toBe('/')
     })
 
     it('refetches session after successful verification', async () => {
@@ -224,7 +240,7 @@ describe('MagicLinkVerify', () => {
         error: { message: 'Invalid' },
       })
 
-      renderComponent('user@example.com', '123456')
+      const { getLastPathname } = renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
       expect(screen.getByText('Verification Failed')).toBeInTheDocument()
@@ -232,7 +248,7 @@ describe('MagicLinkVerify', () => {
       const closeButton = screen.getByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
+      expect(getLastPathname()).toBe('/')
     })
 
     it('does not refetch session when verification fails', async () => {

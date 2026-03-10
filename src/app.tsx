@@ -47,7 +47,7 @@ import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
 import { isPrPreview } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
-import { type ComponentProps } from 'react'
+import type { AbstractPowerSyncDatabase } from '@powersync/web'
 
 const queryClient = new QueryClient()
 
@@ -141,16 +141,14 @@ export const App = () => {
 
     // TODO: PowerSync is our only database provider, so we can safely assert it's not null.
     // We may need to refactor the database classes to make this more robust.
-    const powerSyncInstance = getPowerSyncInstance()
+    const powerSyncInstance = getPowerSyncInstance() as AbstractPowerSyncDatabase
 
-    if (!initData || !powerSyncInstance) {
+    if (!initData) {
       return <Loading />
     }
 
     return (
-      <PowerSyncContext.Provider
-        value={powerSyncInstance as unknown as ComponentProps<typeof PowerSyncContext.Provider>['value']}
-      >
+      <PowerSyncContext.Provider value={powerSyncInstance}>
         <QueryClientProvider client={queryClient}>
           <HttpClientProvider httpClient={initData.httpClient}>
             <AuthProvider>

@@ -19,13 +19,6 @@ const sessionWithUser = {
 }
 
 describe('useAuthGate', () => {
-  beforeAll(async () => {
-    await setupTestDatabase()
-  })
-
-  afterAll(async () => {
-    await teardownTestDatabase()
-  })
   describe('initial load (pending, no cached result)', () => {
     it('returns loading when session is pending and require is authenticated', () => {
       const authClient = createMockAuthClient({ session: null, isPending: true })

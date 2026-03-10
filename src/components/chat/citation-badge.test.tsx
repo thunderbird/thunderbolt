@@ -43,13 +43,6 @@ const renderManaged = (ui: React.ReactElement) => {
 }
 
 describe('CitationBadge', () => {
-  beforeAll(async () => {
-    await setupTestDatabase()
-  })
-
-  afterAll(async () => {
-    await teardownTestDatabase()
-  })
   it('returns null when sources array is empty', () => {
     const { container } = renderStandalone(<CitationBadge sources={[]} />)
 

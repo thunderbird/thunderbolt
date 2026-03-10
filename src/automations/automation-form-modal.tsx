@@ -18,17 +18,17 @@ import {
   deleteTriggersForPrompt,
   getAllTriggersForPrompt,
   getAvailableModels,
-  getSelectedModel,
+  getSelectedModelQuery,
   mapModel,
   updateAutomation,
 } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
-import type { Model, Prompt } from '@/types'
+import type { Prompt } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -61,17 +61,19 @@ export default function AutomationFormModal({
 }: AutomationFormModalProps) {
   const db = DatabaseSingleton.instance.db
 
-  const { data = [] } = usePowerSyncQuery({
+  const { data = [] } = useQuery({
     queryKey: ['models', 'availableModels'],
     query: toCompilableQuery(getAvailableModels()),
   })
 
   const models = useMemo(() => data.map(mapModel), [data])
 
-  const { data: selectedModel } = useQuery<Model>({
+  const { data: selectedModelRows = [] } = useQuery({
     queryKey: ['models', 'selectedModel'],
-    queryFn: getSelectedModel,
+    query: toCompilableQuery(getSelectedModelQuery()),
   })
+
+  const selectedModel = selectedModelRows[0]?.models ? mapModel(selectedModelRows[0].models) : undefined
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,
@@ -153,7 +155,7 @@ export default function AutomationFormModal({
         })
       }
     }
-  }, [isOpen, prompt, form, selectedModel, db])
+  }, [isOpen, prompt, form, selectedModel?.id, db])
 
   const createPromptMutation = useMutation({
     mutationFn: async (values: FormData) => {

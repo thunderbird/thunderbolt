@@ -1,9 +1,8 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { DatabaseSingleton } from '../db/singleton'
-import { modelsTable } from '../db/tables'
+import { modelsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Model, ModelRow } from '../types'
-import { getSettings } from './settings'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
 
@@ -47,6 +46,23 @@ export const getModelQuery = (id: string) => {
 }
 
 /**
+ * Returns a Drizzle query for the currently selected model, falling back to system model.
+ * Use with PowerSync's toCompilableQuery, or await the result to execute.
+ * Returns the selected model if it exists and is enabled; otherwise the system model.
+ */
+export const getSelectedModelQuery = () =>
+  DatabaseSingleton.instance.db
+    .select({ models: modelsTable })
+    .from(modelsTable)
+    .leftJoin(
+      settingsTable,
+      and(eq(settingsTable.key, 'selected_model'), eq(settingsTable.value, modelsTable.id), eq(modelsTable.enabled, 1)),
+    )
+    .where(and(isNull(modelsTable.deletedAt), or(eq(modelsTable.isSystem, 1), isNotNull(settingsTable.value))))
+    .orderBy(sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`)
+    .limit(1)
+
+/**
  * Gets a specific model by ID (excluding soft-deleted)
  */
 export const getModel = async (id: string): Promise<Model | null> => {
@@ -70,25 +86,12 @@ export const getSystemModel = async (): Promise<Model | null> => {
  * If the selected model is disabled, automatically falls back to system model
  */
 export const getSelectedModel = async (): Promise<Model> => {
-  const settings = await getSettings({ selected_model: String })
-  const selectedModelId = settings.selectedModel
-
-  if (selectedModelId) {
-    const model = await getModel(selectedModelId)
-
-    // Check if model exists and is enabled
-    if (model?.id && model.enabled) {
-      return model
-    }
-  }
-
-  const systemModel = await getSystemModel()
-
-  if (!systemModel) {
+  const result = await getSelectedModelQuery().all()
+  const row = result[0]?.models
+  if (!row) {
     throw new Error('No system model found')
   }
-
-  return systemModel
+  return mapModel(row)
 }
 
 /**

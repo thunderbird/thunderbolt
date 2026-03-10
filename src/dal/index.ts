@@ -8,6 +8,7 @@ export {
   getModel,
   getModelQuery,
   getSelectedModel,
+  getSelectedModelQuery,
   getSystemModel,
   resetModelToDefault,
   updateModel,

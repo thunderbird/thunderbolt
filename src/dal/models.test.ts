@@ -19,7 +19,9 @@ import {
   getDefaultModelForThread,
   getModel,
   getSelectedModel,
+  getSelectedModelQuery,
   getSystemModel,
+  mapModel,
   updateModel,
 } from './models'
 import { getAllPrompts, getPrompt } from './prompts'
@@ -172,6 +174,73 @@ describe('Models DAL', () => {
       expect(model.id).toBe(systemModelId)
       expect(model.name).toBe('System Model')
       expect(model.isSystem).toBe(1)
+    })
+  })
+
+  describe('getSelectedModelQuery', () => {
+    it('should return same result as getSelectedModel', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'thunderbolt',
+        name: 'System Model',
+        model: 'gpt-oss-120b',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      const selectedModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: selectedModelId,
+        provider: 'openai',
+        name: 'Selected Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+      })
+
+      await updateSettings({ selected_model: selectedModelId })
+
+      const asyncResult = await getSelectedModel()
+      const queryResult = await getSelectedModelQuery().all()
+      const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
+
+      expect(queryModel?.id).toBe(asyncResult.id)
+      expect(queryModel?.name).toBe(asyncResult.name)
+    })
+
+    it('should fall back to system model when selected model is disabled', async () => {
+      const db = DatabaseSingleton.instance.db
+
+      const systemModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: systemModelId,
+        provider: 'thunderbolt',
+        name: 'System Model',
+        model: 'gpt-oss-120b',
+        isSystem: 1,
+        enabled: 1,
+      })
+
+      const disabledModelId = uuidv7()
+      await db.insert(modelsTable).values({
+        id: disabledModelId,
+        provider: 'thunderbolt',
+        name: 'Disabled Model',
+        model: 'mistral-large-3',
+        isSystem: 0,
+        enabled: 0,
+      })
+
+      await updateSettings({ selected_model: disabledModelId })
+
+      const queryResult = await getSelectedModelQuery().all()
+      const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
+
+      expect(queryModel?.id).toBe(systemModelId)
+      expect(queryModel?.name).toBe('System Model')
     })
   })
 

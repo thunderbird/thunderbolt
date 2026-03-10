@@ -114,7 +114,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
             : style.transition || 'transform 20ms ease-out',
       }}
       className={cn(
-        'group flex items-center gap-3 rounded-lg bg-background px-3 py-2',
+        'group flex items-center gap-3 rounded-[var(--radius-lg)] bg-background px-3 py-2',
         'hover:bg-muted/50 transition-colors',
         isDragging && 'shadow-lg',
       )}
@@ -220,7 +220,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 hover:bg-muted/50">
+    <div className="flex items-center gap-3 rounded-[var(--radius-lg)] bg-background px-3 py-2 hover:bg-muted/50">
       <div className="w-6 h-6 p-1" /> {/* Spacer for drag handle */}
       <div className="flex-1 min-w-0">
         <input
@@ -471,7 +471,7 @@ export default function TasksPage() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="rounded-lg"
+                      className="rounded-[var(--radius-lg)]"
                       onClick={() => setIsAddingNew(true)}
                       disabled={isAddingNew}
                     >
@@ -489,6 +489,7 @@ export default function TasksPage() {
           {/* Search - always visible to maintain focus and avoid flicker */}
           <SearchInput
             placeholder="Search tasks..."
+            className="rounded-[var(--radius-xl)]"
             debouncedOnChange={(value) => {
               setDebouncedSearchQuery(value)
               if (value.trim()) {
@@ -560,7 +561,7 @@ export default function TasksPage() {
 
                   <DragOverlay dropAnimation={dropAnimation}>
                     {activeTask && (
-                      <div className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 shadow-lg border">
+                      <div className="flex items-center gap-3 rounded-[var(--radius-lg)] bg-background px-3 py-2 shadow-lg border">
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
                         <span className="flex-1 text-sm">{activeTask.item}</span>
                         <Square className="h-5 w-5 text-muted-foreground" />

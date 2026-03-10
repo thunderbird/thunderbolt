@@ -107,7 +107,7 @@ export const ModelSelector = ({
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
     <div
       className={cn(
-        'w-full flex items-center justify-between px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-xl transition-colors text-left cursor-pointer',
+        'w-full flex items-center justify-between px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-xl)] transition-colors text-left cursor-pointer',
         'hover:bg-accent/50',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',

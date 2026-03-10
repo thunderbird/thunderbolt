@@ -34,7 +34,7 @@ const LinkPreviewCard = ({
   title,
   url,
 }: LinkPreviewCardProps) => (
-  <Card className="cursor-pointer flex-row flex p-0 gap-0 rounded-lg overflow-hidden relative group">
+  <Card className="cursor-pointer flex-row flex p-0 gap-0 rounded-[var(--radius-lg)] overflow-hidden relative group">
     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 dark:group-hover:bg-white/5 pointer-events-none z-10" />
     <div className="h-24 w-24 flex-shrink-0 grid">
       {showPlaceholder ? (

@@ -43,7 +43,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onSubmit,
       isLoading = false,
       autoFocus = false,
-      className = 'flex flex-col gap-2 bg-secondary p-4 rounded-md w-full max-w-[696px] min-w-[268px]',
+      className = 'flex flex-col gap-2 bg-secondary p-4 rounded-[var(--radius-default)] w-full max-w-[696px] min-w-[268px]',
       submitOnEnter = false,
       noForm = false,
       isStreaming = false,
@@ -81,7 +81,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="button"
           variant="default"
-          className="size-[var(--touch-height-sm)] rounded-lg flex items-center justify-center flex-shrink-0"
+          className="size-[var(--touch-height-sm)] rounded-[var(--radius-lg)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
           <Square className="size-[var(--icon-size-default)]" />
@@ -90,7 +90,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="submit"
           variant="default"
-          className="size-[var(--touch-height-sm)] rounded-lg flex items-center justify-center flex-shrink-0"
+          className="size-[var(--touch-height-sm)] rounded-[var(--radius-lg)] flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !value.trim()}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />

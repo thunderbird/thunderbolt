@@ -47,17 +47,17 @@ export const SignInEmailStep = ({
 
       {/* Feature cards — centered via flex-1 wrapper */}
       <div className="flex flex-1 items-center">
-        <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
+        <div className="flex w-full flex-col gap-4 rounded-[var(--radius-xl)] bg-secondary px-3 py-4 text-left">
           {variant === 'page' ? (
             <>
               <div className="flex items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-emerald-500/15 dark:bg-transparent">
                   <Github className="size-6 text-emerald-600 dark:text-[#DCE875]" />
                 </div>
                 <p className="text-base text-muted-foreground">Thunderbolt is open-source</p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-amber-500/15 dark:bg-transparent">
                   <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
                 </div>
                 <p className="text-base text-muted-foreground">No logs or training on your data</p>
@@ -66,13 +66,13 @@ export const SignInEmailStep = ({
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 dark:bg-transparent">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-sky-500/15 dark:bg-transparent">
                   <RefreshCw className="size-6 text-sky-600 dark:text-[#DCE875]" />
                 </div>
                 <p className="text-base text-muted-foreground">Sync chats between devices</p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 dark:bg-transparent">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-violet-500/15 dark:bg-transparent">
                   <Brain className="size-6 text-violet-600 dark:text-[#DCE875]" />
                 </div>
                 <p className="text-base text-muted-foreground">Access more powerful AI models</p>
@@ -104,7 +104,7 @@ export const SignInEmailStep = ({
             className={
               variant === 'modal'
                 ? 'h-12 pl-12 text-base'
-                : 'h-[46px] rounded-xl border-border bg-secondary px-3 text-base'
+                : 'h-[46px] rounded-[var(--radius-xl)] border-border bg-secondary px-3 text-base'
             }
             disabled={isLoading}
             autoComplete="email"
@@ -116,7 +116,7 @@ export const SignInEmailStep = ({
           className={
             variant === 'modal'
               ? 'w-full'
-              : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
+              : 'h-[46px] w-full rounded-[var(--radius-xl)] bg-foreground text-background text-base font-medium hover:bg-foreground/90'
           }
           disabled={isLoading || !isValidEmail}
         >

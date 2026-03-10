@@ -47,7 +47,7 @@ export default function ModelsLayout() {
       <Select value={modelId || ''} onValueChange={handleModelSelect}>
         <SelectTrigger className="w-full p-6 py-8">
           <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium">
+            <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-[var(--radius-default)] font-medium">
               {currentModel?.provider?.[0]?.toUpperCase() || '?'}
             </div>
             <div className="flex flex-col">

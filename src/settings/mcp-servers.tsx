@@ -300,7 +300,7 @@ export default function McpServersPage() {
       <PageHeader title="MCP Servers">
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
+            <Button variant="outline" size="icon" className="rounded-[var(--radius-lg)]">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -330,7 +330,7 @@ export default function McpServersPage() {
               )}
 
               {connectionStatus === 'success' && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="p-4 bg-green-50 border border-green-200 rounded-[var(--radius-lg)]">
                   <div className="flex items-center gap-2 text-green-800">
                     <Check className="h-4 w-4" />
                     <span className="font-medium">Connection successful!</span>
@@ -352,7 +352,7 @@ export default function McpServersPage() {
               )}
 
               {connectionStatus === 'error' && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-[var(--radius-lg)]">
                   <div className="flex items-center gap-2 text-red-800">
                     <X className="h-4 w-4" />
                     <span className="font-medium">Connection failed</span>

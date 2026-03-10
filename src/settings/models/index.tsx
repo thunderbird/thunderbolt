@@ -773,7 +773,7 @@ export default function ModelsPage() {
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
+            <Button variant="outline" size="icon" className="rounded-[var(--radius-lg)]">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -1127,7 +1127,7 @@ export default function ModelsPage() {
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
+                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-[var(--radius-default)] font-medium flex-shrink-0">
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">

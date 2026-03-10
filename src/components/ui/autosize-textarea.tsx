@@ -96,7 +96,7 @@ export const AutosizeTextarea = forwardRef<AutosizeTextAreaRef, AutosizeTextArea
         value={value}
         ref={textAreaRef}
         className={cn(
-          'flex w-full rounded-md border border-input bg-background px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] text-[length:var(--font-size-body)] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex w-full rounded-[var(--radius-default)] border border-input bg-background px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] text-[length:var(--font-size-body)] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
         onChange={(e) => {

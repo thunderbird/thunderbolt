@@ -130,7 +130,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
   if (hasCitations && hasText) {
     return (
-      <div className="p-4 rounded-md my-2">
+      <div className="p-4 rounded-[var(--radius-default)] my-2">
         <CitationPopoverProvider>
           <CitationContext.Provider value={citations}>
             <MemoizedMarkdown
@@ -151,7 +151,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
       {deduplicateLinkPreviews(contentParts).map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
-            <div key={`text-${index}`} className="p-4 rounded-md my-2">
+            <div key={`text-${index}`} className="p-4 rounded-[var(--radius-default)] my-2">
               <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={contentPart.content} />
             </div>
           )

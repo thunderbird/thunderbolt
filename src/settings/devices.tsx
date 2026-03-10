@@ -101,12 +101,12 @@ export default function DevicesSettingsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium truncate">{device.name}</span>
                         {isCurrent && (
-                          <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                          <span className="shrink-0 rounded-[var(--radius-default)] bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
                             This device
                           </span>
                         )}
                         {isRevoked && (
-                          <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          <span className="shrink-0 rounded-[var(--radius-default)] border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
                             Revoked
                           </span>
                         )}

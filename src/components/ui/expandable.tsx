@@ -48,7 +48,7 @@ export const Expandable = ({
       value={isOpen ? 'item' : ''}
       onValueChange={handleValueChange}
       className={cn(
-        'rounded-lg shadow-sm border',
+        'rounded-[var(--radius-lg)] shadow-sm border',
         isOpen ? 'border-border mb-2' : 'border-transparent',
         bgColor,
         className,
@@ -60,7 +60,7 @@ export const Expandable = ({
             className={cn(
               'flex flex-1 items-center justify-between gap-2 px-4 py-[var(--spacing-y-default)] text-left transition-all outline-none min-h-[var(--min-touch-height)]',
               'hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              'rounded-lg data-[state=open]:rounded-b-none',
+              'rounded-[var(--radius-lg)] data-[state=open]:rounded-b-none',
               'disabled:pointer-events-none disabled:opacity-50',
             )}
           >

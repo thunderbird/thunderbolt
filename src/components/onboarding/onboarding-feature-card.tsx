@@ -17,7 +17,7 @@ export const OnboardingFeatureCard = ({
   iconClassName,
 }: OnboardingFeatureCardProps) => {
   return (
-    <div className={cn('flex items-center gap-4 p-4 rounded-lg bg-muted/50', className)}>
+    <div className={cn('flex items-center gap-4 p-4 rounded-[var(--radius-lg)] bg-muted/50', className)}>
       <Icon className={`w-6 h-6 flex-shrink-0 ${iconClassName || ''}`} />
       <div>
         <h3 className="font-medium text-sm">{title}</h3>

@@ -6,7 +6,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-[var(--gap-lg)] whitespace-nowrap rounded-md text-[length:var(--font-size-body)] font-medium transition-all cursor-pointer disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-[var(--gap-lg)] whitespace-nowrap rounded-[var(--radius-default)] text-[length:var(--font-size-body)] font-medium transition-all cursor-pointer disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -22,8 +22,8 @@ const buttonVariants = cva(
       size: {
         default:
           'h-[var(--touch-height-default)] px-[var(--spacing-x-default)] py-[var(--spacing-y-default)] has-[>svg]:px-[var(--spacing-x-md)]',
-        sm: 'h-[var(--touch-height-sm)] rounded-md gap-[var(--gap-default)] px-[var(--spacing-x-md)] has-[>svg]:px-[var(--spacing-x-sm)]',
-        lg: 'h-[var(--touch-height-lg)] rounded-md px-[var(--spacing-x-lg)] has-[>svg]:px-[var(--spacing-x-default)]',
+        sm: 'h-[var(--touch-height-sm)] rounded-[var(--radius-default)] gap-[var(--gap-default)] px-[var(--spacing-x-md)] has-[>svg]:px-[var(--spacing-x-sm)]',
+        lg: 'h-[var(--touch-height-lg)] rounded-[var(--radius-default)] px-[var(--spacing-x-lg)] has-[>svg]:px-[var(--spacing-x-default)]',
         icon: 'size-[var(--touch-height-default)]',
       },
     },

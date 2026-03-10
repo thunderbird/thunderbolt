@@ -21,7 +21,11 @@ type StatusCardProps = {
 
 const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(({ title, description, className, ...props }, ref) => {
   return (
-    <Card ref={ref} className={cn('border border-border shadow-sm rounded-md py-0 gap-0', className)} {...props}>
+    <Card
+      ref={ref}
+      className={cn('border border-border shadow-sm rounded-[var(--radius-default)] py-0 gap-0', className)}
+      {...props}
+    >
       <CardContent className="px-4 py-3">
         <div className="flex items-center gap-2">
           {typeof title === 'string' ? (

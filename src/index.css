@@ -162,6 +162,14 @@ body {
     height: 100%;
     overflow: hidden;
   }
+
+  #root {
+    position: fixed;
+    top: var(--vv-top, 0px);
+    left: 0;
+    right: 0;
+    height: var(--vv-height, 100svh);
+  }
 }
 
 /* Subtle table borders for markdown content */

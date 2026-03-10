@@ -30,8 +30,10 @@ export const useKeyboardInset = (): void => {
      * still produces a non-negative inset that matches the covered area.
      */
     const update = () => {
-      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-      document.documentElement.style.setProperty('--kb', `${inset}px`)
+      const el = document.documentElement.style
+      el.setProperty('--vv-top', `${vv.offsetTop}px`)
+      el.setProperty('--vv-height', `${vv.height}px`)
+      el.setProperty('--kb', `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`)
     }
 
     // Initial run

@@ -165,7 +165,7 @@ body {
 
   #root {
     position: fixed;
-    top: var(--vv-top, 0px);
+    top: 0;
     left: 0;
     right: 0;
     height: var(--vv-height, 100svh);

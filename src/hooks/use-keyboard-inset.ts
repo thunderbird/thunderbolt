@@ -5,12 +5,12 @@ import { useEffect } from 'react'
  * can stay pinned above the software keyboard on mobile.
  *
  * Sets on `<html>`:
- * - `--vv-top`:    visual viewport scroll offset (px)
  * - `--vv-height`: visual viewport height (px)
  * - `--kb`:        keyboard inset height (px)
  *
- * Starts `requestAnimationFrame` polling on `focusin` (before the keyboard
- * animation begins) so the values track every frame from the start.
+ * Prevents iOS Safari's native viewport scroll (which pushes the header
+ * offscreen) by locking `window.scrollTo(0, 0)` on every animation frame
+ * while the viewport is changing.
  */
 export const useKeyboardInset = (): void => {
   useEffect(() => {
@@ -18,13 +18,16 @@ export const useKeyboardInset = (): void => {
     if (!vv) return
 
     let rafId = 0
-    let prevTop = vv.offsetTop
     let prevHeight = vv.height
     let stableFrames = 0
 
     const apply = () => {
+      // Prevent iOS Safari from scrolling the layout viewport
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0)
+      }
+
       const el = document.documentElement.style
-      el.setProperty('--vv-top', `${vv.offsetTop}px`)
       el.setProperty('--vv-height', `${vv.height}px`)
       el.setProperty('--kb', `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`)
     }
@@ -32,12 +35,10 @@ export const useKeyboardInset = (): void => {
     const poll = () => {
       apply()
 
-      const topChanged = vv.offsetTop !== prevTop
       const heightChanged = vv.height !== prevHeight
-      prevTop = vv.offsetTop
       prevHeight = vv.height
 
-      if (topChanged || heightChanged) {
+      if (heightChanged) {
         stableFrames = 0
       } else {
         stableFrames++
@@ -59,7 +60,6 @@ export const useKeyboardInset = (): void => {
 
     apply()
 
-    // Start polling on focusin — fires BEFORE the keyboard animation starts
     document.addEventListener('focusin', startPolling)
     document.addEventListener('focusout', startPolling)
     vv.addEventListener('resize', startPolling)

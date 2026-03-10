@@ -185,10 +185,8 @@ describe('Settings DAL', () => {
         { recomputeHash: true },
       )
 
-      const records = await getSettingsRecords({
-        hash_key_one: String,
-        hash_key_two: String,
-      })
+      const recordsArray = await getSettingsRecords(['hash_key_one', 'hash_key_two'])
+      const records = Object.fromEntries(recordsArray.map((r) => [r.key, r]))
 
       const expectedHash1 = hashValues(['hash_key_one', 'baseline1'])
       const expectedHash2 = hashValues(['hash_key_two', 'baseline2'])

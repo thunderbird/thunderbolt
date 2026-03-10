@@ -4,7 +4,9 @@ import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { useMemo } from 'react'
 
 /**
@@ -28,7 +30,7 @@ type SettingHook<TValue, TInput = TValue> = {
   /** Whether an update or reset is in progress for this setting */
   isSaving: boolean
   /** The underlying query object for advanced use */
-  query: ReturnType<typeof useQuery<Setting[]>>
+  query: ReturnType<typeof useQuery<Setting>>
 }
 
 /**
@@ -104,52 +106,6 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
     }
 
 /**
- * Determines whether a given query should be invalidated after updating
- * a specific setting key.
- *
- * Why this is needed:
- * -------------------
- * The `useSettings` hook creates react-query entries whose query keys look like:
- *
- *    ['settings', 'a', 'b', 'c']
- *
- * where `'a'`, `'b'`, `'c'` represent the specific setting keys requested
- * by that hook instance (its "schema subset").
- *
- * Different components may request different subsets of settings:
- *
- *    useSettings({ a: true, b: true }) → ['settings', 'a', 'b']
- *    useSettings({ b: true })          → ['settings', 'b']
- *
- * When one setting is updated (e.g., 'b'), we must invalidate **all** queries
- * whose subset includes that key — not just the one that performed the update.
- *
- * React Query cannot know this relationship automatically, so we use a custom
- * predicate function during `invalidateQueries` to detect all affected subsets.
- *
- * This helper checks:
- *   1. Whether the query belongs to the settings subsystem
- *      (queryKey[0] === 'settings')
- *   2. Whether the updated key exists in that query's subset
- *
- * If both conditions match, the query should be invalidated.
- */
-export const shouldInvalidateSettingsSubset = (query: { queryKey: readonly unknown[] }, key: string) => {
-  const keys = query.queryKey
-
-  // must be a settings query
-  if (!Array.isArray(keys) || keys[0] !== 'settings') {
-    return false
-  }
-
-  // 'subset' = all keys after the prefix
-  const subset = keys.slice(1) as string[]
-
-  // invalidate if this subset contains the updated key
-  return subset.includes(key)
-}
-
-/**
  * Hook for managing multiple settings with modification tracking and reset capability
  *
  * Returns an object where each key is a setting, allowing clean destructuring.
@@ -201,18 +157,14 @@ export function useSettings<T extends SettingSchema>(
   schema: T,
   options: { camelCase?: boolean } = {},
 ): UseSettingsSchemaResult<T, boolean> {
-  const queryClient = useQueryClient()
   const { camelCase = true } = options
 
   const keys = Object.keys(schema)
 
   const query = useQuery({
     queryKey: ['settings', ...keys],
-    queryFn: async () => {
-      const result = await getSettingsRecords(schema)
-      return Object.values(result)
-    },
-    placeholderData: keepPreviousData,
+    query: toCompilableQuery(getSettingsRecords(keys)),
+    placeholderData: (previousData) => previousData,
   })
 
   const updateMutation = useMutation({
@@ -225,11 +177,6 @@ export function useSettings<T extends SettingSchema>(
       value: any
       options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
     }) => updateSettings({ [key]: value }, options),
-    onSuccess: (_, { key }) => {
-      queryClient.invalidateQueries({
-        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
-      })
-    },
   })
 
   const resetMutation = useMutation({
@@ -239,11 +186,6 @@ export function useSettings<T extends SettingSchema>(
         throw new Error(`No default setting found for key: ${key}`)
       }
       await resetSettingToDefault(key, defaultSetting)
-    },
-    onSuccess: (_, key) => {
-      queryClient.invalidateQueries({
-        predicate: (query) => shouldInvalidateSettingsSubset(query, key),
-      })
     },
   })
 

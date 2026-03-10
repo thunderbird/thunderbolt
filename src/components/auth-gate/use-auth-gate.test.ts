@@ -1,7 +1,8 @@
 import type { AuthClient } from '@/contexts'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { renderHook } from '@testing-library/react'
 import { useAuthGate } from './use-auth-gate'
 
@@ -10,6 +11,13 @@ const sessionWithUser = {
 }
 
 describe('useAuthGate', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
   describe('initial load (pending, no cached result)', () => {
     it('returns loading when session is pending and require is authenticated', () => {
       const authClient = createMockAuthClient({ session: null, isPending: true })

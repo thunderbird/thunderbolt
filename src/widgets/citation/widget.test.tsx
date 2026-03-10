@@ -1,6 +1,7 @@
 import '@/testing-library'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationWidgetComponent } from './widget'
@@ -17,6 +18,13 @@ const renderWithProviders = (ui: React.ReactElement) => {
 }
 
 describe('CitationWidgetComponent', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
   describe('rendering', () => {
     it('renders CitationBadge with raw JSON sources', () => {
       const sources = JSON.stringify([

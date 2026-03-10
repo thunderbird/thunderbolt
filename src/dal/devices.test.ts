@@ -19,8 +19,8 @@ describe('Devices DAL', () => {
 
   describe('getDevice', () => {
     it('returns null when no device with that id', async () => {
-      const device = await getDevice('non-existent-id')
-      expect(device).toBeNull()
+      const device = await getDevice('non-existent-id').get()
+      expect(device).toBeUndefined()
     })
 
     it('returns device when it exists', async () => {

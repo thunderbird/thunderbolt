@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
 import { createMockAuthClient } from './auth-client'
 import { createMockHttpClient } from './http-client'
+import { PowerSyncMockProvider } from './powersync-mock'
 
 type TestProviderOptions = {
   mockResponse?: unknown
@@ -58,11 +59,13 @@ export const createTestProvider = (options?: TestProviderOptions) => {
 
   return ({ children }: { children: ReactNode }) => {
     return (
-      <QueryClientProvider client={queryClient}>
-        <HttpClientProvider httpClient={mockHttpClient}>
-          <AuthProvider authClient={mockAuthClient}>{children}</AuthProvider>
-        </HttpClientProvider>
-      </QueryClientProvider>
+      <PowerSyncMockProvider>
+        <QueryClientProvider client={queryClient}>
+          <HttpClientProvider httpClient={mockHttpClient}>
+            <AuthProvider authClient={mockAuthClient}>{children}</AuthProvider>
+          </HttpClientProvider>
+        </QueryClientProvider>
+      </PowerSyncMockProvider>
     )
   }
 }

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
+import { PowerSyncMockProvider } from './powersync-mock'
 /**
  * Creates a test wrapper with React Query client
  * Useful for testing hooks that use React Query
@@ -25,7 +26,11 @@ export const createQueryTestWrapper = (options?: {
   })
 
   return ({ children }: { children: React.ReactNode }) => {
-    return createElement(QueryClientProvider, { client: queryClient }, children)
+    return createElement(
+      PowerSyncMockProvider,
+      null,
+      createElement(QueryClientProvider, { client: queryClient }, children),
+    )
   }
 }
 

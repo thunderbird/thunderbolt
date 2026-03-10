@@ -1,3 +1,4 @@
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -8,12 +9,14 @@ import { useLocationSearch } from './use-location-search'
 
 let consoleSpies: ConsoleSpies
 
-beforeAll(() => {
+beforeAll(async () => {
+  await setupTestDatabase()
   consoleSpies = setupConsoleSpy()
 })
 
-afterAll(() => {
+afterAll(async () => {
   consoleSpies.restore()
+  await teardownTestDatabase()
 })
 
 const mockLocationResponse = [

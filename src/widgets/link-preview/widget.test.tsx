@@ -1,9 +1,10 @@
 import '@/testing-library'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 
@@ -36,6 +37,13 @@ const makeSource = (overrides: Partial<SourceMetadata> = {}): SourceMetadata => 
 const hasSkeleton = (container: HTMLElement) => container.querySelector('[data-slot="skeleton"]') !== null
 
 describe('LinkPreviewWidget', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
   describe('instant render path (source + sources available)', () => {
     it('renders instantly when source index matches a source entry', () => {
       const sources = [makeSource({ index: 1 }), makeSource({ index: 2, title: 'Second Source' })]

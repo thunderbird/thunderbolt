@@ -18,9 +18,9 @@ describe('Devices DAL', () => {
   })
 
   describe('getDevice', () => {
-    it('returns null when no device with that id', async () => {
-      const device = await getDevice(getDb(), 'non-existent-id')
-      expect(device).toBeNull()
+    it('returns undefined when no device with that id', async () => {
+      const device = await getDevice(getDb(), 'non-existent-id').get()
+      expect(device).toBeUndefined()
     })
 
     it('returns device when it exists', async () => {
@@ -36,8 +36,8 @@ describe('Devices DAL', () => {
         createdAt: now,
       })
 
-      const device = await getDevice(getDb(), deviceId)
-      expect(device).not.toBeNull()
+      const device = await getDevice(getDb(), deviceId).get()
+      expect(device).not.toBeUndefined()
       expect(device?.id).toBe(deviceId)
       expect(device?.userId).toBe('user-1')
       expect(device?.name).toBe('Chrome on macOS')
@@ -61,7 +61,7 @@ describe('Devices DAL', () => {
         revokedAt,
       })
 
-      const device = await getDevice(getDb(), deviceId)
+      const device = await getDevice(getDb(), deviceId).get()
       expect(device?.revokedAt).toBe(revokedAt)
     })
   })

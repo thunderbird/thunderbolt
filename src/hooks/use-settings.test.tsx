@@ -1,5 +1,6 @@
 import { updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -112,7 +113,8 @@ describe('useSettings reactivity', () => {
   })
 
   it('updates when settings table changes', async () => {
-    await updateSettings({ test_key: 'initial' })
+    const db = getDb()
+    await updateSettings(db, { test_key: 'initial' })
 
     const { triggerChange } = renderWithReactivity(<TestSettingsComponent />, {
       tables: ['settings'],
@@ -123,7 +125,7 @@ describe('useSettings reactivity', () => {
     )
     expect(screen.getByTestId('setting-value').textContent).toBe('initial')
 
-    await updateSettings({ test_key: 'updated' })
+    await updateSettings(db, { test_key: 'updated' })
     triggerChange(['settings'])
 
     await act(async () => {

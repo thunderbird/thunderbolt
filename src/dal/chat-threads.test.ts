@@ -352,13 +352,13 @@ describe('Chat Threads DAL', () => {
   })
 
   describe('getContextSizeForThread', () => {
-    it('should return null when thread does not exist', async () => {
+    it('should return undefined when thread does not exist', async () => {
       const threadId = uuidv7()
-      const contextSize = await getContextSizeForThread(getDb(), threadId)
-      expect(contextSize).toBe(null)
+      const result = await getContextSizeForThread(getDb(), threadId).get()
+      expect(result).toBeUndefined()
     })
 
-    it('should return null when thread has no context size', async () => {
+    it('should return null context size when thread has no context size', async () => {
       const threadId = uuidv7()
       const db = getDb()
 
@@ -368,8 +368,8 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
       })
 
-      const contextSize = await getContextSizeForThread(getDb(), threadId)
-      expect(contextSize).toBe(null)
+      const result = await getContextSizeForThread(getDb(), threadId).get()
+      expect(result?.contextSize).toBeNull()
     })
 
     it('should return context size when thread has it set', async () => {
@@ -383,8 +383,8 @@ describe('Chat Threads DAL', () => {
         contextSize: 1500,
       })
 
-      const contextSize = await getContextSizeForThread(getDb(), threadId)
-      expect(contextSize).toBe(1500)
+      const result = await getContextSizeForThread(getDb(), threadId).get()
+      expect(result?.contextSize).toBe(1500)
     })
   })
 

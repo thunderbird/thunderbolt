@@ -1,5 +1,6 @@
 import { createAutomation, createModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -26,8 +27,9 @@ describe('AutomationsPage reactivity', () => {
   })
 
   it('updates when prompts table changes', async () => {
+    const db = getDb()
     const modelId = uuidv7()
-    await createModel({
+    await createModel(db, {
       id: modelId,
       provider: 'openai',
       name: 'Test Model',
@@ -37,7 +39,7 @@ describe('AutomationsPage reactivity', () => {
     })
 
     const promptId1 = uuidv7()
-    await createAutomation({
+    await createAutomation(db, {
       id: promptId1,
       title: 'First Automation',
       prompt: 'First automation prompt',
@@ -54,7 +56,7 @@ describe('AutomationsPage reactivity', () => {
     expect(screen.getByText('First Automation')).toBeInTheDocument()
 
     const promptId2 = uuidv7()
-    await createAutomation({
+    await createAutomation(db, {
       id: promptId2,
       title: 'Second Automation',
       prompt: 'Second automation prompt',

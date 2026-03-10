@@ -186,16 +186,16 @@ describe('Settings DAL', () => {
         { recomputeHash: true },
       )
 
-      const records = await getSettingsRecords(getDb(), {
-        hash_key_one: String,
-        hash_key_two: String,
-      })
+      const records = await getSettingsRecords(getDb(), ['hash_key_one', 'hash_key_two'])
 
       const expectedHash1 = hashValues(['hash_key_one', 'baseline1'])
       const expectedHash2 = hashValues(['hash_key_two', 'baseline2'])
 
-      expect(records['hash_key_one'].defaultHash).toBe(expectedHash1)
-      expect(records['hash_key_two'].defaultHash).toBe(expectedHash2)
+      const record1 = records.find((r) => r.key === 'hash_key_one')
+      const record2 = records.find((r) => r.key === 'hash_key_two')
+
+      expect(record1?.defaultHash).toBe(expectedHash1)
+      expect(record2?.defaultHash).toBe(expectedHash2)
     })
 
     it('should fall back to update when key already exists (insert-first pattern for PowerSync)', async () => {

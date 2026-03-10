@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PowerSyncContext } from '@powersync/react'
+import { DatabaseProvider } from '@/contexts/database-context'
+import { getDb, isDbRegistered } from '@/db/database'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
 /**
@@ -213,11 +215,16 @@ export const PowerSyncReactivityTestProvider = ({
 
   const value = useMemo(() => ({ triggerChange }), [triggerChange])
 
-  return (
+  const inner = (
     <PowerSyncReactivityContext.Provider value={value}>
       <PowerSyncContext.Provider value={mockRef.current as never}>
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       </PowerSyncContext.Provider>
     </PowerSyncReactivityContext.Provider>
   )
+
+  if (isDbRegistered()) {
+    return <DatabaseProvider db={getDb()}>{inner}</DatabaseProvider>
+  }
+  return inner
 }

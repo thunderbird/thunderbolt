@@ -1,5 +1,5 @@
 import '@/lib/dayjs'
-import { DatabaseSingleton } from '@/db/singleton'
+import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -40,7 +40,7 @@ describe('DevicesSettingsPage reactivity', () => {
   })
 
   it('updates when devices table changes (revocation)', async () => {
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     await db.insert(devicesTable).values([
       { id: deviceId1, userId: 'user-1', name: 'This Device', lastSeen: new Date().toISOString() },

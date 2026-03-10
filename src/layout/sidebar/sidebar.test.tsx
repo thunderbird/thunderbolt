@@ -1,5 +1,5 @@
-import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
-import { DatabaseSingleton } from '@/db/singleton'
+import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
+import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -34,7 +34,7 @@ describe('Sidebar reactivity', () => {
   it('updates when chat_threads table changes', async () => {
     const threadId1 = uuidv7()
     const threadId2 = uuidv7()
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
 
     await db.insert(chatThreadsTable).values([
       { id: threadId1, title: 'First Chat', isEncrypted: 0 },
@@ -42,13 +42,15 @@ describe('Sidebar reactivity', () => {
     ])
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <HttpClientProvider httpClient={createMockHttpClient([])}>
-        <AuthProvider authClient={createMockAuthClient()}>
-          <SignInModalProvider>
-            <SidebarProvider>{children}</SidebarProvider>
-          </SignInModalProvider>
-        </AuthProvider>
-      </HttpClientProvider>
+      <DatabaseProvider db={getDb()}>
+        <HttpClientProvider httpClient={createMockHttpClient([])}>
+          <AuthProvider authClient={createMockAuthClient()}>
+            <SignInModalProvider>
+              <SidebarProvider>{children}</SidebarProvider>
+            </SignInModalProvider>
+          </AuthProvider>
+        </HttpClientProvider>
+      </DatabaseProvider>
     )
 
     const { triggerChange } = renderWithReactivity(<Sidebar />, {
@@ -62,7 +64,7 @@ describe('Sidebar reactivity', () => {
     expect(screen.getByText('First Chat')).toBeInTheDocument()
     expect(screen.getByText('Second Chat')).toBeInTheDocument()
 
-    await deleteChatThread(threadId2)
+    await deleteChatThread(db, threadId2)
     triggerChange(['chat_threads'])
 
     await act(async () => {

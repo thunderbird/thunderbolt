@@ -1,5 +1,5 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 type DatabaseContextType = {
   db: AnyDrizzleDatabase
@@ -8,7 +8,8 @@ type DatabaseContextType = {
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined)
 
 export const DatabaseProvider = ({ children, db }: { children: ReactNode; db: AnyDrizzleDatabase }) => {
-  return <DatabaseContext.Provider value={{ db }}>{children}</DatabaseContext.Provider>
+  const value = useMemo(() => ({ db }), [db])
+  return <DatabaseContext.Provider value={value}>{children}</DatabaseContext.Provider>
 }
 
 /** Access the Drizzle database instance from React components. */

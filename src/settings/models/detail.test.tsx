@@ -1,5 +1,6 @@
 import { createModel, updateModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -26,8 +27,9 @@ describe('ModelDetailPage reactivity', () => {
   })
 
   it('updates when models table changes', async () => {
+    const db = getDb()
     const modelId = uuidv7()
-    await createModel({
+    await createModel(db, {
       id: modelId,
       provider: 'openai',
       name: 'Original Name',
@@ -45,7 +47,7 @@ describe('ModelDetailPage reactivity', () => {
     await waitForElement(() => screen.queryByDisplayValue('Original Name'))
     expect(screen.getByDisplayValue('Original Name')).toBeInTheDocument()
 
-    await updateModel(modelId, { name: 'Updated Name' })
+    await updateModel(db, modelId, { name: 'Updated Name' })
     triggerChange(['models'])
 
     await act(async () => {

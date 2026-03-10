@@ -131,8 +131,8 @@ describe('Tasks DAL', () => {
 
   describe('getIncompleteTasksCount', () => {
     it('should return 0 when no incomplete tasks exist', async () => {
-      const count = await getIncompleteTasksCount(getDb())
-      expect(count).toBe(0)
+      const result = await getIncompleteTasksCount(getDb()).get()
+      expect(result?.count).toBe(0)
     })
 
     it('should return correct count of incomplete tasks', async () => {
@@ -162,8 +162,8 @@ describe('Tasks DAL', () => {
         },
       ])
 
-      const count = await getIncompleteTasksCount(getDb())
-      expect(count).toBe(2)
+      const result = await getIncompleteTasksCount(getDb()).get()
+      expect(result?.count).toBe(2)
     })
   })
 
@@ -467,8 +467,8 @@ describe('Tasks DAL', () => {
       const incompleteTasks = await getIncompleteTasks(getDb())
       expect(incompleteTasks).toHaveLength(0)
 
-      const count = await getIncompleteTasksCount(getDb())
-      expect(count).toBe(0)
+      const result = await getIncompleteTasksCount(getDb()).get()
+      expect(result?.count).toBe(0)
     })
   })
 })

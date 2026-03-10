@@ -179,7 +179,7 @@ describe('Models DAL', () => {
 
   describe('getSelectedModelQuery', () => {
     it('should return same result as getSelectedModel', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
@@ -201,10 +201,10 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      await updateSettings({ selected_model: selectedModelId })
+      await updateSettings(getDb(), { selected_model: selectedModelId })
 
-      const asyncResult = await getSelectedModel()
-      const queryResult = await getSelectedModelQuery().all()
+      const asyncResult = await getSelectedModel(getDb())
+      const queryResult = await getSelectedModelQuery(getDb()).all()
       const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
 
       expect(queryModel?.id).toBe(asyncResult.id)
@@ -212,7 +212,7 @@ describe('Models DAL', () => {
     })
 
     it('should fall back to system model when selected model is disabled', async () => {
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const systemModelId = uuidv7()
       await db.insert(modelsTable).values({
@@ -234,9 +234,9 @@ describe('Models DAL', () => {
         enabled: 0,
       })
 
-      await updateSettings({ selected_model: disabledModelId })
+      await updateSettings(getDb(), { selected_model: disabledModelId })
 
-      const queryResult = await getSelectedModelQuery().all()
+      const queryResult = await getSelectedModelQuery(getDb()).all()
       const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
 
       expect(queryModel?.id).toBe(systemModelId)

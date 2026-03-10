@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { ContentViewProvider } from '@/content-view/context'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationMap, CitationSource } from '@/types/citation'
@@ -27,14 +26,6 @@ afterAll(async () => {
 const makeSources = (name: string): CitationSource[] => [
   { id: `src-${name}`, title: `${name} Article`, url: `https://${name}.com`, siteName: name, isPrimary: true },
 ]
-
-beforeAll(async () => {
-  await setupTestDatabase()
-})
-
-afterAll(async () => {
-  await teardownTestDatabase()
-})
 
 describe('markdownComponents', () => {
   describe('basic <br> tag handling', () => {

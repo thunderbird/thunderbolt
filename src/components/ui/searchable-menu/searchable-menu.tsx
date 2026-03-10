@@ -30,7 +30,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-xl)] transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-lg)] transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -51,16 +51,17 @@ type GroupSectionProps<T> = {
   value?: string
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
+  hideLabel?: boolean
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSectionProps<T>) => {
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
   if (group.items.length === 0) {
     return null
   }
 
   return (
     <div className="flex flex-col gap-1">
-      {group.label && (
+      {!hideLabel && group.label && (
         <div className="px-3 pt-2">
           <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
@@ -93,7 +94,7 @@ const DefaultTrigger = <T,>({
 }) => (
   <div
     className={cn(
-      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
+      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] rounded-[var(--radius-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
       isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
     )}
   >
@@ -214,14 +215,14 @@ export const SearchableMenu = <T,>({
       >
         <div className="flex flex-col gap-2 bg-background">
           {searchable && (
-            <div className="px-4 pt-4">
+            <div className="px-2 pt-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   placeholder={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-[var(--radius-xl)]"
+                  className="pl-9 rounded-[var(--radius-lg)]"
                   autoFocus={false}
                 />
               </div>
@@ -241,6 +242,7 @@ export const SearchableMenu = <T,>({
                     value={value}
                     onSelect={handleSelect}
                     renderItem={renderItem}
+                    hideLabel={filteredItems.length === 1}
                   />
                 ))
               ) : (

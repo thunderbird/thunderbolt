@@ -94,7 +94,7 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-[var(--spacing-x-md)] h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        'flex items-center gap-2 px-[var(--spacing-x-md)] h-[var(--touch-height-sm)] rounded-[var(--radius-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
@@ -107,7 +107,7 @@ export const ModelSelector = ({
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
     <div
       className={cn(
-        'w-full flex items-center justify-between px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-xl)] transition-colors text-left cursor-pointer',
+        'w-full flex items-center justify-between px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-lg)] transition-colors text-left cursor-pointer',
         'hover:bg-accent/50',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -148,6 +148,7 @@ export const ModelSelector = ({
       items={groupedItems}
       value={selectedModel?.id}
       onValueChange={handleModelChange}
+      searchable={models.length > 10}
       searchPlaceholder="Search Models"
       emptyMessage="No models found"
       blurBackdrop

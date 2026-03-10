@@ -32,8 +32,8 @@ type ChatStoreActions = {
   setMcpClients(mcpClients: MCPClient[]): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
-  setSelectedMode(id: string, modeId: string | null): void
-  setSelectedModel(id: string, modelId: string | null): void
+  setSelectedMode(id: string, modeId: string | null): Promise<void>
+  setSelectedModel(id: string, modelId: string | null): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
 
@@ -79,7 +79,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ models })
   },
 
-  setSelectedMode: (id, modeId) => {
+  setSelectedMode: async (id, modeId) => {
     const { modes, sessions } = get()
 
     const mode = modes.find((m) => m.id === modeId)
@@ -100,7 +100,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
 
     const db = getDb()
-    updateSettings(db, { selected_mode: mode.id })
+    await updateSettings(db, { selected_mode: mode.id })
 
     trackEvent('mode_select', { mode: mode.id })
   },

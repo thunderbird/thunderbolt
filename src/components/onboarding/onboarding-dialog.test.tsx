@@ -2,7 +2,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { MemoryRouter } from 'react-router'
@@ -20,8 +20,6 @@ afterAll(async () => {
   await teardownTestDatabase()
   consoleSpies.restore()
 })
-
-beforeEach(() => {})
 
 afterEach(async () => {
   await resetTestDatabase()

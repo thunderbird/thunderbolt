@@ -64,7 +64,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-lg)] transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-3 md:py-[var(--spacing-y-default)] rounded-[var(--radius-lg)] transition-colors text-left cursor-pointer',
           isSelected ? 'bg-accent' : 'hover:bg-accent/50',
         )}
       >

@@ -18,8 +18,8 @@ const itemNotEmpty = and(isNotNull(tasksTable.item), sql`trim(${tasksTable.item}
  * Returns a Drizzle query for incomplete tasks, optionally filtered by search query (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasks = (searchQuery?: string) =>
-  DatabaseSingleton.instance.db
+export const getIncompleteTasks = (searchQuery?: string) => {
+  const query = DatabaseSingleton.instance.db
     .select()
     .from(tasksTable)
     .where(
@@ -34,16 +34,20 @@ export const getIncompleteTasks = (searchQuery?: string) =>
     )
     .orderBy(asc(tasksTable.order), desc(tasksTable.id))
     .limit(50)
+  return query as typeof query & { execute: () => Promise<Task[]> }
+}
 
 /**
  * Returns a Drizzle query for the count of incomplete tasks (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasksCount = () =>
-  DatabaseSingleton.instance.db
+export const getIncompleteTasksCount = () => {
+  const query = DatabaseSingleton.instance.db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)
     .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty))
+  return query as typeof query & { execute: () => Promise<{ count: number }[]> }
+}
 
 /**
  * Update a task (preserves defaultHash for modification tracking)

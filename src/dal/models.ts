@@ -14,6 +14,9 @@ export const mapModel = (row: ModelRow): Model => {
   } as Model
 }
 
+/** Maps an array of ModelRow to Model[] */
+export const mapModels = (rows: ModelRow[]): Model[] => rows.map(mapModel)
+
 /**
  * Gets all models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name

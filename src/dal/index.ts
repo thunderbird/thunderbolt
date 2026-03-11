@@ -13,6 +13,7 @@ export {
   resetModelToDefault,
   updateModel,
   mapModel,
+  mapModels,
 } from './models'
 
 // Settings

@@ -15,7 +15,8 @@ export type Device = {
  * Gets a single device by id from the local DB (synced via PowerSync).
  */
 export const getDevice = (deviceId: string) => {
-  return DatabaseSingleton.instance.db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+  const query = DatabaseSingleton.instance.db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+  return query as typeof query & { execute: () => Promise<Device[]> }
 }
 
 /**

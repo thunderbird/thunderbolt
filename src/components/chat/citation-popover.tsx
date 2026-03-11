@@ -84,21 +84,15 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
       anchorSpan.style.width = `${rect.width}px`
     }
 
-    updatePosition()
-
-    let rafId = 0
-    const onScroll = () => {
-      cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updatePosition)
+    // Continuous position tracking — covers scroll, resize, AND streaming content shifts
+    let rafId: number
+    const track = () => {
+      updatePosition()
+      rafId = requestAnimationFrame(track)
     }
+    rafId = requestAnimationFrame(track)
 
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onScroll)
-      cancelAnimationFrame(rafId)
-    }
+    return () => cancelAnimationFrame(rafId)
   }, [popover, close])
 
   if (!popover) {
@@ -141,6 +135,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
         hideWhenDetached
         align="start"
         side="bottom"
+        collisionPadding={{ top: 35, bottom: 150 }}
         className="w-[420px] overflow-hidden rounded-2xl p-0"
       >
         <SourceList sources={sources} proxyBase={cloudUrl.value} />

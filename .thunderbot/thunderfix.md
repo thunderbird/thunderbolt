@@ -89,7 +89,7 @@ PR_NODE_ID=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.node_id')
 # Review thread comments (code-level)
 UNRESOLVED_THREADS=$(gh api graphql -F "query=@$GQL_DIR/threads.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false)')
 
-# Issue-level comments (non-code PR comments from humans, excluding bot messages)
+# Issue-level comments (non-code PR comments, including bot review comments)
 ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
 
 # CI status
@@ -106,7 +106,7 @@ Read each unresolved review thread. Fix legitimate bugs, violations, and request
 **Important:** For each thread, note whether the reviewer asked a question, made a suggestion, or proposed an alternative approach. You will need to **reply** to these before resolving (see Step 4). Track which threads need replies and what the reply should say.
 
 #### Issue-level comments
-Read issue-level comments from reviewers. These are general PR feedback not attached to specific code lines. Address actionable feedback the same as review thread comments. If a comment poses a question, you must reply to it (see Step 4).
+Read all issue-level comments (from both human reviewers and bots like `claude` or `typo-app`). These are general PR feedback not attached to specific code lines. Address actionable feedback (bugs, requested changes) the same as review thread comments. If a comment poses a question, you must reply to it (see Step 4). **Even if no code changes are needed, all collected issue comments will be minimized in Step 4.**
 
 #### Commit type
 When calling `/thunderpush`, these fixes address feedback on the current PR — they are NOT pre-existing bugs. The commit type should match the nature of the fix (usually `chore:` or `refactor:`), never `fix:` (which is reserved for bugs that existed on main before this branch).
@@ -117,7 +117,7 @@ After fixing all issues, push once:
 Skill(skill="thunderpush", args="address PR review feedback")
 ```
 
-If no issues were found (no unresolved threads, no actionable issue comments, CI passing), skip directly to **Resolve & Mark Complete**.
+If no code changes are needed (no unresolved threads requiring fixes and CI passing), skip directly to **Resolve & Mark Complete**. Note: even when skipping, Step 4 still minimizes all collected issue-level comments.
 
 ### 3. Wait for CI
 
@@ -167,18 +167,21 @@ for THREAD_ID in $THREAD_IDS; do
 done
 ```
 
-#### Reply to and minimize issue-level comments
+#### Reply to issue-level comments (if needed)
 
-For each actionable issue comment: reply first (answering any questions), then minimize.
+For each issue comment that asked a question or proposed an alternative, reply before minimizing:
 
 ```bash
-# Get comments that need replies
-ISSUE_COMMENT_DATA=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
-
-# For each comment, reply if it contained a question or suggestion:
+# For each comment that needs a reply:
 # gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ <your reply>"
+```
 
-# Then minimize
+#### Minimize ALL issue-level comments
+
+**This step is unconditional.** Minimize every collected issue-level comment, whether or not it was actionable or required a reply. This collapses resolved feedback in the PR timeline. If there are no collected comments, skip this step.
+
+```bash
+ISSUE_COMMENT_DATA=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
 COMMENT_NODE_IDS=$(echo "$ISSUE_COMMENT_DATA" | jq -r '.[].node_id')
 
 for COMMENT_ID in $COMMENT_NODE_IDS; do

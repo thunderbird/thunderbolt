@@ -37,7 +37,7 @@ export const useContextTracking = ({
   // Fetch context size from chat thread using React Query
   const { data = [], isLoading } = useQuery({
     queryKey: ['contextSize', chatThreadId],
-    query: toCompilableQuery(getContextSizeForThread(db, chatThreadId!)),
+    query: toCompilableQuery(getContextSizeForThread(db, chatThreadId ?? '')),
     enabled: Boolean(chatThreadId),
   })
 

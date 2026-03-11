@@ -9,8 +9,8 @@ import { createDefaultModelProfile, deleteModelProfileForModel } from './model-p
 export const mapModel = (row: ModelRow): Model => {
   return {
     ...row,
-    api_key: row.apiKey || undefined,
-    is_system: row.isSystem || undefined,
+    api_key: row.apiKey ?? undefined,
+    is_system: row.isSystem ?? undefined,
   } as Model
 }
 

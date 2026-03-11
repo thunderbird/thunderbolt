@@ -347,10 +347,10 @@ describe('Chat Threads DAL', () => {
   })
 
   describe('getContextSizeForThread', () => {
-    it('should return null when thread does not exist', async () => {
+    it('should return undefined when thread does not exist', async () => {
       const threadId = uuidv7()
       const contextSize = await getContextSizeForThread(threadId).get()
-      expect(contextSize?.contextSize).toBeUndefined()
+      expect(contextSize).toBeUndefined()
     })
 
     it('should return null when thread has no context size', async () => {

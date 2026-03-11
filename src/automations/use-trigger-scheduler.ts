@@ -1,7 +1,7 @@
 import { useSettings } from '@/hooks/use-settings'
 import { getAllEnabledTriggers, runAutomation } from '@/dal'
 import { useEffect, useRef } from 'react'
-import { type Trigger } from '@/types'
+import type { Trigger } from '@/types'
 
 export const useTriggerScheduler = () => {
   const { isTriggersEnabled } = useSettings({

@@ -26,7 +26,7 @@ export const useModelsQuery = (
     ...options,
   })
 
-  const models: Model[] = useMemo(() => data.map(mapModel), [data])
+  const models: Model[] = useMemo(() => (data ? [data].flat().map(mapModel) : []), [data])
 
   return { models, ...rest }
 }

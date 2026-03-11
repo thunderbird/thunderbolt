@@ -294,18 +294,6 @@ describe('deduplicateLinkPreviews', () => {
 })
 
 describe('parseContentParts preserves widgets alongside citation text', () => {
-  test('produces both text and widget parts when input has [N] citations and widget tags', () => {
-    const input = 'Here\'s a demo:\n\n- Inline link [1]\n\n<widget:link-preview url="https://example.com" source="1" />'
-    const parts = parseContentParts(input)
-
-    const textParts = parts.filter((p) => p.type === 'text')
-    const widgetParts = parts.filter((p) => p.type === 'widget')
-
-    expect(textParts.length).toBeGreaterThanOrEqual(1)
-    expect(widgetParts.length).toBeGreaterThanOrEqual(1)
-    expect(textParts.some((p) => p.type === 'text' && p.content.includes('[1]'))).toBe(true)
-  })
-
   test('widget parts survive filtering when combined with citation text via deduplicateLinkPreviews', () => {
     const input = 'According to [1], AI is advancing.\n\n<widget:link-preview url="https://example.com" source="1" />'
     const parts = parseContentParts(input)

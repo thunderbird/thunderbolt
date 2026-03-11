@@ -148,3 +148,5 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
     </Popover>
   )
 })
+
+CitationOverlay.displayName = 'CitationOverlay'

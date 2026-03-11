@@ -3,18 +3,28 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { SourceList } from './source-list'
 
 type PopoverData = {
   citationId: number
   sources: CitationSource[]
-  anchorRect: DOMRect
+  anchorElement: HTMLElement
 }
 
 type CitationPopoverState = {
   popover: PopoverData | null
-  open: (id: number, sources: CitationSource[], rect: DOMRect) => void
+  open: (id: number, sources: CitationSource[], element: HTMLElement) => void
   close: () => void
 }
 
@@ -30,8 +40,8 @@ export const useCitationPopover = () => useContext(CitationPopoverContext)
 export const CitationPopoverProvider = ({ children }: { children: ReactNode }) => {
   const [popover, setPopover] = useState<PopoverData | null>(null)
 
-  const open = useCallback((id: number, sources: CitationSource[], rect: DOMRect) => {
-    setPopover({ citationId: id, sources, anchorRect: rect })
+  const open = useCallback((id: number, sources: CitationSource[], element: HTMLElement) => {
+    setPopover({ citationId: id, sources, anchorElement: element })
   }, [])
 
   const close = useCallback(() => setPopover(null), [])
@@ -48,25 +58,54 @@ export const CitationPopoverProvider = ({ children }: { children: ReactNode }) =
 
 // --- Overlay (rendered automatically by the provider, outside the markdown tree) ---
 
-const CitationOverlay = ({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
+const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const anchorRef = useRef<HTMLSpanElement>(null)
 
-  // Close popover on scroll — the fixed-positioned anchor can't track the badge after scroll
   useEffect(() => {
     if (!popover) {
       return
     }
-    const handler = () => close()
-    window.addEventListener('scroll', handler, { capture: true })
-    return () => window.removeEventListener('scroll', handler, { capture: true })
+    const { anchorElement } = popover
+    const anchorSpan = anchorRef.current
+    if (!anchorSpan) {
+      return
+    }
+
+    const updatePosition = () => {
+      if (!document.contains(anchorElement)) {
+        close()
+        return
+      }
+      const rect = anchorElement.getBoundingClientRect()
+      anchorSpan.style.left = `${rect.left}px`
+      anchorSpan.style.top = `${rect.bottom}px`
+      anchorSpan.style.width = `${rect.width}px`
+    }
+
+    updatePosition()
+
+    let rafId = 0
+    const onScroll = () => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updatePosition)
+    }
+
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+      cancelAnimationFrame(rafId)
+    }
   }, [popover, close])
 
   if (!popover) {
     return null
   }
 
-  const { sources, anchorRect } = popover
+  const { sources } = popover
 
   if (isMobile) {
     return (
@@ -90,19 +129,22 @@ const CitationOverlay = ({ popover, close }: { popover: PopoverData | null; clos
     <Popover open onOpenChange={(open) => !open && close()}>
       <PopoverAnchor asChild>
         <span
+          ref={anchorRef}
           style={{
             position: 'fixed',
-            left: anchorRect.left,
-            top: anchorRect.bottom,
-            width: anchorRect.width,
             height: 1,
             pointerEvents: 'none',
           }}
         />
       </PopoverAnchor>
-      <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
+      <PopoverContent
+        hideWhenDetached
+        align="start"
+        side="bottom"
+        className="w-[420px] overflow-hidden rounded-2xl p-0"
+      >
         <SourceList sources={sources} proxyBase={cloudUrl.value} />
       </PopoverContent>
     </Popover>
   )
-}
+})

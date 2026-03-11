@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { SourceList } from './source-list'
 
 type PopoverData = {
@@ -51,6 +51,16 @@ export const CitationPopoverProvider = ({ children }: { children: ReactNode }) =
 const CitationOverlay = ({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+
+  // Close popover on scroll — the fixed-positioned anchor can't track the badge after scroll
+  useEffect(() => {
+    if (!popover) {
+      return
+    }
+    const handler = () => close()
+    window.addEventListener('scroll', handler, { capture: true })
+    return () => window.removeEventListener('scroll', handler, { capture: true })
+  }, [popover, close])
 
   if (!popover) {
     return null

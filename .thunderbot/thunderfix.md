@@ -64,13 +64,12 @@ mutation($id: ID!) {
 }
 GQL
 
-# jq filter for actionable issue comments (exclude bot comments only).
+# jq filter for actionable issue comments (include bot comments too).
 # Does NOT filter by PR author — in thunderbot flows the human IS the PR author,
 # so their review feedback must be included.
 # Written to a file because operators are mangled by shell expansion in inline jq.
 cat > "$GQL_DIR/issue_comments.jq" << 'JQ'
 [.[] | select(
-  (.user.type == "User") and
   (.body | startswith("[Thunderbot]") or startswith("⚡") | not)
 )]
 JQ

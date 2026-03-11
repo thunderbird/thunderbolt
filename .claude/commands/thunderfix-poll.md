@@ -1,1 +1,0 @@
-../../.thunderbot/thunderfix-poll.md

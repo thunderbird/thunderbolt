@@ -143,7 +143,7 @@ export const App = () => {
     // We may need to refactor the database classes to make this more robust.
     const powerSyncInstance = getPowerSyncInstance() as AbstractPowerSyncDatabase
 
-    if (!initData) {
+    if (!initData || !powerSyncInstance) {
       return <Loading />
     }
 

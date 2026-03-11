@@ -20,37 +20,33 @@ If no PR is found, stop and tell the user.
 
 Run this loop. Track elapsed time — stop after **15 minutes** total.
 
-### 1. Collect
+### Steps 1–3: Collect → Fix → Resolve (ALWAYS run all three)
+
+Execute these three steps **in sequence, unconditionally, every iteration**. Never skip a step.
+
+**Step 1 — Collect:**
 
 ```
 Skill(skill="thunderfix-collect", args="$PR_NUMBER $REPO")
 ```
 
-Parse the output for thread count, comment count, and CI status. Read `/tmp/thunderfix-$PR_NUMBER-state.json` for full details on each thread and comment.
+Parse the output for thread count, comment count, and CI status. Read `/tmp/thunderfix-$PR_NUMBER-state.json` for full details.
 
-### 2. Fix
+**Step 2 — Fix code:**
 
-Read the state file. Fix all legitimate issues in the code:
-
-- **Review threads**: Fix bugs, violations, and requested changes. Ignore pure style nits unless the reviewer insists. Note which threads need replies and what the reply should say.
-- **Issue comments**: Address actionable feedback (bugs, requested changes). Note which comments need replies.
-- **Commit type**: Use `chore:` or `refactor:`, never `fix:` (reserved for bugs on main).
-
-If changes were made, push once:
+Read the state file. Fix legitimate bugs, violations, and requested changes in the code. Ignore pure style nits unless the reviewer insists. Use `chore:` or `refactor:` commit type (never `fix:` — reserved for bugs on main). If changes were made, push once:
 
 ```
 Skill(skill="thunderpush", args="address PR review feedback")
 ```
 
-If no code changes needed, skip push — still proceed to Step 3.
-
-### 3. Resolve — IMMEDIATELY after push, no exceptions
+**Step 3 — Resolve & minimize:**
 
 ```
 Skill(skill="thunderfix-resolve", args="$PR_NUMBER $REPO")
 ```
 
-This replies to threads, resolves them, replies to issue comments, and minimizes them. **This step is mandatory even if no code changes were made** (issue comments still need minimizing).
+This step replies to review threads, resolves them via GraphQL, replies to issue comments, and minimizes them. **You MUST call this skill even if Step 2 made no code changes.** Issue comments still need replies and minimizing. Do NOT proceed to Step 4 until this skill returns.
 
 ### 4. Poll CI
 

@@ -205,7 +205,7 @@ describe('Models DAL', () => {
 
       const asyncResult = await getSelectedModel(getDb())
       const queryResult = await getSelectedModelQuery(getDb()).all()
-      const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
+      const queryModel = queryResult[0] ? mapModel(queryResult[0]) : undefined
 
       expect(queryModel?.id).toBe(asyncResult.id)
       expect(queryModel?.name).toBe(asyncResult.name)
@@ -237,7 +237,7 @@ describe('Models DAL', () => {
       await updateSettings(getDb(), { selected_model: disabledModelId })
 
       const queryResult = await getSelectedModelQuery(getDb()).all()
-      const queryModel = queryResult[0]?.models ? mapModel(queryResult[0].models) : undefined
+      const queryModel = queryResult[0] ? mapModel(queryResult[0]) : undefined
 
       expect(queryModel?.id).toBe(systemModelId)
       expect(queryModel?.name).toBe('System Model')

@@ -73,7 +73,7 @@ export default function AutomationFormModal({
     query: toCompilableQuery(getSelectedModelQuery(db)),
   })
 
-  const selectedModel = selectedModelRows[0]?.models ? mapModel(selectedModelRows[0].models) : undefined
+  const selectedModel = selectedModelRows[0] ? mapModel(selectedModelRows[0]) : undefined
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,

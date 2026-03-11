@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -52,7 +52,7 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
  */
 export const getSelectedModelQuery = (db: AnyDrizzleDatabase) =>
   db
-    .select({ models: modelsTable })
+    .select(getTableColumns(modelsTable))
     .from(modelsTable)
     .leftJoin(
       settingsTable,
@@ -86,7 +86,7 @@ export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | nu
  */
 export const getSelectedModel = async (db: AnyDrizzleDatabase): Promise<Model> => {
   const result = await getSelectedModelQuery(db).all()
-  const row = result[0]?.models
+  const row = result[0]
   if (!row) {
     throw new Error('No system model found')
   }

@@ -103,10 +103,10 @@ gh pr checks "$PR_NUMBER"
 #### Review thread comments
 Read each unresolved review thread. Fix legitimate bugs, violations, and requested changes. Ignore pure style nits and subjective preferences unless the reviewer insists.
 
-**Important:** For each thread, note whether the reviewer asked a question, made a suggestion, or proposed an alternative approach. You will need to **reply** to these before resolving (see Step 4). Track which threads need replies and what the reply should say.
+**Important:** For each thread, note whether the reviewer asked a question, made a suggestion, or proposed an alternative approach. You will need to **reply** to these before resolving (see Step 3). Track which threads need replies and what the reply should say.
 
 #### Issue-level comments
-Read all issue-level comments (from both human reviewers and bots like `claude` or `typo-app`). These are general PR feedback not attached to specific code lines. Address actionable feedback (bugs, requested changes) the same as review thread comments. If a comment poses a question, you must reply to it (see Step 4). **Even if no code changes are needed, all collected issue comments will be minimized in Step 4.**
+Read all issue-level comments (from both human reviewers and bots like `claude` or `typo-app`). These are general PR feedback not attached to specific code lines. Address actionable feedback (bugs, requested changes) the same as review thread comments. If a comment poses a question, you must reply to it (see Step 3). **Even if no code changes are needed, all collected issue comments will be minimized in Step 3.**
 
 #### Commit type
 When calling `/thunderpush`, these fixes address feedback on the current PR — they are NOT pre-existing bugs. The commit type should match the nature of the fix (usually `chore:` or `refactor:`), never `fix:` (which is reserved for bugs that existed on main before this branch).
@@ -117,28 +117,11 @@ After fixing all issues, push once:
 Skill(skill="thunderpush", args="address PR review feedback")
 ```
 
-If no code changes are needed (no unresolved threads requiring fixes and CI passing), skip directly to **Resolve & Mark Complete**. Note: even when skipping, Step 4 still minimizes all collected issue-level comments.
+If no code changes are needed (no unresolved threads requiring fixes and CI passing), skip directly to **Reply, Resolve & Mark Complete**. Note: Step 3 still minimizes all collected issue-level comments.
 
-### 3. Wait for CI
+### 3. Reply, Resolve & Mark Complete
 
-```bash
-gh pr checks "$PR_NUMBER" --watch --fail-fast
-```
-
-If CI fails (max **3 CI fix attempts** per loop iteration):
-1. Read failing logs:
-   ```bash
-   gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId' | xargs -I{} gh run view {} --log-failed
-   ```
-2. Fix the issue
-3. Push: `Skill(skill="thunderpush", args="fix CI failure")`
-4. Wait for CI again
-
-If CI still fails after 3 attempts, stop and report the failure.
-
-### 4. Reply, Resolve & Mark Complete
-
-After CI passes, **reply to every comment that asked a question or proposed an alternative**, then resolve.
+**Run immediately after pushing** (do not wait for CI). Only resolve/minimize comments that were actually addressed — if a comment was skipped or deferred, leave it unresolved.
 
 #### Reply to review threads
 
@@ -188,6 +171,41 @@ for COMMENT_ID in $COMMENT_NODE_IDS; do
   gh api graphql -F "query=@$GQL_DIR/minimize.graphql" -f "id=$COMMENT_ID"
 done
 ```
+
+### 4. Wait for CI (while fixing new comments)
+
+**Do NOT block** on `gh pr checks --watch --fail-fast`. Instead, poll every **5 seconds** and check for new comments on each iteration. This ensures review feedback is addressed immediately, without waiting for CI to finish.
+
+Track CI fix attempts (max **3 per loop iteration**).
+
+On each poll iteration:
+
+#### 4a. Check for new comments first
+
+```bash
+NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
+NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
+```
+
+If new unresolved threads or issue comments appeared since the last push: **immediately** go back to **Step 1** to collect and fix them. The full cycle (Steps 1→2→3) will handle fixing, resolving, and minimizing before returning here to continue polling.
+
+#### 4b. Check CI status
+
+```bash
+gh pr checks "$PR_NUMBER"
+```
+
+- **Still running**: sleep 5 seconds, then loop back to 4a
+- **Passed**: proceed to Step 5
+- **Failed** (and attempts < 3):
+  1. Read failing logs:
+     ```bash
+     gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId' | xargs -I{} gh run view {} --log-failed
+     ```
+  2. Fix the issue
+  3. Push: `Skill(skill="thunderpush", args="fix CI failure")`
+  4. Loop back to 4a
+- **Failed** (and attempts >= 3): stop and report the failure
 
 ### 5. Verify Clean
 

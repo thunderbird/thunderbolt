@@ -48,7 +48,9 @@ export const Header = () => {
       selectedModel={selectedModel ?? null}
       chatThread={chatThread ?? null}
       onModelChange={(modelId) => {
-        if (chatThreadId && modelId) setSelectedModel(chatThreadId, modelId).catch(console.error)
+        if (chatThreadId && modelId) {
+          setSelectedModel(chatThreadId, modelId).catch(console.error)
+        }
       }}
       onAddModels={handleAddModels}
     />

@@ -129,19 +129,30 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   }
 
   if (hasCitations && hasText) {
+    const widgetParts = deduplicateLinkPreviews(contentParts).filter(
+      (p): p is Extract<ContentPart, { type: 'widget' }> => p.type === 'widget',
+    )
+
     return (
-      <div className="p-4 rounded-md my-2">
-        <CitationPopoverProvider>
-          <CitationContext.Provider value={citations}>
-            <MemoizedMarkdown
-              key={`${messageId}-text`}
-              id={messageId}
-              content={fullText}
-              components={citationMarkdownComponents}
-            />
-          </CitationContext.Provider>
-        </CitationPopoverProvider>
-      </div>
+      <>
+        <div className="p-4 rounded-md my-2">
+          <CitationPopoverProvider>
+            <CitationContext.Provider value={citations}>
+              <MemoizedMarkdown
+                key={`${messageId}-text`}
+                id={messageId}
+                content={fullText}
+                components={citationMarkdownComponents}
+              />
+            </CitationContext.Provider>
+          </CitationPopoverProvider>
+        </div>
+        {widgetParts.map((widgetPart, index) => (
+          <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
+            <WidgetRenderer widget={widgetPart.widget} messageId={messageId} sources={sources} />
+          </div>
+        ))}
+      </>
     )
   }
 

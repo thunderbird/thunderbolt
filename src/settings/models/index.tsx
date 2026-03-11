@@ -19,14 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import {
-  createModel as createModelDAL,
-  deleteModel,
-  getAllModels,
-  mapModel,
-  resetModelToDefault,
-  updateModel,
-} from '@/dal'
+import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
@@ -34,8 +27,7 @@ import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useQuery } from '@powersync/tanstack-react-query'
-import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useModelsQuery } from '@/hooks/use-models-query'
 import { generateText } from 'ai'
 import ky from 'ky'
 import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
@@ -246,12 +238,7 @@ export default function ModelsPage() {
     }
   }, [isAddDialogOpen])
 
-  const { data = [] } = useQuery({
-    queryKey: ['models'],
-    query: toCompilableQuery(getAllModels()),
-  })
-
-  const models = useMemo(() => data.map(mapModel), [data])
+  const { models } = useModelsQuery(['models'], getAllModels())
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {

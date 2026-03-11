@@ -22,6 +22,7 @@ import {
   mapModel,
   updateAutomation,
 } from '@/dal'
+import { useModelsQuery } from '@/hooks/use-models-query'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
@@ -31,7 +32,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -61,12 +62,7 @@ export default function AutomationFormModal({
 }: AutomationFormModalProps) {
   const db = DatabaseSingleton.instance.db
 
-  const { data = [] } = useQuery({
-    queryKey: ['models', 'availableModels'],
-    query: toCompilableQuery(getAvailableModels()),
-  })
-
-  const models = useMemo(() => data.map(mapModel), [data])
+  const { models } = useModelsQuery(['models', 'availableModels'], getAvailableModels())
 
   const { data: selectedModelRows = [] } = useQuery({
     queryKey: ['models', 'selectedModel'],

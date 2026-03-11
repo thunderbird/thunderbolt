@@ -1,22 +1,16 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router'
-import { getAllModels, mapModel } from '@/dal'
-import { useQuery } from '@powersync/tanstack-react-query'
-import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { getAllModels } from '@/dal'
+import { useModelsQuery } from '@/hooks/use-models-query'
 
 export default function ModelsLayout() {
   const navigate = useNavigate()
   const { modelId } = useParams()
 
-  const { data = [] } = useQuery({
-    queryKey: ['models'],
-    query: toCompilableQuery(getAllModels()),
-  })
-
-  const models = useMemo(() => data.map(mapModel), [data])
+  const { models } = useModelsQuery(['models'], getAllModels())
 
   // Find the currently selected model
   const currentModel = models.find((model) => model.id === modelId)

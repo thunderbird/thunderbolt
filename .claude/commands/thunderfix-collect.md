@@ -1,0 +1,1 @@
+../../.thunderbot/thunderfix-collect.md

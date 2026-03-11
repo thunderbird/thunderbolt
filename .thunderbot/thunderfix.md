@@ -16,225 +16,85 @@ REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
 
 If no PR is found, stop and tell the user.
 
-## GraphQL Helper
-
-All GraphQL queries use `$id` variables that conflict with shell expansion. Write queries to a temp file and load with `-F`:
-
-```bash
-GQL_DIR=$(mktemp -d)
-trap 'rm -rf "$GQL_DIR"' EXIT
-
-cat > "$GQL_DIR/threads.graphql" << 'GQL'
-query($id: ID!) {
-  node(id: $id) {
-    ... on PullRequest {
-      reviewThreads(first: 100) {
-        nodes { id isResolved comments(first: 10) { nodes { id databaseId body path line author { login } } } }
-      }
-    }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/threads_summary.graphql" << 'GQL'
-query($id: ID!) {
-  node(id: $id) {
-    ... on PullRequest {
-      reviewThreads(first: 100) {
-        nodes { id isResolved }
-      }
-    }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/resolve.graphql" << 'GQL'
-mutation($id: ID!) {
-  resolveReviewThread(input: {threadId: $id}) {
-    thread { id }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/minimize.graphql" << 'GQL'
-mutation($id: ID!) {
-  minimizeComment(input: {subjectId: $id, classifier: RESOLVED}) {
-    minimizedComment { isMinimized }
-  }
-}
-GQL
-
-# jq filter for actionable issue comments (include bot comments too).
-# Does NOT filter by PR author — in thunderbot flows the human IS the PR author,
-# so their review feedback must be included.
-# Written to a file because operators are mangled by shell expansion in inline jq.
-cat > "$GQL_DIR/issue_comments.jq" << 'JQ'
-[.[] | select(
-  (.body | startswith("[Thunderbot]") or startswith("⚡") | not)
-)]
-JQ
-```
-
 ## Fix Loop
 
 Run this loop. Track elapsed time — stop after **15 minutes** total.
 
-### 1. Collect All Issues
+### 1. Collect
 
-Gather everything that needs attention in one pass:
-
-```bash
-PR_NODE_ID=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.node_id')
-
-# Review thread comments (code-level)
-UNRESOLVED_THREADS=$(gh api graphql -F "query=@$GQL_DIR/threads.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false)')
-
-# Issue-level comments (non-code PR comments, including bot review comments)
-ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
-
-# CI status
-gh pr checks "$PR_NUMBER"
+```
+Skill(skill="thunderfix-collect", args="$PR_NUMBER $REPO")
 ```
 
-### 2. Fix All Issues (Batch)
+Parse the output for thread count, comment count, and CI status. Read `/tmp/thunderfix-$PR_NUMBER-state.json` for full details on each thread and comment.
 
-**Fix everything before pushing.** Do NOT push between individual fixes.
+### 2. Fix
 
-#### Review thread comments
-Read each unresolved review thread. Fix legitimate bugs, violations, and requested changes. Ignore pure style nits and subjective preferences unless the reviewer insists.
+Read the state file. Fix all legitimate issues in the code:
 
-**Important:** For each thread, note whether the reviewer asked a question, made a suggestion, or proposed an alternative approach. You will need to **reply** to these before resolving (see Step 3). Track which threads need replies and what the reply should say.
+- **Review threads**: Fix bugs, violations, and requested changes. Ignore pure style nits unless the reviewer insists. Note which threads need replies and what the reply should say.
+- **Issue comments**: Address actionable feedback (bugs, requested changes). Note which comments need replies.
+- **Commit type**: Use `chore:` or `refactor:`, never `fix:` (reserved for bugs on main).
 
-#### Issue-level comments
-Read all issue-level comments (from both human reviewers and bots like `claude` or `typo-app`). These are general PR feedback not attached to specific code lines. Address actionable feedback (bugs, requested changes) the same as review thread comments. If a comment poses a question, you must reply to it (see Step 3). **Even if no code changes are needed, all collected issue comments will be minimized in Step 3.**
-
-#### Commit type
-When calling `/thunderpush`, these fixes address feedback on the current PR — they are NOT pre-existing bugs. The commit type should match the nature of the fix (usually `chore:` or `refactor:`), never `fix:` (which is reserved for bugs that existed on main before this branch).
-
-After fixing all issues, push once:
+If changes were made, push once:
 
 ```
 Skill(skill="thunderpush", args="address PR review feedback")
 ```
 
-If no code changes are needed (no unresolved threads requiring fixes and CI passing), skip directly to **Reply, Resolve & Mark Complete**. Note: Step 3 still minimizes all collected issue-level comments.
+If no code changes needed, skip push — still proceed to Step 3.
 
-### 3. Reply, Resolve & Mark Complete
+### 3. Resolve — IMMEDIATELY after push, no exceptions
 
-**Run immediately after pushing** (do not wait for CI). Only resolve/minimize comments that were actually addressed — if a comment was skipped or deferred, leave it unresolved.
-
-#### Reply to review threads
-
-For each unresolved review thread that contained a question, suggestion, or alternative approach: reply **before** resolving. Use the REST API to reply to the thread (the comment ID is the first comment's `id` from the thread's `comments.nodes[0]`):
-
-```bash
-# For each thread that needs a reply, get the numeric comment ID from the
-# GraphQL `id` field of the first comment (it's also available via REST).
-# Then reply:
-gh api "repos/$REPO/pulls/$PR_NUMBER/comments/{COMMENT_ID}/replies" -X POST -f body="<your reply>"
+```
+Skill(skill="thunderfix-resolve", args="$PR_NUMBER $REPO")
 ```
 
-**Reply guidelines:**
-- Answer questions directly and concisely
-- If you adopted a suggestion, say so briefly (e.g., "Good call — done in the latest push.")
-- If you considered but declined a suggestion, explain why (e.g., "Considered this, but X because Y. Happy to revisit if you feel strongly.")
-- If a comment was a pure bug report with no question, a reply is optional — resolving is sufficient
-- Prefix replies with ⚡ so they're filtered out of future counts
+This replies to threads, resolves them, replies to issue comments, and minimizes them. **This step is mandatory even if no code changes were made** (issue comments still need minimizing).
 
-#### Resolve review threads
-```bash
-THREAD_IDS=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false) | .id')
+### 4. Poll CI
 
-for THREAD_ID in $THREAD_IDS; do
-  gh api graphql -F "query=@$GQL_DIR/resolve.graphql" -f "id=$THREAD_ID"
-done
+Loop (max 3 CI fix attempts, sleep 5s between polls):
+
+```
+Skill(skill="thunderfix-poll", args="$PR_NUMBER $REPO $THREAD_COUNT $COMMENT_COUNT")
 ```
 
-#### Reply to issue-level comments (if needed)
+Where `$THREAD_COUNT` and `$COMMENT_COUNT` are the counts from the most recent collect step (i.e., the baseline before new comments would appear).
 
-For each issue comment that asked a question or proposed an alternative, reply before minimizing:
+Handle the output:
 
-```bash
-# For each comment that needs a reply:
-# gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ <your reply>"
-```
-
-#### Minimize ALL issue-level comments
-
-**This step is unconditional.** Minimize every collected issue-level comment, whether or not it was actionable or required a reply. This collapses resolved feedback in the PR timeline. If there are no collected comments, skip this step.
-
-```bash
-ISSUE_COMMENT_DATA=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
-COMMENT_NODE_IDS=$(echo "$ISSUE_COMMENT_DATA" | jq -r '.[].node_id')
-
-for COMMENT_ID in $COMMENT_NODE_IDS; do
-  gh api graphql -F "query=@$GQL_DIR/minimize.graphql" -f "id=$COMMENT_ID"
-done
-```
-
-### 4. Wait for CI (while fixing new comments)
-
-**Do NOT block** on `gh pr checks --watch --fail-fast`. Instead, poll every **5 seconds** and check for new comments on each iteration. This ensures review feedback is addressed immediately, without waiting for CI to finish.
-
-Track CI fix attempts (max **3 per loop iteration**).
-
-On each poll iteration:
-
-#### 4a. Check for new comments first
-
-```bash
-NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
-NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
-```
-
-If new unresolved threads or issue comments appeared since the last push: **immediately** go back to **Step 1** to collect and fix them. The full cycle (Steps 1→2→3) will handle fixing, resolving, and minimizing before returning here to continue polling.
-
-#### 4b. Check CI status
-
-```bash
-gh pr checks "$PR_NUMBER"
-```
-
-- **Still running**: sleep 5 seconds, then loop back to 4a
-- **Passed**: proceed to Step 5
-- **Failed** (and attempts < 3):
+- **`NEW_COMMENTS=yes`** → go back to Step 1 (full cycle)
+- **`CI=pending`** → sleep 5 seconds, poll again
+- **`CI=pass`** → proceed to Step 5
+- **`CI=fail`** (attempts < 3):
   1. Read failing logs:
      ```bash
      gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId' | xargs -I{} gh run view {} --log-failed
      ```
   2. Fix the issue
-  3. Push: `Skill(skill="thunderpush", args="fix CI failure")`
-  4. Loop back to 4a
-- **Failed** (and attempts >= 3): stop and report the failure
+  3. `Skill(skill="thunderpush", args="fix CI failure")`
+  4. `Skill(skill="thunderfix-resolve", args="$PR_NUMBER $REPO")`
+  5. Continue polling
+- **`CI=fail`** (attempts >= 3): stop and report the failure
 
 ### 5. Verify Clean
 
-Poll to verify no new issues appear. Check every **15 seconds** (max **3 minutes**):
+Loop 12x (every 15s, max 3 minutes):
 
-```bash
-PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
-
-for i in $(seq 1 12); do
-  NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
-
-  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
-
-  if [ "$NEW_UNRESOLVED" -gt 0 ] || [ "$NEW_ISSUE_COMMENTS" -gt "$PREV_ISSUE_COUNT" ]; then
-    break  # New issues found — loop back to step 1
-  fi
-  sleep 15
-done
+```
+Skill(skill="thunderfix-poll", args="$PR_NUMBER $REPO $THREAD_COUNT $COMMENT_COUNT")
 ```
 
-- If new issues found: **continue the loop** (back to step 1)
-- If no new issues after 3 minutes: **done** — the PR is clean. Stop polling immediately.
+- New issues → back to Step 1
+- Clean after 3 minutes → done
 
-Do NOT continue polling once the PR is verified clean. Review comments only appear as a result of actions (pushes), so once a clean verification passes, there's nothing more to wait for.
+Do NOT continue polling once verified clean.
 
 ## Cleanup
 
 ```bash
-rm -rf "$GQL_DIR"
+rm -f "/tmp/thunderfix-$PR_NUMBER-state.json"
 ```
 
 ## Report

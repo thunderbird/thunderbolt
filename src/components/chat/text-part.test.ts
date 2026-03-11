@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ContentPart } from '@/ai/widget-parser'
+import { parseContentParts } from '@/ai/widget-parser'
 import type { SourceMetadata } from '@/types/source'
 import { buildSourceCitationPlaceholders, deduplicateLinkPreviews } from './text-part'
 
@@ -263,5 +264,71 @@ describe('deduplicateLinkPreviews', () => {
   test('treats different paths as unique even for same domain', () => {
     const parts = [makeLinkPreview('https://apnews.com/article/one'), makeLinkPreview('https://apnews.com/article/two')]
     expect(deduplicateLinkPreviews(parts)).toHaveLength(2)
+  })
+
+  test('preserves widget parts when text parts contain [N] citation patterns', () => {
+    const parts: ContentPart[] = [
+      makeText('Here is a demo:\n\n- Inline link [1]'),
+      makeLinkPreview('https://example.com'),
+    ]
+    const result = deduplicateLinkPreviews(parts)
+    expect(result).toHaveLength(2)
+    expect(result[0].type).toBe('text')
+    expect(result[1].type).toBe('widget')
+  })
+
+  test('deduplicates link-previews but keeps text parts with citations intact', () => {
+    const parts: ContentPart[] = [
+      makeText('Sources [1] and [2] confirm this.'),
+      makeLinkPreview('https://example.com'),
+      makeLinkPreview('https://example.com'),
+      makeLinkPreview('https://other.com'),
+    ]
+    const result = deduplicateLinkPreviews(parts)
+    expect(result).toHaveLength(3)
+    expect(result[0].type).toBe('text')
+    expect(result[0]).toEqual(makeText('Sources [1] and [2] confirm this.'))
+    expect(result[1]).toEqual(makeLinkPreview('https://example.com'))
+    expect(result[2]).toEqual(makeLinkPreview('https://other.com'))
+  })
+})
+
+describe('parseContentParts preserves widgets alongside citation text', () => {
+  test('produces both text and widget parts when input has [N] citations and widget tags', () => {
+    const input = 'Here\'s a demo:\n\n- Inline link [1]\n\n<widget:link-preview url="https://example.com" source="1" />'
+    const parts = parseContentParts(input)
+
+    const textParts = parts.filter((p) => p.type === 'text')
+    const widgetParts = parts.filter((p) => p.type === 'widget')
+
+    expect(textParts.length).toBeGreaterThanOrEqual(1)
+    expect(widgetParts.length).toBeGreaterThanOrEqual(1)
+    expect(textParts.some((p) => p.type === 'text' && p.content.includes('[1]'))).toBe(true)
+  })
+
+  test('widget parts survive filtering when combined with citation text via deduplicateLinkPreviews', () => {
+    const input = 'According to [1], AI is advancing.\n\n<widget:link-preview url="https://example.com" source="1" />'
+    const parts = parseContentParts(input)
+    const deduped = deduplicateLinkPreviews(parts)
+
+    const widgetParts = deduped.filter((p) => p.type === 'widget')
+    expect(widgetParts).toHaveLength(1)
+    expect((widgetParts[0] as Extract<ContentPart, { type: 'widget' }>).widget.widget).toBe('link-preview')
+  })
+
+  test('multiple widget parts are preserved alongside citation text after dedup', () => {
+    const input = [
+      'Results: [1] and [2].',
+      '<widget:link-preview url="https://a.com" source="1" />',
+      '<widget:link-preview url="https://b.com" source="2" />',
+    ].join('\n\n')
+    const parts = parseContentParts(input)
+    const deduped = deduplicateLinkPreviews(parts)
+
+    const textParts = deduped.filter((p) => p.type === 'text')
+    const widgetParts = deduped.filter((p) => p.type === 'widget')
+
+    expect(textParts.length).toBeGreaterThanOrEqual(1)
+    expect(widgetParts).toHaveLength(2)
   })
 })

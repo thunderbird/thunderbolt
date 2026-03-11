@@ -148,7 +148,14 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
           </CitationPopoverProvider>
         </div>
         {widgetParts.map((widgetPart, index) => (
-          <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
+          <div
+            key={
+              widgetPart.widget.widget === 'link-preview'
+                ? (widgetPart.widget.args as { url: string }).url
+                : `widget-${index}`
+            }
+            className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out"
+          >
             <WidgetRenderer widget={widgetPart.widget} messageId={messageId} sources={sources} />
           </div>
         ))}

@@ -66,7 +66,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const handleModeChange = useCallback(
       (modeId: string) => {
         triggerSelection()
-        setSelectedMode(chatThreadId, modeId)
+        setSelectedMode(chatThreadId, modeId).catch(console.error)
       },
       [chatThreadId, setSelectedMode, triggerSelection],
     )

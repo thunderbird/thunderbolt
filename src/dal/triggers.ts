@@ -17,15 +17,14 @@ export const getAllTriggersForPrompt = (db: AnyDrizzleDatabase, promptId: string
 }
 
 /**
- * Returns a Drizzle query for all enabled triggers (excluding soft-deleted).
- * Use with PowerSync's toCompilableQuery, or await the result to execute.
+ * Returns all enabled triggers (excluding soft-deleted).
  */
-export const getAllEnabledTriggers = (db: AnyDrizzleDatabase) => {
+export const getAllEnabledTriggers = (db: AnyDrizzleDatabase): Promise<Trigger[]> => {
   const query = db
     .select()
     .from(triggersTable)
     .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))
-  return query as typeof query & { execute: () => Promise<Trigger[]> }
+  return query as Promise<Trigger[]>
 }
 
 /**

@@ -9,14 +9,13 @@ import {
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
-  mapModel,
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
@@ -102,7 +101,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
       setMcpClients(mcpClients)
       setModes(modes)
-      setModels(models.map(mapModel))
+      setModels(models as Model[])
 
       setIsReady(true)
 
@@ -151,7 +150,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setMcpClients(mcpClients)
     setModes(modes)
-    setModels(models.map(mapModel))
+    setModels(models as Model[])
 
     setIsReady(true)
   }

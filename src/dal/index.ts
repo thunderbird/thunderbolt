@@ -12,7 +12,6 @@ export {
   getSystemModel,
   resetModelToDefault,
   updateModel,
-  mapModel,
 } from './models'
 
 // Settings

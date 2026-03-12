@@ -2,28 +2,22 @@ import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'driz
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
-import type { Model, ModelRow } from '../types'
+import type { Model } from '../types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
-
-export const mapModel = (row: ModelRow): Model => {
-  return {
-    ...row,
-    api_key: row.apiKey ?? undefined,
-    is_system: row.isSystem ?? undefined,
-  } as Model
-}
 
 /**
  * Gets all models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
 export const getAllModels = (db: AnyDrizzleDatabase) => {
-  return db
+  const query = db
     .select()
     .from(modelsTable)
     .where(isNull(modelsTable.deletedAt))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+
+  return query as typeof query & { execute: () => Promise<Model[]> }
 }
 
 /**
@@ -31,18 +25,22 @@ export const getAllModels = (db: AnyDrizzleDatabase) => {
  * Sorted with system models first, then alphabetically by name
  */
 export const getAvailableModels = (db: AnyDrizzleDatabase) => {
-  return db
+  const query = db
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+
+  return query as typeof query & { execute: () => Promise<Model[]> }
 }
 
 export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
-  return db
+  const query = db
     .select()
     .from(modelsTable)
     .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+
+  return query as typeof query & { execute: () => Promise<Model[]> }
 }
 
 /**
@@ -50,8 +48,8 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  * Returns the selected model if it exists and is enabled; otherwise the system model.
  */
-export const getSelectedModelQuery = (db: AnyDrizzleDatabase) =>
-  db
+export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
+  const query = db
     .select(getTableColumns(modelsTable))
     .from(modelsTable)
     .leftJoin(
@@ -62,12 +60,15 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) =>
     .orderBy(sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`, modelsTable.name)
     .limit(1)
 
+  return query as typeof query & { execute: () => Promise<Model[]> }
+}
+
 /**
  * Gets a specific model by ID (excluding soft-deleted)
  */
 export const getModel = async (db: AnyDrizzleDatabase, id: string): Promise<Model | null> => {
   const model = await getModelQuery(db, id).get()
-  return model ? mapModel(model) : null
+  return model ? (model as Model) : null
 }
 
 export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | null> => {
@@ -77,7 +78,7 @@ export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | nu
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
     .orderBy(modelsTable.name)
     .get()
-  return systemModel ? mapModel(systemModel) : null
+  return systemModel ? (systemModel as Model) : null
 }
 
 /**
@@ -90,7 +91,7 @@ export const getSelectedModel = async (db: AnyDrizzleDatabase): Promise<Model> =
   if (!row) {
     throw new Error('No system model found')
   }
-  return mapModel(row)
+  return row as Model
 }
 
 /**

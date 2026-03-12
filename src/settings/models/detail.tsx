@@ -22,7 +22,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { useDatabase } from '@/contexts'
-import { deleteModel, updateModel, getModelQuery, mapModel } from '@/dal'
+import { deleteModel, updateModel, getModelQuery } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -74,7 +74,7 @@ export default function ModelDetailPage() {
     enabled: !!modelId,
   })
 
-  const model = useMemo(() => data.map(mapModel)[0], [data])
+  const model = useMemo(() => data[0], [data])
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {

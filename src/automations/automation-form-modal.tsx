@@ -19,7 +19,6 @@ import {
   getAllTriggersForPrompt,
   getAvailableModels,
   getSelectedModelQuery,
-  mapModel,
   updateAutomation,
 } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
@@ -61,19 +60,17 @@ export default function AutomationFormModal({
 }: AutomationFormModalProps) {
   const db = useDatabase()
 
-  const { data = [] } = useQuery({
+  const { data: models = [] } = useQuery({
     queryKey: ['models', 'availableModels'],
     query: toCompilableQuery(getAvailableModels(db)),
   })
-
-  const models = useMemo(() => data.map(mapModel), [data])
 
   const { data: selectedModelRows = [] } = useQuery({
     queryKey: ['models', 'selectedModel'],
     query: toCompilableQuery(getSelectedModelQuery(db)),
   })
 
-  const selectedModel = selectedModelRows[0] ? mapModel(selectedModelRows[0]) : undefined
+  const selectedModel = useMemo(() => selectedModelRows[0], [selectedModelRows])
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,

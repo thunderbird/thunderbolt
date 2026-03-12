@@ -20,14 +20,7 @@ import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
-import {
-  createModel as createModelDAL,
-  deleteModel,
-  getAllModels,
-  mapModel,
-  resetModelToDefault,
-  updateModel,
-} from '@/dal'
+import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
@@ -248,12 +241,10 @@ export default function ModelsPage() {
     }
   }, [isAddDialogOpen])
 
-  const { data = [] } = useQuery({
+  const { data: models = [] } = useQuery({
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
-
-  const models = useMemo(() => data.map(mapModel), [data])
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {

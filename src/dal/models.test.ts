@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { defaultModelGptOss120b } from '@/defaults/models'
+import type { Model } from '@/types'
 import {
   createModel,
   deleteModel,
@@ -21,7 +22,6 @@ import {
   getSelectedModel,
   getSelectedModelQuery,
   getSystemModel,
-  mapModel,
   updateModel,
 } from './models'
 import { getAllPrompts, getPrompt } from './prompts'
@@ -205,7 +205,7 @@ describe('Models DAL', () => {
 
       const asyncResult = await getSelectedModel(getDb())
       const queryResult = await getSelectedModelQuery(getDb()).all()
-      const queryModel = queryResult[0] ? mapModel(queryResult[0]) : undefined
+      const queryModel = queryResult[0] ? (queryResult[0] as Model) : undefined
 
       expect(queryModel?.id).toBe(asyncResult.id)
       expect(queryModel?.name).toBe(asyncResult.name)
@@ -237,7 +237,7 @@ describe('Models DAL', () => {
       await updateSettings(getDb(), { selected_model: disabledModelId })
 
       const queryResult = await getSelectedModelQuery(getDb()).all()
-      const queryModel = queryResult[0] ? mapModel(queryResult[0]) : undefined
+      const queryModel = queryResult[0] ? (queryResult[0] as Model) : undefined
 
       expect(queryModel?.id).toBe(systemModelId)
       expect(queryModel?.name).toBe('System Model')

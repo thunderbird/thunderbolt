@@ -2,10 +2,9 @@ import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'driz
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
-import type { Model } from '../types'
+import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
-import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Gets all models from the database (excluding soft-deleted)

@@ -74,7 +74,7 @@ export default function ModelDetailPage() {
     enabled: !!modelId,
   })
 
-  const model = data[0]
+  const model = data?.[0]
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {

@@ -5,8 +5,7 @@ import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
-import type { Setting } from '../types'
-import type { DrizzleQueryWithPromise } from '@/types'
+import type { DrizzleQueryWithPromise, Setting } from '@/types'
 
 /**
  * Gets all settings from the database

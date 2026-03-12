@@ -70,7 +70,7 @@ export default function AutomationFormModal({
     query: toCompilableQuery(getSelectedModelQuery(db)),
   })
 
-  const selectedModel = selectedModelRows[0]
+  const selectedModel = selectedModelRows?.[0]
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,

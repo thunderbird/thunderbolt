@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ContentPart } from '@/ai/widget-parser'
 import { parseContentParts } from '@/ai/widget-parser'
+import type { CitationMap } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
 import { buildSourceCitationPlaceholders, deduplicateLinkPreviews } from './text-part'
 
@@ -185,6 +186,37 @@ describe('buildSourceCitationPlaceholders', () => {
     expect(citations.get(0)).toHaveLength(1)
     expect(citations.get(1)).toHaveLength(1)
     expect(fullText).toContain('[text](https://x.com)')
+  })
+
+  test('startKey offsets citation map keys', () => {
+    const twoSources = [makeSource(1), makeSource(2)]
+    const { fullText, citations } = buildSourceCitationPlaceholders('See [1] and [2].', twoSources, 5)
+
+    expect(fullText).toBe('See {{CITE:5}} and {{CITE:6}}.')
+    expect(citations.get(5)).toBeDefined()
+    expect(citations.get(6)).toBeDefined()
+    expect(citations.get(0)).toBeUndefined()
+  })
+
+  test('processes multiple text segments with unique keys across segments', () => {
+    const threeSources = [makeSource(1), makeSource(2), makeSource(3)]
+    let keyOffset = 0
+    const merged: CitationMap = new Map()
+
+    // Segment 1: has [1] and [2] adjacent (grouped into one entry)
+    const seg1 = buildSourceCitationPlaceholders('First [1] [2].', threeSources, keyOffset)
+    for (const [k, v] of seg1.citations) merged.set(k, v)
+    keyOffset += seg1.citations.size
+
+    // Segment 2: has [3] alone
+    const seg2 = buildSourceCitationPlaceholders('Second [3].', threeSources, keyOffset)
+    for (const [k, v] of seg2.citations) merged.set(k, v)
+
+    expect(seg1.fullText).toBe('First {{CITE:0}}.')
+    expect(seg2.fullText).toBe('Second {{CITE:1}}.')
+    expect(merged.size).toBe(2)
+    expect(merged.get(0)).toHaveLength(2)
+    expect(merged.get(1)).toHaveLength(1)
   })
 })
 

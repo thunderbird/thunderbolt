@@ -6,6 +6,7 @@ import { hashSetting } from '../defaults/settings'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
 import type { Setting } from '../types'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Gets all settings from the database
@@ -29,11 +30,13 @@ type SettingSchema = Record<
  * When keys is empty, uses sql`1=0` instead of inArray -- inArray(column, [])
  * produces invalid SQL (WHERE col IN ()) in SQLite.
  */
-export const getSettingsRecords = (db: AnyDrizzleDatabase, keys: string[]) =>
-  db
+export const getSettingsRecords = (db: AnyDrizzleDatabase, keys: string[]) => {
+  const query = db
     .select()
     .from(settingsTable)
     .where(keys.length > 0 ? inArray(settingsTable.key, keys) : sql`1=0`)
+  return query as typeof query & DrizzleQueryWithPromise<Setting>
+}
 
 /**
  * Helper type to convert snake_case to camelCase

@@ -34,7 +34,6 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { type CompilableQuery } from '@powersync/web'
 
 // Task Item Component - Memoized for performance
 type TaskItemProps = {
@@ -279,7 +278,7 @@ export default function TasksPage() {
     isPlaceholderData,
   } = useQuery({
     queryKey: ['tasks', debouncedSearchQuery],
-    query: toCompilableQuery(getIncompleteTasks(db, debouncedSearchQuery)) as CompilableQuery<Task>,
+    query: toCompilableQuery(getIncompleteTasks(db, debouncedSearchQuery)),
     placeholderData: (previousData) => previousData,
   })
 

@@ -3,6 +3,7 @@ import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { SourceMetadata } from './types/source'
 import type { Window } from '@tauri-apps/api/window'
 import type { UIDataTypes, UIMessage, UITools } from 'ai'
+import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
@@ -75,6 +76,12 @@ export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
+
+/**
+ * Query usable with PowerSync's toCompilableQuery and direct await.
+ * When awaited, resolves to T[] without manual cast.
+ */
+export type DrizzleQueryWithPromise<T> = DrizzleQuery<T> & PromiseLike<T[]>
 
 export type AutomationRun = {
   prompt: Prompt | null

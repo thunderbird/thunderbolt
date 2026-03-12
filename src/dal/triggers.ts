@@ -3,6 +3,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { triggersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Trigger } from '../types'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Returns a Drizzle query for all triggers for a prompt (excluding soft-deleted).
@@ -13,7 +14,7 @@ export const getAllTriggersForPrompt = (db: AnyDrizzleDatabase, promptId: string
     .select()
     .from(triggersTable)
     .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
-  return query as typeof query & { execute: () => Promise<Trigger[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Trigger>
 }
 
 /**

@@ -4,6 +4,7 @@ import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Checks if a chat thread ID exists as a soft-deleted record.
@@ -27,8 +28,7 @@ export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
     .from(chatThreadsTable)
     .where(isNull(chatThreadsTable.deletedAt))
     .orderBy(desc(chatThreadsTable.id))
-
-  return query as typeof query & { execute: () => Promise<ChatThread[]> }
+  return query as typeof query & DrizzleQueryWithPromise<ChatThread>
 }
 
 /**
@@ -106,10 +106,11 @@ export const getOrCreateChatThread = async (
  * @returns The context size in tokens, or null if not found/not known
  */
 export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string) => {
-  return db
+  const query = db
     .select({ contextSize: chatThreadsTable.contextSize })
     .from(chatThreadsTable)
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
+  return query as typeof query & DrizzleQueryWithPromise<{ contextSize: number | null }>
 }
 
 /**

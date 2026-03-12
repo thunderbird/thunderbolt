@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { devicesTable } from '@/db/tables'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 export type Device = {
   id: string
@@ -15,7 +16,8 @@ export type Device = {
  * Gets a single device by id from the local DB (synced via PowerSync).
  */
 export const getDevice = (db: AnyDrizzleDatabase, deviceId: string) => {
-  return db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+  const query = db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+  return query as typeof query & DrizzleQueryWithPromise<Device>
 }
 
 /**
@@ -23,6 +25,5 @@ export const getDevice = (db: AnyDrizzleDatabase, deviceId: string) => {
  */
 export const getAllDevices = (db: AnyDrizzleDatabase) => {
   const query = db.select().from(devicesTable).orderBy(desc(devicesTable.lastSeen))
-
-  return query as typeof query & { execute: () => Promise<Device[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Device>
 }

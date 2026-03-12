@@ -7,6 +7,7 @@ import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '.
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Returns a Drizzle query for all prompts, optionally filtered by search query (excluding soft-deleted).
@@ -24,7 +25,7 @@ export const getAllPrompts = (db: AnyDrizzleDatabase, searchQuery?: string) => {
     .orderBy(asc(promptsTable.id))
     .limit(50)
 
-  return query as typeof query & { execute: () => Promise<Prompt[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Prompt>
 }
 
 /**

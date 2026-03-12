@@ -5,6 +5,7 @@ import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Model } from '../types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Gets all models from the database (excluding soft-deleted)
@@ -17,7 +18,7 @@ export const getAllModels = (db: AnyDrizzleDatabase) => {
     .where(isNull(modelsTable.deletedAt))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
-  return query as typeof query & { execute: () => Promise<Model[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Model>
 }
 
 /**
@@ -31,7 +32,7 @@ export const getAvailableModels = (db: AnyDrizzleDatabase) => {
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
-  return query as typeof query & { execute: () => Promise<Model[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Model>
 }
 
 export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
@@ -40,7 +41,7 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
     .from(modelsTable)
     .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 
-  return query as typeof query & { execute: () => Promise<Model[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Model>
 }
 
 /**
@@ -60,7 +61,7 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
     .orderBy(sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`, modelsTable.name)
     .limit(1)
 
-  return query as typeof query & { execute: () => Promise<Model[]> }
+  return query as typeof query & DrizzleQueryWithPromise<Model>
 }
 
 /**

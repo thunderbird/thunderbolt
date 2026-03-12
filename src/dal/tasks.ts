@@ -3,6 +3,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { tasksTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Task } from '../types'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Gets all tasks (excluding soft-deleted)
@@ -17,8 +18,8 @@ const itemNotEmpty = and(isNotNull(tasksTable.item), sql`trim(${tasksTable.item}
  * Returns a Drizzle query for incomplete tasks, optionally filtered by search query (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string) =>
-  db
+export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string) => {
+  const query = db
     .select()
     .from(tasksTable)
     .where(
@@ -33,16 +34,20 @@ export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string)
     )
     .orderBy(asc(tasksTable.order), desc(tasksTable.id))
     .limit(50)
+  return query as typeof query & DrizzleQueryWithPromise<Task>
+}
 
 /**
  * Returns a Drizzle query for the count of incomplete tasks (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
-export const getIncompleteTasksCount = (db: AnyDrizzleDatabase) =>
-  db
+export const getIncompleteTasksCount = (db: AnyDrizzleDatabase) => {
+  const query = db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)
     .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty))
+  return query as typeof query & DrizzleQueryWithPromise<{ count: number }>
+}
 
 /**
  * Update a task (preserves defaultHash for modification tracking)

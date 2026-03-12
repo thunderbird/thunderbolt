@@ -15,7 +15,7 @@ import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
@@ -101,7 +101,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
       setMcpClients(mcpClients)
       setModes(modes)
-      setModels(models as Model[])
+      setModels(models)
 
       setIsReady(true)
 
@@ -150,7 +150,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setMcpClients(mcpClients)
     setModes(modes)
-    setModels(models as Model[])
+    setModels(models)
 
     setIsReady(true)
   }

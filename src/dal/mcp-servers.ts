@@ -3,14 +3,14 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
+import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
  */
 export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
   const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
-
-  return query as typeof query & { execute: () => Promise<McpServer[]> }
+  return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
 /**
@@ -21,8 +21,7 @@ export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
     .select()
     .from(mcpServersTable)
     .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
-
-  return query as typeof query & { execute: () => Promise<McpServer[]> }
+  return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
 /**

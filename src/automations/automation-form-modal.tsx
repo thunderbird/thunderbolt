@@ -30,7 +30,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -70,7 +70,7 @@ export default function AutomationFormModal({
     query: toCompilableQuery(getSelectedModelQuery(db)),
   })
 
-  const selectedModel = useMemo(() => selectedModelRows[0], [selectedModelRows])
+  const selectedModel = selectedModelRows[0]
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,

@@ -157,8 +157,8 @@ body {
 }
 
 @media (max-width: 768px) {
-  html,
-  body {
+  html:has(.keyboard-inset-active),
+  html:has(.keyboard-inset-active) body {
     position: fixed;
     top: 0;
     left: 0;
@@ -167,7 +167,7 @@ body {
     overflow: hidden;
   }
 
-  #root {
+  #root.keyboard-inset-active {
     position: fixed;
     top: 0;
     left: 0;

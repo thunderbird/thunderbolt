@@ -1,6 +1,19 @@
 import { useLayoutEffect } from 'react'
 
 /**
+ * Detects mobile WebKit (iOS Safari and iOS Chrome/Firefox which all use WebKit).
+ * We check for a small viewport (mobile) + WebKit UA signature + no Chrome/Firefox
+ * desktop signatures that also include "Safari" in the UA string.
+ */
+const isMobileWebKit = (): boolean => {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const ua = navigator.userAgent
+  const isMobileViewport = window.innerWidth <= 768
+  const isWebKit = /AppleWebKit/.test(ua) && /Mobile/.test(ua)
+  return isMobileViewport && isWebKit
+}
+
+/**
  * Keeps `#root` pinned to the visual viewport on iOS Safari when the virtual
  * keyboard opens.
  *
@@ -15,18 +28,22 @@ import { useLayoutEffect } from 'react'
  *
  * Uses `useLayoutEffect` for synchronous-before-paint updates and rAF
  * polling to track the keyboard animation.
+ *
+ * Guarded to only run on mobile WebKit — desktop browsers and non-WebKit
+ * mobile browsers are unaffected.
  */
 export const useKeyboardInset = (): void => {
   useLayoutEffect(() => {
+    if (!isMobileWebKit()) return
+
     const vv = window.visualViewport
-    if (!vv) {
-      return
-    }
+    if (!vv) return
 
     const root = document.getElementById('root')
-    if (!root) {
-      return
-    }
+    if (!root) return
+
+    // Add class so CSS can scope fixed-positioning styles
+    root.classList.add('keyboard-inset-active')
 
     // Override focus to prevent Safari's native scroll-to-input behavior.
     // This is the key to eliminating the flash — without it, Safari scrolls
@@ -44,6 +61,12 @@ export const useKeyboardInset = (): void => {
     const apply = () => {
       root.style.top = `${vv.offsetTop}px`
       root.style.height = `${vv.height}px`
+
+      // Set --kb on documentElement so portaled components (e.g. onboarding
+      // dialog) that live outside #root can still react to keyboard height.
+      const kbHeight = window.innerHeight - vv.height
+      document.documentElement.style.setProperty('--kb', `${kbHeight}px`)
+
       // Force layout viewport back to origin
       window.scrollTo(0, 0)
     }
@@ -81,6 +104,7 @@ export const useKeyboardInset = (): void => {
 
     return () => {
       HTMLElement.prototype.focus = originalFocus
+      root.classList.remove('keyboard-inset-active')
       document.removeEventListener('focusin', startPolling)
       document.removeEventListener('focusout', startPolling)
       vv.removeEventListener('resize', startPolling)
@@ -90,6 +114,7 @@ export const useKeyboardInset = (): void => {
       }
       root.style.top = ''
       root.style.height = ''
+      document.documentElement.style.removeProperty('--kb')
     }
   }, [])
 }

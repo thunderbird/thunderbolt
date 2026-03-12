@@ -162,6 +162,12 @@ body {
     height: 100%;
     overflow: hidden;
   }
+
+  #root {
+    position: fixed;
+    inset: 0;
+    height: auto;
+  }
 }
 
 /* Subtle table borders for markdown content */

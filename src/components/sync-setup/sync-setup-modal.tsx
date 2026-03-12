@@ -12,7 +12,6 @@ import { ChooseMethodStep } from './choose-method-step'
 import { CreatePassphraseStep } from './create-passphrase-step'
 import { CreateShowKeyStep } from './create-show-key-step'
 import { ImportPassphraseStep } from './import-passphrase-step'
-import { ImportQrStep } from './import-qr-step'
 import { PasskeySetupStep } from './passkey-setup-step'
 import { SuccessStep } from './success-step'
 
@@ -27,7 +26,6 @@ const stepTitles: Record<SyncSetupStep, string> = {
   'create-passphrase': 'Create Encryption Key',
   'create-show-key': 'Save Your Recovery Key',
   'import-passphrase': 'Import via Passphrase',
-  'import-qr': 'Scan QR Code',
   'passkey-setup': 'Protect Your Key',
   success: 'All Set',
 }
@@ -84,10 +82,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             onVerify={actions.startVerification}
             onSetPassphrase={actions.setPassphrase}
           />
-        )}
-
-        {state.step === 'import-qr' && (
-          <ImportQrStep isVerifying={state.isVerifying} onSimulateScan={actions.startVerification} />
         )}
 
         {state.step === 'passkey-setup' && (

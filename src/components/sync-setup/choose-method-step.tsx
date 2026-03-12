@@ -1,7 +1,7 @@
-import { KeyRound, KeySquare, QrCode } from 'lucide-react'
+import { KeyRound, KeySquare } from 'lucide-react'
 
 type ChooseMethodStepProps = {
-  onSelect: (method: 'create' | 'import-passphrase' | 'import-qr') => void
+  onSelect: (method: 'create' | 'import-passphrase') => void
 }
 
 const methods = [
@@ -16,12 +16,6 @@ const methods = [
     icon: KeySquare,
     title: 'Import via passphrase',
     description: 'Re-derive your key using a passphrase from another device.',
-  },
-  {
-    id: 'import-qr' as const,
-    icon: QrCode,
-    title: 'Scan QR code',
-    description: 'Scan a QR code displayed on another device to transfer your key.',
   },
 ]
 

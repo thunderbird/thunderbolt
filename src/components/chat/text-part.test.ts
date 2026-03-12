@@ -205,12 +205,16 @@ describe('buildSourceCitationPlaceholders', () => {
 
     // Segment 1: has [1] and [2] adjacent (grouped into one entry)
     const seg1 = buildSourceCitationPlaceholders('First [1] [2].', threeSources, keyOffset)
-    for (const [k, v] of seg1.citations) merged.set(k, v)
+    for (const [k, v] of seg1.citations) {
+      merged.set(k, v)
+    }
     keyOffset += seg1.citations.size
 
     // Segment 2: has [3] alone
     const seg2 = buildSourceCitationPlaceholders('Second [3].', threeSources, keyOffset)
-    for (const [k, v] of seg2.citations) merged.set(k, v)
+    for (const [k, v] of seg2.citations) {
+      merged.set(k, v)
+    }
 
     expect(seg1.fullText).toBe('First {{CITE:0}}.')
     expect(seg2.fullText).toBe('Second {{CITE:1}}.')

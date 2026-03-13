@@ -3,8 +3,8 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PromptInput } from '@/components/ui/prompt-input'
+import { Dialog } from '@/components/ui/dialog'
 import {
-  ResponsiveModal,
   ResponsiveModalContentComposable,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
@@ -283,7 +283,7 @@ export default function AutomationFormModal({
   const isLoading = createPromptMutation.isPending || updatePromptMutation.isPending
 
   return (
-    <ResponsiveModal open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <ResponsiveModalContentComposable className="sm:max-w-[600px] p-0">
         <ResponsiveModalHeader className="px-6 pt-6">
           <ResponsiveModalTitle>{prompt ? 'Edit Automation' : 'Create Automation'}</ResponsiveModalTitle>
@@ -394,6 +394,6 @@ export default function AutomationFormModal({
           </form>
         </Form>
       </ResponsiveModalContentComposable>
-    </ResponsiveModal>
+    </Dialog>
   )
 }

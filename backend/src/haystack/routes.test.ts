@@ -48,6 +48,30 @@ const createTestHaystackRoutes = (mockClient: Partial<HaystackClient> | null) =>
       const sessions = await store.haystackClient.listSessions()
       return { data: sessions, success: true }
     })
+    .get(
+      '/files/:fileId',
+      async ({ params, store }) => {
+        if (!store.haystackClient) {
+          throw new Error('Haystack service is not configured.')
+        }
+        const response = await store.haystackClient.downloadFile(params.fileId)
+
+        const contentType = response.headers.get('Content-Type') ?? 'application/octet-stream'
+        const contentDisposition = response.headers.get('Content-Disposition')
+
+        const headers: Record<string, string> = { 'Content-Type': contentType }
+        if (contentDisposition) {
+          headers['Content-Disposition'] = contentDisposition
+        }
+
+        return new Response(response.body, { headers })
+      },
+      {
+        params: t.Object({
+          fileId: t.String(),
+        }),
+      },
+    )
 }
 
 describe('Haystack Routes', () => {
@@ -55,6 +79,7 @@ describe('Haystack Routes', () => {
   let mockCreateSession: ReturnType<typeof mock>
   let mockChat: ReturnType<typeof mock>
   let mockListSessions: ReturnType<typeof mock>
+  let mockDownloadFile: ReturnType<typeof mock>
 
   beforeEach(() => {
     mockCreateSession = mock(() => Promise.resolve({ searchSessionId: 'da81f24c-1586-4518-8360-70f40fcee960' }))
@@ -81,10 +106,22 @@ describe('Haystack Routes', () => {
       }),
     )
 
+    mockDownloadFile = mock(() =>
+      Promise.resolve(
+        new Response('pdf-content', {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'attachment; filename="test.pdf"',
+          },
+        }),
+      ),
+    )
+
     const mockClient = {
       createSession: mockCreateSession,
       chat: mockChat,
       listSessions: mockListSessions,
+      downloadFile: mockDownloadFile,
     }
 
     app = new Elysia().use(createTestHaystackRoutes(mockClient as unknown as HaystackClient))
@@ -251,6 +288,48 @@ describe('Haystack Routes', () => {
       const response = await app.handle(new Request('http://localhost/sessions', { method: 'GET' }))
 
       expect(response.status).toBe(500)
+    })
+  })
+
+  describe('GET /files/:fileId', () => {
+    it('should download file successfully with correct headers', async () => {
+      const response = await app.handle(new Request('http://localhost/files/file-123', { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('application/pdf')
+      expect(response.headers.get('Content-Disposition')).toBe('attachment; filename="test.pdf"')
+      const body = await response.text()
+      expect(body).toBe('pdf-content')
+      expect(mockDownloadFile).toHaveBeenCalledWith('file-123')
+    })
+
+    it('should return 500 when service is not configured', async () => {
+      const appNoClient = new Elysia().use(createTestHaystackRoutes(null))
+
+      const response = await appNoClient.handle(new Request('http://localhost/files/file-123', { method: 'GET' }))
+
+      expect(response.status).toBe(500)
+      const data = await response.json()
+      expect(data.success).toBe(false)
+      expect(data.error).toContain('Haystack service is not configured')
+    })
+
+    it('should handle upstream API errors', async () => {
+      mockDownloadFile.mockRejectedValueOnce(new Error('Haystack API error: 404 Not Found'))
+
+      const response = await app.handle(new Request('http://localhost/files/file-123', { method: 'GET' }))
+
+      expect(response.status).toBe(500)
+    })
+
+    it('should forward Content-Type and omit Content-Disposition when not present', async () => {
+      mockDownloadFile.mockResolvedValueOnce(new Response('data', { headers: { 'Content-Type': 'text/plain' } }))
+
+      const response = await app.handle(new Request('http://localhost/files/file-456', { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('text/plain')
+      expect(response.headers.get('Content-Disposition')).toBeNull()
     })
   })
 })

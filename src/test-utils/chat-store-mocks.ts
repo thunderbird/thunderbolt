@@ -212,6 +212,8 @@ export const hydrateStore = (state: {
     const sessionData = {
       chatInstance: state.chatInstance,
       chatThread: state.chatThread,
+      haystackError: false,
+      haystackLoading: false,
       id: state.id,
       retryCount: 0,
       retriesExhausted: false,

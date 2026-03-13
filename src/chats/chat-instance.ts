@@ -9,6 +9,15 @@ import { useChatStore } from './chat-store'
 // Map of chat session ID -> Haystack session ID
 const haystackSessionIds = new Map<string, string>()
 
+// Map of chat session ID -> last failed query (for retry)
+const haystackPendingRetries = new Map<string, string>()
+
+// Map of chat session ID -> retry function
+const haystackRetryFns = new Map<string, () => Promise<void>>()
+
+/** Get the Haystack retry function for a session, if a retry is pending. */
+export const getHaystackRetry = (sessionId: string) => haystackRetryFns.get(sessionId)
+
 export const maxRetries = 3
 
 /**
@@ -195,22 +204,7 @@ export const createChatInstance = (
         prompt_number: instance.messages.length + 1,
       })
 
-      const { sendHaystackMessage } = await import('./haystack-chat')
-      const ky = (await import('ky')).default
-
-      const haystackSessionId = haystackSessionIds.get(id) ?? null
-
-      const result = await sendHaystackMessage({
-        query,
-        sessionId: haystackSessionId,
-        httpClient: ky.create({ prefixUrl: '' }),
-      })
-
-      // Store session ID for future messages in this thread
-      if (!haystackSessionId) {
-        haystackSessionIds.set(id, result.sessionId)
-      }
-
+      // Show user message immediately so the UI feels responsive
       const userMessage: ThunderboltUIMessage = {
         id: uuidv7(),
         role: 'user' as const,
@@ -218,23 +212,69 @@ export const createChatInstance = (
         metadata: { modelId: selectedModel.id },
       }
 
-      const fullContent = result.widgets ? `${result.answerText}\n\n${result.widgets}` : result.answerText
-
-      const assistantMessage: ThunderboltUIMessage = {
-        id: uuidv7(),
+      // Add placeholder assistant message (empty parts triggers SyntheticLoadingPart)
+      const placeholderAssistantId = uuidv7()
+      const placeholderAssistant: ThunderboltUIMessage = {
+        id: placeholderAssistantId,
         role: 'assistant' as const,
-        parts: [{ type: 'text' as const, text: fullContent }],
+        parts: [],
         metadata: { modelId: selectedModel.id },
       }
 
-      instance.messages = [...instance.messages, userMessage, assistantMessage]
-      await saveMessages({ id, messages: [userMessage, assistantMessage] })
+      instance.messages = [...instance.messages, userMessage, placeholderAssistant]
+      haystackPendingRetries.delete(id)
+      useChatStore.getState().updateSession(id, { haystackLoading: true, haystackError: false })
 
-      trackEvent('chat_receive_reply', {
-        model: selectedModel,
-        length: fullContent.length,
-        reply_number: instance.messages.length,
-      })
+      try {
+        const { sendHaystackMessage } = await import('./haystack-chat')
+        const ky = (await import('ky')).default
+
+        const haystackSessionId = haystackSessionIds.get(id) ?? null
+
+        const result = await sendHaystackMessage({
+          query,
+          sessionId: haystackSessionId,
+          httpClient: ky.create({ prefixUrl: '', timeout: 60_000 }),
+        })
+
+        // Store session ID for future messages in this thread
+        if (!haystackSessionId) {
+          haystackSessionIds.set(id, result.sessionId)
+        }
+
+        const fullContent = result.widgets ? `${result.answerText}\n\n${result.widgets}` : result.answerText
+
+        const assistantMessage: ThunderboltUIMessage = {
+          id: placeholderAssistantId,
+          role: 'assistant' as const,
+          parts: [{ type: 'text' as const, text: fullContent }],
+          metadata: {
+            modelId: selectedModel.id,
+            haystackDocuments: result.documents,
+          },
+        }
+
+        // Replace placeholder with real response
+        instance.messages = instance.messages.map((m) => (m.id === placeholderAssistantId ? assistantMessage : m))
+        await saveMessages({ id, messages: [userMessage, assistantMessage] })
+
+        trackEvent('chat_receive_reply', {
+          model: selectedModel,
+          length: fullContent.length,
+          reply_number: instance.messages.length,
+        })
+      } catch (error) {
+        console.error('Document search error:', error)
+
+        // Remove the placeholder assistant message so hasError triggers the ErrorMessage UI
+        instance.messages = instance.messages.filter((m) => m.id !== placeholderAssistantId)
+
+        // Store query for retry and flag the error
+        haystackPendingRetries.set(id, query)
+        useChatStore.getState().updateSession(id, { haystackError: true })
+      } finally {
+        useChatStore.getState().updateSession(id, { haystackLoading: false })
+      }
 
       return
     }
@@ -256,6 +296,34 @@ export const createChatInstance = (
       options,
     )
   }
+
+  /**
+   * Retry the last failed Haystack document search query.
+   * Removes the stale user message and re-sends via sendMessage.
+   */
+  const retryHaystackSearch = async () => {
+    const pendingQuery = haystackPendingRetries.get(id)
+    if (!pendingQuery) return
+
+    // Remove the user message from the failed attempt
+    let lastUserIndex = -1
+    for (let i = instance.messages.length - 1; i >= 0; i--) {
+      if (instance.messages[i].role === 'user') {
+        lastUserIndex = i
+        break
+      }
+    }
+    if (lastUserIndex !== -1) {
+      instance.messages = instance.messages.filter((_, i) => i !== lastUserIndex)
+    }
+
+    haystackPendingRetries.delete(id)
+    useChatStore.getState().updateSession(id, { haystackError: false })
+
+    await instance.sendMessage({ text: pendingQuery })
+  }
+
+  haystackRetryFns.set(id, retryHaystackSearch)
 
   return instance
 }

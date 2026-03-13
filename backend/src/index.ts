@@ -123,6 +123,8 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
+        // Bun defaults to 10s, which drops connections during long Haystack API calls (10-30s)
+        idleTimeout: 120,
       },
       () => {
         log.info(

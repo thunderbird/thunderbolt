@@ -138,6 +138,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     createSession({
       chatInstance,
       chatThread,
+      haystackError: false,
+      haystackLoading: false,
       id,
       retryCount: 0,
       retriesExhausted: false,

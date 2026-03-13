@@ -110,6 +110,8 @@ describe('chat-store', () => {
             {
               chatInstance,
               chatThread: null,
+              haystackError: false,
+              haystackLoading: false,
               id: 'test-id',
               selectedMode: null as unknown as Mode,
               retryCount: 0,

@@ -310,4 +310,35 @@ describe('HaystackClient', () => {
       await expect(client.listSessions()).rejects.toThrow('Haystack API error: 403')
     })
   })
+
+  describe('downloadFile', () => {
+    it('should call correct URL and return the response', async () => {
+      const mockResponse = new Response('pdf-binary-content', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'attachment; filename="test.pdf"',
+        },
+      })
+      const fileFetch = mock(() => Promise.resolve(mockResponse))
+      const client = new HaystackClient(testConfig, fileFetch as unknown as typeof fetch)
+
+      const result = await client.downloadFile('file-abc-123')
+
+      expect(fileFetch).toHaveBeenCalledTimes(1)
+      const [url, options] = fileFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('https://api.cloud.deepset.ai/api/v1/workspaces/test_workspace/files/file-abc-123')
+      expect(options.method).toBe('GET')
+      const headers = options.headers as Record<string, string>
+      expect(headers.Authorization).toBe('Bearer test-api-key-123')
+      expect(result).toBe(mockResponse)
+    })
+
+    it('should throw on non-OK response', async () => {
+      const fileFetch = mock(() => Promise.resolve(new Response('Not found', { status: 404, statusText: 'Not Found' })))
+      const client = new HaystackClient(testConfig, fileFetch as unknown as typeof fetch)
+
+      await expect(client.downloadFile('nonexistent')).rejects.toThrow('Haystack API error: 404 Not Found')
+    })
+  })
 })

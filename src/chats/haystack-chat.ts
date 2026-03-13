@@ -1,6 +1,7 @@
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import type { HttpClient } from '@/contexts/http-client-context'
+import type { HaystackDocumentMeta } from '@/types'
 
 type HaystackChatParams = {
   query: string
@@ -12,6 +13,7 @@ type HaystackChatResult = {
   sessionId: string
   answerText: string
   widgets: string
+  documents: HaystackDocumentMeta[]
 }
 
 export const sendHaystackMessage = async ({
@@ -70,8 +72,12 @@ export const sendHaystackMessage = async ({
     throw new Error('No answer received from Haystack')
   }
 
-  // Format document widgets from source files
+  // Format document widgets from source files, excluding low-relevance results (<1%)
   const widgetTags = (answer.files ?? [])
+    .filter((file) => {
+      const doc = result.documents.find((d) => d.file.id === file.id)
+      return doc && doc.score >= 0.01
+    })
     .map((file) => {
       const doc = result.documents.find((d) => d.file.id === file.id)
       const snippet = doc?.content ? doc.content.slice(0, 200).replace(/"/g, '&quot;') : ''
@@ -80,9 +86,17 @@ export const sendHaystackMessage = async ({
     })
     .join('\n')
 
+  const documents: HaystackDocumentMeta[] = result.documents.map((d) => ({
+    id: d.id,
+    content: d.content,
+    score: d.score,
+    file: d.file,
+  }))
+
   return {
     sessionId: activeSessionId,
     answerText: answer.answer,
     widgets: widgetTags,
+    documents,
   }
 }

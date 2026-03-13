@@ -62,6 +62,23 @@ export class HaystackClient {
     return this.transformChatResponse(data)
   }
 
+  async downloadFile(fileId: string): Promise<Response> {
+    const url = `${this.baseApiUrl}/files/${fileId}`
+    const response = await this.fetchFn(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+        Accept: '*/*',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Haystack API error: ${response.status} ${response.statusText}`)
+    }
+
+    return response
+  }
+
   async listSessions(): Promise<HaystackSessionListResponse> {
     const response = await this.fetchFn(`${this.baseApiUrl}/search_sessions`, {
       method: 'GET',

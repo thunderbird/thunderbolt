@@ -45,11 +45,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const {
+      chatInstance,
+      chatThread,
+      haystackLoading,
+      id: chatThreadId,
+      selectedMode,
+      selectedModel,
+    } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
-    const isStreaming = status === 'streaming'
+    const isStreaming = status === 'streaming' || haystackLoading
 
     // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
     // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)

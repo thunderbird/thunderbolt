@@ -1,6 +1,19 @@
+import { PdfSidebarViewer } from '@/widgets/document-result/pdf-sidebar-viewer'
 import { EmailThreadView } from './thread'
 import { useQuery } from '@tanstack/react-query'
 import { useSideview } from './context'
+
+/**
+ * Parses a document sideview ID in the format "fileId:fileName"
+ */
+const parseDocumentSideviewId = (sideviewId: string) => {
+  const colonIndex = sideviewId.indexOf(':')
+  if (colonIndex === -1) return { fileId: sideviewId, fileName: 'document.pdf' }
+  return {
+    fileId: sideviewId.slice(0, colonIndex),
+    fileName: sideviewId.slice(colonIndex + 1),
+  }
+}
 
 /**
  * Sideview component - displays content based on sideview type
@@ -34,6 +47,11 @@ export const Sideview = () => {
       return <EmailThreadView />
     case 'thread':
       return <EmailThreadView />
+    case 'document': {
+      if (!sideviewId) return null
+      const { fileId, fileName } = parseDocumentSideviewId(sideviewId)
+      return <PdfSidebarViewer fileId={fileId} fileName={fileName} />
+    }
     default:
       return <div>Unsupported sideview type</div>
   }

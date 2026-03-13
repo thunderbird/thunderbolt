@@ -11,13 +11,14 @@ import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ReasoningGroup } from './reasoning-group'
-import { SyntheticLoadingPart } from './synthetic-loading-part'
+import { documentSearchMessages, SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
   isStreaming: boolean
   isLastMessage?: boolean
+  isDocumentSearchLoading?: boolean
 }
 
 // Viewport positioning constant - ensures enough space for scrolling user message to top
@@ -38,12 +39,15 @@ export const mountMessageParts = (
   reasoningTime: Record<string, number>,
   reasoningStartTimes?: Record<string, number>,
   sources?: SourceMetadata[],
+  isDocumentSearchLoading?: boolean,
 ) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0 && isStreaming) {
     // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming />)
+    partElements.push(
+      <SyntheticLoadingPart isStreaming messages={isDocumentSearchLoading ? documentSearchMessages : undefined} />,
+    )
   }
 
   const hasTextPart = groupedParts.some((part) => {
@@ -80,7 +84,7 @@ export const mountMessageParts = (
 }
 
 export const AssistantMessage = memo(
-  ({ message, isStreaming, isLastMessage = false }: AssistantMessageProps) => {
+  ({ message, isStreaming, isLastMessage = false, isDocumentSearchLoading = false }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => {
       const filtered = filterMessageParts(message.parts) as GroupableUIPart[]
@@ -109,8 +113,17 @@ export const AssistantMessage = memo(
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
     const partElements: ReactNode[] = useMemo(
-      () => mountMessageParts(groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources),
-      [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources],
+      () =>
+        mountMessageParts(
+          groupedParts,
+          isStreaming,
+          message.id,
+          reasoningTime,
+          reasoningStartTimes,
+          sources,
+          isDocumentSearchLoading,
+        ),
+      [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources, isDocumentSearchLoading],
     )
 
     return (
@@ -132,7 +145,8 @@ export const AssistantMessage = memo(
       prevProps.message.parts === nextProps.message.parts &&
       prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.isStreaming === nextProps.isStreaming &&
-      prevProps.isLastMessage === nextProps.isLastMessage
+      prevProps.isLastMessage === nextProps.isLastMessage &&
+      prevProps.isDocumentSearchLoading === nextProps.isDocumentSearchLoading
     )
   },
 )

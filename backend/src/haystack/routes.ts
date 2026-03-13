@@ -62,4 +62,28 @@ export const createHaystackRoutes = (fetchFn: typeof fetch = globalThis.fetch) =
       const sessions = await store.haystackClient.listSessions()
       return { data: sessions, success: true }
     })
+    .get(
+      '/files/:fileId',
+      async ({ params, store }) => {
+        if (!store.haystackClient) {
+          throw new Error('Haystack service is not configured.')
+        }
+        const response = await store.haystackClient.downloadFile(params.fileId)
+
+        const contentType = response.headers.get('Content-Type') ?? 'application/octet-stream'
+        const contentDisposition = response.headers.get('Content-Disposition')
+
+        const headers: Record<string, string> = { 'Content-Type': contentType }
+        if (contentDisposition) {
+          headers['Content-Disposition'] = contentDisposition
+        }
+
+        return new Response(response.body, { headers })
+      },
+      {
+        params: t.Object({
+          fileId: t.String(),
+        }),
+      },
+    )
 }

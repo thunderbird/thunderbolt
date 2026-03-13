@@ -145,26 +145,29 @@ export default function Page() {
                   <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
                 )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-                {state.type === 'sideview' && (
-                  <>
-                    <SidebarHeader>
-                      <SidebarGroup>
-                        <SidebarGroupContent className="flex justify-end w-full flex-1 items-center">
-                          <SidebarMenuButton
-                            onClick={() => ref?.current?.collapse()}
-                            className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
-                            tooltip="Close"
-                          >
-                            <Sidebar />
-                          </SidebarMenuButton>
-                        </SidebarGroupContent>
-                      </SidebarGroup>
-                    </SidebarHeader>
-                    <SidebarContent className="w-full h-full overflow-scroll">
-                      <Sideview />
-                    </SidebarContent>
-                  </>
-                )}
+                {state.type === 'sideview' &&
+                  (state.data.sideviewType === 'document' ? (
+                    <Sideview />
+                  ) : (
+                    <>
+                      <SidebarHeader>
+                        <SidebarGroup>
+                          <SidebarGroupContent className="flex justify-end w-full flex-1 items-center">
+                            <SidebarMenuButton
+                              onClick={() => ref?.current?.collapse()}
+                              className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+                              tooltip="Close"
+                            >
+                              <Sidebar />
+                            </SidebarMenuButton>
+                          </SidebarGroupContent>
+                        </SidebarGroup>
+                      </SidebarHeader>
+                      <SidebarContent className="w-full h-full overflow-scroll">
+                        <Sideview />
+                      </SidebarContent>
+                    </>
+                  ))}
               </motion.div>
             )}
           </AnimatePresence>

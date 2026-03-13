@@ -1,5 +1,4 @@
 import { getSettings } from '@/dal'
-import { getDb } from '@/db/database'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { PowerSyncDatabase, SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
@@ -180,7 +179,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Call this when user enables sync.
    */
   async connectToSync(): Promise<void> {
-    if (!this.powerSync) {
+    if (!this.powerSync || !this._db) {
       return
     }
 
@@ -189,8 +188,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
-      const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: defaultSettingCloudUrl.value })
+      const { cloudUrl } = await getSettings(this._db, { cloud_url: defaultSettingCloudUrl.value })
       const connector = new ThunderboltConnector(cloudUrl ?? defaultSettingCloudUrl.value)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       await this.powerSync.connect(connector, {

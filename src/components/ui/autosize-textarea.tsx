@@ -39,8 +39,10 @@ export const useAutosizeTextArea = ({
       const scrollHeight = textAreaElement.scrollHeight
       if (scrollHeight > maxHeight) {
         textAreaElement.style.height = `${maxHeight}px`
+        textAreaElement.style.overflowY = 'auto'
       } else {
         textAreaElement.style.height = `${scrollHeight + offsetBorder}px`
+        textAreaElement.style.overflowY = 'hidden'
       }
     }
   }, [textAreaRef.current, triggerAutoSize, minHeight, maxHeight])

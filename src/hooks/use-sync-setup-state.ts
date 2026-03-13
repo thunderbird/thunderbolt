@@ -82,7 +82,9 @@ const syncSetupReducer = (state: SyncSetupState, action: SyncSetupAction): SyncS
 
     case 'GO_BACK': {
       const prevStep = backStepMap[state.step]
-      if (!prevStep) return state
+      if (!prevStep) {
+        return state
+      }
       return {
         ...state,
         step: prevStep,
@@ -105,7 +107,9 @@ export const useSyncSetupState = () => {
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
     }
   }, [])
 

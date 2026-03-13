@@ -32,7 +32,9 @@ export const ImportPassphraseStep = ({ isVerifying, onVerify, onSetPassphrase }:
         disabled={isVerifying}
         autoFocus
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && passphrase.trim().length > 0) handleSubmit()
+          if (e.key === 'Enter' && passphrase.trim().length > 0) {
+            handleSubmit()
+          }
         }}
       />
 

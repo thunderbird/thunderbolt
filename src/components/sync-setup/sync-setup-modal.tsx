@@ -34,7 +34,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const { state, actions } = useSyncSetupState()
 
   useEffect(() => {
-    if (!open) actions.reset()
+    if (!open) {
+      actions.reset()
+    }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoBack = state.step !== 'choose-method' && state.step !== 'passkey-setup' && state.step !== 'success'

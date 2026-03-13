@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { useRef, useState } from 'react'
 import { SignInForm } from './sign-in'
+import { useWelcomeStore } from './welcome-dialog'
 
 type SignInModalProps = {
   open: boolean
@@ -25,6 +26,11 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
   const handleClose = () => {
     onOpenChange(false)
     setStep('email')
+  }
+
+  const handleSuccess = () => {
+    handleClose()
+    useWelcomeStore.getState().trigger()
   }
 
   const handleGoBack = () => {
@@ -55,7 +61,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
       <ResponsiveModalContent centered={step === 'otp'} className="flex flex-col gap-4">
         <SignInForm
           variant="modal"
-          onSuccess={handleClose}
+          onSuccess={handleSuccess}
           onCancel={handleClose}
           onGoBack={() => setStep('email')}
           onEmailSent={handleGoToOtp}

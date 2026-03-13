@@ -1,21 +1,21 @@
-const STORAGE_KEY = 'thunderbolt_encryption_key_state'
+const storageKey = 'thunderbolt_encryption_key_state'
 
 type EncryptionKeyState = 'NO_KEY' | 'KEY_PRESENT'
 
 /** Get the current encryption key state from localStorage */
 export const getEncryptionKeyState = (): EncryptionKeyState => {
-  const state = localStorage.getItem(STORAGE_KEY)
+  const state = localStorage.getItem(storageKey)
   return state === 'KEY_PRESENT' ? 'KEY_PRESENT' : 'NO_KEY'
 }
 
 /** Set the encryption key state in localStorage */
 export const setEncryptionKeyState = (state: EncryptionKeyState) => {
-  localStorage.setItem(STORAGE_KEY, state)
+  localStorage.setItem(storageKey, state)
 }
 
 /** Clear the encryption key from localStorage */
 export const clearEncryptionKey = () => {
-  localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(storageKey)
 }
 
 /** Generate a fake 64-character hex recovery key */

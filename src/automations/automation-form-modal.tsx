@@ -1,9 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PromptInput } from '@/components/ui/prompt-input'
-import { Dialog } from '@/components/ui/dialog'
 import {
   ResponsiveModalContentComposable,
   ResponsiveModalHeader,

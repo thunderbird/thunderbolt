@@ -47,7 +47,7 @@ module.exports = async ({ github, context }) => {
   const bundleLine = (() => {
     if (buildFailed) return '_Build failed_'
     if (!bundleSize) return '—'
-    if (baselineBundle) {
+    if (baselineBundle != null && baselineBundle > 0) {
       const delta = bundleSize - baselineBundle
       const pct = ((delta / baselineBundle) * 100).toFixed(1)
       // Use explicit +/- prefix on both the byte and percentage portions so

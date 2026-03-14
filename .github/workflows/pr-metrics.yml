@@ -60,7 +60,7 @@ jobs:
           # size-limit --json outputs gzipped sizes, which is what users actually download.
           # We extract the first entry's gzip value and save it for the metrics comment.
           bunx size-limit --json > /tmp/size-limit.json 2>/dev/null || true
-          GZIP=$(jq -r '.[0].gzip // 0' /tmp/size-limit.json 2>/dev/null || echo 0)
+          GZIP=$(jq -r '.[0].size // 0' /tmp/size-limit.json 2>/dev/null || echo 0)
           echo "gzip=${GZIP}" >> $GITHUB_OUTPUT
 
       # --- Test coverage ---

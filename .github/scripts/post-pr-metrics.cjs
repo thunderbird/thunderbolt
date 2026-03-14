@@ -49,9 +49,12 @@ module.exports = async ({ github, context }) => {
     if (baselineBundle) {
       const delta = bundleSize - baselineBundle
       const pct = ((delta / baselineBundle) * 100).toFixed(1)
-      const sign = delta >= 0 ? '+' : ''
+      // Use explicit +/- prefix on both the byte and percentage portions so
+      // a shrinking bundle shows "-5.0 KB, -5.0%" rather than "5.0 KB, -5.0%".
+      const bytesDelta = `${delta >= 0 ? '+' : '-'}${fmt(Math.abs(delta))}`
+      const pctDelta = `${delta >= 0 ? '+' : ''}${pct}%`
       const icon = delta > 51200 ? ':red_circle:' : delta > 10240 ? ':yellow_circle:' : ':green_circle:'
-      return `${icon} ${fmt(baselineBundle)} → ${fmt(bundleSize)} (${sign}${fmt(Math.abs(delta))}, ${sign}${pct}%)`
+      return `${icon} ${fmt(baselineBundle)} → ${fmt(bundleSize)} (${bytesDelta}, ${pctDelta})`
     }
     return `${fmt(bundleSize)} _(no baseline yet — merge to main first)_`
   })()
@@ -59,10 +62,13 @@ module.exports = async ({ github, context }) => {
   // Builds the test coverage cell for the markdown table.
   // - Red if coverage dropped more than 2%, yellow if any drop, green otherwise.
   // - Falls back gracefully when coverage couldn't be parsed or no baseline exists yet.
+  // Guard against baselineCoverage being "N/A" (written by ci.yml when coverage
+  // parsing fails on main) — it's truthy but produces NaN when passed to parseFloat.
+  const baselineCoverageParsed = parseFloat(baselineCoverage ?? '')
   const coverageLine = (() => {
     if (!COVERAGE || COVERAGE === 'N/A') return '—'
-    if (baselineCoverage) {
-      const delta = (parseFloat(COVERAGE) - parseFloat(baselineCoverage)).toFixed(1)
+    if (!isNaN(baselineCoverageParsed)) {
+      const delta = (parseFloat(COVERAGE) - baselineCoverageParsed).toFixed(1)
       const sign = parseFloat(delta) >= 0 ? '+' : ''
       const icon =
         parseFloat(delta) < -2 ? ':red_circle:' : parseFloat(delta) < 0 ? ':yellow_circle:' : ':green_circle:'

@@ -86,8 +86,10 @@ module.exports = async ({ github, context }) => {
   // Falls back gracefully when the preview wasn't ready or Lighthouse failed.
   const lighthouseLine = (() => {
     if (PREVIEW_READY !== 'true') return '_Preview not ready — Render deploy may have timed out_'
-    if (!LH_PERF) return '_Lighthouse did not run_'
+    // Validate all four values before rendering — a partial failure from
+    // continue-on-error would leave some outputs empty, producing NaN or blank text.
     const perfScore = parseInt(LH_PERF)
+    if (isNaN(perfScore) || !LH_FCP || !LH_LCP || !LH_TBT) return '_Lighthouse results unavailable_'
     const icon = perfScore >= 90 ? ':green_circle:' : perfScore >= 50 ? ':yellow_circle:' : ':red_circle:'
     return `${icon} **${perfScore}/100** · First Contentful Paint ${LH_FCP} · Largest Contentful Paint ${LH_LCP} · Total Blocking Time ${LH_TBT}`
   })()

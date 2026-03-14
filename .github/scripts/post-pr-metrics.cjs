@@ -12,7 +12,8 @@ module.exports = async ({ github, context }) => {
 
   // All metric values are passed in as environment variables by the workflow.
   // The workflow captures them from individual step outputs.
-  const { LINES_ADDED, LINES_REMOVED, BUNDLE_GZIP, COVERAGE, BUILD_OUTCOME } = process.env
+  const { LINES_ADDED, LINES_REMOVED, BUNDLE_GZIP, COVERAGE, BUILD_OUTCOME,
+          PREVIEW_URL, PREVIEW_READY, LH_PERF, LH_FCP, LH_LCP, LH_TBT } = process.env
 
   // BUNDLE_GZIP is the gzipped JS bundle size in bytes — what users actually download.
   // Measured by size-limit, which is more accurate than summing raw file sizes.
@@ -77,6 +78,20 @@ module.exports = async ({ github, context }) => {
     return `${COVERAGE}% _(no baseline yet — merge to main first)_`
   })()
 
+  // Builds the load time cell using Lighthouse metrics from the Render PR preview.
+  // Shows performance score + the three key timing metrics:
+  // - FCP: when something first appears on screen
+  // - LCP: when the main content appears (best proxy for "spinner gone")
+  // - TBT: total blocking time (proxy for interactivity)
+  // Falls back gracefully when the preview wasn't ready or Lighthouse failed.
+  const lighthouseLine = (() => {
+    if (PREVIEW_READY !== 'true') return '_Preview not ready — Render deploy may have timed out_'
+    if (!LH_PERF) return '_Lighthouse did not run_'
+    const perfScore = parseInt(LH_PERF)
+    const icon = perfScore >= 90 ? ':green_circle:' : perfScore >= 50 ? ':yellow_circle:' : ':red_circle:'
+    return `${icon} **${perfScore}/100** · FCP ${LH_FCP} · LCP ${LH_LCP} · TBT ${LH_TBT}`
+  })()
+
   const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
   const now = new Date().toUTCString()
 
@@ -88,7 +103,7 @@ module.exports = async ({ github, context }) => {
     `| Lines changed (prod code) | \`+${LINES_ADDED || 0} / -${LINES_REMOVED || 0}\` |`,
     `| JS bundle size (gzipped) | ${bundleLine} |`,
     `| Test coverage | ${coverageLine} |`,
-    `| Load time | _Needs preview deployments_ |`,
+    `| Load time ([preview](${PREVIEW_URL})) | ${lighthouseLine} |`,
     '',
     `_Updated ${now} · [run #${context.runNumber}](${runUrl})_`,
   ].join('\n')

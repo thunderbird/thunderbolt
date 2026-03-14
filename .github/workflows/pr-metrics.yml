@@ -80,6 +80,47 @@ jobs:
           key: pr-metrics-main-${{ github.event.pull_request.base.sha }}
           restore-keys: pr-metrics-main-
 
+      # --- Lighthouse (load time via Render PR preview) ---
+      # Render auto-deploys a preview at thunderbolt-pr-{number}.onrender.com for every PR.
+      # We poll until it's ready (up to 5 minutes), then run Lighthouse against it.
+      - name: Wait for Render preview
+        id: preview
+        run: |
+          URL="https://thunderbolt-pr-${{ github.event.pull_request.number }}.onrender.com"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null)
+            if [ "$STATUS" = "200" ]; then
+              echo "ready=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/30: HTTP $STATUS — retrying in 10s..."
+            sleep 10
+          done
+          echo "ready=false" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Run Lighthouse
+        id: lighthouse
+        if: steps.preview.outputs.ready == 'true'
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: ${{ steps.preview.outputs.url }}
+          runs: 1
+          uploadArtifacts: false
+        continue-on-error: true
+
+      - name: Parse Lighthouse results
+        id: lh
+        if: steps.lighthouse.outcome == 'success'
+        run: |
+          REPORT=$(ls .lighthouseci/*.report.json 2>/dev/null | head -1)
+          if [ -z "$REPORT" ]; then exit 0; fi
+          echo "perf=$(jq -r '.categories.performance.score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "fcp=$(jq -r '.audits["first-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "lcp=$(jq -r '.audits["largest-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "tbt=$(jq -r '.audits["total-blocking-time"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+
       # --- Post or update the metrics comment ---
       - name: Post metrics comment
         uses: actions/github-script@v7
@@ -89,6 +130,12 @@ jobs:
           BUNDLE_GZIP: ${{ steps.bundle.outputs.gzip }}
           COVERAGE: ${{ steps.coverage.outputs.total }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          PREVIEW_READY: ${{ steps.preview.outputs.ready }}
+          LH_PERF: ${{ steps.lh.outputs.perf }}
+          LH_FCP: ${{ steps.lh.outputs.fcp }}
+          LH_LCP: ${{ steps.lh.outputs.lcp }}
+          LH_TBT: ${{ steps.lh.outputs.tbt }}
         with:
           script: |
             const script = require('./.github/scripts/post-pr-metrics.cjs')

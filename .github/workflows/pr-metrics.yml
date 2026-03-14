@@ -120,6 +120,7 @@ jobs:
           echo "fcp=$(jq -r '.audits["first-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
           echo "lcp=$(jq -r '.audits["largest-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
           echo "tbt=$(jq -r '.audits["total-blocking-time"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+        continue-on-error: true
 
       # --- Post or update the metrics comment ---
       - name: Post metrics comment

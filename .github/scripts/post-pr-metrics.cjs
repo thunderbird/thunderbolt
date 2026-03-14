@@ -89,7 +89,7 @@ module.exports = async ({ github, context }) => {
     if (!LH_PERF) return '_Lighthouse did not run_'
     const perfScore = parseInt(LH_PERF)
     const icon = perfScore >= 90 ? ':green_circle:' : perfScore >= 50 ? ':yellow_circle:' : ':red_circle:'
-    return `${icon} **${perfScore}/100** · FCP ${LH_FCP} · LCP ${LH_LCP} · TBT ${LH_TBT}`
+    return `${icon} **${perfScore}/100** · First Contentful Paint ${LH_FCP} · Largest Contentful Paint ${LH_LCP} · Total Blocking Time ${LH_TBT}`
   })()
 
   const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`

@@ -2,7 +2,7 @@
 description: "Sync skills with upstream thunderbot repo"
 ---
 
-Sync thunderbot skills between this repo and the upstream thunderbot repo via git subtree.
+Sync thunderbot skills between this repo and the upstream thunderbot repo via git subtree. The `references/` directory is part of the subtree and syncs automatically alongside commands and agent files.
 
 ## Instructions
 

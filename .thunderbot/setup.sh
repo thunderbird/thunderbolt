@@ -64,6 +64,14 @@ fi
 ln -sf "../../$PREFIX/thunderbot.md" .claude/agents/thunderbot.md
 echo -e "  ${GREEN}✓${NC} Symlinks created"
 
+# Validate references directory
+if [ -d "$PREFIX/references" ]; then
+  REF_COUNT=$(ls "$PREFIX/references/"*.md 2>/dev/null | wc -l | tr -d ' ')
+  echo -e "  ${GREEN}✓${NC} References directory found ($REF_COUNT reference files)"
+else
+  echo -e "  ${YELLOW}Warning: $PREFIX/references/ not found. Reference files are used by thunderbot commands for enhanced capabilities.${NC}"
+fi
+
 # Check gitignore
 if [ -f .gitignore ] && grep -q '\.claude/\*\*' .gitignore; then
   if ! grep -q '!\.claude/commands/' .gitignore; then

@@ -3,6 +3,8 @@ context: fork
 description: "Fix PR review comments and CI failures"
 ---
 
+For enriched PR workflow protocols, read `.thunderbot/references/pr-workflow.md`.
+
 Fix all PR issues (review comments + issue comments + CI failures) and monitor until clean.
 
 A PR must already exist on the current branch.

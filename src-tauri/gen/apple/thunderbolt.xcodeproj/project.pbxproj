@@ -360,8 +360,8 @@
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = thunderbolt_iOS/thunderbolt_iOS.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "1";
 				DEVELOPMENT_TEAM = "BUMSKVQ3D9";
 				ENABLE_BITCODE = NO;
@@ -378,9 +378,8 @@
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				MARKETING_VERSION = "1.0";
-				PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt;
-				PRODUCT_NAME = "Thunderbolt";
-				PROVISIONING_PROFILE_SPECIFIER = "Thunderbolt iOS AppStore";
+				PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.dev;
+				PRODUCT_NAME = "Thunderbolt Dev";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;

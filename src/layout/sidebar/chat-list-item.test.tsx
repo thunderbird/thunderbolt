@@ -6,39 +6,6 @@ import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-// Mock zustand store — use a selector-compatible mock that preserves the store shape
-// so other test files sharing this process aren't affected
-const mockState = {
-  currentSessionId: null,
-  mcpClients: [],
-  modes: [],
-  models: [],
-  sessions: new Map(),
-  createSession: mock(),
-  setCurrentSessionId: mock(),
-  setMcpClients: mock(),
-  setModes: mock(),
-  setModels: mock(),
-  setSelectedMode: mock(),
-  setSelectedModel: mock(),
-  updateSession: mock(),
-}
-
-const mockChatStore = Object.assign(
-  (selector?: (state: typeof mockState) => unknown) => {
-    return selector ? selector(mockState) : mockState
-  },
-  {
-    getState: () => mockState,
-    setState: mock(),
-    subscribe: mock(() => () => {}),
-    destroy: mock(),
-  },
-)
-mock.module('@/chats/chat-store', () => ({
-  useChatStore: mockChatStore,
-}))
-
 // Mock useChat
 mock.module('@ai-sdk/react', () => ({
   useChat: () => ({ status: 'ready' }),

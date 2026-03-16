@@ -50,6 +50,7 @@ export const ChatListItem = ({
   }, [isEditing])
 
   const handleRenameStart = () => {
+    cancelledRef.current = false
     setEditValue(thread.title ?? 'New Chat')
     setIsEditing(true)
   }

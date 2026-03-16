@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
+import type { ReactNode } from 'react'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -17,23 +18,23 @@ mock.module('@ai-sdk/react', () => ({
 
 // Mock framer-motion
 mock.module('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+  AnimatePresence: ({ children }: { children: ReactNode }) => children,
   motion: {
-    div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as React.ReactNode}</div>,
+    div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as ReactNode}</div>,
   },
 }))
 
 // Mock Radix dropdown to render inline (avoids portal issues in tests)
 mock.module('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({
     children,
     onClick,
     ...props
   }: {
-    children: React.ReactNode
+    children: ReactNode
     onClick?: () => void
     disabled?: boolean
     className?: string
@@ -135,6 +136,24 @@ describe('ChatListItem', () => {
       fireEvent.blur(input)
 
       expect(onRename).not.toHaveBeenCalled()
+    })
+
+    it('succeeds on the first rename attempt after a cancel', () => {
+      const onRename = mock()
+      renderWithProviders(createProps({ onRename }))
+
+      // First: cancel a rename
+      clickRename()
+      const input = screen.getByDisplayValue('My Chat')
+      fireEvent.keyDown(input, { key: 'Escape' })
+
+      // Second: rename should work on the next attempt
+      clickRename()
+      const input2 = screen.getByDisplayValue('My Chat')
+      fireEvent.change(input2, { target: { value: 'After Cancel' } })
+      fireEvent.keyDown(input2, { key: 'Enter' })
+
+      expect(onRename).toHaveBeenCalledWith('thread-1', 'After Cancel')
     })
 
     it('does not call onRename when title is unchanged', () => {

@@ -1,10 +1,10 @@
 ---
 paths:
   - .thunderbot/**
-description: "Ensure ThunderBot references are loaded for relevant operations"
+description: "Ensure Thunderbot references are loaded for relevant operations"
 ---
 
-When executing ThunderBot commands or the ThunderBot agent, always read the relevant reference files from `.thunderbot/references/` based on the current operation:
+When executing Thunderbot commands or the Thunderbot agent, always read the relevant reference files from `.thunderbot/references/` based on the current operation:
 
 - Implementation work -> Read `references/implementation.md` and `references/subagent-playbook.md`
 - Code review -> Read `references/review.md` (for subagent templates when diff is medium/large)
@@ -12,4 +12,4 @@ When executing ThunderBot commands or the ThunderBot agent, always read the rele
 - Committing -> Read `references/commit-conventions.md`
 - Large tasks -> Read `references/team-orchestration.md`
 
-These references contain critical knowledge that enhances ThunderBot's capabilities. Load them BEFORE starting the relevant work.
+These references contain critical knowledge that enhances Thunderbot's capabilities. Load them BEFORE starting the relevant work.

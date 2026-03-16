@@ -1,6 +1,6 @@
 # thunderbot
 
-Thunderbot is an autonomous coding agent (v2) using Claude Code that helps us build Thunderbolt, an AI client from the Thunderbird team (coming soon). It features a modular architecture with a compact orchestrator and specialized reference files, supporting both single-agent mode for small/medium tasks and multi-agent team orchestration for large tasks.
+Thunderbot is an autonomous coding agent using Claude Code that helps us build Thunderbolt, an AI client from the Thunderbird team (coming soon). It features a modular architecture with a compact orchestrator and specialized reference files, supporting both single-agent mode for small/medium tasks and multi-agent team orchestration for large tasks.
 
 ### How It Works
 

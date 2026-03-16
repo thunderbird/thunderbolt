@@ -15,7 +15,6 @@ A PR must already exist on the current branch.
 
 ```bash
 PR_NUMBER=$(gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number')
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
 ```
 
 If no PR is found, stop and tell the user.
@@ -112,7 +111,7 @@ For each actionable issue comment: reply first (answering any questions), then m
 ISSUE_COMMENT_DATA=$(bun run .thunderbot/cli.ts pr-comments --pr $PR_NUMBER --actionable --json)
 
 # For each comment, reply if it contained a question or suggestion:
-# gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ <your reply>"
+# Reply to each comment via gh api before minimizing
 
 # Minimize all actionable comments
 bun run .thunderbot/cli.ts pr-minimize --pr $PR_NUMBER

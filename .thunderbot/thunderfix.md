@@ -3,6 +3,8 @@ context: fork
 description: "Fix PR review comments and CI failures"
 ---
 
+For continuous monitoring, consider using `/loop 5m /thunderfix` instead of running this command once. Each loop iteration gets a fresh context.
+
 For enriched PR workflow protocols, read `.thunderbot/references/pr-workflow.md`.
 
 Fix all PR issues (review comments + issue comments + CI failures) and monitor until clean.
@@ -18,66 +20,6 @@ REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
 
 If no PR is found, stop and tell the user.
 
-## GraphQL Helper
-
-All GraphQL queries use `$id` variables that conflict with shell expansion. Write queries to a temp file and load with `-F`:
-
-```bash
-GQL_DIR=$(mktemp -d)
-trap 'rm -rf "$GQL_DIR"' EXIT
-
-cat > "$GQL_DIR/threads.graphql" << 'GQL'
-query($id: ID!) {
-  node(id: $id) {
-    ... on PullRequest {
-      reviewThreads(first: 100) {
-        nodes { id isResolved comments(first: 10) { nodes { id databaseId body path line author { login } } } }
-      }
-    }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/threads_summary.graphql" << 'GQL'
-query($id: ID!) {
-  node(id: $id) {
-    ... on PullRequest {
-      reviewThreads(first: 100) {
-        nodes { id isResolved }
-      }
-    }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/resolve.graphql" << 'GQL'
-mutation($id: ID!) {
-  resolveReviewThread(input: {threadId: $id}) {
-    thread { id }
-  }
-}
-GQL
-
-cat > "$GQL_DIR/minimize.graphql" << 'GQL'
-mutation($id: ID!) {
-  minimizeComment(input: {subjectId: $id, classifier: RESOLVED}) {
-    minimizedComment { isMinimized }
-  }
-}
-GQL
-
-# jq filter for actionable issue comments (exclude bot comments only).
-# Does NOT filter by PR author — in thunderbot flows the human IS the PR author,
-# so their review feedback must be included.
-# Written to a file because operators are mangled by shell expansion in inline jq.
-cat > "$GQL_DIR/issue_comments.jq" << 'JQ'
-[.[] | select(
-  (.user.type == "User") and
-  (.body | startswith("[Thunderbot]") or startswith("⚡") | not)
-)]
-JQ
-```
-
 ## Fix Loop
 
 Run this loop. Track elapsed time — stop after **15 minutes** total.
@@ -87,16 +29,14 @@ Run this loop. Track elapsed time — stop after **15 minutes** total.
 Gather everything that needs attention in one pass:
 
 ```bash
-PR_NODE_ID=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.node_id')
+# Get unresolved review threads
+UNRESOLVED_THREADS=$(bun run .thunderbot/cli.ts pr-threads --pr $PR_NUMBER --unresolved --json)
 
-# Review thread comments (code-level)
-UNRESOLVED_THREADS=$(gh api graphql -F "query=@$GQL_DIR/threads.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false)')
-
-# Issue-level comments (non-code PR comments from humans, excluding bot messages)
-ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
+# Get actionable issue comments (excludes bot messages and ⚡-prefixed replies)
+ISSUE_COMMENTS=$(bun run .thunderbot/cli.ts pr-comments --pr $PR_NUMBER --actionable --json)
 
 # CI status
-gh pr checks "$PR_NUMBER"
+bun run .thunderbot/cli.ts ci-status --pr $PR_NUMBER
 ```
 
 ### 2. Fix All Issues (Batch)
@@ -131,7 +71,7 @@ gh pr checks "$PR_NUMBER" --watch --fail-fast
 If CI fails (max **3 CI fix attempts** per loop iteration):
 1. Read failing logs:
    ```bash
-   gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId' | xargs -I{} gh run view {} --log-failed
+   bun run .thunderbot/cli.ts ci-logs --branch "$(git branch --show-current)"
    ```
 2. Fix the issue
 3. Push: `Skill(skill="thunderpush", args="fix CI failure")`
@@ -145,13 +85,10 @@ After CI passes, **reply to every comment that asked a question or proposed an a
 
 #### Reply to review threads
 
-For each unresolved review thread that contained a question, suggestion, or alternative approach: reply **before** resolving. Use the REST API to reply to the thread (the comment ID is the first comment's `id` from the thread's `comments.nodes[0]`):
+For each unresolved review thread that contained a question, suggestion, or alternative approach: reply **before** resolving. Use the CLI to reply (the comment ID is the first comment's `databaseId` from the thread's `comments.nodes[0]`):
 
 ```bash
-# For each thread that needs a reply, get the numeric comment ID from the
-# GraphQL `id` field of the first comment (it's also available via REST).
-# Then reply:
-gh api "repos/$REPO/pulls/$PR_NUMBER/comments/{COMMENT_ID}/replies" -X POST -f body="<your reply>"
+bun run .thunderbot/cli.ts pr-reply --pr $PR_NUMBER --comment-id {COMMENT_ID} --body "⚡ <your reply>"
 ```
 
 **Reply guidelines:**
@@ -163,11 +100,7 @@ gh api "repos/$REPO/pulls/$PR_NUMBER/comments/{COMMENT_ID}/replies" -X POST -f b
 
 #### Resolve review threads
 ```bash
-THREAD_IDS=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '.data.node.reviewThreads.nodes[] | select(.isResolved == false) | .id')
-
-for THREAD_ID in $THREAD_IDS; do
-  gh api graphql -F "query=@$GQL_DIR/resolve.graphql" -f "id=$THREAD_ID"
-done
+bun run .thunderbot/cli.ts pr-threads --pr $PR_NUMBER --resolve-all
 ```
 
 #### Reply to and minimize issue-level comments
@@ -175,18 +108,14 @@ done
 For each actionable issue comment: reply first (answering any questions), then minimize.
 
 ```bash
-# Get comments that need replies
-ISSUE_COMMENT_DATA=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq")
+# Get actionable comments
+ISSUE_COMMENT_DATA=$(bun run .thunderbot/cli.ts pr-comments --pr $PR_NUMBER --actionable --json)
 
 # For each comment, reply if it contained a question or suggestion:
 # gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="⚡ <your reply>"
 
-# Then minimize
-COMMENT_NODE_IDS=$(echo "$ISSUE_COMMENT_DATA" | jq -r '.[].node_id')
-
-for COMMENT_ID in $COMMENT_NODE_IDS; do
-  gh api graphql -F "query=@$GQL_DIR/minimize.graphql" -f "id=$COMMENT_ID"
-done
+# Minimize all actionable comments
+bun run .thunderbot/cli.ts pr-minimize --pr $PR_NUMBER
 ```
 
 ### 5. Verify Clean
@@ -194,12 +123,13 @@ done
 Poll to verify no new issues appear. Check every **15 seconds** (max **3 minutes**):
 
 ```bash
-PREV_ISSUE_COUNT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
+PREV_ISSUE_COUNT=$(bun run .thunderbot/cli.ts pr-comments --pr $PR_NUMBER --actionable --json | jq 'length')
 
 for i in $(seq 1 12); do
-  NEW_UNRESOLVED=$(gh api graphql -F "query=@$GQL_DIR/threads_summary.graphql" -f "id=$PR_NODE_ID" --jq '[.data.node.reviewThreads.nodes[] | select(.isResolved == false)] | length')
+  NEW_THREADS=$(bun run .thunderbot/cli.ts pr-threads --pr $PR_NUMBER --json)
+  NEW_UNRESOLVED=$(echo "$NEW_THREADS" | jq '.unresolved')
 
-  NEW_ISSUE_COMMENTS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" | jq -f "$GQL_DIR/issue_comments.jq" | jq 'length')
+  NEW_ISSUE_COMMENTS=$(bun run .thunderbot/cli.ts pr-comments --pr $PR_NUMBER --actionable --json | jq 'length')
 
   if [ "$NEW_UNRESOLVED" -gt 0 ] || [ "$NEW_ISSUE_COMMENTS" -gt "$PREV_ISSUE_COUNT" ]; then
     break  # New issues found — loop back to step 1
@@ -212,12 +142,6 @@ done
 - If no new issues after 3 minutes: **done** — the PR is clean. Stop polling immediately.
 
 Do NOT continue polling once the PR is verified clean. Review comments only appear as a result of actions (pushes), so once a clean verification passes, there's nothing more to wait for.
-
-## Cleanup
-
-```bash
-rm -rf "$GQL_DIR"
-```
 
 ## Report
 

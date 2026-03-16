@@ -8,13 +8,28 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 
 // Mock zustand store — use a selector-compatible mock that preserves the store shape
 // so other test files sharing this process aren't affected
+const mockState = {
+  currentSessionId: null,
+  mcpClients: [],
+  modes: [],
+  models: [],
+  sessions: new Map(),
+  createSession: mock(),
+  setCurrentSessionId: mock(),
+  setMcpClients: mock(),
+  setModes: mock(),
+  setModels: mock(),
+  setSelectedMode: mock(),
+  setSelectedModel: mock(),
+  updateSession: mock(),
+}
+
 const mockChatStore = Object.assign(
-  (selector?: (state: Record<string, unknown>) => unknown) => {
-    const state = { sessions: new Map() }
-    return selector ? selector(state) : state
+  (selector?: (state: typeof mockState) => unknown) => {
+    return selector ? selector(mockState) : mockState
   },
   {
-    getState: () => ({ sessions: new Map(), currentSessionId: null, mcpClients: [], modes: [], models: [] }),
+    getState: () => mockState,
     setState: mock(),
     subscribe: mock(() => () => {}),
     destroy: mock(),

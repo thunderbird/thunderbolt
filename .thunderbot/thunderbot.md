@@ -157,7 +157,7 @@ For continuous monitoring, use `/loop 5m /thunderfix` instead of staying in a ti
 
 ### Phase 11: Cleanup & Report
 
-Tear down Docker: `docker compose -f .thunderbot/docker-compose.yml -p "thunderbot-<identifier>" down -v`
+Tear down Docker: `docker compose -f .thunderbot/docker-compose.yml -p "thunderbot-$(echo <IDENTIFIER> | tr '[:upper:]' '[:lower:]')" down -v`
 
 Print a report with: task identifier, PR URL, branch, files changed, tests added, status, what was done, and the worktree path (preserved for human inspection).
 

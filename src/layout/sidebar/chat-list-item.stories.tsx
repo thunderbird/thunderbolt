@@ -58,6 +58,7 @@ export const Expanded: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -83,6 +84,7 @@ export const ExpandedActive: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -108,6 +110,7 @@ export const ExpandedEncrypted: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -133,6 +136,7 @@ export const Collapsed: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -158,6 +162,7 @@ export const CollapsedActive: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -183,6 +188,7 @@ export const CollapsedEncrypted: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {
@@ -208,6 +214,7 @@ export const Deleting: Story = {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
     } as any,
     onChatClick: () => console.log('Chat clicked'),
+    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
   },
   parameters: {
     docs: {

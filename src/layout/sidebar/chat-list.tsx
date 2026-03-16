@@ -28,6 +28,7 @@ export const ChatList = ({
   showSearch,
   searchInputRef,
   onChatClick,
+  onRename,
   onSearchClick,
   onSearchQueryChange,
 }: ChatListProps) => {
@@ -96,6 +97,7 @@ export const ChatList = ({
               threadIdRef={threadIdRef}
               deleteChatDialogRef={deleteChatDialogRef}
               onChatClick={onChatClick}
+              onRename={onRename}
             />
           ))}
           {chatThreads.length === 0 && debouncedSearchQuery && !isCollapsed && (

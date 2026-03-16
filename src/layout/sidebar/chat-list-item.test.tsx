@@ -6,9 +6,22 @@ import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-// Mock zustand store
+// Mock zustand store — use a selector-compatible mock that preserves the store shape
+// so other test files sharing this process aren't affected
+const mockChatStore = Object.assign(
+  (selector?: (state: Record<string, unknown>) => unknown) => {
+    const state = { sessions: new Map() }
+    return selector ? selector(state) : state
+  },
+  {
+    getState: () => ({ sessions: new Map(), currentSessionId: null, mcpClients: [], modes: [], models: [] }),
+    setState: mock(),
+    subscribe: mock(() => () => {}),
+    destroy: mock(),
+  },
+)
 mock.module('@/chats/chat-store', () => ({
-  useChatStore: () => ({ chatInstance: null }),
+  useChatStore: mockChatStore,
 }))
 
 // Mock useChat

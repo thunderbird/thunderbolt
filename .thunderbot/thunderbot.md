@@ -145,6 +145,8 @@ linear issue update <IDENTIFIER> --state "In Review"
 
 Run `/thunderfix` to handle CI failures and review comments. If the PR was finalized without a `/thunderfix` cycle, run one now.
 
+For continuous monitoring, use `/loop 5m /thunderfix` instead of staying in a tight polling loop. This gives each check a fresh context and is more resilient to long-running sessions.
+
 ### Phase 11: Cleanup & Report
 
 Tear down Docker: `docker compose -f .thunderbot/docker-compose.yml -p "thunderbot-<identifier>" down -v`

@@ -38,7 +38,8 @@
   "size-limit": [
     {
       "name": "JS bundle",
-      "path": "dist/assets/*.js"
+      "path": "dist/assets/*.js",
+      "gzip": true
     }
   ],
   "dependencies": {

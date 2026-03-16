@@ -228,3 +228,9 @@ export const devicesTable = sqliteTable('devices', {
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
 })
+
+/** Local-only table storing decoded task items for E2E encryption support */
+export const tasksDecryptedTable = sqliteTable('tasks_decrypted', {
+  id: text('id').primaryKey(),
+  item: text('item'),
+})

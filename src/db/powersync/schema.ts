@@ -1,13 +1,14 @@
 import type { PowerSyncTableName } from '@shared/powersync-tables'
+import type { DrizzleTableWithPowerSyncOptions } from '@powersync/drizzle-driver'
 import { DrizzleAppSchema } from '@powersync/drizzle-driver'
 import * as tables from '../tables'
 
 /**
  * Drizzle schema for PowerSync - keys are snake_case (table names).
- * Type-checked: every PowerSyncTableName must have an entry.
- * The driver uses the table's config name, not our keys; snake_case keeps types in sync with shared.
+ * Synced tables are type-checked against PowerSyncTableName.
+ * Local-only tables (e.g. tasks_decrypted) use DrizzleTableWithPowerSyncOptions.
  */
-export const drizzleSchema = {
+const syncedSchema = {
   settings: tables.settingsTable,
   chat_threads: tables.chatThreadsTable,
   chat_messages: tables.chatMessagesTable,
@@ -20,6 +21,14 @@ export const drizzleSchema = {
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
 } satisfies Record<PowerSyncTableName, unknown>
+
+export const drizzleSchema = {
+  ...syncedSchema,
+  tasks_decrypted: {
+    tableDefinition: tables.tasksDecryptedTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+}
 
 /**
  * PowerSync AppSchema derived from Drizzle table definitions.

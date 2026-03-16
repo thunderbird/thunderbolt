@@ -85,6 +85,9 @@ tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 tauri-plugin-store = "2.4.2"
 
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
 

@@ -8,12 +8,6 @@ pub mod state;
 
 #[cfg(feature = "bridge")]
 use crate::state::AppState;
-#[cfg(any(
-    feature = "bridge",
-    feature = "libsql",
-    feature = "email",
-    feature = "embeddings"
-))]
 use tauri::Manager;
 #[cfg(feature = "bridge")]
 use tokio::sync::Mutex;
@@ -26,6 +20,17 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     #[cfg(feature = "native_fetch")]
     {
         builder = builder.plugin(tauri_plugin_http::init());
+    }
+
+    // Single-instance: focus existing window when a second instance is launched (desktop only)
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
     }
 
     // Core plugins that are always enabled

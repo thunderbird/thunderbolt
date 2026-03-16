@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
+import type { ReactNode } from 'react'
 
 describe('Sidebar reactivity', () => {
   beforeAll(async () => {
@@ -42,7 +43,7 @@ describe('Sidebar reactivity', () => {
       { id: threadId2, title: 'Second Chat', isEncrypted: 0 },
     ])
 
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
+    const wrapper = ({ children }: { children: ReactNode }) => (
       <DatabaseProvider db={getDb()}>
         <HttpClientProvider httpClient={createMockHttpClient([])}>
           <AuthProvider authClient={createMockAuthClient()}>

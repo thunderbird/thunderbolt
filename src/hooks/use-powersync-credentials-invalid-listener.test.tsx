@@ -3,7 +3,6 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { ThunderboltConnector } from '@/db/powersync/connector'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { devicesTable } from '@/db/tables'
-import { DatabaseSingleton } from '@/db/singleton'
 import { setAuthToken } from '@/lib/auth-token'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
@@ -12,11 +11,13 @@ import { eq } from 'drizzle-orm'
 import { type ReactNode } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { AuthProvider, HttpClientProvider } from '@/contexts'
+import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
 import { showRevokedDeviceModalEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
+import { getDb } from '@/db/database'
 
 const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
@@ -84,7 +85,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     localStorage.setItem('thunderbolt_device_id', deviceId)
     setAuthToken(authToken)
 
-    const db = DatabaseSingleton.instance.db
+    const db = getDb()
     const now = new Date().toISOString()
     await db.insert(devicesTable).values({
       id: deviceId,
@@ -198,17 +199,21 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   describe('device table: missing after having device', () => {
     it('redirects to /account-deleted when device disappears after being present', async () => {
       await setupAuthAndDevice()
-      const db = DatabaseSingleton.instance.db
+      const db = getDb()
 
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
       })
       const WrapperWithQueryClient = ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={queryClient}>
-          <HttpClientProvider httpClient={createMockHttpClient([])}>
-            <AuthProvider authClient={createMockAuthClient()}>{children}</AuthProvider>
-          </HttpClientProvider>
-        </QueryClientProvider>
+        <DatabaseProvider db={getDb()}>
+          <PowerSyncMockProvider>
+            <QueryClientProvider client={queryClient}>
+              <HttpClientProvider httpClient={createMockHttpClient([])}>
+                <AuthProvider authClient={createMockAuthClient()}>{children}</AuthProvider>
+              </HttpClientProvider>
+            </QueryClientProvider>
+          </PowerSyncMockProvider>
+        </DatabaseProvider>
       )
 
       renderHook(() => usePowerSyncCredentialsInvalidListener(), {
@@ -219,7 +224,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         await getClock().runAllAsync()
       })
 
-      expect(await getDevice(deviceId)).not.toBeNull()
+      expect(await getDevice(db, deviceId)).not.toBeNull()
 
       await db.delete(devicesTable).where(eq(devicesTable.id, deviceId))
       await queryClient.invalidateQueries({ queryKey: ['devices', deviceId] })

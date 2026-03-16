@@ -1,6 +1,7 @@
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -11,6 +12,14 @@ import {
 } from './responsive-modal'
 
 describe('ResponsiveModal', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
   const renderModal = (
     props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void; showCloseButton: boolean }> = {},
   ) => {

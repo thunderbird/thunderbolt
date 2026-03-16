@@ -1,6 +1,7 @@
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { AccountDeleted } from './account-deleted'
 
 const mockReplace = mock()
@@ -10,6 +11,14 @@ Object.defineProperty(window, 'location', {
 })
 
 describe('AccountDeleted', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
   beforeEach(() => {
     mockReplace.mockClear()
   })

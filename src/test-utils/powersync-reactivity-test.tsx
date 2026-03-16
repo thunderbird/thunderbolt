@@ -1,6 +1,6 @@
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { act, render, type RenderOptions, type RenderResult } from '@testing-library/react'
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { getClock } from '@/testing-library'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
 
@@ -60,7 +60,7 @@ export const renderWithReactivity = (
 
   const triggerChangeRef = { current: null as ((tables: string[]) => void) | null }
 
-  const Wrapper = ({ children }: { children: React.ReactNode }) => {
+  const Wrapper = ({ children }: { children: ReactNode }) => {
     const content = route ? (
       <MemoryRouter initialEntries={[route]}>
         <Routes>

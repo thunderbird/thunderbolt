@@ -1,5 +1,3 @@
-'use client'
-
 import { type ComponentProps } from 'react'
 import * as LabelPrimitive from '@radix-ui/react-label'
 

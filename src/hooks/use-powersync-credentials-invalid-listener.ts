@@ -2,6 +2,8 @@ import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import type { CredentialsInvalidReason } from '@/db/powersync/connector'
+import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -10,10 +12,10 @@ import { useEffect, useRef } from 'react'
 
 /**
  * Full app reset when credentials are no longer valid: disable PowerSync sync, clear
- * localStorage (token + device id), reset app directory (DB), then reload. Leaves the user
- * in a clean signed-out state so they can sign in again or use the app offline.
+ * localStorage (token + device id), reset app directory (DB), then navigate away.
+ * Leaves the user in a clean signed-out state so they can sign in again or use the app offline.
  */
-const performCredentialsInvalidReset = async (): Promise<void> => {
+const performCredentialsInvalidReset = async (redirectTo: string): Promise<void> => {
   try {
     await setSyncEnabled(false)
     await resetAppDir()
@@ -21,7 +23,7 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
     console.error('Failed to perform credentials invalid reset:', error)
   } finally {
     localStorage.clear()
-    window.location.reload()
+    window.location.replace(redirectTo)
   }
 }
 
@@ -35,7 +37,7 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  *
  * 2. **Devices table (synced via PowerSync)** – We have a token and a device id (we consider
  *    ourselves a logged-in device). We watch the current device row:
- *    - **revokedAt set** – User revoked this device from another device; reset.
+ *    - **revokedAt set** – User revoked this device from another device; show revoked modal.
  *    - **Device row missing** – Only reset if we had seen the device in this session and it
  *      then disappeared (account deleted elsewhere; PowerSync synced and wiped user data).
  *      We do not reset when the device is missing on first load: the local DB may not have
@@ -51,7 +53,8 @@ const performCredentialsInvalidReset = async (): Promise<void> => {
  */
 export const usePowerSyncCredentialsInvalidListener = (): void => {
   const db = useDatabase()
-  const hasTriggeredRef = useRef(false)
+  const hasTriggeredResetRef = useRef(false)
+  const hasDispatchedRevokedModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
@@ -64,12 +67,23 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
   // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
-    const handler = () => {
-      if (hasTriggeredRef.current) {
+    const handler = (event: Event) => {
+      if (hasTriggeredResetRef.current) {
         return
       }
-      hasTriggeredRef.current = true
-      void performCredentialsInvalidReset()
+
+      const reason = (event as CustomEvent<{ reason: CredentialsInvalidReason }>).detail?.reason
+
+      if (reason === 'device_revoked') {
+        if (!hasDispatchedRevokedModalRef.current) {
+          hasDispatchedRevokedModalRef.current = true
+          window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+        }
+        return
+      }
+
+      hasTriggeredResetRef.current = true
+      void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/')
     }
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
@@ -84,19 +98,24 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     const hasToken = Boolean(getAuthToken())
 
-    if (hasTriggeredRef.current) {
+    if (hasTriggeredResetRef.current || !isFetched || !hasToken || !deviceId) {
       return
     }
-    if (!isFetched || !hasToken || !deviceId) {
-      return
-    }
+
     const revoked = device?.revokedAt != null
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
-    const shouldReset = revoked || missingAfterHavingDevice
-    if (!shouldReset) {
+
+    if (revoked) {
+      if (!hasDispatchedRevokedModalRef.current) {
+        hasDispatchedRevokedModalRef.current = true
+        window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+      }
       return
     }
-    hasTriggeredRef.current = true
-    void performCredentialsInvalidReset()
+
+    if (missingAfterHavingDevice) {
+      hasTriggeredResetRef.current = true
+      void performCredentialsInvalidReset('/account-deleted')
+    }
   }, [isFetched, deviceId, device])
 }

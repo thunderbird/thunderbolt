@@ -209,7 +209,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleSubmit()

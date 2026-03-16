@@ -4,15 +4,17 @@
     This is useful when you need to merge external refs with an internal ref.
 */
 
+import type { LegacyRef, MutableRefObject, RefCallback } from 'react'
+
 export const mergeButtonRefs = <T extends HTMLButtonElement>(
-  refs: Array<React.MutableRefObject<T> | React.LegacyRef<T>>,
-): React.RefCallback<T> => {
+  refs: Array<MutableRefObject<T> | LegacyRef<T>>,
+): RefCallback<T> => {
   return (value) => {
     for (const ref of refs) {
       if (typeof ref === 'function') {
         ref(value)
       } else if (ref != null) {
-        ;(ref as React.MutableRefObject<T | null>).current = value
+        ;(ref as MutableRefObject<T | null>).current = value
       }
     }
   }

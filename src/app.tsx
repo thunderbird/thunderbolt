@@ -6,6 +6,8 @@ import { PowerSyncContext } from '@powersync/react'
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
+import { AccountDeleted } from '@/components/account-deleted'
+import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
@@ -37,6 +39,7 @@ import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
@@ -125,6 +128,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       </Route>
 
       {/* Fallback routes - no guards */}
+      <Route path="/account-deleted" element={<AccountDeleted />} />
       <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/not-found" replace />} />
     </Routes>
@@ -133,6 +137,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
 export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
+  const { revokedDeviceOpen } = useCredentialEvents()
 
   const renderAppContent = () => {
     if (initError) {
@@ -186,6 +191,7 @@ export const App = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="ui_theme">
       {renderAppContent()}
+      <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>
   )
 }

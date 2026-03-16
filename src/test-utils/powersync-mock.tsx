@@ -2,7 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PowerSyncContext } from '@powersync/react'
 import { DatabaseProvider } from '@/contexts/database-context'
 import { getDb, isDbRegistered } from '@/db/database'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import {
+  createContext,
+  type MutableRefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react'
 
 /**
  * Minimal PowerSync mock for tests.
@@ -160,7 +169,7 @@ type PowerSyncReactivityTestProviderProps = {
   tables?: string[]
   queryClient?: QueryClient
   /** Ref to receive triggerChange for use in tests */
-  triggerChangeRef?: React.MutableRefObject<((tables: string[]) => void) | null>
+  triggerChangeRef?: MutableRefObject<((tables: string[]) => void) | null>
 }
 
 /**

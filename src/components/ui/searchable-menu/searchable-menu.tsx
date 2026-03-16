@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
-import { memo, useMemo, useState } from 'react'
+import { memo, type ReactNode, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
 import { findItemById, flattenItems, isGroupedItems } from './types'
@@ -12,7 +12,7 @@ type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
   isSelected: boolean
   onClick: () => void
-  renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => React.ReactNode
+  renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
 }
 
 const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButtonProps<T>) => {
@@ -43,14 +43,14 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       </div>
     </button>
   )
-}) as <T>(props: ItemButtonProps<T>) => React.ReactNode
+}) as <T>(props: ItemButtonProps<T>) => ReactNode
 ;(ItemButton as { displayName?: string }).displayName = 'ItemButton'
 
 type GroupSectionProps<T> = {
   group: SearchableMenuGroup<T>
   value?: string
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
-  renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => React.ReactNode
+  renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
 }
 
 const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSectionProps<T>) => {
@@ -79,7 +79,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSect
       </div>
     </div>
   )
-}) as <T>(props: GroupSectionProps<T>) => React.ReactNode
+}) as <T>(props: GroupSectionProps<T>) => ReactNode
 ;(GroupSection as { displayName?: string }).displayName = 'GroupSection'
 
 const DefaultTrigger = <T,>({

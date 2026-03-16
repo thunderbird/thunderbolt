@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type MouseEvent, useState } from 'react'
 import type { CitationSource } from '@/types/citation'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
@@ -38,7 +38,7 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)
 
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     if (safeUrl === '#') {
       return

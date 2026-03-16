@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
-import { useCallback, useEffect, useRef } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
@@ -40,12 +40,12 @@ type SignInFormProps = {
   /**
    * Render function for the header back button (modal variant only)
    */
-  renderBackButton?: (onClick: () => void) => React.ReactNode
+  renderBackButton?: (onClick: () => void) => ReactNode
   /**
    * Ref that exposes the form's goBack function to the parent.
    * Useful for page variant where the back button lives outside the form.
    */
-  goBackRef?: React.RefObject<(() => void) | null>
+  goBackRef?: RefObject<(() => void) | null>
 }
 
 /**

@@ -1,5 +1,3 @@
-'use client'
-
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import { SignInModal } from '@/components/sign-in-modal'

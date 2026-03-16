@@ -12,7 +12,7 @@ import { createChatThread } from '@/dal/chat-threads'
 import { getModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 
@@ -125,7 +125,7 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
 /**
  * Wrapper that includes Router context for useNavigate and MCPProvider
  */
-const TestWrapper = ({ children }: { children: React.ReactNode }) => {
+const TestWrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
   return createElement(
     BrowserRouter,

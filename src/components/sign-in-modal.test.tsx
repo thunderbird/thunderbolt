@@ -19,7 +19,7 @@ mock.module('@/components/ui/input-otp', () => ({
     disabled,
     maxLength,
   }: {
-    children: React.ReactNode
+    children: ReactNode
     value?: string
     onChange?: (value: string) => void
     onComplete?: (value: string) => void
@@ -45,13 +45,14 @@ mock.module('@/components/ui/input-otp', () => ({
       </div>
     )
   },
-  InputOTPGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  InputOTPGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   InputOTPSlot: ({ index }: { index: number }) => <div data-slot-index={index} />,
   InputOTPSeparator: () => <span>-</span>,
 }))
 
 // Import after mock
 import { SignInModal } from './sign-in-modal'
+import { type ReactNode } from 'react'
 
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies

@@ -2,7 +2,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { isSafeUrl } from '@/lib/url-utils'
 import { ImageIcon } from 'lucide-react'
-import { useState } from 'react'
+import { type MouseEvent, useState } from 'react'
 
 type LinkPreviewProps = {
   url: string
@@ -68,7 +68,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   const openExternalLink = useOpenExternalLink()
   const showPlaceholder = !image || imageError
 
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     e.stopPropagation()
 

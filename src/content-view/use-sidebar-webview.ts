@@ -1,7 +1,7 @@
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { Webview, type WebviewOptions } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useRef, useState } from 'react'
 import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
 
 export type SidebarWebviewConfig = {
@@ -18,7 +18,7 @@ export type SidebarWebviewConfig = {
  */
 export const useSidebarWebview = (
   config: SidebarWebviewConfig | null,
-  containerRef: React.RefObject<HTMLElement | null>,
+  containerRef: RefObject<HTMLElement | null>,
   hidden = false,
 ) => {
   const [isInitialized, setIsInitialized] = useState(false)

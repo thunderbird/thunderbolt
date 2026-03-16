@@ -8,7 +8,7 @@
 import type { Widget } from '@/ai/widget-types'
 import type { SourceMetadata } from '@/types/source'
 import { widgetRegistry } from '@/widgets'
-import { createElement, memo } from 'react'
+import { type ComponentType, createElement, memo } from 'react'
 import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-hidden-state'
 
 type WidgetRendererProps = {
@@ -39,7 +39,7 @@ export const WidgetRenderer = memo(({ widget, messageId, sources }: WidgetRender
 
   // Type safety is ensured by the widget registry - widget.args matches the component's props
   return createElement(
-    widgetConfig.module.Component as React.ComponentType<Record<string, unknown> & { messageId: string }>,
+    widgetConfig.module.Component as ComponentType<Record<string, unknown> & { messageId: string }>,
     {
       ...widget.args,
       messageId,

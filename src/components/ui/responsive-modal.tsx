@@ -1,5 +1,3 @@
-'use client'
-
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { createContext, type ComponentProps, type ReactNode } from 'react'
@@ -42,6 +40,10 @@ type ResponsiveModalProps = {
   showCloseButton?: boolean
   /** Callback fired when focus moves into the content after opening */
   onOpenAutoFocus?: (event: Event) => void
+  /** Callback fired when user clicks outside the dialog */
+  onInteractOutside?: (event: Event) => void
+  /** Callback fired when user presses Escape */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void
 }
 
 /**
@@ -72,6 +74,8 @@ export const ResponsiveModal = ({
   className,
   showCloseButton = true,
   onOpenAutoFocus,
+  onInteractOutside,
+  onEscapeKeyDown,
 }: ResponsiveModalProps) => {
   const { isMobile } = useIsMobile()
 
@@ -84,6 +88,8 @@ export const ResponsiveModal = ({
           <DialogOverlay />
           <DialogPrimitive.Content
             onOpenAutoFocus={onOpenAutoFocus}
+            onInteractOutside={onInteractOutside}
+            onEscapeKeyDown={onEscapeKeyDown}
             className={cn(
               'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 duration-200',
               isMobile

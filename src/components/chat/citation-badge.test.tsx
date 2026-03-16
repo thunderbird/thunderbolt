@@ -7,6 +7,7 @@ import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { CitationSource } from '@/types/citation'
+import { type ReactElement } from 'react'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -17,7 +18,7 @@ afterAll(async () => {
 })
 
 // Standalone mode (no provider) — CitationBadge owns its Popover/Sheet
-const renderStandalone = (ui: React.ReactElement) => {
+const renderStandalone = (ui: ReactElement) => {
   const TestProvider = createTestProvider()
   return render(ui, {
     wrapper: ({ children }) => (
@@ -29,7 +30,7 @@ const renderStandalone = (ui: React.ReactElement) => {
 }
 
 // Managed mode (with provider) — CitationBadge is just a trigger
-const renderManaged = (ui: React.ReactElement) => {
+const renderManaged = (ui: ReactElement) => {
   const TestProvider = createTestProvider()
   return render(ui, {
     wrapper: ({ children }) => (

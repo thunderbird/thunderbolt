@@ -10,7 +10,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -156,7 +156,7 @@ export default function Sidebar() {
     }
   }
 
-  const handleSearchClick = (e?: React.MouseEvent) => {
+  const handleSearchClick = (e?: MouseEvent) => {
     e?.preventDefault()
     e?.stopPropagation()
 

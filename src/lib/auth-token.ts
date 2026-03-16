@@ -32,3 +32,8 @@ export const setAuthToken = (token: string): void => {
 export const clearAuthToken = (): void => {
   localStorage.removeItem(authTokenKey)
 }
+
+/** Clear the device ID (for revoked devices — forces a new ID on next login). */
+export const clearDeviceId = (): void => {
+  localStorage.removeItem(deviceIdKey)
+}

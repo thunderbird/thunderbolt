@@ -6,6 +6,8 @@ import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCre
 /** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
 export const powersyncCredentialsInvalid = 'powersync_credentials_invalid'
 
+export type CredentialsInvalidReason = 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required'
+
 type TokenResponse = {
   token: string
   expiresAt: string
@@ -18,14 +20,26 @@ type ErrorBody = { code?: string; error?: string }
  * Checks if the response indicates credentials are invalid (account deleted, device revoked, etc.).
  * If so, dispatches powersyncCredentialsInvalid and returns true.
  */
+const getCredentialsInvalidReason = (status: number, body: ErrorBody): CredentialsInvalidReason | null => {
+  if (status === 410) {
+    return 'account_deleted'
+  }
+  if (status === 403 && body.code === 'DEVICE_DISCONNECTED') {
+    return 'device_revoked'
+  }
+  if (status === 409 && body.code === 'DEVICE_ID_TAKEN') {
+    return 'device_id_taken'
+  }
+  if (status === 400 && body.code === 'DEVICE_ID_REQUIRED') {
+    return 'device_id_required'
+  }
+  return null
+}
+
 export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
-  const isResetSignal =
-    status === 410 ||
-    (status === 403 && body.code === 'DEVICE_DISCONNECTED') ||
-    (status === 409 && body.code === 'DEVICE_ID_TAKEN') ||
-    (status === 400 && body.code === 'DEVICE_ID_REQUIRED')
-  if (isResetSignal) {
-    window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid))
+  const reason = getCredentialsInvalidReason(status, body)
+  if (reason) {
+    window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason } }))
     return true
   }
   return false

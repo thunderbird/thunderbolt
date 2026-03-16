@@ -1,5 +1,3 @@
-'use client'
-
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, Loader2, LogOut, Sparkles, Terminal } from 'lucide-react'
 import { useState } from 'react'
 

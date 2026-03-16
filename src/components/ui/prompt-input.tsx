@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { type ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
-import { forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { type FormEvent, forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ModelSelect } from './model-select'
 
 type PromptInputProps = {
@@ -57,7 +57,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     },
     ref,
   ) => {
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
       if (!isStreaming) {
         onSubmit?.()

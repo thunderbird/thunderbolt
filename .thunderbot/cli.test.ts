@@ -106,36 +106,36 @@ describe('CLI subcommand routing', () => {
 describe('argument parsing edge cases', () => {
   it('pr-threads handler throws on missing --pr', async () => {
     const { handlePRThreads } = await import('./cli/pr-threads')
-    expect(handlePRThreads(['--unresolved'])).rejects.toThrow('Missing required argument: --pr')
+    await expect(handlePRThreads(['--unresolved'])).rejects.toThrow('Missing required argument: --pr')
   })
 
   it('pr-threads handler throws on non-numeric --pr', async () => {
     const { handlePRThreads } = await import('./cli/pr-threads')
-    expect(handlePRThreads(['--pr', 'abc'])).rejects.toThrow('--pr must be a number')
+    await expect(handlePRThreads(['--pr', 'abc'])).rejects.toThrow('--pr must be a number')
   })
 
   it('pr-reply handler throws on missing --comment-id', async () => {
     const { handlePRReply } = await import('./cli/pr-threads')
-    expect(handlePRReply(['--pr', '460', '--body', 'test'])).rejects.toThrow('Missing required argument: --comment-id')
+    await expect(handlePRReply(['--pr', '460', '--body', 'test'])).rejects.toThrow('Missing required argument: --comment-id')
   })
 
   it('pr-reply handler throws on missing --body', async () => {
     const { handlePRReply } = await import('./cli/pr-threads')
-    expect(handlePRReply(['--pr', '460', '--comment-id', '123'])).rejects.toThrow('Missing required argument: --body')
+    await expect(handlePRReply(['--pr', '460', '--comment-id', '123'])).rejects.toThrow('Missing required argument: --body')
   })
 
   it('ci-status handler throws on missing --pr', async () => {
     const { handleCIStatus } = await import('./cli/ci')
-    expect(handleCIStatus([])).rejects.toThrow('Missing required argument: --pr')
+    await expect(handleCIStatus([])).rejects.toThrow('Missing required argument: --pr')
   })
 
   it('pr-comments handler throws on missing --pr', async () => {
     const { handlePRComments } = await import('./cli/pr-comments')
-    expect(handlePRComments(['--actionable'])).rejects.toThrow('Missing required argument: --pr')
+    await expect(handlePRComments(['--actionable'])).rejects.toThrow('Missing required argument: --pr')
   })
 
   it('pr-minimize handler throws on missing --pr', async () => {
     const { handlePRMinimize } = await import('./cli/pr-comments')
-    expect(handlePRMinimize([])).rejects.toThrow('Missing required argument: --pr')
+    await expect(handlePRMinimize([])).rejects.toThrow('Missing required argument: --pr')
   })
 })

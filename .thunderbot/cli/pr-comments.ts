@@ -1,7 +1,4 @@
-import { mkdtempSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { gh, getRepo } from './repo'
+import { gh, getRepo, parseRequiredPR, runGraphQL } from './repo'
 
 type IssueComment = {
   id: number
@@ -49,14 +46,7 @@ export const getActionableComments = async (prNumber: number): Promise<IssueComm
 
 /** Minimize a comment by its GraphQL node ID */
 export const minimizeComment = async (nodeId: string): Promise<void> => {
-  const dir = mkdtempSync(join(tmpdir(), 'thunderbot-gql-'))
-  const queryFile = join(dir, 'minimize.graphql')
-  try {
-    writeFileSync(queryFile, MINIMIZE_MUTATION)
-    await gh(['api', 'graphql', '-F', `query=@${queryFile}`, '-f', `id=${nodeId}`])
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+  await runGraphQL(MINIMIZE_MUTATION, { id: nodeId })
 }
 
 /** Minimize all actionable issue-level comments on a PR */
@@ -115,14 +105,3 @@ export const handlePRMinimize = async (args: string[]): Promise<void> => {
   console.log(`Minimized ${count} comment(s)`)
 }
 
-const parseRequiredPR = (args: string[]): number => {
-  const idx = args.indexOf('--pr')
-  if (idx === -1 || idx + 1 >= args.length) {
-    throw new Error('Missing required argument: --pr')
-  }
-  const num = parseInt(args[idx + 1], 10)
-  if (isNaN(num)) {
-    throw new Error(`--pr must be a number, got: ${args[idx + 1]}`)
-  }
-  return num
-}

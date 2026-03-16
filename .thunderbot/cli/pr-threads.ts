@@ -1,7 +1,4 @@
-import { mkdtempSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { gh, getRepo, getPRNodeId } from './repo'
+import { gh, getRepo, getPRNodeId, parseRequiredPR, parseRequiredArg, runGraphQL, runGraphQLJSON } from './repo'
 
 type ThreadComment = {
   id: string
@@ -49,33 +46,6 @@ const RESOLVE_MUTATION = `mutation($id: ID!) {
   }
 }`
 
-/**
- * Write a GraphQL query to a temp file and execute it via gh api graphql.
- * This avoids the $id shell expansion issue that occurs with inline queries.
- */
-const runGraphQL = async (query: string, variables: Record<string, string>): Promise<string> => {
-  const dir = mkdtempSync(join(tmpdir(), 'thunderbot-gql-'))
-  const queryFile = join(dir, 'query.graphql')
-  try {
-    writeFileSync(queryFile, query)
-    const args = ['api', 'graphql', '-F', `query=@${queryFile}`]
-    for (const [key, value] of Object.entries(variables)) {
-      args.push('-f', `${key}=${value}`)
-    }
-    return await gh(args)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
-
-/**
- * Run a GraphQL query and parse the JSON result, optionally applying a jq-like path.
- * The jqPath is applied manually to avoid relying on gh's --jq for complex extractions.
- */
-const runGraphQLJSON = async <T>(query: string, variables: Record<string, string>): Promise<T> => {
-  const raw = await runGraphQL(query, variables)
-  return JSON.parse(raw) as T
-}
 
 /** Fetch all unresolved review threads with their comments for a PR */
 export const getUnresolvedThreads = async (prNumber: number): Promise<ReviewThread[]> => {
@@ -192,25 +162,3 @@ export const handlePRReply = async (args: string[]): Promise<void> => {
   console.log('Reply posted')
 }
 
-/** Parse the --pr flag from args, throwing if missing */
-const parseRequiredPR = (args: string[]): number => {
-  const value = parseRequiredArg(args, '--pr', 'number')
-  return value as number
-}
-
-/** Parse a required argument by flag name */
-const parseRequiredArg = (args: string[], flag: string, type: 'number' | 'string'): number | string => {
-  const idx = args.indexOf(flag)
-  if (idx === -1 || idx + 1 >= args.length) {
-    throw new Error(`Missing required argument: ${flag}`)
-  }
-  const raw = args[idx + 1]
-  if (type === 'number') {
-    const num = parseInt(raw, 10)
-    if (isNaN(num)) {
-      throw new Error(`${flag} must be a number, got: ${raw}`)
-    }
-    return num
-  }
-  return raw
-}

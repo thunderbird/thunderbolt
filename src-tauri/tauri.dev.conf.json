@@ -5,7 +5,11 @@
   "app": {
     "windows": [
       {
-        "title": "Thunderbolt Dev"
+        "title": "Thunderbolt Dev",
+        "width": 1400,
+        "height": 1000,
+        "minHeight": 600,
+        "minWidth": 600
       }
     ]
   },

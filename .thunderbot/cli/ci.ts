@@ -64,14 +64,6 @@ export const getFailedLogs = async (branch?: string): Promise<string> => {
   return result.stdout
 }
 
-/** Watch CI checks for a PR, blocking until complete or failure */
-export const watchCI = async (prNumber: number): Promise<{ passing: boolean; output: string }> => {
-  const result = await runCommand('gh', ['pr', 'checks', String(prNumber), '--watch', '--fail-fast'])
-  return {
-    passing: result.exitCode === 0,
-    output: result.stdout || result.stderr,
-  }
-}
 
 /** CLI handler for ci-status subcommand */
 export const handleCIStatus = async (args: string[]): Promise<void> => {

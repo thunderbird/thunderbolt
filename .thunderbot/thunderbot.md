@@ -94,7 +94,15 @@ linear issue comment add <IDENTIFIER> --body "[Thunderbot] Starting automated wo
 ### Phase 4: Create Isolated Environment
 
 1. **Worktree**: `git fetch origin main` then `git worktree add ".claude/worktrees/$BRANCH" -b "$BRANCH" origin/main`. Branch naming: `<username>/thu-<number>-<slugified-title>` (lowercase, hyphens, max 60 chars).
-2. **Docker**: Derive port offsets from issue number (`ISSUE_NUM % 500`), then `docker compose -f .thunderbot/docker-compose.yml -p "thunderbot-<identifier>" up -d --build` with `AGENT_PORT_PG`, `AGENT_PORT_API`, `AGENT_PORT_VITE` env vars.
+2. **Docker**: Extract issue number and calculate unique ports:
+   ```bash
+   ISSUE_NUM=$(echo "<IDENTIFIER>" | grep -o '[0-9]*')
+   PORT_OFFSET=$((ISSUE_NUM % 500))
+   AGENT_PORT_PG=$((5500 + PORT_OFFSET))
+   AGENT_PORT_API=$((8500 + PORT_OFFSET))
+   AGENT_PORT_VITE=$((6100 + PORT_OFFSET))
+   ```
+   Then start the stack: `WORKTREE_PATH="$(pwd)/$WORKTREE_PATH" AGENT_PORT_PG=$AGENT_PORT_PG AGENT_PORT_API=$AGENT_PORT_API AGENT_PORT_VITE=$AGENT_PORT_VITE docker compose -f .thunderbot/docker-compose.yml -p "thunderbot-$(echo <IDENTIFIER> | tr '[:upper:]' '[:lower:]')" up -d --build`
 3. **Deps**: `cd "$WORKTREE_PATH" && bun install && cd backend && bun install`
 4. **Migrations**: `cd backend && DATABASE_URL="postgresql://postgres:dev@localhost:$AGENT_PORT_PG/thunderbolt" bun db push`
 

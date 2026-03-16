@@ -117,8 +117,12 @@ export const runGraphQL = async (query: string, variables: Record<string, string
   }
 }
 
-/** Run a GraphQL query and parse the JSON result */
+/** Run a GraphQL query, check for errors, and return the data property */
 export const runGraphQLJSON = async <T>(query: string, variables: Record<string, string>): Promise<T> => {
   const raw = await runGraphQL(query, variables)
-  return JSON.parse(raw) as T
+  const response = JSON.parse(raw)
+  if (response.errors?.length > 0) {
+    throw new Error(`GraphQL query failed: ${JSON.stringify(response.errors)}`)
+  }
+  return response.data as T
 }

@@ -51,20 +51,20 @@ const RESOLVE_MUTATION = `mutation($id: ID!) {
 export const getUnresolvedThreads = async (prNumber: number): Promise<ReviewThread[]> => {
   const nodeId = await getPRNodeId(prNumber)
   const result = await runGraphQLJSON<{
-    data: { node: { reviewThreads: { nodes: ReviewThread[] } } }
+    node: { reviewThreads: { nodes: ReviewThread[] } }
   }>(THREADS_QUERY, { id: nodeId })
 
-  return result.data.node.reviewThreads.nodes.filter((t) => !t.isResolved)
+  return result.node.reviewThreads.nodes.filter((t) => !t.isResolved)
 }
 
 /** Fetch thread resolution summary (id + isResolved) for a PR */
 export const getThreadsSummary = async (prNumber: number): Promise<ThreadsSummary[]> => {
   const nodeId = await getPRNodeId(prNumber)
   const result = await runGraphQLJSON<{
-    data: { node: { reviewThreads: { nodes: ThreadsSummary[] } } }
+    node: { reviewThreads: { nodes: ThreadsSummary[] } }
   }>(THREADS_SUMMARY_QUERY, { id: nodeId })
 
-  return result.data.node.reviewThreads.nodes
+  return result.node.reviewThreads.nodes
 }
 
 /** Resolve a single review thread by its GraphQL node ID */

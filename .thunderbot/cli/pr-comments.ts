@@ -58,21 +58,6 @@ export const minimizeActionableComments = async (prNumber: number): Promise<numb
   return comments.length
 }
 
-/** Reply to a PR as an issue-level comment */
-export const replyToIssueComment = async (
-  repo: string,
-  prNumber: number,
-  body: string,
-): Promise<void> => {
-  await gh([
-    'api',
-    `repos/${repo}/issues/${prNumber}/comments`,
-    '-X',
-    'POST',
-    '-f',
-    `body=${body}`,
-  ])
-}
 
 /** CLI handler for pr-comments subcommand */
 export const handlePRComments = async (args: string[]): Promise<void> => {

@@ -3,7 +3,7 @@ import { gh, runCommand, getCurrentBranch, parseRequiredPR } from './repo'
 type CheckResult = {
   name: string
   status: string
-  conclusion: string
+  elapsed: string
 }
 
 type CIStatusResult = {
@@ -15,14 +15,18 @@ type CIStatusResult = {
 /** Get CI check status for a PR by parsing gh pr checks output */
 export const getCIStatus = async (prNumber: number): Promise<CIStatusResult> => {
   const result = await runCommand('gh', ['pr', 'checks', String(prNumber)])
-  const lines = result.stdout.split('\n').filter(Boolean)
 
+  if (result.exitCode !== 0 && !result.stdout) {
+    throw new Error(`gh pr checks failed: ${result.stderr}`)
+  }
+
+  const lines = result.stdout.split('\n').filter(Boolean)
   const checks: CheckResult[] = lines.map((line) => {
     const parts = line.split('\t')
     return {
       name: parts[0]?.trim() ?? '',
       status: parts[1]?.trim() ?? '',
-      conclusion: parts[2]?.trim() ?? '',
+      elapsed: parts[2]?.trim() ?? '',
     }
   })
 

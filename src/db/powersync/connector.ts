@@ -1,4 +1,5 @@
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
+import { encodeIfNotBase64 } from '@/lib/base64'
 import { getDeviceDisplayName } from '@/lib/platform'
 import ky from 'ky'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
@@ -127,12 +128,19 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
     try {
       // Convert CRUD operations to our API format
-      const operations = transaction.crud.map((op) => ({
-        op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
-        type: op.table,
-        id: op.id,
-        data: op.opData,
-      }))
+      const operations = transaction.crud.map((op) => {
+        const base = {
+          op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
+          type: op.table,
+          id: op.id,
+          data: op.opData,
+        }
+        // Base64-encode task items before uploading
+        if (base.type === 'tasks' && base.data?.item && base.op !== 'DELETE') {
+          return { ...base, data: { ...base.data, item: encodeIfNotBase64(base.data.item as string) } }
+        }
+        return base
+      })
 
       console.info(`Uploading ${operations.length} operations to backend`)
 

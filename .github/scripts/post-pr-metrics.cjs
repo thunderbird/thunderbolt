@@ -52,7 +52,8 @@ module.exports = async ({ github, context }) => {
       const pct = ((delta / baselineBundle) * 100).toFixed(1)
       // Use explicit +/- prefix on both the byte and percentage portions so
       // a shrinking bundle shows "-5.0 KB, -5.0%" rather than "5.0 KB, -5.0%".
-      const bytesDelta = `${delta >= 0 ? '+' : '-'}${fmt(Math.abs(delta))}`
+      // Special-case zero to avoid fmt(0) returning 'N/A' (fmt treats 0 as falsy).
+      const bytesDelta = delta === 0 ? '0 B' : `${delta >= 0 ? '+' : '-'}${fmt(Math.abs(delta))}`
       const pctDelta = `${delta >= 0 ? '+' : ''}${pct}%`
       const icon = delta > 51200 ? ':red_circle:' : delta > 10240 ? ':yellow_circle:' : ':green_circle:'
       return `${icon} ${fmt(baselineBundle)} → ${fmt(bundleSize)} (${bytesDelta}, ${pctDelta})`
@@ -118,7 +119,8 @@ module.exports = async ({ github, context }) => {
     issue_number: context.issue.number,
   })
 
-  const existing = comments.find((c) => c.user.login === 'github-actions[bot]' && c.body.startsWith('## PR Metrics'))
+  // c.user is null for comments from deleted ("ghost") accounts — guard with optional chaining.
+  const existing = comments.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith('## PR Metrics'))
 
   if (existing) {
     await github.rest.issues.updateComment({

@@ -12,6 +12,11 @@ export type HaystackChatRequest = {
   chatHistoryLimit?: number
 }
 
+export type HaystackChatStreamRequest = {
+  query: string
+  sessionId: string
+}
+
 export type HaystackChatResponse = {
   queryId: string
   results: HaystackResult[]

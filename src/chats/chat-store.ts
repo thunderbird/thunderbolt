@@ -10,8 +10,6 @@ import { useShallow } from 'zustand/react/shallow'
 type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
-  haystackError: boolean
-  haystackLoading: boolean
   id: string
   retryCount: number
   retriesExhausted: boolean

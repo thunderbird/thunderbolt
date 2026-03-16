@@ -1,6 +1,7 @@
 import type {
   HaystackChatRequest,
   HaystackChatResponse,
+  HaystackChatStreamRequest,
   HaystackConfig,
   HaystackSessionListResponse,
   HaystackSessionResponse,
@@ -60,6 +61,25 @@ export class HaystackClient {
 
     const data = await response.json()
     return this.transformChatResponse(data)
+  }
+
+  async chatStream(request: HaystackChatStreamRequest): Promise<Response> {
+    const url = `${this.baseApiUrl}/pipelines/${this.config.pipelineName}/chat-stream`
+    const response = await this.fetchFn(url, {
+      method: 'POST',
+      headers: { ...this.headers, Accept: 'text/event-stream' },
+      body: JSON.stringify({
+        query: request.query,
+        search_session_id: request.sessionId,
+        include_result: true,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Haystack API error: ${response.status} ${response.statusText}`)
+    }
+
+    return response
   }
 
   async downloadFile(fileId: string): Promise<Response> {

@@ -4,7 +4,6 @@ import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
 import { useEffect, useMemo, useRef } from 'react'
-import { getHaystackRetry } from '@/chats/chat-instance'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
@@ -18,8 +17,6 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   const {
     chatInstance,
     chatThread,
-    haystackError,
-    haystackLoading,
     id: chatThreadId,
     triggerData,
     retryCount,
@@ -29,7 +26,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
 
-  const isStreaming = status === 'streaming' || haystackLoading
+  const isStreaming = status === 'streaming' || status === 'submitted'
   const wasStreaming = useRef(false)
 
   useEffect(() => {
@@ -42,11 +39,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
 
   const hasError = useMemo(() => {
-    if (chatError || haystackError) {
+    if (chatError) {
       return true
     }
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
-  }, [chatError, haystackError, lastMessage, isStreaming])
+  }, [chatError, lastMessage, isStreaming])
 
   // Extract prompt from the first message (automation prompt) for trigger display
   const triggerPromptContent = useMemo(
@@ -99,7 +96,6 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               message={message}
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
-              isDocumentSearchLoading={isLast && haystackLoading}
             />
           )
         }
@@ -112,18 +108,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
       {/* Show error message if there's an error */}
       {hasError && (
-        <ErrorMessage
-          retryCount={retryCount}
-          retriesExhausted={retriesExhausted}
-          onRetry={() => {
-            const haystackRetry = getHaystackRetry(chatThreadId)
-            if (haystackError && haystackRetry) {
-              haystackRetry()
-            } else {
-              regenerate()
-            }
-          }}
-        />
+        <ErrorMessage retryCount={retryCount} retriesExhausted={retriesExhausted} onRetry={() => regenerate()} />
       )}
     </div>
   )

@@ -2,17 +2,6 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Expandable } from '../ui/expandable'
 
-const documentSearchMessages = [
-  'Searching for data...',
-  'Sifting through documents...',
-  'Remembering where I put something...',
-  'Reading every page at once...',
-  'Connecting the dots...',
-  'Almost there, just double-checking...',
-  'Digging through the archives...',
-  'Asking the filing cabinet nicely...',
-]
-
 type SyntheticLoadingPartProps = {
   message?: string
   messages?: string[]
@@ -56,5 +45,3 @@ export const SyntheticLoadingPart = ({ message = '', messages, isStreaming }: Sy
     </Expandable>
   )
 }
-
-export { documentSearchMessages }

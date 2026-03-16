@@ -35,6 +35,31 @@ export const createHaystackRoutes = (fetchFn: typeof fetch = globalThis.fetch) =
       return { data: session, success: true }
     })
     .post(
+      '/chat-stream',
+      async ({ body, store }) => {
+        if (!store.haystackClient) {
+          throw new Error('Haystack service is not configured.')
+        }
+        const response = await store.haystackClient.chatStream({
+          query: body.query,
+          sessionId: body.sessionId,
+        })
+        return new Response(response.body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        })
+      },
+      {
+        body: t.Object({
+          query: t.String(),
+          sessionId: t.String(),
+        }),
+      },
+    )
+    .post(
       '/chat',
       async ({ body, store }) => {
         if (!store.haystackClient) {

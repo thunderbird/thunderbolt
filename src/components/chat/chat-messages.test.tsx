@@ -349,6 +349,33 @@ describe('ChatMessages', () => {
       expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
     })
 
+    it('should not show error message when status is submitted (waiting for first stream chunk)', () => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({
+          role: 'assistant',
+          parts: [], // Empty parts — SDK created the message but no chunks yet
+        }),
+      ]
+      // 'submitted' is the status between sending the request and receiving the first chunk
+      const mockChatInstance = createMockChatInstance(messages, 'submitted' as 'streaming')
+      const mockUseChat = createMockUseChat(mockChatInstance)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+
+      // ErrorMessage should not be rendered during submitted phase
+      expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
+    })
+
     it('should not show error message when last message has parts', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({

@@ -21,6 +21,31 @@ const createTestHaystackRoutes = (mockClient: Partial<HaystackClient> | null) =>
       return { data: session, success: true }
     })
     .post(
+      '/chat-stream',
+      async ({ body, store }) => {
+        if (!store.haystackClient) {
+          throw new Error('Haystack service is not configured.')
+        }
+        const response = await store.haystackClient.chatStream({
+          query: body.query,
+          sessionId: body.sessionId,
+        })
+        return new Response(response.body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        })
+      },
+      {
+        body: t.Object({
+          query: t.String(),
+          sessionId: t.String(),
+        }),
+      },
+    )
+    .post(
       '/chat',
       async ({ body, store }) => {
         if (!store.haystackClient) {
@@ -78,6 +103,7 @@ describe('Haystack Routes', () => {
   let app: ReturnType<typeof createTestHaystackRoutes>
   let mockCreateSession: ReturnType<typeof mock>
   let mockChat: ReturnType<typeof mock>
+  let mockChatStream: ReturnType<typeof mock>
   let mockListSessions: ReturnType<typeof mock>
   let mockDownloadFile: ReturnType<typeof mock>
 
@@ -106,6 +132,14 @@ describe('Haystack Routes', () => {
       }),
     )
 
+    mockChatStream = mock(() =>
+      Promise.resolve(
+        new Response('data: {"type":"content_chunk","content":"Hello"}\n\ndata: [DONE]\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      ),
+    )
+
     mockDownloadFile = mock(() =>
       Promise.resolve(
         new Response('pdf-content', {
@@ -120,6 +154,7 @@ describe('Haystack Routes', () => {
     const mockClient = {
       createSession: mockCreateSession,
       chat: mockChat,
+      chatStream: mockChatStream,
       listSessions: mockListSessions,
       downloadFile: mockDownloadFile,
     }
@@ -248,6 +283,83 @@ describe('Haystack Routes', () => {
 
       const response = await app.handle(
         new Request('http://localhost/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test', sessionId: 'session-123' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+    })
+  })
+
+  describe('POST /chat-stream', () => {
+    it('should stream chat response with correct headers', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'What is in the workspace?', sessionId: 'session-123' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('text/event-stream')
+      expect(response.headers.get('Cache-Control')).toBe('no-cache')
+      const body = await response.text()
+      expect(body).toContain('content_chunk')
+      expect(mockChatStream).toHaveBeenCalledWith({
+        query: 'What is in the workspace?',
+        sessionId: 'session-123',
+      })
+    })
+
+    it('should return 400 when query is missing', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: 'session-123' }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+    })
+
+    it('should return 400 when sessionId is missing', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test' }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+    })
+
+    it('should return 500 when service is not configured', async () => {
+      const appNoClient = new Elysia().use(createTestHaystackRoutes(null))
+
+      const response = await appNoClient.handle(
+        new Request('http://localhost/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test', sessionId: 'session-123' }),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      const data = await response.json()
+      expect(data.success).toBe(false)
+      expect(data.error).toContain('Haystack service is not configured')
+    })
+
+    it('should handle upstream API errors', async () => {
+      mockChatStream.mockRejectedValueOnce(new Error('Haystack API error: 500 Internal Server Error'))
+
+      const response = await app.handle(
+        new Request('http://localhost/chat-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: 'test', sessionId: 'session-123' }),

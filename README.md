@@ -158,7 +158,7 @@ make format-check
 bun tauri:libsql
 
 # Alternative: Run with no Cargo features (minimal build)
-bun tauri:dev
+bun tauri:dev:desktop
 ```
 
 ### Enabling optional Rust features

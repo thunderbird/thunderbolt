@@ -1,96 +1,89 @@
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
-
-type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
-
-type MCPServerConnection = {
-  id: string
-  name: string
-  url: string
-  client: MCPClient | null
-  isConnected: boolean
-  error: Error | null
-  enabled: boolean
-}
+import { createCredentialStore } from './mcp-auth'
+import { createTransport } from './mcp-transports'
+import { useDatabase } from '@/contexts'
+import type { McpClient, McpServerConfig, McpServerConnection } from '@/types/mcp'
 
 type MCPContextType = {
-  servers: MCPServerConnection[]
-  getEnabledClients: () => MCPClient[]
+  servers: McpServerConnection[]
+  getEnabledClients: () => McpClient[]
   reconnectServer: (serverId: string) => Promise<void>
-  addServer: (server: { id: string; name: string; url: string; enabled: boolean }) => Promise<void>
+  addServer: (server: McpServerConfig) => Promise<void>
   removeServer: (serverId: string) => void
   updateServerStatus: (serverId: string, enabled: boolean) => void
 }
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
+const RECONNECT_DELAYS = [2000, 4000, 8000, 16000, 32000, 60000]
+const MAX_ATTEMPTS = 5
+
 export const MCPProvider = ({ children }: { children: ReactNode }) => {
-  const [servers, setServers] = useState<MCPServerConnection[]>([])
-  const clientRefs = useRef<Map<string, MCPClient>>(new Map())
-  const serversRef = useRef<MCPServerConnection[]>([])
+  const db = useDatabase()
+  const [servers, setServers] = useState<McpServerConnection[]>([])
+  const clientRefs = useRef<Map<string, McpClient>>(new Map())
+  const serversRef = useRef<McpServerConnection[]>([])
+  const credentialStoreRef = useRef(createCredentialStore(db))
 
   // Keep ref in sync with state
   useEffect(() => {
     serversRef.current = servers
   }, [servers])
 
-  const createClient = async (url: string): Promise<MCPClient> => {
-    // Check if we need to use Tauri fetch for external URLs
-    const urlObj = new URL(url)
-    const isExternal = !['localhost', '127.0.0.1'].includes(urlObj.hostname)
-
-    // Create transport with appropriate implementation
-    const transportOptions = {
-      requestInit: {
-        headers: {
-          Accept: 'application/json, text/event-stream',
-        },
-      },
-    }
-
-    // Use Tauri transport for external URLs to bypass CORS
-    const transport = isExternal
-      ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
-      : new StreamableHTTPClientTransport(urlObj, transportOptions)
-
-    const mcpClient = await createMCPClient({
-      transport,
-    })
-    return mcpClient
+  const createClient = async (config: McpServerConfig): Promise<McpClient> => {
+    const { transport } = await createTransport(config, credentialStoreRef.current)
+    return await createMCPClient({ transport })
   }
 
-  const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
-    if (!server.enabled) {
+  const connectServer = async (config: McpServerConfig, attempt = 0) => {
+    if (!config.enabled) {
       setServers((prev) =>
         prev.map((s) =>
-          s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+          s.id === config.id
+            ? { ...s, client: null, isConnected: false, error: null, errorMessage: null, enabled: false }
+            : s,
         ),
       )
       return
     }
 
     try {
-      // Connecting to MCP server
-      const client = await createClient(server.url)
-
-      clientRefs.current.set(server.id, client)
-
-      setServers((prev) =>
-        prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
-      )
-
-      // MCP server connected successfully
-    } catch (err) {
-      console.error('Failed to connect to MCP server:', server.name, err)
+      const client = await createClient(config)
+      clientRefs.current.set(config.id, client)
       setServers((prev) =>
         prev.map((s) =>
-          s.id === server.id
-            ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
-            : s,
+          s.id === config.id ? { ...s, client, isConnected: true, error: null, errorMessage: null, enabled: true } : s,
         ),
       )
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (attempt < MAX_ATTEMPTS) {
+        const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)]
+        setTimeout(() => connectServer(config, attempt + 1), delay)
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? {
+                  ...s,
+                  client: null,
+                  isConnected: false,
+                  error,
+                  errorMessage: `Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_ATTEMPTS})`,
+                  enabled: config.enabled,
+                }
+              : s,
+          ),
+        )
+      } else {
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? { ...s, client: null, isConnected: false, error, errorMessage: error.message, enabled: config.enabled }
+              : s,
+          ),
+        )
+      }
     }
   }
 
@@ -106,8 +99,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     clientRefs.current.delete(serverId)
   }
 
-  const addServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
-    // Add server to state first
+  const addServer = async (server: McpServerConfig) => {
     setServers((prev) => [
       ...prev,
       {
@@ -115,10 +107,10 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         client: null,
         isConnected: false,
         error: null,
+        errorMessage: null,
       },
     ])
 
-    // Then try to connect if enabled
     if (server.enabled) {
       await connectServer(server)
     }
@@ -126,14 +118,13 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const removeServer = (serverId: string) => {
     disconnectServer(serverId)
+    credentialStoreRef.current.delete(serverId)
     setServers((prev) => prev.filter((s) => s.id !== serverId))
   }
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
-    const server = servers.find((s) => s.id === serverId)
-    if (!server) {
-      return
-    }
+    const server = serversRef.current.find((s) => s.id === serverId)
+    if (!server) return
 
     if (enabled) {
       connectServer({ ...server, enabled })
@@ -141,35 +132,31 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
       disconnectServer(serverId)
       setServers((prev) =>
         prev.map((s) =>
-          s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+          s.id === serverId
+            ? { ...s, client: null, isConnected: false, error: null, errorMessage: null, enabled: false }
+            : s,
         ),
       )
     }
   }
 
   const reconnectServer = async (serverId: string) => {
-    const server = servers.find((s) => s.id === serverId)
-    if (!server) {
-      return
-    }
+    const server = serversRef.current.find((s) => s.id === serverId)
+    if (!server) return
 
-    // Reconnecting MCP server
     disconnectServer(serverId)
-    await connectServer(server)
+    await connectServer(server, 0)
   }
 
-  const getEnabledClients = (): MCPClient[] => {
-    // Use ref to always get current servers, avoiding stale closures
-    return serversRef.current
+  const getEnabledClients = (): McpClient[] =>
+    serversRef.current
       .filter((server) => server.enabled && server.isConnected && server.client)
       .map((server) => server.client!)
-  }
 
   // Cleanup on unmount
   useEffect(() => {
     const clientsRef = clientRefs
     return () => {
-      // Cleaning up MCP connections
       const clients = clientsRef.current
       clients.forEach((client, serverId) => {
         if (client?.close) {
@@ -209,4 +196,4 @@ export const useMCP = () => {
 }
 
 // Export the MCPClient type for use in other files
-export type { MCPClient }
+export type { McpClient as MCPClient }

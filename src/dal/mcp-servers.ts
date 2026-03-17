@@ -14,6 +14,15 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
 }
 
 /**
+ * Gets all MCP servers of any transport type (excluding soft-deleted).
+ * Prefer this over getHttpMcpServers for features that support all transports.
+ */
+export const getMcpServers = (db: AnyDrizzleDatabase) => {
+  const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
+  return query as typeof query & DrizzleQueryWithPromise<McpServer>
+}
+
+/**
  * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
  */
 export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
@@ -37,11 +46,45 @@ export const deleteMcpServer = async (db: AnyDrizzleDatabase, id: string): Promi
 }
 
 /**
- * Creates a new MCP server
+ * Creates a new MCP server with full transport and auth configuration
  */
 export const createMcpServer = async (
   db: AnyDrizzleDatabase,
-  data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
+  server: {
+    id: string
+    name: string
+    type?: 'http' | 'stdio' | 'sse'
+    url?: string
+    command?: string
+    args?: string
+    authType?: 'none' | 'bearer' | 'oauth'
+    encryptedCredential?: string
+    oauthAccountId?: string
+    enabled?: number
+  },
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values(data)
+  await db.insert(mcpServersTable).values(server)
+}
+
+/**
+ * Updates the auth configuration on an existing MCP server.
+ * Only updates auth-related fields; does not touch transport config.
+ */
+export const updateMcpServerAuth = async (
+  db: AnyDrizzleDatabase,
+  serverId: string,
+  auth: {
+    authType: 'none' | 'bearer' | 'oauth'
+    encryptedCredential?: string
+    oauthAccountId?: string
+  },
+): Promise<void> => {
+  await db
+    .update(mcpServersTable)
+    .set({
+      authType: auth.authType as McpServer['authType'],
+      encryptedCredential: auth.encryptedCredential ?? null,
+      oauthAccountId: auth.oauthAccountId ?? null,
+    })
+    .where(and(eq(mcpServersTable.id, serverId), isNull(mcpServersTable.deletedAt)))
 }

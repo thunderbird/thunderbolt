@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { setPostUpdateFlag, handlePostUpdateRedirect } from './post-update-redirect'
 
 const mockLocation = (pathname: string) => {
-  const replaceSpy = vi.fn()
+  const replaceSpy = mock()
   Object.defineProperty(window, 'location', {
     value: { ...window.location, pathname, replace: replaceSpy },
     writable: true,

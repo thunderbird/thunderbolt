@@ -59,6 +59,7 @@ const extractSingleQuotedValue = (str: string, start: number): string | null => 
 const decodeHtmlEntities = (s: string): string =>
   s
     .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
     .replace(/&gt;/g, '>')
     .replace(/&lt;/g, '<')

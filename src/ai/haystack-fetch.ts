@@ -164,6 +164,7 @@ export const formatDocumentWidgets = (
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#x27;')
           .replace(/\//g, '&#x2F;')
       const snippet = doc.content ? escAttr(doc.content.slice(0, 200)) : ''
       const score = doc.score.toFixed(4)

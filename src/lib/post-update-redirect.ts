@@ -1,11 +1,11 @@
-const POST_UPDATE_KEY = 'thunderbolt_post_update'
+const postUpdateKey = 'thunderbolt_post_update'
 
 /**
  * Sets a flag in localStorage to signal that the app should redirect to root
  * after an update+relaunch. Called before restarting the app.
  */
 export const setPostUpdateFlag = () => {
-  localStorage.setItem(POST_UPDATE_KEY, '1')
+  localStorage.setItem(postUpdateKey, '1')
 }
 
 /**
@@ -14,10 +14,12 @@ export const setPostUpdateFlag = () => {
  * and returns true (caller should skip normal initialization). Otherwise returns false.
  */
 export const handlePostUpdateRedirect = (): boolean => {
-  const flag = localStorage.getItem(POST_UPDATE_KEY)
-  if (!flag) return false
+  const flag = localStorage.getItem(postUpdateKey)
+  if (!flag) {
+    return false
+  }
 
-  localStorage.removeItem(POST_UPDATE_KEY)
+  localStorage.removeItem(postUpdateKey)
 
   if (window.location.pathname !== '/') {
     window.location.replace('/')

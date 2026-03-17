@@ -3,10 +3,6 @@ import { createTauriHttpTransport } from './tauri-http-transport'
 import { createTauriSseTransport } from './tauri-sse-transport'
 import { TauriStdioTransport } from './tauri-stdio-transport'
 
-/** Localhost URL patterns that do not need the Tauri CORS bypass */
-const isLocalhostUrl = (url: string): boolean =>
-  url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')
-
 /**
  * Creates the appropriate MCP transport based on server configuration.
  *
@@ -88,6 +84,3 @@ const buildStdioEnv = async (
 
   return { MCP_BEARER_TOKEN: credential.token }
 }
-
-// Re-export for convenience
-export { isLocalhostUrl }

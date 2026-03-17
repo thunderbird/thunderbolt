@@ -92,7 +92,8 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async codeVerifier(): Promise<string> {
-    return this.codeVerifierValue ?? ''
+    if (!this.codeVerifierValue) throw new Error('codeVerifier called before saveCodeVerifier')
+    return this.codeVerifierValue
   }
 
   async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier'): Promise<void> {

@@ -272,8 +272,7 @@ export default function McpServersPage() {
   const getServerErrorMessage = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
     if (!mcpServer) return null
-    // errorMessage is added in provider-integration; fall back to error.message for now
-    return (mcpServer as unknown as { errorMessage?: string | null }).errorMessage ?? mcpServer.error?.message ?? null
+    return mcpServer.errorMessage ?? mcpServer.error?.message ?? null
   }
 
   const formatServerTitle = (url: string, serverId: string) => {

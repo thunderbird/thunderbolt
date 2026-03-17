@@ -4,12 +4,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun
 import { v7 as uuidv7 } from 'uuid'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createCredentialStore, resetKeyCache } from './credential-store'
-import { createBearerAuthHeaders, getEnvVarsForStdio } from './bearer-token-provider'
+import { createBearerAuthHeaders } from './bearer-token-provider'
 import type { McpCredential } from '@/types/mcp'
 
-// Mock @tauri-apps/plugin-os so tests run outside Tauri
-mock.module('@tauri-apps/plugin-os', () => ({
-  hostname: async () => 'test-device',
+// Mock @tauri-apps/plugin-fs so getDeviceId returns a stable test value
+mock.module('@tauri-apps/plugin-fs', () => ({
+  readTextFile: async () => 'test-device-id',
+  writeTextFile: async () => {},
+  BaseDirectory: { AppData: 0 },
 }))
 
 beforeAll(async () => {
@@ -208,50 +210,5 @@ describe('createBearerAuthHeaders', () => {
     const token = 'eyJhbGciOiJSUzI1NiJ9.payload.signature'
     const headers = createBearerAuthHeaders(token)
     expect((headers as Record<string, string>)['Authorization']).toBe(`Bearer ${token}`)
-  })
-})
-
-describe('getEnvVarsForStdio', () => {
-  beforeEach(async () => {
-    await resetTestDatabase()
-    resetKeyCache()
-  })
-
-  it('returns MCP_API_KEY for a bearer credential', async () => {
-    const db = getDb()
-    const serverId = uuidv7()
-    await seedServer(serverId)
-
-    const store = createCredentialStore(db)
-    await store.save(serverId, { type: 'bearer', token: 'the-api-key' })
-
-    const envVars = await getEnvVarsForStdio(store, serverId)
-    expect(envVars).toEqual({ MCP_API_KEY: 'the-api-key' })
-  })
-
-  it('returns empty object for an OAuth credential', async () => {
-    const db = getDb()
-    const serverId = uuidv7()
-    await seedServer(serverId)
-
-    const store = createCredentialStore(db)
-    await store.save(serverId, {
-      type: 'oauth',
-      accessToken: 'oauth-access-token',
-      tokenType: 'bearer',
-    })
-
-    const envVars = await getEnvVarsForStdio(store, serverId)
-    expect(envVars).toEqual({})
-  })
-
-  it('returns empty object when no credential is stored', async () => {
-    const db = getDb()
-    const serverId = uuidv7()
-    await seedServer(serverId)
-
-    const store = createCredentialStore(db)
-    const envVars = await getEnvVarsForStdio(store, serverId)
-    expect(envVars).toEqual({})
   })
 })

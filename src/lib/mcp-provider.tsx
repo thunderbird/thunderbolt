@@ -57,7 +57,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         ),
       )
     } catch (err) {
-      const error = err as Error
+      const error = err instanceof Error ? err : new Error(String(err))
       if (attempt < MAX_ATTEMPTS) {
         const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)]
         setTimeout(() => connectServer(config, attempt + 1), delay)

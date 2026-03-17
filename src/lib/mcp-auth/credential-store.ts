@@ -73,29 +73,31 @@ const decrypt = async (key: CryptoKey, encryptedJson: string): Promise<string> =
 }
 
 /**
- * Retrieves the device hostname for key derivation.
- * Falls back to a static identifier when running outside Tauri (e.g., in tests).
+ * Returns a persistent device-unique identifier for key derivation.
+ * Generates a random UUID on first run and stores it in the app data directory.
+ * Falls back to a static identifier in non-Tauri environments (tests).
  */
-const getHostname = async (): Promise<string> => {
+const getDeviceId = async (): Promise<string> => {
   try {
-    // @tauri-apps/plugin-os exports hostname() at runtime but TypeScript's
-    // dynamic import resolution doesn't see all named exports. Use platform()
-    // (which IS typed) as the device identifier — it's stable per device.
-    const { platform } = await import('@tauri-apps/plugin-os')
-    return `thunderbolt-${platform()}`
+    const { readTextFile, writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    try {
+      return await readTextFile('mcp-device-id', { baseDir: BaseDirectory.AppData })
+    } catch {
+      const id = crypto.randomUUID()
+      await writeTextFile('mcp-device-id', id, { baseDir: BaseDirectory.AppData })
+      return id
+    }
   } catch {
     return 'thunderbolt-local'
   }
 }
 
-/** Lazily-derived key, cached after first derivation within a session */
-let cachedKey: CryptoKey | null = null
+/** Promise-based singleton prevents concurrent PBKDF2 derivations */
+let keyPromise: Promise<CryptoKey> | null = null
 
-const getEncryptionKey = async (): Promise<CryptoKey> => {
-  if (cachedKey) return cachedKey
-  const host = await getHostname()
-  cachedKey = await deriveKey(host)
-  return cachedKey
+const getEncryptionKey = (): Promise<CryptoKey> => {
+  keyPromise ??= getDeviceId().then(deriveKey)
+  return keyPromise
 }
 
 /**
@@ -138,5 +140,5 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
 export { createCredentialStore }
 /** Exported for testing only — resets the in-memory key cache */
 export const resetKeyCache = () => {
-  cachedKey = null
+  keyPromise = null
 }

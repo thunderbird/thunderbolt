@@ -9,7 +9,7 @@ import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interfac
 import { getDatabaseInstance } from '../database'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { setupTasksDecryptionWatcher } from './tasks-decryption-watcher'
+import { setupDecryptionWatchers } from '../encryption'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 
 /** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
@@ -175,8 +175,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 
-    // Set up trigger-based decryption watcher for tasks
-    this.cleanupDecryptionWatcher = await setupTasksDecryptionWatcher(this.powerSync)
+    // Set up trigger-based decryption watchers for all encrypted tables
+    this.cleanupDecryptionWatcher = await setupDecryptionWatchers(this.powerSync)
 
     // Connect to PowerSync Cloud if sync is enabled
     if (isSyncEnabled()) {

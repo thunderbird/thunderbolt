@@ -1,12 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { tasksDecryptedTable, tasksTable } from '../db/tables'
+import { tasksTable } from '../db/tables'
+import { getShadowTable, decryptedCol, decryptedJoin, decryptedNotEmpty } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Task } from '../types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
-const decryptedItem = sql<string>`COALESCE(${tasksDecryptedTable.item}, ${tasksTable.item})`
-const itemNotEmpty = sql`${decryptedItem} IS NOT NULL AND trim(${decryptedItem}) != ''`
+const tasksShadow = getShadowTable('tasks')
+const decryptedItem = decryptedCol(tasksShadow, tasksTable, 'item')
+const itemNotEmpty = decryptedNotEmpty(tasksShadow, tasksTable, 'item')
 
 /**
  * Gets all tasks (excluding soft-deleted), with decrypted items
@@ -23,7 +25,7 @@ export const getAllTasks = async (db: AnyDrizzleDatabase): Promise<Task[]> => {
       userId: tasksTable.userId,
     })
     .from(tasksTable)
-    .leftJoin(tasksDecryptedTable, eq(tasksTable.id, tasksDecryptedTable.id))
+    .leftJoin(tasksShadow, decryptedJoin(tasksTable, tasksShadow))
     .where(isNull(tasksTable.deletedAt))) as Task[]
 }
 
@@ -44,7 +46,7 @@ export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string)
       userId: tasksTable.userId,
     })
     .from(tasksTable)
-    .leftJoin(tasksDecryptedTable, eq(tasksTable.id, tasksDecryptedTable.id))
+    .leftJoin(tasksShadow, decryptedJoin(tasksTable, tasksShadow))
     .where(
       searchQuery
         ? and(
@@ -69,7 +71,7 @@ export const getIncompleteTasksCount = (db: AnyDrizzleDatabase) => {
   const query = db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)
-    .leftJoin(tasksDecryptedTable, eq(tasksTable.id, tasksDecryptedTable.id))
+    .leftJoin(tasksShadow, decryptedJoin(tasksTable, tasksShadow))
     .where(and(eq(tasksTable.isComplete, 0), isNull(tasksTable.deletedAt), itemNotEmpty))
   return query as typeof query & DrizzleQueryWithPromise<{ count: number }>
 }

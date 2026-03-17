@@ -4,8 +4,9 @@ import type { Index } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 import * as tablesModule from './tables'
+import { shadowTables } from './encryption'
 
-const tables = Object.values(tablesModule) as SQLiteTable[]
+const tables = [...Object.values(tablesModule), ...Object.values(shadowTables)] as SQLiteTable[]
 
 type SQLiteColumnLike = { getSQLType?: () => string; name: string; primary?: boolean; notNull?: boolean }
 

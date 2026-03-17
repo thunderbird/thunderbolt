@@ -142,7 +142,7 @@ export const formatDocumentWidgets = (
   const answer = result?.answers[0]
   const docsByFileId = new Map<string, DeepsetResultPayload['documents'][0]>()
   for (const d of result.documents) {
-    if (!docsByFileId.has(d.file.id)) {
+    if (!docsByFileId.has(d.file.id) || d.score > docsByFileId.get(d.file.id)!.score) {
       docsByFileId.set(d.file.id, d)
     }
   }
@@ -158,10 +158,11 @@ export const formatDocumentWidgets = (
       if (!doc || doc.score < 0.01) {
         return []
       }
-      const snippet = doc.content ? doc.content.slice(0, 200).replace(/"/g, '&quot;') : ''
+      const escAttr = (s: string) => s.replace(/"/g, '&quot;')
+      const snippet = doc.content ? escAttr(doc.content.slice(0, 200)) : ''
       const score = doc.score.toFixed(4)
       return [
-        `<widget:document-result name="${file.name}" fileId="${file.id}" snippet="${snippet}" score="${score}" />`,
+        `<widget:document-result name="${escAttr(file.name)}" fileId="${escAttr(file.id)}" snippet="${snippet}" score="${score}" />`,
       ]
     })
     .join('\n')

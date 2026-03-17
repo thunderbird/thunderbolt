@@ -170,7 +170,7 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
           {fileType === 'docx' && docxHtml && (
             <iframe
               className="prose prose-sm dark:prose-invert max-w-none w-full h-full border-0"
-              sandbox="allow-popups"
+              sandbox=""
               srcDoc={docxHtml}
             />
           )}

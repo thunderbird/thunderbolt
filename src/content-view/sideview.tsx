@@ -11,7 +11,7 @@ import { useSideview } from './context'
 export const parseDocumentSideviewId = (sideviewId: string) => {
   const colonIndex = sideviewId.indexOf(':')
   if (colonIndex === -1) {
-    return { fileId: sideviewId, fileName: 'document.pdf', pageNumber: undefined }
+    return { fileId: sideviewId, fileName: 'document', pageNumber: undefined }
   }
 
   const fileId = sideviewId.slice(0, colonIndex)

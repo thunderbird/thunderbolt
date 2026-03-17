@@ -97,18 +97,23 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 describe('ThunderboltConnector', () => {
   let fetchMock: ReturnType<typeof mock>
   let fetchSpy: ReturnType<typeof spyOn>
-  let dispatchSpy: ReturnType<typeof spyOn>
+  let capturedEvents: Event[]
+
+  const captureHandler = (e: Event) => {
+    capturedEvents.push(e)
+  }
 
   beforeEach(() => {
     fetchMock = mock()
     fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(fetchMock as unknown as typeof fetch)
-    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
+    capturedEvents = []
+    window.addEventListener(powersyncCredentialsInvalid, captureHandler)
     clearAuthToken()
   })
 
   afterEach(() => {
     fetchSpy.mockRestore()
-    dispatchSpy.mockRestore()
+    window.removeEventListener(powersyncCredentialsInvalid, captureHandler)
     clearAuthToken()
   })
 
@@ -163,10 +168,8 @@ describe('ThunderboltConnector', () => {
     const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
-    expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'account_deleted' } }),
-    )
+    expect(capturedEvents).toHaveLength(1)
+    expect((capturedEvents[0] as CustomEvent).detail).toEqual({ reason: 'account_deleted' })
   })
 
   it('fetchCredentials returns null when backend returns 401 (no event)', async () => {
@@ -182,7 +185,7 @@ describe('ThunderboltConnector', () => {
     const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 
   it('fetchCredentials returns null on network error', async () => {

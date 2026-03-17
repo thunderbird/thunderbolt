@@ -1,10 +1,17 @@
+import { getTableColumns } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { encryptionConfig } from './config'
 import { codec } from './codec'
 
-/** Pre-computed lookup: tableName → encrypted column names */
+/** Pre-computed lookup: tableName → encrypted DB column names (snake_case) */
 const encryptedColumnsMap = new Map<string, readonly string[]>(
-  Object.values(encryptionConfig).map((config) => [getTableConfig(config.table).name, config.columns]),
+  Object.values(encryptionConfig).map((config) => {
+    const tableName = getTableConfig(config.table).name
+    const cols = getTableColumns(config.table) as Record<string, { name: string }>
+    // Map Drizzle field names (camelCase) to DB column names (snake_case)
+    const dbNames = (config.columns as readonly string[]).map((field) => cols[field].name)
+    return [tableName, dbNames]
+  }),
 )
 
 type CrudOperation = {

@@ -1,19 +1,24 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelProfilesTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { ModelProfile, ModelProfileRow } from '../types'
+
+const profilesShadow = getShadowTable('model_profiles')
+const profilesSelect = decryptedSelectFor('model_profiles')
 
 const mapProfile = (row: ModelProfileRow): ModelProfile => row as ModelProfile
 
 /** Get profile for a model (excluding soft-deleted) */
 export const getModelProfile = async (db: AnyDrizzleDatabase, modelId: string): Promise<ModelProfile | null> => {
-  const profile = await db
-    .select()
+  const profile = (await db
+    .select(profilesSelect)
     .from(modelProfilesTable)
+    .leftJoin(profilesShadow, decryptedJoin(modelProfilesTable, profilesShadow))
     .where(and(eq(modelProfilesTable.modelId, modelId), isNull(modelProfilesTable.deletedAt)))
-    .get()
+    .get()) as ModelProfileRow | undefined
   return profile ? mapProfile(profile) : null
 }
 

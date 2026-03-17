@@ -1,10 +1,14 @@
-import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsTable, settingsTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
+
+const modelsShadow = getShadowTable('models')
+const modelsSelect = decryptedSelectFor('models')
 
 /**
  * Gets all models from the database (excluding soft-deleted)
@@ -12,8 +16,9 @@ import { createDefaultModelProfile, deleteModelProfileForModel } from './model-p
  */
 export const getAllModels = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select()
+    .select(modelsSelect)
     .from(modelsTable)
+    .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(isNull(modelsTable.deletedAt))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
@@ -26,8 +31,9 @@ export const getAllModels = (db: AnyDrizzleDatabase) => {
  */
 export const getAvailableModels = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select()
+    .select(modelsSelect)
     .from(modelsTable)
+    .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
@@ -36,8 +42,9 @@ export const getAvailableModels = (db: AnyDrizzleDatabase) => {
 
 export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
   const query = db
-    .select()
+    .select(modelsSelect)
     .from(modelsTable)
+    .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
@@ -50,8 +57,9 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
  */
 export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select(getTableColumns(modelsTable))
+    .select(modelsSelect)
     .from(modelsTable)
+    .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .leftJoin(
       settingsTable,
       and(eq(settingsTable.key, 'selected_model'), eq(settingsTable.value, modelsTable.id), eq(modelsTable.enabled, 1)),
@@ -73,8 +81,9 @@ export const getModel = async (db: AnyDrizzleDatabase, id: string): Promise<Mode
 
 export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | null> => {
   const systemModel = await db
-    .select()
+    .select(modelsSelect)
     .from(modelsTable)
+    .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
     .orderBy(modelsTable.name)
     .get()

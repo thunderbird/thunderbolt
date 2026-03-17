@@ -2,17 +2,22 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
+
+const messagesShadow = getShadowTable('chat_messages')
+const messagesSelect = decryptedSelectFor('chat_messages')
 
 /**
  * Gets a single chat message by ID (excluding soft-deleted)
  */
 export const getMessage = async (db: AnyDrizzleDatabase, messageId: string): Promise<ChatMessage | undefined> => {
   return (await db
-    .select()
+    .select(messagesSelect)
     .from(chatMessagesTable)
+    .leftJoin(messagesShadow, decryptedJoin(chatMessagesTable, messagesShadow))
     .where(and(eq(chatMessagesTable.id, messageId), isNull(chatMessagesTable.deletedAt)))
     .get()) as ChatMessage | undefined
 }
@@ -22,8 +27,9 @@ export const getMessage = async (db: AnyDrizzleDatabase, messageId: string): Pro
  */
 export const getChatMessages = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage[]> => {
   return (await db
-    .select()
+    .select(messagesSelect)
     .from(chatMessagesTable)
+    .leftJoin(messagesShadow, decryptedJoin(chatMessagesTable, messagesShadow))
     .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
     .orderBy(chatMessagesTable.id)) as ChatMessage[]
 }
@@ -33,8 +39,9 @@ export const getChatMessages = async (db: AnyDrizzleDatabase, threadId: string):
  */
 export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage | null> => {
   const lastMessage = await db
-    .select()
+    .select(messagesSelect)
     .from(chatMessagesTable)
+    .leftJoin(messagesShadow, decryptedJoin(chatMessagesTable, messagesShadow))
     .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)

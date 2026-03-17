@@ -1,5 +1,5 @@
 import { type MouseEvent, useState } from 'react'
-import type { CitationSource } from '@/types/citation'
+import { type CitationSource, buildDocumentSideviewId } from '@/types/citation'
 import { useContentView } from '@/content-view/context'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
@@ -44,12 +44,7 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     if (isDocument) {
-      const meta = source.documentMeta!
-      const sideviewId =
-        meta.pageNumber != null
-          ? `${meta.fileId}:${meta.fileName}:${meta.pageNumber}`
-          : `${meta.fileId}:${meta.fileName}`
-      showSideview('document', sideviewId)
+      showSideview('document', buildDocumentSideviewId(source.documentMeta!))
       return
     }
     if (safeUrl === '#') {

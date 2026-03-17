@@ -29,3 +29,7 @@ export type CitationSource = {
  * Used to replace {{CITE:N}} placeholders with inline CitationBadge components.
  */
 export type CitationMap = Map<number, CitationSource[]>
+
+/** Builds a colon-delimited sideview identifier from document metadata. */
+export const buildDocumentSideviewId = (meta: NonNullable<CitationSource['documentMeta']>): string =>
+  meta.pageNumber != null ? `${meta.fileId}:${meta.fileName}:${meta.pageNumber}` : `${meta.fileId}:${meta.fileName}`

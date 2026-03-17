@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useContentView } from '@/content-view/context'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
-import type { CitationSource } from '@/types/citation'
+import { type CitationSource, buildDocumentSideviewId } from '@/types/citation'
 import { type MouseEvent, memo, useCallback, useState } from 'react'
 import { useCitationPopover } from './citation-popover'
 import { SourceList } from './source-list'
@@ -82,10 +82,7 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
   const isSingleDoc = isSingleDocumentCitation(sources)
 
   const openDocumentSideview = useCallback(() => {
-    const meta = sources[0].documentMeta!
-    const sideviewId =
-      meta.pageNumber != null ? `${meta.fileId}:${meta.fileName}:${meta.pageNumber}` : `${meta.fileId}:${meta.fileName}`
-    showSideview('document', sideviewId)
+    showSideview('document', buildDocumentSideviewId(sources[0].documentMeta!))
   }, [sources, showSideview])
 
   const toggle = (rect: DOMRect) => {
@@ -141,10 +138,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const isSingleDoc = isSingleDocumentCitation(sources)
 
   const openDocumentSideview = useCallback(() => {
-    const meta = sources[0].documentMeta!
-    const sideviewId =
-      meta.pageNumber != null ? `${meta.fileId}:${meta.fileName}:${meta.pageNumber}` : `${meta.fileId}:${meta.fileName}`
-    showSideview('document', sideviewId)
+    showSideview('document', buildDocumentSideviewId(sources[0].documentMeta!))
   }, [sources, showSideview])
 
   const handleClick = () => {

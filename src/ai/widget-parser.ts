@@ -55,6 +55,15 @@ const extractSingleQuotedValue = (str: string, start: number): string | null => 
   return null
 }
 
+/** Decodes HTML entities produced by escAttr back to their original characters. */
+const decodeHtmlEntities = (s: string): string =>
+  s
+    .replace(/&quot;/g, '"')
+    .replace(/&#x2F;/g, '/')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&')
+
 /** Parses widget tag attributes. Double quotes use indexOf; single quotes use a depth-aware scanner. */
 const parseAttributes = (attributesStr: string): Record<string, string> => {
   const attrs: Record<string, string> = {}
@@ -71,14 +80,14 @@ const parseAttributes = (attributesStr: string): Record<string, string> => {
       if (end === -1) {
         continue
       }
-      attrs[key] = attributesStr.slice(valueStart, end)
+      attrs[key] = decodeHtmlEntities(attributesStr.slice(valueStart, end))
       attrStart.lastIndex = end + 1
     } else {
       const value = extractSingleQuotedValue(attributesStr, valueStart)
       if (!value) {
         continue
       }
-      attrs[key] = value
+      attrs[key] = decodeHtmlEntities(value)
       attrStart.lastIndex = valueStart + value.length + 1
     }
   }

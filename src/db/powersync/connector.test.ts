@@ -1,25 +1,21 @@
 import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test'
 
 describe('handleCredentialsInvalidIfNeeded', () => {
-  let dispatchSpy: ReturnType<typeof mock>
-  let savedDispatchEvent: typeof window.dispatchEvent
+  let dispatchSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
-    savedDispatchEvent = window.dispatchEvent
-    dispatchSpy = mock(() => {})
-    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
   })
 
   afterEach(() => {
-    window.dispatchEvent = savedDispatchEvent
-    dispatchSpy.mockRestore?.()
+    dispatchSpy.mockRestore()
   })
 
   it('dispatches event with reason account_deleted for 410', () => {
@@ -99,24 +95,20 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 })
 
 describe('ThunderboltConnector', () => {
-  let savedFetch: typeof globalThis.fetch
-  let savedDispatchEvent: typeof window.dispatchEvent
   let fetchMock: ReturnType<typeof mock>
-  let dispatchSpy: ReturnType<typeof mock>
+  let fetchSpy: ReturnType<typeof spyOn>
+  let dispatchSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
-    savedFetch = globalThis.fetch
-    savedDispatchEvent = window.dispatchEvent
     fetchMock = mock()
-    dispatchSpy = mock(() => {})
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(fetchMock as typeof fetch)
+    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
   })
 
   afterEach(() => {
-    globalThis.fetch = savedFetch
-    window.dispatchEvent = savedDispatchEvent
+    fetchSpy.mockRestore()
+    dispatchSpy.mockRestore()
     clearAuthToken()
   })
 
@@ -153,7 +145,7 @@ describe('ThunderboltConnector', () => {
       expiresAt: new Date(tokenData.expiresAt),
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [request] = fetchMock.mock.calls[0] as [Request]
+    const [request] = fetchMock.mock.calls[0] as unknown as [Request]
     expect(request.url).toContain('/powersync/token')
     expect(request.method).toBe('GET')
   })

@@ -216,10 +216,7 @@ export const processSSEEvents = async (
         writer.write({ type: 'message-metadata', messageMetadata: { haystackReferences: references } })
       }
 
-      const { widgets, documentsMeta } = formatDocumentWidgets(event.result, references)
-      if (widgets) {
-        writer.write({ type: 'text-delta', id: textPartId, delta: '\n\n' + widgets })
-      }
+      const { documentsMeta } = formatDocumentWidgets(event.result, references)
       documents = documentsMeta
     }
     if (event.type === 'error') {

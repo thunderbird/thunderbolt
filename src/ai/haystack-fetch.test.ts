@@ -459,7 +459,7 @@ describe('processSSEEvents', () => {
     })
   })
 
-  it('should emit message-metadata BEFORE widget text-deltas (so UI has refs during streaming)', async () => {
+  it('should NOT write document-result widget tags to the stream', async () => {
     const writer = createMockWriter()
     const resultPayload: DeepsetResultPayload = {
       answers: [
@@ -482,16 +482,10 @@ describe('processSSEEvents', () => {
 
     await processSSEEvents(eventsToGenerator([{ type: 'result', result: resultPayload }]), writer, 'text-1')
 
-    const metadataIdx = writer.writes.findIndex((w) => w.type === 'message-metadata')
-    const widgetDeltaIdx = writer.writes.findIndex(
+    const widgetDelta = writer.writes.find(
       (w) => w.type === 'text-delta' && typeof w.delta === 'string' && w.delta.includes('widget:document-result'),
     )
-
-    expect(metadataIdx).not.toBe(-1)
-    // metadata must come before widget delta (or widget delta may not exist if no widgets)
-    if (widgetDeltaIdx !== -1) {
-      expect(metadataIdx).toBeLessThan(widgetDeltaIdx)
-    }
+    expect(widgetDelta).toBeUndefined()
   })
 
   it('should NOT emit message-metadata when result has no references', async () => {

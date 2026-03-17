@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -13,25 +13,11 @@ import { updateSettings } from '@/dal/settings'
 import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
 
-const mockAddEventListener = mock()
-const mockRemoveEventListener = mock()
+let addSpy: ReturnType<typeof spyOn>
+let removeSpy: ReturnType<typeof spyOn>
 
 beforeAll(async () => {
   await setupTestDatabase()
-
-  if (typeof global.window === 'undefined') {
-    Object.defineProperty(global, 'window', {
-      value: {
-        addEventListener: mockAddEventListener,
-        removeEventListener: mockRemoveEventListener,
-      },
-      writable: true,
-      configurable: true,
-    })
-  } else {
-    global.window.addEventListener = mockAddEventListener
-    global.window.removeEventListener = mockRemoveEventListener
-  }
 
   if (typeof global.sessionStorage === 'undefined') {
     const store = new Map<string, string>()
@@ -54,18 +40,19 @@ afterAll(async () => {
 
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
-    // Reset the real store state before each test
     resetStore()
 
     if (global.sessionStorage) {
       global.sessionStorage.clear()
     }
-    mockAddEventListener.mockClear()
-    mockRemoveEventListener.mockClear()
+    // Use spyOn so the real methods are restored automatically via mockRestore
+    addSpy = spyOn(window, 'addEventListener')
+    removeSpy = spyOn(window, 'removeEventListener')
   })
 
   afterEach(async () => {
-    // Reset the real store state after each test
+    addSpy.mockRestore()
+    removeSpy.mockRestore()
     resetStore()
 
     await resetTestDatabase()
@@ -127,7 +114,7 @@ describe('useHandleIntegrationCompletion', () => {
       wrapper: createQueryTestWrapper(),
     })
 
-    expect(mockAddEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+    expect(addSpy).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
   })
 
   it('should remove event listener on unmount', async () => {
@@ -156,7 +143,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     unmount()
 
-    expect(mockRemoveEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+    expect(removeSpy).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
   })
 
   it('should not process retry if widgetMessageId is missing', async () => {
@@ -183,7 +170,7 @@ describe('useHandleIntegrationCompletion', () => {
       wrapper: createQueryTestWrapper(),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -213,7 +200,7 @@ describe('useHandleIntegrationCompletion', () => {
       wrapper: createQueryTestWrapper(),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -283,7 +270,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -372,7 +359,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -450,7 +437,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -515,7 +502,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -582,7 +569,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+    const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
       throw new Error('Event handler not found')
     }
@@ -658,7 +645,7 @@ describe('useHandleIntegrationCompletion', () => {
         }),
       })
 
-      const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
+      const eventHandler = addSpy.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
       if (!eventHandler) {
         throw new Error('Event handler not found')
       }

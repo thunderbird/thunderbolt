@@ -36,10 +36,14 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   return null
 }
 
-export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
+export const handleCredentialsInvalidIfNeeded = (
+  status: number,
+  body: ErrorBody,
+  dispatch: (event: Event) => void = (e) => window.dispatchEvent(e),
+): boolean => {
   const reason = getCredentialsInvalidReason(status, body)
   if (reason) {
-    window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason } }))
+    dispatch(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason } }))
     return true
   }
   return false

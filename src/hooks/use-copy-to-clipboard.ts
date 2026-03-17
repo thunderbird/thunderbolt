@@ -23,6 +23,9 @@ export const useCopyToClipboard = (resetMs = 2000) => {
       try {
         await navigator.clipboard.writeText(text)
         setIsCopied(true)
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+        }
         timeoutRef.current = setTimeout(() => setIsCopied(false), resetMs)
         return true
       } catch (error) {

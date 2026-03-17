@@ -176,10 +176,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }) as unknown as AnyDrizzleDatabase
 
     // Set up trigger-based decryption watcher for tasks
-    const cleanup = await setupTasksDecryptionWatcher()
-    if (cleanup) {
-      this.cleanupDecryptionWatcher = cleanup
-    }
+    this.cleanupDecryptionWatcher = await setupTasksDecryptionWatcher(this.powerSync)
 
     // Connect to PowerSync Cloud if sync is enabled
     if (isSyncEnabled()) {

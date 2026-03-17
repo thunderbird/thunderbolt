@@ -1,14 +1,9 @@
 import type { TriggerRemoveCallback } from '@powersync/common'
 import { DiffTriggerOperation } from '@powersync/common'
-import { getPowerSyncInstance } from './database'
+import type { PowerSyncDatabase } from '@powersync/web'
 import { decodeIfBase64 } from '@/lib/base64'
 
-export const setupTasksDecryptionWatcher = async (): Promise<TriggerRemoveCallback | null> => {
-  const powerSync = getPowerSyncInstance()
-  if (!powerSync) {
-    return null
-  }
-
+export const setupTasksDecryptionWatcher = async (powerSync: PowerSyncDatabase): Promise<TriggerRemoveCallback> => {
   return powerSync.triggers.trackTableDiff({
     source: 'tasks',
     columns: ['item'],

@@ -9,5 +9,6 @@ type TextPart = Extract<UIMessage['parts'][number], { type: 'text' }>
 export const extractTextFromParts = (parts: UIMessage['parts'], separator = '\n\n'): string =>
   parts
     .filter((part): part is TextPart => part.type === 'text')
-    .map((part) => part.text)
+    .map((part) => part.text.trim())
+    .filter(Boolean)
     .join(separator)

@@ -73,26 +73,14 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
       return
     }
 
-    const updatePosition = () => {
-      if (!document.contains(anchorElement)) {
-        close()
-        return
-      }
-      const rect = anchorElement.getBoundingClientRect()
-      anchorSpan.style.left = `${rect.left}px`
-      anchorSpan.style.top = `${rect.bottom}px`
-      anchorSpan.style.width = `${rect.width}px`
-    }
+    const rect = anchorElement.getBoundingClientRect()
+    anchorSpan.style.left = `${rect.left}px`
+    anchorSpan.style.top = `${rect.bottom}px`
+    anchorSpan.style.width = `${rect.width}px`
 
-    // Continuous position tracking — covers scroll, resize, AND streaming content shifts
-    let rafId: number
-    const track = () => {
-      updatePosition()
-      rafId = requestAnimationFrame(track)
-    }
-    rafId = requestAnimationFrame(track)
-
-    return () => cancelAnimationFrame(rafId)
+    const handler = () => close()
+    window.addEventListener('scroll', handler, { capture: true })
+    return () => window.removeEventListener('scroll', handler, { capture: true })
   }, [popover, close])
 
   if (!popover) {
@@ -131,13 +119,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
           }}
         />
       </PopoverAnchor>
-      <PopoverContent
-        hideWhenDetached
-        align="start"
-        side="bottom"
-        collisionPadding={{ top: 35, bottom: 150 }}
-        className="w-[420px] overflow-hidden rounded-2xl p-0"
-      >
+      <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
         <SourceList sources={sources} proxyBase={cloudUrl.value} />
       </PopoverContent>
     </Popover>

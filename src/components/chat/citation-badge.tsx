@@ -83,7 +83,9 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
 
   const openDocumentSideview = useCallback(() => {
     const meta = sources[0]?.documentMeta
-    if (meta) showSideview('document', buildDocumentSideviewId(meta))
+    if (meta) {
+      showSideview('document', buildDocumentSideviewId(meta))
+    }
   }, [sources, showSideview])
 
   const toggle = (rect: DOMRect) => {
@@ -140,7 +142,9 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
 
   const openDocumentSideview = useCallback(() => {
     const meta = sources[0]?.documentMeta
-    if (meta) showSideview('document', buildDocumentSideviewId(meta))
+    if (meta) {
+      showSideview('document', buildDocumentSideviewId(meta))
+    }
   }, [sources, showSideview])
 
   const handleClick = () => {

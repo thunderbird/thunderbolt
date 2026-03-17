@@ -10,6 +10,7 @@ import type { ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
+import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
@@ -113,6 +114,15 @@ export const AssistantMessage = memo(
       [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources],
     )
 
+    const copyText = useMemo(
+      () =>
+        message.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => (part as TextUIPart).text)
+          .join('\n\n'),
+      [message.parts],
+    )
+
     return (
       <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>
         {partElements.map((partElement, index) => (
@@ -122,6 +132,11 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
+        {!isStreaming && (
+          <div className="flex items-center gap-2.5 px-4 pb-2">
+            <CopyMessageButton text={copyText} />
+          </div>
+        )}
       </div>
     )
   },

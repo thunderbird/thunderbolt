@@ -1,15 +1,23 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpServersTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
+
+const mcpShadow = getShadowTable('mcp_servers')
+const mcpSelect = decryptedSelectFor('mcp_servers')
 
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
  */
 export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
-  const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
+  const query = db
+    .select(mcpSelect)
+    .from(mcpServersTable)
+    .leftJoin(mcpShadow, decryptedJoin(mcpServersTable, mcpShadow))
+    .where(isNull(mcpServersTable.deletedAt))
   return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
@@ -18,8 +26,9 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
  */
 export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select()
+    .select(mcpSelect)
     .from(mcpServersTable)
+    .leftJoin(mcpShadow, decryptedJoin(mcpServersTable, mcpShadow))
     .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
   return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }

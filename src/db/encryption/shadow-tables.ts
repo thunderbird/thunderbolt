@@ -1,3 +1,4 @@
+import { getTableColumns } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { encryptionConfig, type EncryptedTableName } from './config'
@@ -8,13 +9,18 @@ export const shadowTableName = (sourceTableName: string) => `${sourceTableName}_
 /**
  * Auto-generated shadow tables for all encrypted tables.
  * Each has: id (PK) + one text column per encrypted column.
+ * DB column names match the source table's DB column names for consistency.
  */
 export const shadowTables = Object.fromEntries(
   Object.entries(encryptionConfig).map(([key, config]) => {
     const srcName = getTableConfig(config.table).name
+    const srcCols = getTableColumns(config.table) as Record<string, { name: string }>
     const columns = Object.fromEntries([
       ['id', text('id').primaryKey()],
-      ...config.columns.map((col) => [col, text(col)]),
+      ...config.columns.map((fieldName) => {
+        const dbName = srcCols[fieldName].name
+        return [fieldName, text(dbName)]
+      }),
     ])
     return [key, sqliteTable(shadowTableName(srcName), columns)]
   }),

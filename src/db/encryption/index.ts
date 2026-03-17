@@ -2,5 +2,5 @@ export { encryptionConfig, type EncryptedTableName, type EncryptionConfig } from
 export { shadowTables, shadowTableName, getShadowTable } from './shadow-tables'
 export { setupDecryptionWatchers } from './watcher'
 export { encodeForUpload } from './upload-encoder'
-export { decryptedCol, decryptedJoin, decryptedNotEmpty } from './dal-helpers'
+export { decryptedCol, decryptedJoin, decryptedNotEmpty, decryptedSelectFor } from './dal-helpers'
 export { codec, type EncryptionCodec } from './codec'

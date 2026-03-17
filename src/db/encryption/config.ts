@@ -1,5 +1,17 @@
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
-import { tasksTable } from '../tables'
+import {
+  chatMessagesTable,
+  chatThreadsTable,
+  devicesTable,
+  mcpServersTable,
+  modelProfilesTable,
+  modelsTable,
+  modesTable,
+  promptsTable,
+  settingsTable,
+  tasksTable,
+  triggersTable,
+} from '../tables'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySQLiteTable = SQLiteTableWithColumns<any>
@@ -21,7 +33,37 @@ const defineEncrypted = <T extends AnySQLiteTable>(config: EncryptedTableConfig<
  * - PowerSync schema registration
  */
 export const encryptionConfig = {
+  settings: defineEncrypted({ table: settingsTable, columns: ['value'] }),
+  chat_threads: defineEncrypted({ table: chatThreadsTable, columns: ['title'] }),
+  chat_messages: defineEncrypted({
+    table: chatMessagesTable,
+    columns: ['content', 'parts', 'cache', 'metadata'],
+  }),
   tasks: defineEncrypted({ table: tasksTable, columns: ['item'] }),
+  models: defineEncrypted({ table: modelsTable, columns: ['name', 'model', 'url', 'apiKey', 'vendor', 'description'] }),
+  mcp_servers: defineEncrypted({ table: mcpServersTable, columns: ['name', 'url', 'command', 'args'] }),
+  prompts: defineEncrypted({ table: promptsTable, columns: ['title', 'prompt'] }),
+  triggers: defineEncrypted({ table: triggersTable, columns: ['triggerTime'] }),
+  model_profiles: defineEncrypted({
+    table: modelProfilesTable,
+    columns: [
+      'toolsOverride',
+      'linkPreviewsOverride',
+      'chatModeAddendum',
+      'searchModeAddendum',
+      'researchModeAddendum',
+      'citationReinforcementPrompt',
+      'nudgeFinalStep',
+      'nudgePreventive',
+      'nudgeRetry',
+      'nudgeSearchFinalStep',
+      'nudgeSearchPreventive',
+      'nudgeSearchRetry',
+      'providerOptions',
+    ],
+  }),
+  modes: defineEncrypted({ table: modesTable, columns: ['name', 'label', 'icon', 'systemPrompt'] }),
+  devices: defineEncrypted({ table: devicesTable, columns: ['name'] }),
 } as const
 
 export type EncryptionConfig = typeof encryptionConfig

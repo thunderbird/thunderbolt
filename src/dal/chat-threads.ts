@@ -1,10 +1,14 @@
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
 import type { DrizzleQueryWithPromise } from '@/types'
+
+const threadsShadow = getShadowTable('chat_threads')
+const threadsSelect = decryptedSelectFor('chat_threads')
 
 /**
  * Checks if a chat thread ID exists as a soft-deleted record.
@@ -24,8 +28,9 @@ export const isChatThreadDeleted = async (db: AnyDrizzleDatabase, id: string): P
  */
 export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select()
+    .select(threadsSelect)
     .from(chatThreadsTable)
+    .leftJoin(threadsShadow, decryptedJoin(chatThreadsTable, threadsShadow))
     .where(isNull(chatThreadsTable.deletedAt))
     .orderBy(desc(chatThreadsTable.id))
   return query as typeof query & DrizzleQueryWithPromise<ChatThread>
@@ -36,8 +41,9 @@ export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
  */
 export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<ChatThread | null> => {
   const thread = await db
-    .select()
+    .select(threadsSelect)
     .from(chatThreadsTable)
+    .leftJoin(threadsShadow, decryptedJoin(chatThreadsTable, threadsShadow))
     .where(and(eq(chatThreadsTable.id, id), isNull(chatThreadsTable.deletedAt)))
     .get()
   return (thread ?? null) as ChatThread | null

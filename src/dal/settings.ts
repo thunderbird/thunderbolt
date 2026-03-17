@@ -2,16 +2,23 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { hashSetting } from '../defaults/settings'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Setting } from '@/types'
 
+const settingsShadow = getShadowTable('settings')
+const settingsSelect = decryptedSelectFor('settings')
+
 /**
  * Gets all settings from the database
  */
 export const getAllSettings = async (db: AnyDrizzleDatabase): Promise<Setting[]> => {
-  return await db.select().from(settingsTable)
+  return (await db
+    .select(settingsSelect)
+    .from(settingsTable)
+    .leftJoin(settingsShadow, decryptedJoin(settingsTable, settingsShadow))) as Setting[]
 }
 
 /**
@@ -31,8 +38,9 @@ type SettingSchema = Record<
  */
 export const getSettingsRecords = (db: AnyDrizzleDatabase, keys: string[]) => {
   const query = db
-    .select()
+    .select(settingsSelect)
     .from(settingsTable)
+    .leftJoin(settingsShadow, decryptedJoin(settingsTable, settingsShadow))
     .where(keys.length > 0 ? inArray(settingsTable.key, keys) : sql`1=0`)
   return query as typeof query & DrizzleQueryWithPromise<Setting>
 }
@@ -137,7 +145,14 @@ export async function getSettings<T extends SettingSchema>(
   const keys = Object.keys(schema)
 
   const results = await Promise.all(
-    keys.map((key) => db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()),
+    keys.map((key) =>
+      db
+        .select(settingsSelect)
+        .from(settingsTable)
+        .leftJoin(settingsShadow, decryptedJoin(settingsTable, settingsShadow))
+        .where(eq(settingsTable.key, key))
+        .get(),
+    ),
   )
 
   const result: Record<string, string | number | boolean | null> = {}

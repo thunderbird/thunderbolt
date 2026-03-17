@@ -1,12 +1,13 @@
 import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { tasksTable } from '../db/tables'
-import { getShadowTable, decryptedCol, decryptedJoin, decryptedNotEmpty } from '../db/encryption'
+import { getShadowTable, decryptedCol, decryptedJoin, decryptedNotEmpty, decryptedSelectFor } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Task } from '../types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 const tasksShadow = getShadowTable('tasks')
+const tasksSelect = decryptedSelectFor('tasks')
 const decryptedItem = decryptedCol(tasksShadow, tasksTable, 'item')
 const itemNotEmpty = decryptedNotEmpty(tasksShadow, tasksTable, 'item')
 
@@ -15,15 +16,7 @@ const itemNotEmpty = decryptedNotEmpty(tasksShadow, tasksTable, 'item')
  */
 export const getAllTasks = async (db: AnyDrizzleDatabase): Promise<Task[]> => {
   return (await db
-    .select({
-      id: tasksTable.id,
-      item: decryptedItem,
-      order: tasksTable.order,
-      isComplete: tasksTable.isComplete,
-      defaultHash: tasksTable.defaultHash,
-      deletedAt: tasksTable.deletedAt,
-      userId: tasksTable.userId,
-    })
+    .select(tasksSelect)
     .from(tasksTable)
     .leftJoin(tasksShadow, decryptedJoin(tasksTable, tasksShadow))
     .where(isNull(tasksTable.deletedAt))) as Task[]
@@ -36,15 +29,7 @@ export const getAllTasks = async (db: AnyDrizzleDatabase): Promise<Task[]> => {
  */
 export const getIncompleteTasks = (db: AnyDrizzleDatabase, searchQuery?: string) => {
   const query = db
-    .select({
-      id: tasksTable.id,
-      item: decryptedItem,
-      order: tasksTable.order,
-      isComplete: tasksTable.isComplete,
-      defaultHash: tasksTable.defaultHash,
-      deletedAt: tasksTable.deletedAt,
-      userId: tasksTable.userId,
-    })
+    .select(tasksSelect)
     .from(tasksTable)
     .leftJoin(tasksShadow, decryptedJoin(tasksTable, tasksShadow))
     .where(

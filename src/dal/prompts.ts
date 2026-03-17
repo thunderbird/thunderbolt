@@ -2,6 +2,7 @@ import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
+import { getShadowTable, decryptedCol, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getModel } from './models'
@@ -9,17 +10,22 @@ import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
 import type { DrizzleQueryWithPromise } from '@/types'
 
+const promptsShadow = getShadowTable('prompts')
+const promptsSelect = decryptedSelectFor('prompts')
+const decryptedPrompt = decryptedCol(promptsShadow, promptsTable, 'prompt')
+
 /**
  * Returns a Drizzle query for all prompts, optionally filtered by search query (excluding soft-deleted).
  * Use with PowerSync's toCompilableQuery, or await the result to execute.
  */
 export const getAllPrompts = (db: AnyDrizzleDatabase, searchQuery?: string) => {
   const query = db
-    .select()
+    .select(promptsSelect)
     .from(promptsTable)
+    .leftJoin(promptsShadow, decryptedJoin(promptsTable, promptsShadow))
     .where(
       searchQuery
-        ? and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt))
+        ? and(like(decryptedPrompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt))
         : isNull(promptsTable.deletedAt),
     )
     .orderBy(asc(promptsTable.id))
@@ -39,12 +45,13 @@ export const getTriggerPromptForThread = async (
   // Join condition includes soft-delete check so deleted prompts return null
   const result = await db
     .select({
-      prompt: promptsTable,
+      prompt: promptsSelect,
       wasTriggeredByAutomation: chatThreadsTable.wasTriggeredByAutomation,
       triggeredBy: chatThreadsTable.triggeredBy,
     })
     .from(chatThreadsTable)
     .leftJoin(promptsTable, and(eq(chatThreadsTable.triggeredBy, promptsTable.id), isNull(promptsTable.deletedAt)))
+    .leftJoin(promptsShadow, decryptedJoin(promptsTable, promptsShadow))
     .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
     .get()
 
@@ -121,8 +128,9 @@ export const deletePromptsForModel = async (db: AnyDrizzleDatabase, modelId: str
 
 export const getPrompt = async (db: AnyDrizzleDatabase, id: string): Promise<Prompt | null> => {
   const prompt = await db
-    .select()
+    .select(promptsSelect)
     .from(promptsTable)
+    .leftJoin(promptsShadow, decryptedJoin(promptsTable, promptsShadow))
     .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
     .get()
 

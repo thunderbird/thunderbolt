@@ -1,9 +1,13 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { triggersTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { Trigger } from '../types'
 import type { DrizzleQueryWithPromise } from '@/types'
+
+const triggersShadow = getShadowTable('triggers')
+const triggersSelect = decryptedSelectFor('triggers')
 
 /**
  * Returns a Drizzle query for all triggers for a prompt (excluding soft-deleted).
@@ -11,8 +15,9 @@ import type { DrizzleQueryWithPromise } from '@/types'
  */
 export const getAllTriggersForPrompt = (db: AnyDrizzleDatabase, promptId: string) => {
   const query = db
-    .select()
+    .select(triggersSelect)
     .from(triggersTable)
+    .leftJoin(triggersShadow, decryptedJoin(triggersTable, triggersShadow))
     .where(and(eq(triggersTable.promptId, promptId), isNull(triggersTable.deletedAt)))
   return query as typeof query & DrizzleQueryWithPromise<Trigger>
 }
@@ -20,12 +25,12 @@ export const getAllTriggersForPrompt = (db: AnyDrizzleDatabase, promptId: string
 /**
  * Returns all enabled triggers (excluding soft-deleted).
  */
-export const getAllEnabledTriggers = (db: AnyDrizzleDatabase): Promise<Trigger[]> => {
-  const query = db
-    .select()
+export const getAllEnabledTriggers = async (db: AnyDrizzleDatabase): Promise<Trigger[]> => {
+  return (await db
+    .select(triggersSelect)
     .from(triggersTable)
-    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))
-  return query as Promise<Trigger[]>
+    .leftJoin(triggersShadow, decryptedJoin(triggersTable, triggersShadow))
+    .where(and(eq(triggersTable.isEnabled, 1), isNull(triggersTable.deletedAt)))) as Trigger[]
 }
 
 /**

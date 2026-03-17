@@ -1,8 +1,12 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modesTable } from '../db/tables'
+import { getShadowTable, decryptedJoin, decryptedSelectFor } from '../db/encryption'
 import type { Mode, ModeRow } from '../types'
 import { getSettings } from './settings'
+
+const modesShadow = getShadowTable('modes')
+const modesSelect = decryptedSelectFor('modes')
 
 const mapMode = (row: ModeRow): Mode => row as Mode
 
@@ -11,7 +15,12 @@ const mapMode = (row: ModeRow): Mode => row as Mode
  * Sorted by order field
  */
 export const getAllModes = async (db: AnyDrizzleDatabase): Promise<Mode[]> => {
-  const results = await db.select().from(modesTable).where(isNull(modesTable.deletedAt)).orderBy(asc(modesTable.order))
+  const results = (await db
+    .select(modesSelect)
+    .from(modesTable)
+    .leftJoin(modesShadow, decryptedJoin(modesTable, modesShadow))
+    .where(isNull(modesTable.deletedAt))
+    .orderBy(asc(modesTable.order))) as ModeRow[]
 
   return results.map(mapMode)
 }
@@ -20,11 +29,12 @@ export const getAllModes = async (db: AnyDrizzleDatabase): Promise<Mode[]> => {
  * Gets the default mode
  */
 export const getDefaultMode = async (db: AnyDrizzleDatabase): Promise<Mode | null> => {
-  const mode = await db
-    .select()
+  const mode = (await db
+    .select(modesSelect)
     .from(modesTable)
+    .leftJoin(modesShadow, decryptedJoin(modesTable, modesShadow))
     .where(and(eq(modesTable.isDefault, 1), isNull(modesTable.deletedAt)))
-    .get()
+    .get()) as ModeRow | undefined
 
   return mode ? mapMode(mode) : null
 }
@@ -56,11 +66,12 @@ export const getSelectedMode = async (db: AnyDrizzleDatabase): Promise<Mode> => 
  * Gets a specific mode by ID (excluding soft-deleted)
  */
 export const getMode = async (db: AnyDrizzleDatabase, id: string): Promise<Mode | null> => {
-  const mode = await db
-    .select()
+  const mode = (await db
+    .select(modesSelect)
     .from(modesTable)
+    .leftJoin(modesShadow, decryptedJoin(modesTable, modesShadow))
     .where(and(eq(modesTable.id, id), isNull(modesTable.deletedAt)))
-    .get()
+    .get()) as ModeRow | undefined
 
   return mode ? mapMode(mode) : null
 }

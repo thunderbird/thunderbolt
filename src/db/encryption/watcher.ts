@@ -1,6 +1,7 @@
 import type { TriggerRemoveCallback } from '@powersync/common'
 import { DiffTriggerOperation } from '@powersync/common'
 import type { PowerSyncDatabase } from '@powersync/web'
+import { getTableColumns } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { encryptionConfig } from './config'
 import { shadowTableName } from './shadow-tables'
@@ -16,20 +17,27 @@ export const setupDecryptionWatchers = async (powerSync: PowerSyncDatabase): Pro
   for (const config of Object.values(encryptionConfig)) {
     const srcTableName = getTableConfig(config.table).name
     const destTableName = shadowTableName(srcTableName)
-    const columns = config.columns as readonly string[]
+    const fieldNames = config.columns as readonly string[]
 
-    const columnList = ['id', ...columns].join(', ')
-    const placeholders = ['id', ...columns].map(() => '?').join(', ')
+    // Map Drizzle field names to DB column names for raw SQL
+    const srcCols = getTableColumns(config.table) as Record<string, { name: string }>
+    const dbNames = fieldNames.map((f) => srcCols[f].name)
+
+    // Source table uses DB column names in SQL
+    const srcColumnList = ['id', ...dbNames].join(', ')
+    // Shadow table uses the same DB column names (matched in shadow-tables.ts)
+    const destColumnList = srcColumnList
+    const placeholders = ['id', ...dbNames].map(() => '?').join(', ')
 
     const decodeRow = (row: Record<string, string | null>) =>
-      columns.map((col) => {
-        const val = row[col]
+      dbNames.map((dbName) => {
+        const val = row[dbName]
         return val ? codec.decode(val) : val
       })
 
     const cleanup = await powerSync.triggers.trackTableDiff({
       source: srcTableName,
-      columns: [...columns],
+      columns: [...dbNames],
       when: {
         [DiffTriggerOperation.INSERT]: 'TRUE',
         [DiffTriggerOperation.UPDATE]: 'TRUE',
@@ -37,9 +45,11 @@ export const setupDecryptionWatchers = async (powerSync: PowerSyncDatabase): Pro
       },
       hooks: {
         beforeCreate: async (ctx) => {
-          const existing = await ctx.getAll<Record<string, string | null>>(`SELECT ${columnList} FROM ${srcTableName}`)
+          const existing = await ctx.getAll<Record<string, string | null>>(
+            `SELECT ${srcColumnList} FROM ${srcTableName}`,
+          )
           for (const row of existing) {
-            await ctx.execute(`INSERT OR REPLACE INTO ${destTableName} (${columnList}) VALUES (${placeholders})`, [
+            await ctx.execute(`INSERT OR REPLACE INTO ${destTableName} (${destColumnList}) VALUES (${placeholders})`, [
               row.id,
               ...decodeRow(row),
             ])
@@ -54,10 +64,10 @@ export const setupDecryptionWatchers = async (powerSync: PowerSyncDatabase): Pro
           if (diff.__operation === DiffTriggerOperation.DELETE) {
             await context.execute(`DELETE FROM ${destTableName} WHERE id = ?`, [diff.id])
           } else {
-            await context.execute(`INSERT OR REPLACE INTO ${destTableName} (${columnList}) VALUES (${placeholders})`, [
-              diff.id,
-              ...decodeRow(diff),
-            ])
+            await context.execute(
+              `INSERT OR REPLACE INTO ${destTableName} (${destColumnList}) VALUES (${placeholders})`,
+              [diff.id, ...decodeRow(diff)],
+            )
           }
         }
       },

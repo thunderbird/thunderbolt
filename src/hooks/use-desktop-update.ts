@@ -3,6 +3,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
 import { getPowerSyncInstance } from '@/db/powersync'
+import { setPostUpdateFlag } from '@/lib/post-update-redirect'
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
@@ -116,11 +117,11 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       // Best-effort disconnect — don't block the relaunch if PowerSync fails
       try {
         await getPowerSyncInstance()?.disconnect()
-      } catch {
-        /* proceed anyway */
+      } catch (err) {
+        console.error('Failed to disconnect PowerSync before relaunch:', err)
       }
       // Signal the new process to reset navigation (WebView may restore stale route)
-      localStorage.setItem('thunderbolt_post_update', '1')
+      setPostUpdateFlag()
       await relaunch()
     } catch (err) {
       console.error('Failed to restart app:', err)

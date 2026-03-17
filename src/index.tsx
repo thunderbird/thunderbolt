@@ -4,20 +4,13 @@ import './polyfills'
 
 import './index.css'
 import { initializeLinkInterception } from './lib/intercept-links'
+import { handlePostUpdateRedirect } from './lib/post-update-redirect'
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
 // verify screen). Detect this and force a clean start at root.
-const postUpdateFlag = localStorage.getItem('thunderbolt_post_update')
-const shouldRedirectToRoot = Boolean(postUpdateFlag) && window.location.pathname !== '/'
+const redirecting = handlePostUpdateRedirect()
 
-if (postUpdateFlag) {
-  localStorage.removeItem('thunderbolt_post_update')
-  if (shouldRedirectToRoot) {
-    window.location.replace('/')
-  }
-}
-
-if (!shouldRedirectToRoot) {
+if (!redirecting) {
   initializeLinkInterception()
 
   const root = document.getElementById('root') as HTMLElement

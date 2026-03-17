@@ -73,7 +73,12 @@ const server = Bun.serve({
 
     // Serve the actual bundle file
     if (url.pathname.startsWith('/bundle/')) {
-      const filePath = `${BUNDLE_DIR}/${url.pathname.replace('/bundle/', '')}`
+      const relativePath = url.pathname.substring('/bundle/'.length)
+      if (relativePath.includes('..')) {
+        console.error(`Path traversal attempt blocked: ${relativePath}`)
+        return new Response('Forbidden', { status: 403 })
+      }
+      const filePath = `${BUNDLE_DIR}/${relativePath}`
       const file = Bun.file(filePath)
 
       if (!(await file.exists())) {

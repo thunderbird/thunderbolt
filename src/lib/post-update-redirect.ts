@@ -9,6 +9,14 @@ export const setPostUpdateFlag = () => {
 }
 
 /**
+ * Clears the post-update flag. Called when relaunch fails so a stale flag
+ * doesn't force-redirect on the next manual app launch.
+ */
+export const clearPostUpdateFlag = () => {
+  localStorage.removeItem(postUpdateKey)
+}
+
+/**
  * Checks for and consumes the post-update flag. If the flag is present and the
  * current pathname isn't "/", redirects to root via `window.location.replace`
  * and returns true (caller should skip normal initialization). Otherwise returns false.

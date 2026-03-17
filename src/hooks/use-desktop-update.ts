@@ -3,7 +3,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
 import { getPowerSyncInstance } from '@/db/powersync'
-import { setPostUpdateFlag } from '@/lib/post-update-redirect'
+import { setPostUpdateFlag, clearPostUpdateFlag } from '@/lib/post-update-redirect'
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
@@ -124,6 +124,8 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       setPostUpdateFlag()
       await relaunch()
     } catch (err) {
+      // Clear the flag so a stale flag doesn't force-redirect on next manual launch
+      clearPostUpdateFlag()
       console.error('Failed to restart app:', err)
       dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to restart app' })
     }

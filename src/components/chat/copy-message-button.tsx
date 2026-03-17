@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { Check, Copy } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 
 type CopyMessageButtonProps = {
   text: string
@@ -13,26 +13,7 @@ type CopyMessageButtonProps = {
  * Shows a checkmark icon for 2 seconds after a successful copy.
  */
 export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) => {
-  const [isCopied, setIsCopied] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setIsCopied(true)
-      timeoutRef.current = setTimeout(() => setIsCopied(false), 2000)
-    } catch (error) {
-      console.error('Error copying message:', error)
-    }
-  }
+  const { copy, isCopied } = useCopyToClipboard()
 
   return (
     <Button
@@ -41,7 +22,7 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
       className={cn('size-8 rounded-lg', className)}
       title="Copy message"
       aria-label="Copy message"
-      onClick={handleCopy}
+      onClick={() => copy(text)}
     >
       {isCopied ? (
         <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" />

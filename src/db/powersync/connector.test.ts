@@ -101,7 +101,7 @@ describe('ThunderboltConnector', () => {
 
   beforeEach(() => {
     fetchMock = mock()
-    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(fetchMock as typeof fetch)
+    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(fetchMock as unknown as typeof fetch)
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
   })

@@ -32,11 +32,19 @@ export const ChatListItem = ({
 
   const { status } = useChat(chatInstance ? { chat: chatInstance } : undefined)
 
-  const { isEditing, editValue, setEditValue, inputRef, handleRenameStart, handleRenameSubmit, handleRenameCancel } =
-    useChatListItemState({
-      title: thread.title,
-      onRename: (title) => onRename(thread.id, title),
-    })
+  const {
+    isEditing,
+    editValue,
+    setEditValue,
+    displayTitle,
+    inputRef,
+    handleRenameStart,
+    handleRenameSubmit,
+    handleRenameCancel,
+  } = useChatListItemState({
+    title: thread.title,
+    onRename: (title) => onRename(thread.id, title),
+  })
 
   if (isCollapsed) {
     return (
@@ -96,13 +104,10 @@ export const ChatListItem = ({
                 }}
                 onBlur={handleRenameSubmit}
                 onClick={(e) => e.stopPropagation()}
-                className={cn(
-                  'truncate flex-1 min-w-0 bg-transparent outline-none border-b-2 text-sm pb-px transition-colors',
-                  editValue !== (thread.title ?? 'New Chat') ? 'border-blue-500' : 'border-transparent',
-                )}
+                className="truncate flex-1 min-w-0 bg-transparent outline-none text-sm"
               />
             ) : (
-              <span className="truncate flex-1 min-w-0">{thread.title}</span>
+              <span className="truncate flex-1 min-w-0">{displayTitle}</span>
             )}
           </div>
           {!isEditing && (

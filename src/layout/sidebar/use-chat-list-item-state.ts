@@ -12,18 +12,27 @@ type UseChatListItemStateParams = {
 export const useChatListItemState = ({ title, onRename }: UseChatListItemStateParams) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
+  const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelledRef = useRef(false)
+
+  useEffect(() => {
+    if (optimisticTitle !== null && title === optimisticTitle) {
+      setOptimisticTitle(null)
+    }
+  }, [title, optimisticTitle])
 
   useEffect(() => {
     if (!isEditing) {
       return
     }
-    const frameId = requestAnimationFrame(() => {
+    // setTimeout is needed (not rAF) because Radix dropdown restores focus
+    // to the trigger after closing — setTimeout defers past that restoration
+    const timer = setTimeout(() => {
       inputRef.current?.focus()
       inputRef.current?.select()
-    })
-    return () => cancelAnimationFrame(frameId)
+    }, 0)
+    return () => clearTimeout(timer)
   }, [isEditing])
 
   const handleRenameStart = () => {
@@ -40,6 +49,7 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     const trimmed = editValue.trim()
     const newTitle = trimmed || 'New Chat'
     if (newTitle !== (title ?? 'New Chat')) {
+      setOptimisticTitle(newTitle)
       onRename(newTitle)
     }
     setIsEditing(false)
@@ -50,10 +60,13 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     setIsEditing(false)
   }
 
+  const displayTitle = optimisticTitle ?? title
+
   return {
     isEditing,
     editValue,
     setEditValue,
+    displayTitle,
     inputRef,
     handleRenameStart,
     handleRenameSubmit,

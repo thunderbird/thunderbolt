@@ -36,9 +36,13 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
   }
 
   const handleCopyUrl = async () => {
-    if (!config?.url) return
+    if (!config?.url) {
+      return
+    }
     const success = await copy(config.url)
-    if (success) trackEvent('preview_copy_url')
+    if (success) {
+      trackEvent('preview_copy_url')
+    }
   }
 
   const handleOpenExternal = async () => {

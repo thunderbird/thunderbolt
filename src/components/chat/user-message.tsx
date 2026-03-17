@@ -1,4 +1,5 @@
-import type { TextUIPart, UIMessage } from 'ai'
+import { extractTextFromParts } from '@/lib/message-utils'
+import type { UIMessage } from 'ai'
 import { memo, useMemo } from 'react'
 import { CopyMessageButton } from './copy-message-button'
 import { MemoizedMarkdown } from './memoized-markdown'
@@ -8,14 +9,7 @@ type UserMessageProps = {
 }
 
 export const UserMessage = memo(({ message }: UserMessageProps) => {
-  const copyText = useMemo(
-    () =>
-      message.parts
-        .filter((part) => part.type === 'text')
-        .map((part) => (part as TextUIPart).text)
-        .join('\n\n'),
-    [message.parts],
-  )
+  const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
 
   return (
     <div data-message-id={message.id} className="group">

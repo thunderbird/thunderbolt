@@ -5,6 +5,7 @@ import {
   groupMessageParts,
   type ReasoningGroupUIPart,
 } from '@/lib/assistant-message'
+import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -114,14 +115,7 @@ export const AssistantMessage = memo(
       [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources],
     )
 
-    const copyText = useMemo(
-      () =>
-        message.parts
-          .filter((part) => part.type === 'text')
-          .map((part) => (part as TextUIPart).text)
-          .join('\n\n'),
-      [message.parts],
-    )
+    const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
 
     return (
       <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>

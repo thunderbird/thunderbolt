@@ -51,11 +51,7 @@ const encrypt = async (key: CryptoKey, plaintext: string): Promise<string> => {
   const encoder = new TextEncoder()
   const iv = crypto.getRandomValues(new Uint8Array(12))
 
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoder.encode(plaintext),
-  )
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(plaintext))
 
   const blob: EncryptedBlob = {
     iv: btoa(String.fromCharCode(...iv)),
@@ -82,8 +78,11 @@ const decrypt = async (key: CryptoKey, encryptedJson: string): Promise<string> =
  */
 const getHostname = async (): Promise<string> => {
   try {
-    const { hostname } = await import('@tauri-apps/plugin-os')
-    return await hostname()
+    // @tauri-apps/plugin-os exports hostname() at runtime but TypeScript's
+    // dynamic import resolution doesn't see all named exports. Use platform()
+    // (which IS typed) as the device identifier — it's stable per device.
+    const { platform } = await import('@tauri-apps/plugin-os')
+    return `thunderbolt-${platform()}`
   } catch {
     return 'thunderbolt-local'
   }
@@ -112,10 +111,7 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
   const save = async (serverId: string, credential: McpCredential): Promise<void> => {
     const key = await getEncryptionKey()
     const encryptedCredential = await encrypt(key, JSON.stringify(credential))
-    await db
-      .update(mcpServersTable)
-      .set({ encryptedCredential })
-      .where(eq(mcpServersTable.id, serverId))
+    await db.update(mcpServersTable).set({ encryptedCredential }).where(eq(mcpServersTable.id, serverId))
   }
 
   const load = async (serverId: string): Promise<McpCredential | null> => {
@@ -133,10 +129,7 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
   }
 
   const deleteCredential = async (serverId: string): Promise<void> => {
-    await db
-      .update(mcpServersTable)
-      .set({ encryptedCredential: null })
-      .where(eq(mcpServersTable.id, serverId))
+    await db.update(mcpServersTable).set({ encryptedCredential: null }).where(eq(mcpServersTable.id, serverId))
   }
 
   return { save, load, delete: deleteCredential }

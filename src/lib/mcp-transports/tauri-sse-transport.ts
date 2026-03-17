@@ -9,10 +9,7 @@ import { createTauriFetch } from './tauri-http-transport'
  * SSE transport is the legacy predecessor to Streamable HTTP. Some older MCP
  * servers still use it.
  */
-export const createTauriSseTransport = (
-  url: URL,
-  options?: SSEClientTransportOptions,
-): SSEClientTransport =>
+export const createTauriSseTransport = (url: URL, options?: SSEClientTransportOptions): SSEClientTransport =>
   new SSEClientTransport(url, {
     ...options,
     fetch: createTauriFetch(),

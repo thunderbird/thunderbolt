@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test'
+import { describe, it, expect, mock } from 'bun:test'
 import { createTransport } from './transport-factory'
 import { validateCommand, validateArgs, TauriStdioTransport } from './tauri-stdio-transport'
 import type { McpServerConfig, CredentialStore, McpCredential } from '@/types/mcp'
@@ -14,26 +14,46 @@ mock.module('@tauri-apps/plugin-shell', () => ({
       stdout: { on: mock(() => {}) },
       stderr: { on: mock(() => {}) },
       on: mock(() => {}),
-      spawn: mock(() => Promise.resolve({ pid: 1234, write: mock(() => Promise.resolve()), kill: mock(() => Promise.resolve()) })),
+      spawn: mock(() =>
+        Promise.resolve({ pid: 1234, write: mock(() => Promise.resolve()), kill: mock(() => Promise.resolve()) }),
+      ),
     })),
   },
 }))
 
 mock.module('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: class {
-    constructor(public url: URL, public opts: unknown) {}
-    start() { return Promise.resolve() }
-    send() { return Promise.resolve() }
-    close() { return Promise.resolve() }
+    constructor(
+      public url: URL,
+      public opts: unknown,
+    ) {}
+    start() {
+      return Promise.resolve()
+    }
+    send() {
+      return Promise.resolve()
+    }
+    close() {
+      return Promise.resolve()
+    }
   },
 }))
 
 mock.module('@modelcontextprotocol/sdk/client/sse.js', () => ({
   SSEClientTransport: class {
-    constructor(public url: URL, public opts: unknown) {}
-    start() { return Promise.resolve() }
-    send() { return Promise.resolve() }
-    close() { return Promise.resolve() }
+    constructor(
+      public url: URL,
+      public opts: unknown,
+    ) {}
+    start() {
+      return Promise.resolve()
+    }
+    send() {
+      return Promise.resolve()
+    }
+    close() {
+      return Promise.resolve()
+    }
   },
 }))
 
@@ -54,16 +74,20 @@ const makeCredentialStore = (credential: McpCredential | null = null): Credentia
 
 describe('createTransport', () => {
   it('creates HTTP transport for http type', async () => {
-    const { StreamableHTTPClientTransport } = await import(
-      '@modelcontextprotocol/sdk/client/streamableHttp.js'
+    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+    const result = await createTransport(
+      makeConfig({ transport: { type: 'http', url: 'https://example.com/mcp' } }),
+      makeCredentialStore(),
     )
-    const result = await createTransport(makeConfig({ transport: { type: 'http', url: 'https://example.com/mcp' } }), makeCredentialStore())
     expect(result.transport).toBeInstanceOf(StreamableHTTPClientTransport)
   })
 
   it('creates SSE transport for sse type', async () => {
     const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
-    const result = await createTransport(makeConfig({ transport: { type: 'sse', url: 'https://example.com/sse' } }), makeCredentialStore())
+    const result = await createTransport(
+      makeConfig({ transport: { type: 'sse', url: 'https://example.com/sse' } }),
+      makeCredentialStore(),
+    )
     expect(result.transport).toBeInstanceOf(SSEClientTransport)
   })
 
@@ -104,9 +128,7 @@ describe('createTransport', () => {
 
   it('throws for unknown transport type', async () => {
     const config = makeConfig({ transport: { type: 'unknown' as 'http' } })
-    await expect(createTransport(config, makeCredentialStore())).rejects.toThrow(
-      'Unknown MCP transport type',
-    )
+    await expect(createTransport(config, makeCredentialStore())).rejects.toThrow('Unknown MCP transport type')
   })
 })
 

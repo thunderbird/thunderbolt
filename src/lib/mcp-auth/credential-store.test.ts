@@ -100,9 +100,7 @@ describe('CredentialStore', () => {
       const token = 'super-secret-token'
       await store.save(serverId, { type: 'bearer', token })
 
-      const rows = await db
-        .select({ encryptedCredential: mcpServersTable.encryptedCredential })
-        .from(mcpServersTable)
+      const rows = await db.select({ encryptedCredential: mcpServersTable.encryptedCredential }).from(mcpServersTable)
 
       const raw = rows[0]?.encryptedCredential ?? ''
       expect(raw).not.toContain(token)
@@ -122,9 +120,7 @@ describe('CredentialStore', () => {
       await store.save(serverId1, credential)
       await store.save(serverId2, credential)
 
-      const rows = await db
-        .select({ encryptedCredential: mcpServersTable.encryptedCredential })
-        .from(mcpServersTable)
+      const rows = await db.select({ encryptedCredential: mcpServersTable.encryptedCredential }).from(mcpServersTable)
 
       const [enc1, enc2] = rows.map((r) => r.encryptedCredential)
       expect(enc1).not.toEqual(enc2)

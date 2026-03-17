@@ -1,7 +1,7 @@
 import { useMCP } from '@/lib/mcp-provider'
 import { AlertCircle, CheckCircle, XCircle } from 'lucide-react'
 
-/** Check if a connection error indicates an auth failure. Works with both current and future provider types. */
+/** Check if a connection error indicates an auth failure. */
 const isAuthError = (errorMessage: string | null | undefined) => {
   const msg = errorMessage?.toLowerCase() ?? ''
   return msg.includes('401') || msg.includes('unauthorized') || msg.includes('forbidden') || msg.includes('auth')
@@ -14,12 +14,7 @@ export const MCPStatus = () => {
   const errorServers = servers.filter((s) => s.error && s.enabled)
   const connectingServers = servers.filter((s) => !s.isConnected && !s.error && s.enabled)
 
-  // Transport type diversity display (populated once provider-integration wires transport info)
-  const transportTypes = new Set(
-    connectedServers
-      .map((s) => (s as unknown as { transport?: { type?: string } }).transport?.type)
-      .filter(Boolean),
-  )
+  const transportTypes = new Set(connectedServers.map((s) => s.transport.type))
   const showTransports = transportTypes.size > 1
 
   if (connectedServers.length > 0 && errorServers.length === 0) {
@@ -35,11 +30,7 @@ export const MCPStatus = () => {
   }
 
   if (errorServers.length > 0) {
-    // errorMessage is present after provider-integration; fall back to error.message
-    const authErrors = errorServers.filter((s) => {
-      const msg = (s as unknown as { errorMessage?: string | null }).errorMessage ?? s.error?.message
-      return isAuthError(msg)
-    })
+    const authErrors = errorServers.filter((s) => isAuthError(s.errorMessage ?? s.error?.message))
     const hasAuthError = authErrors.length > 0
 
     return (

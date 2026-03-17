@@ -61,7 +61,14 @@ export {
 } from './tasks'
 
 // MCP Servers
-export { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
+export {
+  createMcpServer,
+  deleteMcpServer,
+  getAllMcpServers,
+  getHttpMcpServers,
+  getMcpServers,
+  updateMcpServerAuth,
+} from './mcp-servers'
 
 // Prompts
 export {

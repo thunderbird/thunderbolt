@@ -43,11 +43,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   get clientMetadata(): OAuthClientMetadata {
     return {
       client_name: 'Thunderbolt',
-      redirect_uris: [
-        'http://localhost:17421',
-        'http://localhost:17422',
-        'http://localhost:17423',
-      ],
+      redirect_uris: ['http://localhost:17421', 'http://localhost:17422', 'http://localhost:17423'],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
@@ -80,9 +76,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
       type: 'oauth',
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
-      expiresAt: tokens.expires_in
-        ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
-        : undefined,
+      expiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined,
       tokenType: tokens.token_type ?? 'bearer',
       scope: tokens.scope,
     })

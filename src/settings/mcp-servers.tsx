@@ -405,9 +405,7 @@ export default function McpServersPage() {
                 <Label htmlFor="auth-type">Authentication</Label>
                 <Select
                   value={formState.authType}
-                  onValueChange={(value) =>
-                    formDispatch({ type: 'SET_AUTH_TYPE', payload: value as McpAuthType })
-                  }
+                  onValueChange={(value) => formDispatch({ type: 'SET_AUTH_TYPE', payload: value as McpAuthType })}
                 >
                   <SelectTrigger id="auth-type" className="w-full">
                     <SelectValue />
@@ -445,12 +443,7 @@ export default function McpServersPage() {
 
               {/* Test connection button */}
               {formState.transportType !== 'stdio' && isValid() && (
-                <Button
-                  onClick={testConnection}
-                  disabled={!canTestConnection}
-                  variant="outline"
-                  className="w-full"
-                >
+                <Button onClick={testConnection} disabled={!canTestConnection} variant="outline" className="w-full">
                   {formState.connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
                 </Button>
               )}
@@ -521,10 +514,7 @@ export default function McpServersPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <StatusIndicator
-                            status={status as 'connected' | 'connecting' | 'disconnected'}
-                            size="md"
-                          />
+                          <StatusIndicator status={status as 'connected' | 'connecting' | 'disconnected'} size="md" />
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">

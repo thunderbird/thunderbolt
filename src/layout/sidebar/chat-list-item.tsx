@@ -7,7 +7,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { useChatListItemState } from './use-chat-list-item-state'
 
 export const ChatListItem = ({
   thread,
@@ -32,46 +32,11 @@ export const ChatListItem = ({
 
   const { status } = useChat(chatInstance ? { chat: chatInstance } : undefined)
 
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-  const cancelledRef = useRef(false)
-
-  useEffect(() => {
-    if (!isEditing) {
-      return
-    }
-    // Small delay to ensure dropdown has fully closed before focusing
-    const timer = setTimeout(() => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [isEditing])
-
-  const handleRenameStart = () => {
-    cancelledRef.current = false
-    setEditValue(thread.title ?? 'New Chat')
-    setIsEditing(true)
-  }
-
-  const handleRenameSubmit = () => {
-    if (cancelledRef.current) {
-      cancelledRef.current = false
-      return
-    }
-    const trimmed = editValue.trim()
-    const title = trimmed || 'New Chat'
-    if (title !== (thread.title ?? 'New Chat')) {
-      onRename(thread.id, title)
-    }
-    setIsEditing(false)
-  }
-
-  const handleRenameCancel = () => {
-    cancelledRef.current = true
-    setIsEditing(false)
-  }
+  const { isEditing, editValue, setEditValue, inputRef, handleRenameStart, handleRenameSubmit, handleRenameCancel } =
+    useChatListItemState({
+      title: thread.title,
+      onRename: (title) => onRename(thread.id, title),
+    })
 
   if (isCollapsed) {
     return (

@@ -8,89 +8,85 @@ const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test'
 
 describe('handleCredentialsInvalidIfNeeded', () => {
-  let dispatchSpy: ReturnType<typeof spyOn>
+  let capturedEvents: Event[]
+  const captureHandler = (e: Event) => {
+    capturedEvents.push(e)
+  }
 
   beforeEach(() => {
-    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
+    capturedEvents = []
+    window.addEventListener(powersyncCredentialsInvalid, captureHandler)
   })
 
   afterEach(() => {
-    dispatchSpy.mockRestore()
+    window.removeEventListener(powersyncCredentialsInvalid, captureHandler)
   })
 
   it('dispatches event with reason account_deleted for 410', () => {
     const result = handleCredentialsInvalidIfNeeded(410, {})
 
     expect(result).toBe(true)
-    expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'account_deleted' } }),
-    )
+    expect(capturedEvents).toHaveLength(1)
+    expect((capturedEvents[0] as CustomEvent).detail).toEqual({ reason: 'account_deleted' })
   })
 
   it('dispatches event with reason device_revoked for 403 + DEVICE_DISCONNECTED', () => {
     const result = handleCredentialsInvalidIfNeeded(403, { code: 'DEVICE_DISCONNECTED' })
 
     expect(result).toBe(true)
-    expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'device_revoked' } }),
-    )
+    expect(capturedEvents).toHaveLength(1)
+    expect((capturedEvents[0] as CustomEvent).detail).toEqual({ reason: 'device_revoked' })
   })
 
   it('dispatches event with reason device_id_taken for 409 + DEVICE_ID_TAKEN', () => {
     const result = handleCredentialsInvalidIfNeeded(409, { code: 'DEVICE_ID_TAKEN' })
 
     expect(result).toBe(true)
-    expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'device_id_taken' } }),
-    )
+    expect(capturedEvents).toHaveLength(1)
+    expect((capturedEvents[0] as CustomEvent).detail).toEqual({ reason: 'device_id_taken' })
   })
 
   it('dispatches event with reason device_id_required for 400 + DEVICE_ID_REQUIRED', () => {
     const result = handleCredentialsInvalidIfNeeded(400, { code: 'DEVICE_ID_REQUIRED' })
 
     expect(result).toBe(true)
-    expect(dispatchSpy).toHaveBeenCalledTimes(1)
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'device_id_required' } }),
-    )
+    expect(capturedEvents).toHaveLength(1)
+    expect((capturedEvents[0] as CustomEvent).detail).toEqual({ reason: 'device_id_required' })
   })
 
   it('does not dispatch and returns false for 401', () => {
     const result = handleCredentialsInvalidIfNeeded(401, {})
 
     expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 
   it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
     const result = handleCredentialsInvalidIfNeeded(403, { code: 'OTHER_ERROR' })
 
     expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 
   it('does not dispatch and returns false for 403 with empty body', () => {
     const result = handleCredentialsInvalidIfNeeded(403, {})
 
     expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 
   it('does not dispatch and returns false for 400 without DEVICE_ID_REQUIRED', () => {
     const result = handleCredentialsInvalidIfNeeded(400, { code: 'INVALID_REQUEST' })
 
     expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 
   it('does not dispatch and returns false for 404', () => {
     const result = handleCredentialsInvalidIfNeeded(404, {})
 
     expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(0)
   })
 })
 

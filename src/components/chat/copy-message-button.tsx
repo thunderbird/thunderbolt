@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -24,17 +25,22 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
   }, [])
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setIsCopied(true)
-    timeoutRef.current = setTimeout(() => setIsCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(text)
+      setIsCopied(true)
+      timeoutRef.current = setTimeout(() => setIsCopied(false), 2000)
+    } catch (error) {
+      console.error('Error copying message:', error)
+    }
   }
 
   return (
     <Button
       variant="ghost"
       size="icon"
-      className={`size-8 rounded-lg ${className ?? ''}`}
+      className={cn('size-8 rounded-lg', className)}
       title="Copy message"
+      aria-label="Copy message"
       onClick={handleCopy}
     >
       {isCopied ? (

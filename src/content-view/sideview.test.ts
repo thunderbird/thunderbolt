@@ -19,7 +19,7 @@ describe('parseDocumentSideviewId', () => {
 
   test('handles fileId only (no colon)', () => {
     const result = parseDocumentSideviewId('abc123')
-    expect(result).toEqual({ fileId: 'abc123', fileName: 'document.pdf', pageNumber: undefined })
+    expect(result).toEqual({ fileId: 'abc123', fileName: 'document', pageNumber: undefined })
   })
 
   test('treats zero as non-page (not positive integer)', () => {

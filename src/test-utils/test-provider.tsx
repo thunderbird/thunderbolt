@@ -1,4 +1,5 @@
 import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient } from '@/contexts'
+import { ContentViewProvider } from '@/content-view/context'
 import { getDb } from '@/db/database'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
@@ -65,7 +66,9 @@ export const createTestProvider = (options?: TestProviderOptions) => {
         <PowerSyncMockProvider>
           <QueryClientProvider client={queryClient}>
             <HttpClientProvider httpClient={mockHttpClient}>
-              <AuthProvider authClient={mockAuthClient}>{children}</AuthProvider>
+              <AuthProvider authClient={mockAuthClient}>
+                <ContentViewProvider>{children}</ContentViewProvider>
+              </AuthProvider>
             </HttpClientProvider>
           </QueryClientProvider>
         </PowerSyncMockProvider>

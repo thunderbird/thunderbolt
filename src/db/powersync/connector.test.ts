@@ -9,13 +9,16 @@ const backendUrl = 'https://api.test'
 
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof mock>
+  let savedDispatchEvent: typeof window.dispatchEvent
 
   beforeEach(() => {
+    savedDispatchEvent = window.dispatchEvent
     dispatchSpy = mock(() => {})
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
   })
 
   afterEach(() => {
+    window.dispatchEvent = savedDispatchEvent
     dispatchSpy.mockRestore?.()
   })
 
@@ -97,11 +100,13 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
 describe('ThunderboltConnector', () => {
   let savedFetch: typeof globalThis.fetch
+  let savedDispatchEvent: typeof window.dispatchEvent
   let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
     savedFetch = globalThis.fetch
+    savedDispatchEvent = window.dispatchEvent
     fetchMock = mock()
     dispatchSpy = mock(() => {})
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -111,6 +116,8 @@ describe('ThunderboltConnector', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch
+    window.dispatchEvent = savedDispatchEvent
+    clearAuthToken()
   })
 
   it('fetchCredentials returns null when no auth token', async () => {

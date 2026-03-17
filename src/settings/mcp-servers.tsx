@@ -13,17 +13,20 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useMcpServerFormState } from '@/hooks/use-mcp-server-form'
+import type { McpTransportType, McpAuthType } from '@/types/mcp'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Globe, Key, Plus, RefreshCw, Terminal, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -34,19 +37,39 @@ type ServerTools = {
   [serverId: string]: string[]
 }
 
+const transportLabel: Record<McpTransportType, string> = {
+  http: 'HTTP',
+  sse: 'SSE',
+  stdio: 'stdio',
+}
+
+const TransportBadge = ({ type }: { type: McpTransportType }) => (
+  <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+    {transportLabel[type]}
+  </span>
+)
+
+const AuthBadge = ({ authType }: { authType: McpAuthType }) => {
+  if (authType === 'none') return null
+  return (
+    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+      <Key className="h-3 w-3" />
+      {authType === 'bearer' ? 'Key' : 'OAuth'}
+    </span>
+  )
+}
+
 export default function McpServersPage() {
   const db = useDatabase()
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newServerUrl, setNewServerUrl] = useState('')
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
+
+  const { state: formState, dispatch: formDispatch, isValid } = useMcpServerFormState()
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
@@ -70,7 +93,6 @@ export default function McpServersPage() {
                 const toolNames = Object.keys(tools)
                 newServerTools[server.id] = toolNames
 
-                // Initialize all tools as selected by default, but preserve existing selections
                 if (!selectedTools[server.id]) {
                   newSelectedTools[server.id] = {}
                   toolNames.forEach((tool) => {
@@ -91,7 +113,6 @@ export default function McpServersPage() {
       }
     }
 
-    // Only fetch if we have servers and mcpServers data
     if (servers.length > 0 && mcpServers.length > 0) {
       fetchServerTools()
     }
@@ -125,9 +146,7 @@ export default function McpServersPage() {
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
-      setNewServerUrl('')
-      setConnectionStatus('idle')
-      setServerCapabilities([])
+      formDispatch({ type: 'RESET' })
     },
   })
 
@@ -139,21 +158,22 @@ export default function McpServersPage() {
   })
 
   const testConnection = async () => {
-    if (!newServerUrl) {
+    if (!isValid()) return
+
+    formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'testing' })
+    formDispatch({ type: 'SET_CONNECTION_ERROR', payload: null })
+    formDispatch({ type: 'SET_CAPABILITIES', payload: [] })
+
+    if (formState.transportType === 'stdio') {
+      // Validate-only for stdio until transport layer is available
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
+      formDispatch({ type: 'SET_CAPABILITIES', payload: ['stdio transport — connection test not available yet'] })
       return
     }
 
-    setIsTestingConnection(true)
-    setConnectionStatus('idle')
-    setServerCapabilities([])
-
     try {
-      console.log('Testing connection to:', newServerUrl)
-
-      // Create a real MCP client using the same method as the provider
-      console.log('Creating MCP client...')
       const mcpClient = await createMCPClient({
-        transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
+        transport: new StreamableHTTPClientTransport(new URL(formState.url), {
           requestInit: {
             headers: {
               Accept: 'application/json, text/event-stream',
@@ -162,76 +182,73 @@ export default function McpServersPage() {
         }),
       })
 
-      console.log('MCP client created successfully')
-
-      // Try to get tools to verify the connection works
-      console.log('Requesting tools...')
       const tools = await mcpClient.tools()
 
-      console.log('Tools response:', tools)
-      setConnectionStatus('success')
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
 
-      // Extract tool names for display
       if (tools && typeof tools === 'object') {
         const toolNames = Object.keys(tools)
-        setServerCapabilities(toolNames.length > 0 ? toolNames : ['Connection successful - no tools available'])
+        formDispatch({
+          type: 'SET_CAPABILITIES',
+          payload: toolNames.length > 0 ? toolNames : ['Connection successful — no tools available'],
+        })
       } else {
-        setServerCapabilities(['Connection successful - no tools listed'])
+        formDispatch({ type: 'SET_CAPABILITIES', payload: ['Connection successful — no tools listed'] })
       }
 
-      // Close the connection
-      console.log('Closing MCP client connection...')
       if (mcpClient.close) {
         try {
           mcpClient.close()
-        } catch (closeError) {
-          console.warn('Error closing MCP client:', closeError)
+        } catch {
+          // ignore close errors
         }
       }
-    } catch (error) {
-      console.error('Connection test error:', error)
-      setConnectionStatus('error')
-    } finally {
-      setIsTestingConnection(false)
+    } catch {
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'error' })
     }
   }
 
   const handleAddServer = () => {
-    if (!newServerUrl) {
+    if (!isValid()) return
+
+    if (formState.transportType === 'stdio') {
+      // TODO: stub — stdio DAL support added in provider-integration phase
+      console.warn('stdio server save is stubbed until DAL is updated')
       return
     }
 
-    // Extract server name from URL
-    const url = new URL(newServerUrl)
+    const url = new URL(formState.url)
     const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
-
-    addServerMutation.mutate({ name, url: newServerUrl })
+    addServerMutation.mutate({ name, url: formState.url })
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      if (connectionStatus === 'idle' && newServerUrl) {
-        testConnection()
-      } else if (connectionStatus === 'success') {
-        handleAddServer()
-      }
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (formState.connectionStatus === 'idle' && isValid()) {
+      testConnection()
+    } else if (formState.connectionStatus === 'success') {
+      handleAddServer()
     }
   }
 
   const handleCopyUrl = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopiedUrl(url)
-    } catch (error) {
-      console.error('Failed to copy URL:', error)
-    }
+    await navigator.clipboard.writeText(url)
+    setCopiedUrl(url)
+  }
+
+  const handleArgsInput = (value: string) => {
+    const args = value
+      .split(' ')
+      .map((a) => a.trim())
+      .filter(Boolean)
+    formDispatch({ type: 'SET_ARGS', payload: args })
   }
 
   const getConnectionStatus = (server: McpServer) => {
-    // Get real connection status from MCP provider
     const mcpServer = mcpServers.find((s) => s.id === server.id)
     if (mcpServer) {
+      if (mcpServer.error) return 'error'
       return mcpServer.isConnected ? 'connected' : 'disconnected'
     }
     return server.enabled ? 'connecting' : 'disconnected'
@@ -245,30 +262,36 @@ export default function McpServersPage() {
         return 'Connecting...'
       case 'disconnected':
         return 'Disconnected'
+      case 'error':
+        return 'Connection error'
       default:
         return 'Unknown'
     }
   }
 
+  const getServerErrorMessage = (server: McpServer) => {
+    const mcpServer = mcpServers.find((s) => s.id === server.id)
+    if (!mcpServer) return null
+    // errorMessage is added in provider-integration; fall back to error.message for now
+    return (mcpServer as unknown as { errorMessage?: string | null }).errorMessage ?? mcpServer.error?.message ?? null
+  }
+
   const formatServerTitle = (url: string, serverId: string) => {
     try {
       const urlObj = new URL(url)
-      // Remove protocol and query parameters, format without http/https
       const cleanUrl = `${urlObj.host}${urlObj.pathname.replace(/\/$/, '')}`
 
-      // Check if the element would overflow by creating a temporary measurement
       const titleElement = titleRefs.current[serverId]
       if (titleElement) {
         const containerWidth = titleElement.parentElement?.offsetWidth || 0
-        const switchWidth = 60 // Approximate width of switch + gap
-        const availableWidth = containerWidth - switchWidth - 100 // Extra margin for safety
+        const switchWidth = 60
+        const availableWidth = containerWidth - switchWidth - 100
 
-        // Create a temporary element to measure text width
         const tempElement = document.createElement('span')
         tempElement.style.visibility = 'hidden'
         tempElement.style.position = 'absolute'
-        tempElement.style.fontSize = '18px' // text-lg
-        tempElement.style.fontWeight = '500' // font-medium
+        tempElement.style.fontSize = '18px'
+        tempElement.style.fontWeight = '500'
         tempElement.textContent = cleanUrl
         document.body.appendChild(tempElement)
 
@@ -282,7 +305,6 @@ export default function McpServersPage() {
 
       return cleanUrl
     } catch {
-      // Fallback for invalid URLs - remove common protocols
       const cleanUrl = url.replace(/^https?:\/\//, '')
       if (cleanUrl.length > 40) {
         return cleanUrl.substring(0, 37) + '...'
@@ -295,10 +317,19 @@ export default function McpServersPage() {
     deleteServerMutation.mutate(serverId)
   }
 
+  const canTestConnection = isValid() && formState.connectionStatus !== 'testing'
+  const canAddServer = isValid() && (formState.transportType === 'stdio' || formState.connectionStatus === 'success')
+
   return (
     <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog
+          open={isAddDialogOpen}
+          onOpenChange={(open) => {
+            setIsAddDialogOpen(open)
+            if (!open) formDispatch({ type: 'RESET' })
+          }}
+        >
           <DialogTrigger asChild>
             <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />
@@ -307,39 +338,135 @@ export default function McpServersPage() {
           <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
-              <ResponsiveModalDescription>
-                Enter the URL of the MCP server you want to connect to.
-              </ResponsiveModalDescription>
+              <ResponsiveModalDescription>Configure the MCP server connection.</ResponsiveModalDescription>
             </ResponsiveModalHeader>
+
             <div className="grid gap-4 py-4">
+              {/* Transport type selector */}
               <div className="grid gap-2">
-                <Label htmlFor="url">Server URL</Label>
-                <Input
-                  id="url"
-                  placeholder="http://localhost:8000/mcp/"
-                  value={newServerUrl}
-                  onChange={(e) => setNewServerUrl(e.target.value)}
-                  onKeyDown={handleUrlKeyDown}
-                />
+                <Label htmlFor="transport-type">Transport</Label>
+                <Select
+                  value={formState.transportType}
+                  onValueChange={(value) =>
+                    formDispatch({ type: 'SET_TRANSPORT_TYPE', payload: value as McpTransportType })
+                  }
+                >
+                  <SelectTrigger id="transport-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="http">HTTP (Streamable)</SelectItem>
+                    <SelectItem value="sse">SSE (Legacy)</SelectItem>
+                    <SelectItem value="stdio">stdio (Local)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              {newServerUrl && (
-                <Button onClick={testConnection} disabled={isTestingConnection} variant="outline" className="w-full">
-                  {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+              {/* URL field for http/sse */}
+              {formState.transportType !== 'stdio' && (
+                <div className="grid gap-2">
+                  <Label htmlFor="url">Server URL</Label>
+                  <Input
+                    id="url"
+                    placeholder="http://localhost:8000/mcp/"
+                    value={formState.url}
+                    onChange={(e) => formDispatch({ type: 'SET_URL', payload: e.target.value })}
+                    onKeyDown={handleUrlKeyDown}
+                  />
+                </div>
+              )}
+
+              {/* Command + args fields for stdio */}
+              {formState.transportType === 'stdio' && (
+                <>
+                  <div className="grid gap-2">
+                    <Label htmlFor="command">Command</Label>
+                    <Input
+                      id="command"
+                      placeholder="npx"
+                      value={formState.command}
+                      onChange={(e) => formDispatch({ type: 'SET_COMMAND', payload: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="args">Arguments (space-separated)</Label>
+                    <Input
+                      id="args"
+                      placeholder="mcp-server --port 8080"
+                      value={formState.args.join(' ')}
+                      onChange={(e) => handleArgsInput(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Authentication section */}
+              <div className="grid gap-2">
+                <Label htmlFor="auth-type">Authentication</Label>
+                <Select
+                  value={formState.authType}
+                  onValueChange={(value) =>
+                    formDispatch({ type: 'SET_AUTH_TYPE', payload: value as McpAuthType })
+                  }
+                >
+                  <SelectTrigger id="auth-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="bearer">API Key / Bearer Token</SelectItem>
+                    <SelectItem value="oauth">OAuth 2.1</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {formState.authType === 'bearer' && (
+                <div className="grid gap-2">
+                  <Label htmlFor="bearer-token">API Key / Bearer Token</Label>
+                  <Input
+                    id="bearer-token"
+                    type="password"
+                    autoComplete="off"
+                    placeholder="Enter API key or bearer token"
+                    value={formState.bearerToken}
+                    onChange={(e) => formDispatch({ type: 'SET_BEARER_TOKEN', payload: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {formState.authType === 'oauth' && (
+                <div className="grid gap-2">
+                  <Button variant="outline" className="w-full" disabled>
+                    Connect with OAuth
+                    <span className="ml-2 text-xs text-muted-foreground">(coming soon)</span>
+                  </Button>
+                </div>
+              )}
+
+              {/* Test connection button */}
+              {formState.transportType !== 'stdio' && isValid() && (
+                <Button
+                  onClick={testConnection}
+                  disabled={!canTestConnection}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {formState.connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
                 </Button>
               )}
 
-              {connectionStatus === 'success' && (
+              {/* Connection success */}
+              {formState.connectionStatus === 'success' && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center gap-2 text-green-800">
                     <Check className="h-4 w-4" />
                     <span className="font-medium">Connection successful!</span>
                   </div>
-                  {serverCapabilities.length > 0 && (
+                  {formState.serverCapabilities.length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm text-green-700 font-medium">Available tools:</p>
                       <ul className="text-sm text-green-600 mt-1 space-y-1">
-                        {serverCapabilities.map((capability, index) => (
+                        {formState.serverCapabilities.map((capability, index) => (
                           <li key={index} className="flex items-center gap-2">
                             <div className="w-1 h-1 bg-green-600 rounded-full" />
                             {capability}
@@ -351,7 +478,8 @@ export default function McpServersPage() {
                 </div>
               )}
 
-              {connectionStatus === 'error' && (
+              {/* Connection error */}
+              {formState.connectionStatus === 'error' && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center gap-2 text-red-800">
                     <X className="h-4 w-4" />
@@ -363,11 +491,12 @@ export default function McpServersPage() {
                 </div>
               )}
             </div>
+
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddServer} disabled={!newServerUrl || connectionStatus !== 'success'}>
+              <Button onClick={handleAddServer} disabled={!canAddServer}>
                 Add Server
               </Button>
             </div>
@@ -380,6 +509,9 @@ export default function McpServersPage() {
           const status = getConnectionStatus(server)
           const tools = serverTools[server.id] || []
           const isEnabled = server.enabled === 1
+          const errorMessage = getServerErrorMessage(server)
+          const serverTransport = server.type ?? 'http'
+          const serverAuthType: McpAuthType = (server.authType ?? 'none') as McpAuthType
 
           return (
             <Card key={server.id} className="border border-border shadow-sm">
@@ -389,7 +521,10 @@ export default function McpServersPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <StatusIndicator status={status as 'connected' | 'connecting' | 'disconnected'} size="md" />
+                          <StatusIndicator
+                            status={status as 'connected' | 'connecting' | 'disconnected'}
+                            size="md"
+                          />
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
@@ -406,43 +541,79 @@ export default function McpServersPage() {
                               }}
                               className="text-lg font-medium cursor-pointer"
                             >
-                              {formatServerTitle(server.url ?? '', server.id)}
+                              {formatServerTitle(server.url ?? server.command ?? '', server.id)}
                             </CardTitle>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-2" side="bottom" align="start">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-mono">{server.url}</p>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 hover:bg-muted"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleCopyUrl(server.url ?? '')
-                                }}
-                                disabled={copiedUrl === server.url}
-                              >
-                                {copiedUrl === server.url ? (
-                                  <Check className="h-3 w-3 text-muted-foreground" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </Button>
+                              <p className="text-sm font-mono">{server.url ?? server.command}</p>
+                              {server.url && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-muted"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCopyUrl(server.url ?? '')
+                                  }}
+                                  disabled={copiedUrl === server.url}
+                                >
+                                  {copiedUrl === server.url ? (
+                                    <Check className="h-3 w-3 text-muted-foreground" />
+                                  ) : (
+                                    <Copy className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              )}
                             </div>
                           </PopoverContent>
                         </Popover>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Globe className="h-4 w-4 text-muted-foreground cursor-default" />
+                            <div>
+                              {serverTransport === 'stdio' ? (
+                                <Terminal className="h-4 w-4 text-muted-foreground cursor-default" />
+                              ) : (
+                                <Globe className="h-4 w-4 text-muted-foreground cursor-default" />
+                              )}
+                            </div>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
-                            <p>Remote</p>
+                            <p>{serverTransport === 'stdio' ? 'Local (stdio)' : 'Remote'}</p>
                           </TooltipContent>
                         </Tooltip>
+                        <TransportBadge type={serverTransport as McpTransportType} />
+                        <AuthBadge authType={serverAuthType} />
                       </div>
+                      {status === 'error' && errorMessage && (
+                        <p className="text-xs text-destructive mt-0.5 truncate max-w-xs">{errorMessage}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
+                    {status === 'error' && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => {
+                              const mcpServer = mcpServers.find((s) => s.id === server.id)
+                              if (mcpServer) {
+                                // reconnect is wired in provider-integration phase
+                                console.log('retry connection for', server.id)
+                              }
+                            }}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Retry connection</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>

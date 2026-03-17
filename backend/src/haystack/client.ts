@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type {
   HaystackChatRequest,
   HaystackChatResponse,
@@ -6,6 +7,62 @@ import type {
   HaystackSessionListResponse,
   HaystackSessionResponse,
 } from './types'
+
+const rawSessionSchema = z.object({
+  search_session_id: z.string(),
+})
+
+const rawReferenceSchema = z.object({
+  label: z.string(),
+  document_id: z.string(),
+  document_position: z.number(),
+  score: z.number(),
+})
+
+const rawFileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+
+const rawAnswerSchema = z.object({
+  answer: z.string(),
+  type: z.literal('generative'),
+  document_ids: z.array(z.string()),
+  files: z.array(rawFileSchema).default([]),
+  meta: z.object({ _references: z.array(rawReferenceSchema).default([]) }).default({ _references: [] }),
+})
+
+const rawDocumentSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  score: z.number(),
+  file: rawFileSchema,
+  meta: z.record(z.unknown()).default({}),
+})
+
+const rawChatResponseSchema = z.object({
+  query_id: z.string(),
+  results: z.array(
+    z.object({
+      query_id: z.string(),
+      query: z.string(),
+      answers: z.array(rawAnswerSchema),
+      documents: z.array(rawDocumentSchema),
+    }),
+  ),
+})
+
+const rawSessionListSchema = z.object({
+  search_sessions: z.array(
+    z.object({
+      search_session_id: z.string(),
+      pipeline_id: z.string(),
+      search_history: z.object({ query: z.string(), created_at: z.string() }).nullable().default(null),
+    }),
+  ),
+  has_more: z.boolean(),
+  total: z.number(),
+})
 
 export class HaystackClient {
   private config: HaystackConfig
@@ -40,7 +97,8 @@ export class HaystackClient {
     }
 
     const data = await response.json()
-    return { searchSessionId: data.search_session_id }
+    const parsed = rawSessionSchema.parse(data)
+    return { searchSessionId: parsed.search_session_id }
   }
 
   async chat(request: HaystackChatRequest): Promise<HaystackChatResponse> {
@@ -60,7 +118,7 @@ export class HaystackClient {
     }
 
     const data = await response.json()
-    return this.transformChatResponse(data)
+    return this.parseChatResponse(data)
   }
 
   async chatStream(request: HaystackChatStreamRequest): Promise<Response> {
@@ -83,6 +141,9 @@ export class HaystackClient {
   }
 
   async downloadFile(fileId: string): Promise<Response> {
+    if (!/^[\w-]+$/.test(fileId)) {
+      throw new Error('Invalid file ID')
+    }
     const url = `${this.baseApiUrl}/files/${fileId}`
     const response = await this.fetchFn(url, {
       method: 'GET',
@@ -110,62 +171,53 @@ export class HaystackClient {
     }
 
     const data = await response.json()
-    return this.transformSessionListResponse(data)
+    return this.parseSessionListResponse(data)
   }
 
-  private transformSessionListResponse(raw: Record<string, unknown>): HaystackSessionListResponse {
-    const sessions = raw.search_sessions as Array<Record<string, unknown>>
+  private parseSessionListResponse(raw: unknown): HaystackSessionListResponse {
+    const parsed = rawSessionListSchema.parse(raw)
     return {
-      searchSessions: sessions.map((s) => {
-        const history = s.search_history as Record<string, unknown> | null
-        return {
-          searchSessionId: s.search_session_id as string,
-          pipelineId: s.pipeline_id as string,
-          searchHistory: history ? { query: history.query as string, createdAt: history.created_at as string } : null,
-        }
-      }),
-      hasMore: raw.has_more as boolean,
-      total: raw.total as number,
+      searchSessions: parsed.search_sessions.map((s) => ({
+        searchSessionId: s.search_session_id,
+        pipelineId: s.pipeline_id,
+        searchHistory: s.search_history
+          ? { query: s.search_history.query, createdAt: s.search_history.created_at }
+          : null,
+      })),
+      hasMore: parsed.has_more,
+      total: parsed.total,
     }
   }
 
-  private transformChatResponse(raw: Record<string, unknown>): HaystackChatResponse {
-    const results = raw.results as Array<Record<string, unknown>>
+  private parseChatResponse(raw: unknown): HaystackChatResponse {
+    const parsed = rawChatResponseSchema.parse(raw)
     return {
-      queryId: raw.query_id as string,
-      results: results.map((r) => {
-        const answers = r.answers as Array<Record<string, unknown>>
-        const documents = r.documents as Array<Record<string, unknown>>
-        return {
-          queryId: r.query_id as string,
-          query: r.query as string,
-          answers: answers.map((a) => {
-            const meta = a.meta as Record<string, unknown> | undefined
-            const refs = (meta?._references ?? []) as Array<Record<string, unknown>>
-            return {
-              answer: a.answer as string,
-              type: a.type as 'generative',
-              documentIds: a.document_ids as string[],
-              files: (a.files ?? []) as Array<{ id: string; name: string }>,
-              meta: {
-                _references: refs.map((ref) => ({
-                  label: ref.label as string,
-                  documentId: ref.document_id as string,
-                  documentPosition: ref.document_position as number,
-                  score: ref.score as number,
-                })),
-              },
-            }
-          }),
-          documents: documents.map((d) => ({
-            id: d.id as string,
-            content: d.content as string,
-            score: d.score as number,
-            file: d.file as { id: string; name: string },
-            meta: (d.meta ?? {}) as Record<string, unknown>,
-          })),
-        }
-      }),
+      queryId: parsed.query_id,
+      results: parsed.results.map((r) => ({
+        queryId: r.query_id,
+        query: r.query,
+        answers: r.answers.map((a) => ({
+          answer: a.answer,
+          type: a.type,
+          documentIds: a.document_ids,
+          files: a.files,
+          meta: {
+            _references: a.meta._references.map((ref) => ({
+              label: ref.label,
+              documentId: ref.document_id,
+              documentPosition: ref.document_position,
+              score: ref.score,
+            })),
+          },
+        })),
+        documents: r.documents.map((d) => ({
+          id: d.id,
+          content: d.content,
+          score: d.score,
+          file: d.file,
+          meta: d.meta,
+        })),
+      })),
     }
   }
 }

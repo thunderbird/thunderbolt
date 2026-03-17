@@ -15,8 +15,12 @@ type FileType = 'pdf' | 'docx' | 'unsupported'
 
 const getFileType = (fileName: string): FileType => {
   const ext = fileName.split('.').pop()?.toLowerCase()
-  if (ext === 'pdf') return 'pdf'
-  if (ext === 'docx') return 'docx'
+  if (ext === 'pdf') {
+    return 'pdf'
+  }
+  if (ext === 'docx') {
+    return 'docx'
+  }
   return 'unsupported'
 }
 
@@ -51,7 +55,9 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
 
       const blob = await response.blob()
 
-      if (cancelled) return
+      if (cancelled) {
+        return
+      }
 
       if (fileType === 'docx') {
         const mammoth = await import('mammoth')
@@ -90,13 +96,17 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
   // Clean up blob URL on unmount
   useEffect(() => {
     return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleDownload = useCallback(() => {
-    if (!blobUrl) return
+    if (!blobUrl) {
+      return
+    }
 
     const a = document.createElement('a')
     a.href = blobUrl
@@ -112,7 +122,9 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
 
   // Scroll to initial page after all pages render
   useEffect(() => {
-    if (!initialPage || !numPages || initialPage > numPages) return
+    if (!initialPage || !numPages || initialPage > numPages) {
+      return
+    }
     // Allow a frame for pages to render
     const timer = setTimeout(() => {
       const el = document.querySelector(`[data-page-number="${initialPage}"]`)
@@ -156,9 +168,10 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
           )}
 
           {fileType === 'docx' && docxHtml && (
-            <div
-              className="prose prose-sm dark:prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: docxHtml }}
+            <iframe
+              className="prose prose-sm dark:prose-invert max-w-none w-full h-full border-0"
+              sandbox="allow-popups"
+              srcDoc={docxHtml}
             />
           )}
 

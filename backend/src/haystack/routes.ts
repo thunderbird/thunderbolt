@@ -1,10 +1,9 @@
 import { getSettings } from '@/config/settings'
-import { memoize } from '@/lib/memoize'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { HaystackClient } from './client'
 
-const getHaystackClient = memoize((fetchFn: typeof fetch) => {
+const createHaystackClient = (fetchFn: typeof fetch): HaystackClient | null => {
   const settings = getSettings()
 
   if (!settings.haystackApiKey) {
@@ -21,12 +20,12 @@ const getHaystackClient = memoize((fetchFn: typeof fetch) => {
     },
     fetchFn,
   )
-})
+}
 
 export const createHaystackRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/haystack' })
     .onError(safeErrorHandler)
-    .state('haystackClient', getHaystackClient(fetchFn))
+    .state('haystackClient', createHaystackClient(fetchFn))
     .post('/sessions', async ({ store }) => {
       if (!store.haystackClient) {
         throw new Error('Haystack service is not configured.')

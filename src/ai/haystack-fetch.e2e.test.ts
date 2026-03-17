@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { parseSSE, formatDocumentWidgets, type DeepsetSSEEvent } from './haystack-fetch'
 
-const BACKEND_URL = 'http://localhost:8000/v1'
+const backendUrl = 'http://localhost:8000/v1'
 
 /** Collect all events from an async generator */
 const collectEvents = async (gen: AsyncGenerator<DeepsetSSEEvent>): Promise<DeepsetSSEEvent[]> => {
@@ -15,7 +15,7 @@ const collectEvents = async (gen: AsyncGenerator<DeepsetSSEEvent>): Promise<Deep
 describe('haystack-fetch e2e', () => {
   it('should create a session, stream a query, and parse deltas + result', async () => {
     // 1. Create a session
-    const sessionRes = await fetch(`${BACKEND_URL}/haystack/sessions`, { method: 'POST' })
+    const sessionRes = await fetch(`${backendUrl}/haystack/sessions`, { method: 'POST' })
     expect(sessionRes.ok).toBe(true)
     const sessionData = (await sessionRes.json()) as { data: { searchSessionId: string }; success: boolean }
     expect(sessionData.success).toBe(true)
@@ -23,7 +23,7 @@ describe('haystack-fetch e2e', () => {
     expect(typeof sessionId).toBe('string')
 
     // 2. Call chat-stream
-    const streamRes = await fetch(`${BACKEND_URL}/haystack/chat-stream`, {
+    const streamRes = await fetch(`${backendUrl}/haystack/chat-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: 'What is GDPR?', sessionId }),

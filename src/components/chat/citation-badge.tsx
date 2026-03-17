@@ -4,7 +4,7 @@ import { useContentView } from '@/content-view/context'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
-import { memo, useCallback, useState } from 'react'
+import { type MouseEvent, memo, useCallback, useState } from 'react'
 import { useCitationPopover } from './citation-popover'
 import { SourceList } from './source-list'
 
@@ -89,11 +89,14 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
   }, [sources, showSideview])
 
   const toggle = (rect: DOMRect) => {
-    if (isOpen) ctx.close()
-    else ctx.open(citationId, sources, rect)
+    if (isOpen) {
+      ctx.close()
+    } else {
+      ctx.open(citationId, sources, rect)
+    }
   }
 
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (isSingleDoc) {
       openDocumentSideview()
       return
@@ -107,8 +110,11 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          if (isSingleDoc) openDocumentSideview()
-          else toggle(e.currentTarget.getBoundingClientRect())
+          if (isSingleDoc) {
+            openDocumentSideview()
+          } else {
+            toggle(e.currentTarget.getBoundingClientRect())
+          }
         }
       }}
       className={badgeClass}
@@ -155,8 +161,11 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          if (isSingleDoc) openDocumentSideview()
-          else setIsOpen(!isOpen)
+          if (isSingleDoc) {
+            openDocumentSideview()
+          } else {
+            setIsOpen(!isOpen)
+          }
         }
       }}
       className={badgeClass}

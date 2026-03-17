@@ -11,16 +11,22 @@ export const useDocumentChunks = (messageId: string, fileId: string): HaystackDo
   const messages = useChatStore(
     useShallow((state) => {
       const sessionId = state.currentSessionId
-      if (!sessionId) return []
+      if (!sessionId) {
+        return []
+      }
       const session = state.sessions.get(sessionId)
-      if (!session) return []
+      if (!session) {
+        return []
+      }
       return session.chatInstance.messages
     }),
   )
 
   return useMemo(() => {
     const message = messages.find((m) => m.id === messageId)
-    if (!message) return []
+    if (!message) {
+      return []
+    }
 
     const docs = (message.metadata?.haystackDocuments ?? []) as HaystackDocumentMeta[]
     return docs.filter((d) => d.file.id === fileId).sort((a, b) => b.score - a.score)

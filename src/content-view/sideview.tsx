@@ -10,7 +10,9 @@ import { useSideview } from './context'
  */
 export const parseDocumentSideviewId = (sideviewId: string) => {
   const colonIndex = sideviewId.indexOf(':')
-  if (colonIndex === -1) return { fileId: sideviewId, fileName: 'document.pdf', pageNumber: undefined }
+  if (colonIndex === -1) {
+    return { fileId: sideviewId, fileName: 'document.pdf', pageNumber: undefined }
+  }
 
   const fileId = sideviewId.slice(0, colonIndex)
   const rest = sideviewId.slice(colonIndex + 1)
@@ -64,7 +66,9 @@ export const Sideview = () => {
     case 'thread':
       return <EmailThreadView />
     case 'document': {
-      if (!sideviewId) return null
+      if (!sideviewId) {
+        return null
+      }
       const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
       return <PdfSidebarViewer fileId={fileId} fileName={fileName} initialPage={pageNumber} />
     }

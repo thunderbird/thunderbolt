@@ -48,6 +48,7 @@ export type DeepsetResultPayload = {
  * Handles `data: ` prefix lines separated by double newlines.
  * @internal Exported for testing only
  */
+// eslint-disable-next-line func-style -- async generators cannot use arrow syntax
 export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<DeepsetSSEEvent> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -56,7 +57,9 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerato
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const parts = buffer.split('\n\n')
@@ -64,7 +67,9 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerato
 
       for (const part of parts) {
         const line = part.trim()
-        if (!line.startsWith('data: ')) continue
+        if (!line.startsWith('data: ')) {
+          continue
+        }
 
         const json = line.slice(6)
         if (json === '[DONE]') {
@@ -102,13 +107,17 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerato
  */
 export const extractReferences = (result: DeepsetResultPayload): HaystackReferenceMeta[] => {
   const refs = result.answers[0]?.meta?._references
-  if (!refs || refs.length === 0) return []
+  if (!refs || refs.length === 0) {
+    return []
+  }
 
   const docsById = new Map(result.documents.map((d) => [d.id, d]))
 
   return refs.flatMap((ref) => {
     const doc = docsById.get(ref.document_id)
-    if (!doc) return []
+    if (!doc) {
+      return []
+    }
     return [
       {
         position: ref.document_position,
@@ -133,16 +142,22 @@ export const formatDocumentWidgets = (
   const answer = result?.answers[0]
   const docsByFileId = new Map<string, DeepsetResultPayload['documents'][0]>()
   for (const d of result.documents) {
-    if (!docsByFileId.has(d.file.id)) docsByFileId.set(d.file.id, d)
+    if (!docsByFileId.has(d.file.id)) {
+      docsByFileId.set(d.file.id, d)
+    }
   }
 
   const citedFileIds = references && references.length > 0 ? new Set(references.map((r) => r.fileId)) : null
 
   const widgetTags = (answer?.files ?? [])
     .flatMap((file) => {
-      if (citedFileIds && !citedFileIds.has(file.id)) return []
+      if (citedFileIds && !citedFileIds.has(file.id)) {
+        return []
+      }
       const doc = docsByFileId.get(file.id)
-      if (!doc || doc.score < 0.01) return []
+      if (!doc || doc.score < 0.01) {
+        return []
+      }
       const snippet = doc.content ? doc.content.slice(0, 200).replace(/"/g, '&quot;') : ''
       const score = doc.score.toFixed(4)
       return [

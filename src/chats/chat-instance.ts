@@ -27,7 +27,9 @@ const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random()
  */
 const ensureHaystackSession = async (chatId: string): Promise<string> => {
   const existing = haystackSessionIds.get(chatId)
-  if (existing) return existing
+  if (existing) {
+    return existing
+  }
 
   const db = getDb()
   const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })

@@ -52,7 +52,9 @@ export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) =>
       showSideview('document', sideviewId)
       return
     }
-    if (safeUrl === '#') return
+    if (safeUrl === '#') {
+      return
+    }
     openExternalLink(safeUrl)
   }
 

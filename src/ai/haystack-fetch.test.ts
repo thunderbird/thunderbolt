@@ -416,6 +416,7 @@ const createMockWriter = () => {
 }
 
 /** Helper to create an async generator from an array of events */
+// eslint-disable-next-line func-style
 async function* eventsToGenerator(events: DeepsetSSEEvent[]): AsyncGenerator<DeepsetSSEEvent> {
   for (const event of events) {
     yield event

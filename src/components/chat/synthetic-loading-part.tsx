@@ -13,7 +13,9 @@ export const SyntheticLoadingPart = ({ message = '', messages, isStreaming }: Sy
   const rotatingMessages = messages ?? (message ? null : null)
 
   useEffect(() => {
-    if (!rotatingMessages || !isStreaming) return
+    if (!rotatingMessages || !isStreaming) {
+      return
+    }
 
     const interval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % rotatingMessages.length)

@@ -110,7 +110,7 @@ describe('HaystackClient', () => {
       expect(result).toEqual({ searchSessionId: 'da81f24c-1586-4518-8360-70f40fcee960' })
       expect(mockFetch).toHaveBeenCalledTimes(1)
 
-      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [url, options] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(url).toBe('https://api.cloud.deepset.ai/api/v1/workspaces/test_workspace/search_sessions')
       expect(options.method).toBe('POST')
       expect(JSON.parse(options.body as string)).toEqual({
@@ -124,7 +124,7 @@ describe('HaystackClient', () => {
 
       await client.createSession()
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [, options] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       const headers = options.headers as Record<string, string>
       expect(headers.Authorization).toBe('Bearer test-api-key-123')
       expect(headers['Content-Type']).toBe('application/json')
@@ -176,7 +176,7 @@ describe('HaystackClient', () => {
         sessionId: 'session-123',
       })
 
-      const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [url] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(url).toBe('https://api.cloud.deepset.ai/api/v1/workspaces/test_workspace/pipelines/test-pipeline/chat')
     })
 
@@ -189,7 +189,7 @@ describe('HaystackClient', () => {
         sessionId: 'session-123',
       })
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [, options] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(JSON.parse(options.body as string)).toEqual({
         queries: ['test query'],
         search_session_id: 'session-123',
@@ -207,7 +207,7 @@ describe('HaystackClient', () => {
         chatHistoryLimit: 10,
       })
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [, options] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(JSON.parse(options.body as string)).toEqual({
         queries: ['test query'],
         search_session_id: 'session-123',
@@ -288,7 +288,7 @@ describe('HaystackClient', () => {
 
       await client.listSessions()
 
-      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [url, options] = mockFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(url).toBe('https://api.cloud.deepset.ai/api/v1/workspaces/test_workspace/search_sessions')
       expect(options.method).toBe('GET')
     })
@@ -326,7 +326,7 @@ describe('HaystackClient', () => {
       const result = await client.downloadFile('file-abc-123')
 
       expect(fileFetch).toHaveBeenCalledTimes(1)
-      const [url, options] = fileFetch.mock.calls[0] as [string, RequestInit]
+      const [url, options] = fileFetch.mock.calls[0] as unknown as [string, RequestInit]
       expect(url).toBe('https://api.cloud.deepset.ai/api/v1/workspaces/test_workspace/files/file-abc-123')
       expect(options.method).toBe('GET')
       const headers = options.headers as Record<string, string>

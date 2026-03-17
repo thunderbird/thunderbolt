@@ -159,7 +159,9 @@ describe('Haystack Routes', () => {
       downloadFile: mockDownloadFile,
     }
 
-    app = new Elysia().use(createTestHaystackRoutes(mockClient as unknown as HaystackClient))
+    app = new Elysia().use(createTestHaystackRoutes(mockClient as unknown as HaystackClient)) as unknown as ReturnType<
+      typeof createTestHaystackRoutes
+    >
   })
 
   describe('POST /sessions', () => {

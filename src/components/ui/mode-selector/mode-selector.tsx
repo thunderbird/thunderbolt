@@ -11,14 +11,16 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
+const iconSize = 'size-[var(--icon-size-default)]'
+
 const iconMap: Record<string, ReactNode> = {
-  'message-square': <MessageSquare className="size-4" />,
-  globe: <Globe className="size-4" />,
-  microscope: <Microscope className="size-4" />,
+  'message-square': <MessageSquare className={iconSize} />,
+  globe: <Globe className={iconSize} />,
+  microscope: <Microscope className={iconSize} />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return iconMap[iconName] ?? <MessageSquare className="size-4" />
+  return iconMap[iconName] ?? <MessageSquare className={iconSize} />
 }
 
 type ModeItemData = {
@@ -44,12 +46,14 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-sm border border-border',
-        iconOnly ? 'size-[34px] justify-center' : 'gap-1 px-2 py-1.5',
+        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
+        iconOnly
+          ? 'size-[var(--touch-height-default)] justify-center'
+          : 'gap-1 px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
-      {selected?.icon ?? <MessageSquare className="size-4" />}
+      {selected?.icon ?? <MessageSquare className={iconSize} />}
       {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )
@@ -60,13 +64,13 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-xl transition-colors text-left cursor-pointer',
           isSelected ? 'bg-muted' : 'hover:bg-accent/50',
         )}
       >
         {item.icon}
         <span>{item.label}</span>
-        {isDefault && <span className="text-muted-foreground text-sm">Default</span>}
+        {isDefault && <span className="text-muted-foreground text-[length:var(--font-size-sm)]">Default</span>}
       </div>
     )
   }

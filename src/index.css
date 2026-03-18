@@ -43,6 +43,95 @@
   --color-card-border: #dee8df;
 }
 
+/* ===========================
+   Responsive Touch Target System
+   =========================== */
+:root {
+  /* Heights - Touch targets */
+  --touch-height-xl: 3.5rem; /* 56px mobile */
+  --touch-height-lg: 3rem; /* 48px mobile */
+  --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
+  --touch-height-sm: 2.5rem; /* 40px mobile */
+
+  /* Icon sizes */
+  --icon-size-default: 1.25rem; /* 20px mobile */
+  --icon-size-sm: 1rem; /* 16px mobile */
+
+  /* Font sizes */
+  --font-size-body: 1rem; /* 16px mobile */
+  --font-size-sm: 0.875rem; /* 14px mobile */
+  --font-size-xs: 0.75rem; /* 12px mobile */
+
+  /* Spacing - Horizontal padding */
+  --spacing-x-lg: 1.75rem; /* 28px mobile */
+  --spacing-x-default: 1.25rem; /* 20px mobile */
+  --spacing-x-md: 1rem; /* 16px mobile */
+  --spacing-x-sm: 0.75rem; /* 12px mobile */
+
+  /* Spacing - Vertical padding */
+  --spacing-y-default: 0.625rem; /* 10px mobile */
+  --spacing-y-md: 0.5rem; /* 8px mobile */
+  --spacing-y-sm: 0.375rem; /* 6px mobile */
+
+  /* Gaps */
+  --gap-lg: 0.625rem; /* 10px mobile */
+  --gap-default: 0.5rem; /* 8px mobile */
+  --gap-sm: 0.375rem; /* 6px mobile */
+
+  /* Minimum sizes */
+  --min-touch-height: 2.5rem; /* 40px mobile */
+
+  /* Switch component specific */
+  --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
+  --switch-track-width: 2.75rem; /* 44px mobile */
+  --switch-thumb-size: 1.125rem; /* 18px mobile */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+}
+
+@media (min-width: 768px) {
+  :root {
+    /* Heights - Desktop values */
+    --touch-height-xl: 3rem; /* 48px desktop */
+    --touch-height-lg: 2.5rem; /* 40px desktop */
+    --touch-height-default: 2.25rem; /* 36px desktop */
+    --touch-height-sm: 2rem; /* 32px desktop */
+
+    /* Icon sizes */
+    --icon-size-default: 1rem; /* 16px desktop */
+    --icon-size-sm: 0.875rem; /* 14px desktop */
+
+    /* Font sizes */
+    --font-size-body: 0.875rem; /* 14px desktop */
+    --font-size-sm: 0.75rem; /* 12px desktop */
+    --font-size-xs: 0.625rem; /* 10px desktop */
+
+    /* Spacing - Horizontal padding */
+    --spacing-x-lg: 1.5rem; /* 24px desktop */
+    --spacing-x-default: 1rem; /* 16px desktop */
+    --spacing-x-md: 0.75rem; /* 12px desktop */
+    --spacing-x-sm: 0.5rem; /* 8px desktop */
+
+    /* Spacing - Vertical padding */
+    --spacing-y-default: 0.5rem; /* 8px desktop */
+    --spacing-y-md: 0.375rem; /* 6px desktop */
+    --spacing-y-sm: 0.25rem; /* 4px desktop */
+
+    /* Gaps */
+    --gap-lg: 0.5rem; /* 8px desktop */
+    --gap-default: 0.375rem; /* 6px desktop */
+    --gap-sm: 0.25rem; /* 4px desktop */
+
+    /* Minimum sizes */
+    --min-touch-height: 0; /* No min on desktop */
+
+    /* Switch component specific */
+    --switch-track-height: 1.15rem; /* desktop */
+    --switch-track-width: 2rem; /* desktop */
+    --switch-thumb-size: 1rem; /* desktop */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+  }
+}
+
 .dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);

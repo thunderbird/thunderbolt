@@ -4,9 +4,16 @@ import './polyfills'
 
 import './index.css'
 import { initializeLinkInterception } from './lib/intercept-links'
+import { handlePostUpdateRedirect } from './lib/post-update-redirect'
 
-initializeLinkInterception()
+// After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
+// verify screen). Detect this and force a clean start at root.
+const redirecting = handlePostUpdateRedirect()
 
-const root = document.getElementById('root') as HTMLElement
+if (!redirecting) {
+  initializeLinkInterception()
 
-ReactDOM.createRoot(root).render(<App />)
+  const root = document.getElementById('root') as HTMLElement
+
+  ReactDOM.createRoot(root).render(<App />)
+}

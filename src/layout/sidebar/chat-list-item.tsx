@@ -56,9 +56,9 @@ export const ChatListItem = ({
           tooltip={thread.title ?? undefined}
         >
           {status === 'streaming' ? (
-            <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
           ) : (
-            <MessageCircle className="size-4 shrink-0" />
+            <MessageCircle className="size-[var(--icon-size-default)] shrink-0" />
           )}
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -86,7 +86,7 @@ export const ChatListItem = ({
                   exit={{ opacity: 0, width: 0 }}
                   className="flex-shrink-0"
                 >
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
                 </motion.div>
               )}
             </AnimatePresence>

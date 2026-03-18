@@ -54,14 +54,16 @@ export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => 
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
  * Each `[N]` where `N-1` is a valid index into `sources` becomes a `{{CITE:mapKey}}` placeholder.
  * Out-of-range references are left as-is in the text.
+ * @param startKey - Initial key value for the citation map (default 0). Use to avoid key collisions when processing multiple segments.
  * @returns fullText with placeholders, and the corresponding CitationMap
  */
 export const buildSourceCitationPlaceholders = (
   text: string,
   sources: SourceMetadata[],
+  startKey = 0,
 ): { fullText: string; citations: CitationMap } => {
   const citations: CitationMap = new Map()
-  let nextKey = 0
+  let nextKey = startKey
 
   const fullText = text.replace(groupedCitationRegex, (match) => {
     const validSources: CitationSource[] = []
@@ -89,11 +91,10 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   const hasNewSources = !!sources && sources.length > 0
 
   // Build citation data upfront so the hook is always called in the same order
-  const { contentParts, fullText, citations, hasCitations, hasText } = useMemo(() => {
+  const { processedParts, citations, hasCitations, hasText } = useMemo(() => {
     if (!part.text) {
       return {
-        contentParts: [],
-        fullText: '',
+        processedParts: [] as ContentPart[],
         citations: new Map() as CitationMap,
         hasCitations: false,
         hasText: false,
@@ -103,24 +104,34 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     const parts = parseContentParts(part.text)
 
     if (hasNewSources) {
-      const textContent = parts
-        .filter((p) => p.type === 'text')
-        .map((p) => p.content)
-        .join('\n\n')
+      let keyOffset = 0
+      const mergedCitations: CitationMap = new Map()
+      const processedParts: ContentPart[] = parts.map((p) => {
+        if (p.type !== 'text') {
+          return p
+        }
+        const { fullText, citations } = buildSourceCitationPlaceholders(p.content, sources, keyOffset)
+        for (const [key, value] of citations) {
+          mergedCitations.set(key, value)
+        }
+        keyOffset += citations.size
+        return { type: 'text' as const, content: fullText }
+      })
 
-      const result = buildSourceCitationPlaceholders(textContent, sources)
-      const hasCit = result.citations.size > 0
-      return { contentParts: parts, ...result, hasCitations: hasCit, hasText: textContent.length > 0 }
+      const hasCit = mergedCitations.size > 0
+      return {
+        processedParts,
+        citations: mergedCitations,
+        hasCitations: hasCit,
+        hasText: parts.some((p) => p.type === 'text' && p.content.length > 0),
+      }
     }
 
-    const hasTxt = parts.some((p) => p.type === 'text')
-
     return {
-      contentParts: parts,
-      fullText: '',
+      processedParts: parts,
       citations: new Map() as CitationMap,
       hasCitations: false,
-      hasText: hasTxt,
+      hasText: parts.some((p) => p.type === 'text'),
     }
   }, [part.text, hasNewSources, sources])
 
@@ -129,26 +140,44 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   }
 
   if (hasCitations && hasText) {
+    const dedupedParts = deduplicateLinkPreviews(processedParts)
+
     return (
-      <div className="p-4 rounded-md my-2">
-        <CitationPopoverProvider>
-          <CitationContext.Provider value={citations}>
-            <MemoizedMarkdown
-              key={`${messageId}-text`}
-              id={messageId}
-              content={fullText}
-              components={citationMarkdownComponents}
-            />
-          </CitationContext.Provider>
-        </CitationPopoverProvider>
-      </div>
+      <CitationPopoverProvider>
+        <CitationContext.Provider value={citations}>
+          {dedupedParts.map((part, index) => {
+            if (part.type === 'text') {
+              return (
+                <div key={`text-${index}`} className="p-4 rounded-md my-2">
+                  <MemoizedMarkdown
+                    key={`${messageId}-text-${index}`}
+                    id={`${messageId}-${index}`}
+                    content={part.content}
+                    components={citationMarkdownComponents}
+                  />
+                </div>
+              )
+            }
+            return (
+              <div
+                key={
+                  part.widget.widget === 'link-preview' ? (part.widget.args as { url: string }).url : `widget-${index}`
+                }
+                className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out"
+              >
+                <WidgetRenderer widget={part.widget} messageId={messageId} sources={sources} />
+              </div>
+            )
+          })}
+        </CitationContext.Provider>
+      </CitationPopoverProvider>
     )
   }
 
   // Default behavior for block-level widgets or no citations
   return (
     <>
-      {deduplicateLinkPreviews(contentParts).map((contentPart, index) => {
+      {deduplicateLinkPreviews(processedParts).map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
             <div key={`text-${index}`} className="p-4 rounded-md my-2">

@@ -50,15 +50,15 @@ export const PowerSyncStatus = () => {
 
   const getIcon = () => {
     if (!syncEnabled) {
-      return <CloudOff className="h-4 w-4 text-muted-foreground" />
+      return <CloudOff className="size-[var(--icon-size-default)] text-muted-foreground" />
     }
     if (isConnecting) {
-      return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      return <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
     }
     if (!isConnected) {
-      return <CloudOff className="h-4 w-4 text-muted-foreground" />
+      return <CloudOff className="size-[var(--icon-size-default)] text-muted-foreground" />
     }
-    return <Cloud className="h-4 w-4 text-green-500" />
+    return <Cloud className="size-[var(--icon-size-default)] text-green-500" />
   }
 
   const statusNote = !isAuthenticated
@@ -74,7 +74,7 @@ export const PowerSyncStatus = () => {
           <button
             type="button"
             className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors',
+              'flex items-center gap-2 px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)] rounded-md transition-colors min-h-[var(--min-touch-height)]',
               'hover:bg-accent cursor-pointer select-none outline-none',
             )}
             aria-label="Sync status"

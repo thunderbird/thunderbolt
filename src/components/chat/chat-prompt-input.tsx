@@ -154,7 +154,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
           className={cn(
             'flex flex-col bg-background dark:bg-input/30 border dark:border-input rounded-2xl w-full',
-            isMobile ? 'gap-0 p-4' : 'gap-2 p-3',
+            isMobile ? 'gap-0 p-2' : 'gap-2 p-3',
           )}
           footerStartElements={footerStartElements}
           isMobile={isMobile}

@@ -67,7 +67,9 @@ export const ChatList = ({
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">
-                  <Search className={`size-4 ${debouncedSearchQuery ? 'text-blue-500' : ''}`} />
+                  <Search
+                    className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-blue-500' : ''}`}
+                  />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -78,9 +80,9 @@ export const ChatList = ({
                   className="cursor-pointer"
                 >
                   {deleteAllChatsMutation.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
                   ) : (
-                    <Flame className="size-4" />
+                    <Flame className="size-[var(--icon-size-default)]" />
                   )}
                 </SidebarMenuButton>
               </SidebarMenuItem>

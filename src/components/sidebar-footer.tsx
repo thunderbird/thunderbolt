@@ -55,11 +55,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
           {isPending ? (
             // Loading state
             <SidebarMenuButton size="lg" className="cursor-default">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg">
+                <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
               </div>
               {isExpanded && (
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                <div className="grid flex-1 text-left text-[length:var(--font-size-body)] leading-tight">
                   <span className="truncate text-muted-foreground">Loading...</span>
                 </div>
               )}
@@ -67,11 +67,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
           ) : !user ? (
             // Not logged in - show "Sign In" button
             <SidebarMenuButton size="lg" className="cursor-pointer" onClick={handleSignInClick}>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border">
-                <Sparkles className="h-4 w-4 text-muted-foreground" />
+              <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg border border-border">
+                <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
               </div>
               {isExpanded && (
-                <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
+                <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                   <span className="truncate font-semibold">Sign In</span>
                   <span className="truncate text-xs text-muted-foreground">Sync chats between devices</span>
                 </div>
@@ -85,16 +85,16 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   size="lg"
                   className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border">
-                    <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg border border-border">
+                    <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
                   </div>
                   {isExpanded && (
                     <>
-                      <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
+                      <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                         {displayName && <span className="truncate font-semibold">{displayName}</span>}
                         <span className="truncate text-xs">{displayEmail}</span>
                       </div>
-                      <ChevronsUpDown className="ml-auto size-4" />
+                      <ChevronsUpDown className="ml-auto size-[var(--icon-size-default)]" />
                     </>
                   )}
                 </SidebarMenuButton>
@@ -106,11 +106,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 sideOffset={4}
               >
                 <DropdownMenuLabel className="p-0 font-normal">
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border">
-                      <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-2 px-1 py-[var(--spacing-y-md)] text-left text-[length:var(--font-size-body)]">
+                    <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg border border-border">
+                      <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
                     </div>
-                    <div className="flex flex-1 flex-col justify-center text-left text-sm leading-tight">
+                    <div className="flex flex-1 flex-col justify-center text-left text-[length:var(--font-size-body)] leading-tight">
                       {displayName && <span className="truncate font-semibold">{displayName}</span>}
                       <span className="truncate text-xs">{displayEmail}</span>
                     </div>

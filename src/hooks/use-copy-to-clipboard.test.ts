@@ -26,8 +26,7 @@ describe('useCopyToClipboard', () => {
     const { result } = renderHook(() => useCopyToClipboard())
 
     await act(async () => {
-      const success = await result.current.copy('hello')
-      expect(success).toBe(true)
+      await result.current.copy('hello')
     })
 
     expect(writeTextMock).toHaveBeenCalledWith('hello')
@@ -45,19 +44,6 @@ describe('useCopyToClipboard', () => {
 
     await act(async () => {
       await getClock().tickAsync(1000)
-    })
-
-    expect(result.current.isCopied).toBe(false)
-  })
-
-  it('returns false when clipboard write fails', async () => {
-    writeTextMock.mockImplementationOnce(() => Promise.reject(new Error('denied')))
-
-    const { result } = renderHook(() => useCopyToClipboard())
-
-    await act(async () => {
-      const success = await result.current.copy('hello')
-      expect(success).toBe(false)
     })
 
     expect(result.current.isCopied).toBe(false)

@@ -10,7 +10,8 @@ export type SyncState = (typeof SyncState)[keyof typeof SyncState]
 
 export type EnableSyncResult = { status: 'ENABLED' } | { status: 'REQUIRES_KEY_SETUP' }
 
-const SYNC_ENABLED_KEY = 'thunderbolt_sync_enabled'
+// Must match the key used by PowerSync's setSyncEnabled/isSyncEnabled
+const SYNC_ENABLED_KEY = 'powersync_sync_enabled'
 
 let _onSyncEnabledCallbacks: Array<() => void> = []
 

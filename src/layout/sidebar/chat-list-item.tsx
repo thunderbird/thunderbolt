@@ -104,6 +104,8 @@ export const ChatListItem = ({
                 }}
                 onBlur={handleRenameSubmit}
                 onClick={(e) => e.stopPropagation()}
+                enterKeyHint="done"
+                autoComplete="off"
                 className="truncate flex-1 min-w-0 bg-transparent outline-none text-sm"
               />
             ) : (

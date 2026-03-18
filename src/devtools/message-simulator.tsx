@@ -181,7 +181,12 @@ const SimulatorChat = ({ sseContent, onStop, stopRef }: SimulatorChatProps) => {
   }
 
   // Expose the stop function to parent via ref
-  stopRef.current = handleStop
+  useEffect(() => {
+    stopRef.current = handleStop
+    return () => {
+      stopRef.current = null
+    }
+  }, [stopRef])
 
   return (
     <>

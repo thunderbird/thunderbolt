@@ -203,8 +203,10 @@ export const useSidebarResize = ({
     [direction, isNested],
   )
 
-  // Update auto-collapse threshold
-  autoCollapseThresholdPx.current = enableAutoCollapse ? minWidthPx * autoCollapseThreshold : 0
+  // Update auto-collapse threshold when dependencies change
+  useEffect(() => {
+    autoCollapseThresholdPx.current = enableAutoCollapse ? minWidthPx * autoCollapseThreshold : 0
+  }, [minWidthPx, enableAutoCollapse, autoCollapseThreshold])
 
   // Persist width to cookie if cookie name is provided
   const persistWidth = useCallback(

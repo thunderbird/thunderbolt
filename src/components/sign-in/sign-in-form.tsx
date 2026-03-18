@@ -98,9 +98,11 @@ export const SignInForm = ({
   }, [actions, onGoBack])
 
   // Expose goBack to parent via ref (for page variant where back button is external).
-  if (goBackRef) {
-    goBackRef.current = handleGoBack
-  }
+  useEffect(() => {
+    if (goBackRef) {
+      goBackRef.current = handleGoBack
+    }
+  }, [goBackRef, handleGoBack])
 
   // Auto-focus email input on desktop when component mounts
   useEffect(() => {

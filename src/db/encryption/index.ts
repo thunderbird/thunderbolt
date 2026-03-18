@@ -1,4 +1,5 @@
 export { encryptionConfig, type EncryptedTableName, type EncryptionConfig } from './config'
+export { isEncryptionEnabled, setEncryptionEnabled } from './enabled'
 export { shadowTables, shadowTableName, getShadowTable } from './shadow-tables'
 export { setupDecryptionWatchers } from './watcher'
 export { encodeForUpload } from './upload-encoder'

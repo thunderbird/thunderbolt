@@ -2,6 +2,7 @@ import { getTableColumns } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { encryptionConfig } from './config'
 import { codec } from './codec'
+import { isEncryptionEnabled } from './enabled'
 
 /** Pre-computed lookup: tableName → encrypted DB column names (snake_case) */
 const encryptedColumnsMap = new Map<string, readonly string[]>(
@@ -26,7 +27,7 @@ type CrudOperation = {
  * Returns the operation unchanged if the table has no encrypted columns or op is DELETE.
  */
 export const encodeForUpload = (operation: CrudOperation): CrudOperation => {
-  if (operation.op === 'DELETE' || !operation.data) {
+  if (!isEncryptionEnabled() || operation.op === 'DELETE' || !operation.data) {
     return operation
   }
 

@@ -6,12 +6,19 @@ import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { encryptionConfig } from './config'
 import { shadowTableName } from './shadow-tables'
 import { codec } from './codec'
+import { isEncryptionEnabled } from './enabled'
 
 /**
  * Sets up trigger-based decryption watchers for ALL encrypted tables.
  * Returns a single cleanup function that tears down all watchers.
+ * No-op when encryption is disabled — shadow tables stay empty,
+ * and DAL COALESCE queries naturally fall back to source columns.
  */
 export const setupDecryptionWatchers = async (powerSync: PowerSyncDatabase): Promise<TriggerRemoveCallback> => {
+  if (!isEncryptionEnabled()) {
+    return async () => {}
+  }
+
   const cleanups: TriggerRemoveCallback[] = []
 
   for (const config of Object.values(encryptionConfig)) {

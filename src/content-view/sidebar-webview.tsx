@@ -3,6 +3,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { isSafeUrl } from '@/lib/url-utils'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Check, Copy, ExternalLink } from 'lucide-react'
 import { useRef } from 'react'
 import { ContentViewHeader } from './header'
@@ -39,10 +40,8 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
     if (!config?.url) {
       return
     }
-    const success = await copy(config.url)
-    if (success) {
-      trackEvent('preview_copy_url')
-    }
+    await copy(config.url)
+    trackEvent('preview_copy_url')
   }
 
   const handleOpenExternal = async () => {
@@ -50,13 +49,8 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
       return
     }
 
-    try {
-      trackEvent('preview_open_external')
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(config.url)
-    } catch (error) {
-      console.error('Error opening external URL:', error)
-    }
+    trackEvent('preview_open_external')
+    await openUrl(config.url)
   }
 
   if (!isTauri()) {

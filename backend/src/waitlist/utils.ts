@@ -1,7 +1,24 @@
+import type { Auth } from '@/auth/auth'
+import { getSettings, getWaitlistAutoApproveDomains } from '@/config/settings'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 
 type SendWaitlistEmailParams = {
   email: string
+}
+
+/**
+ * Check if an email domain is in the auto-approved list.
+ * Uses the last @ character to handle edge-case RFC 5321 addresses with quoted local parts.
+ */
+export const isAutoApprovedDomain = (email: string): boolean => {
+  const parts = email.split('@')
+  const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
+  return domain ? getWaitlistAutoApproveDomains(getSettings()).includes(domain) : false
+}
+
+/** Trigger Better Auth's OTP flow for approved users. */
+export const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<void> => {
+  await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
 }
 
 /**

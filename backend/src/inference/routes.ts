@@ -6,14 +6,7 @@ import { Elysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { getInferenceClient, type InferenceProvider } from './client'
-
-type Message = { role: string; content: unknown }
-
-const privilegedRoles = new Set(['developer', 'system'])
-
-/** Downgrade developer/system roles to user for all messages except the first (the legitimate system prompt). */
-const sanitizeMessageRoles = (messages: Message[]): Message[] =>
-  messages.map((msg, i) => (i > 0 && privilegedRoles.has(msg.role) ? { ...msg, role: 'user' } : msg))
+import { sanitizeMessageRoles } from './utils'
 
 type ModelConfig = {
   provider: InferenceProvider

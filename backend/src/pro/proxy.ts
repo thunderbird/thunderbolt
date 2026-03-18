@@ -2,7 +2,7 @@ import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
-import { validateSafeUrl } from './link-preview'
+import { validateSafeUrl } from '@/utils/url'
 
 /**
  * General-purpose proxy routes

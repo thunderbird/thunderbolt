@@ -1,11 +1,11 @@
-const BASE64_PREFIX = 'b64:'
+const base64Prefix = 'b64:'
 
 /** Check if a string was encoded by our codec (prefixed format). */
 export const isBase64 = (str: string): boolean => {
   if (!str || str.trim().length === 0) {
     return false
   }
-  return str.startsWith(BASE64_PREFIX)
+  return str.startsWith(base64Prefix)
 }
 
 /**
@@ -18,9 +18,9 @@ export const decodeIfBase64 = (str: string): string => {
   }
 
   // New prefixed format
-  if (str.startsWith(BASE64_PREFIX)) {
+  if (str.startsWith(base64Prefix)) {
     try {
-      return decodeURIComponent(escape(atob(str.slice(BASE64_PREFIX.length))))
+      return decodeURIComponent(escape(atob(str.slice(base64Prefix.length))))
     } catch {
       return str
     }
@@ -43,8 +43,8 @@ export const encodeIfNotBase64 = (str: string): string => {
   if (!str) {
     return str
   }
-  if (str.startsWith(BASE64_PREFIX)) {
+  if (str.startsWith(base64Prefix)) {
     return str
   }
-  return BASE64_PREFIX + btoa(unescape(encodeURIComponent(str)))
+  return base64Prefix + btoa(unescape(encodeURIComponent(str)))
 }

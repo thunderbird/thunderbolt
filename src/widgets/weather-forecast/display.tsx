@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from './lib'
 
 type WeatherForecastProps = WeatherForecastData
@@ -12,6 +12,11 @@ export const WeatherForecast = ({ location, days = [], temperature_unit }: Weath
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
 
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
+
+  // Sync local state with prop when it changes
+  useEffect(() => {
+    setTemperatureUnit(temperature_unit)
+  }, [temperature_unit])
 
   const selectedDayMetadata = useMemo(
     () =>

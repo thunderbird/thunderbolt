@@ -1,5 +1,8 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createSetting } from '@/dal'
+import { encryptionConfig, type EncryptedTableName } from '@/db/encryption/config'
+import { decryptedJoin, decryptedSelectFor } from '@/db/encryption/dal-helpers'
+import { getShadowTable } from '@/db/encryption/shadow-tables'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
@@ -10,6 +13,12 @@ import { defaultModes, hashMode } from '../defaults/modes'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultTasks, hashTask } from '../defaults/tasks'
+
+/** Resolve encryption config key for a table, if it's an encrypted table. */
+const findEncryptedTableName = (table: SQLiteTableWithColumns<any>): EncryptedTableName | undefined =>
+  (Object.entries(encryptionConfig) as [EncryptedTableName, (typeof encryptionConfig)[EncryptedTableName]][]).find(
+    ([, config]) => config.table === table,
+  )?.[0]
 
 /**
  * Generic function to reconcile defaults into a table
@@ -26,9 +35,20 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   hashFn: (item: any) => string,
   keyField: string = 'id',
 ) => {
+  const encTableName = findEncryptedTableName(table)
+
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
-    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+
+    // Use decrypted selects for encrypted tables to avoid JSON.parse on base64 values
+    const existing = encTableName
+      ? await db
+          .select(decryptedSelectFor(encTableName))
+          .from(table)
+          .leftJoin(getShadowTable(encTableName), decryptedJoin(table, getShadowTable(encTableName)))
+          .where(eq(table[keyField], keyValue))
+          .get()
+      : await db.select().from(table).where(eq(table[keyField], keyValue)).get()
 
     if (!existing) {
       // New default - insert with computed hash

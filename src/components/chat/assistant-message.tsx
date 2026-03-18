@@ -126,7 +126,7 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
-        {!isStreaming && (
+        {!isStreaming && copyText && (
           <div className="flex items-center gap-2.5 px-4 -mt-6">
             <CopyMessageButton text={copyText} />
           </div>

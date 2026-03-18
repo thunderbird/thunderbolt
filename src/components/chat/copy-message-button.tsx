@@ -24,7 +24,11 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
       aria-label="Copy message"
       onClick={() => copy(text)}
     >
-      {isCopied ? <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" /> : <Copy className="size-4" />}
+      {isCopied ? (
+        <Check className="size-4 text-muted-foreground animate-[fadeOut_2s_ease-in-out]" />
+      ) : (
+        <Copy className="size-4 text-muted-foreground" />
+      )}
     </Button>
   )
 }

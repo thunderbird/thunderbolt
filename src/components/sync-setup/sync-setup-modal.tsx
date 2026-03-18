@@ -12,6 +12,7 @@ import { ChooseMethodStep } from './choose-method-step'
 import { CreatePassphraseStep } from './create-passphrase-step'
 import { CreateShowKeyStep } from './create-show-key-step'
 import { ImportPassphraseStep } from './import-passphrase-step'
+import { ImportRecoveryKeyStep } from './import-recovery-key-step'
 import { PasskeySetupStep } from './passkey-setup-step'
 import { SuccessStep } from './success-step'
 
@@ -26,6 +27,7 @@ const stepTitles: Record<SyncSetupStep, string> = {
   'create-passphrase': 'Create Encryption Key',
   'create-show-key': 'Save Your Recovery Key',
   'import-passphrase': 'Import via Passphrase',
+  'import-recovery-key': 'Import via Recovery Key',
   'passkey-setup': 'Protect Your Key',
   success: 'All Set',
 }
@@ -83,6 +85,13 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             isVerifying={state.isVerifying}
             onVerify={actions.startVerification}
             onSetPassphrase={actions.setPassphrase}
+          />
+        )}
+
+        {state.step === 'import-recovery-key' && (
+          <ImportRecoveryKeyStep
+            isVerifying={state.isVerifying}
+            onVerify={actions.startRecoveryKeyVerification}
           />
         )}
 

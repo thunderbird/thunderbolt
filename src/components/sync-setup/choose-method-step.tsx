@@ -1,7 +1,7 @@
-import { KeyRound, KeySquare } from 'lucide-react'
+import { FileKey, KeyRound, KeySquare } from 'lucide-react'
 
 type ChooseMethodStepProps = {
-  onSelect: (method: 'create' | 'import-passphrase') => void
+  onSelect: (method: 'create' | 'import-passphrase' | 'import-recovery-key') => void
 }
 
 const methods = [
@@ -16,6 +16,12 @@ const methods = [
     icon: KeySquare,
     title: 'Import via passphrase',
     description: 'Re-derive your key using a passphrase from another device.',
+  },
+  {
+    id: 'import-recovery-key' as const,
+    icon: FileKey,
+    title: 'Import via recovery key',
+    description: 'Paste the 64-character recovery key you saved during setup.',
   },
 ]
 

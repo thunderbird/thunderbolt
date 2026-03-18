@@ -2,6 +2,7 @@ import { formatDuration, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { type ToolUIPart } from 'ai'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 
 type ReasoningGroupTitleProps = {
   totalDuration: number
@@ -10,7 +11,11 @@ type ReasoningGroupTitleProps = {
 }
 
 export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: ReasoningGroupTitleProps) => {
-  const activeIndex = tools.length - 1
+  const [activeIndex, setActiveIndex] = useState(tools.length - 1)
+
+  useEffect(() => {
+    setActiveIndex(tools.length - 1)
+  }, [tools.length])
 
   const activeTool = tools[activeIndex]
   const activeToolMetadata = activeTool

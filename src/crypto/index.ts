@@ -44,3 +44,18 @@ export { createCanary, verifyCanary } from './canary'
 // Envelope encryption
 export type { EncryptedRecord } from './envelope'
 export { decryptRecord, encryptRecord } from './envelope'
+
+// Recovery key display
+export { formatRecoveryKeyForDisplay } from './format'
+
+// Key setup service
+export type { KeySetupResult } from './key-setup'
+export { createNewKey, importFromPassphrase, importFromRecoveryKey } from './key-setup'
+
+// Sync gate
+export type { EnableSyncResult } from './sync-gate'
+export { SyncState, disableSync, enableSync, getSyncState, onSyncEnabled } from './sync-gate'
+
+// Migration
+export type { MigrationStatus } from './migration'
+export { migrateLocalData } from './migration'

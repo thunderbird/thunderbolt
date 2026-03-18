@@ -1,4 +1,7 @@
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
+import { WaitlistJoinedEmail } from '@/emails/waitlist-joined'
+import { WaitlistReminderEmail } from '@/emails/waitlist-reminder'
+import { WaitlistNotReadyEmail } from '@/emails/waitlist-not-ready'
 
 type SendWaitlistEmailParams = {
   email: string
@@ -15,7 +18,11 @@ export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams
     return
   }
 
-  const data = await sendEmail({ to: email, templateId: 'waitlist-joined' })
+  const data = await sendEmail({
+    to: email,
+    subject: "You're on the Thunderbolt waitlist!",
+    react: <WaitlistJoinedEmail />,
+  })
   console.info(`✅ Joined waitlist email sent successfully. ID: ${data?.id}`)
 }
 
@@ -30,7 +37,11 @@ export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailPara
     return
   }
 
-  const data = await sendEmail({ to: email, templateId: 'waitlist-reminder' })
+  const data = await sendEmail({
+    to: email,
+    subject: "You're already on the waitlist!",
+    react: <WaitlistReminderEmail />,
+  })
   console.info(`✅ Waitlist reminder sent successfully. ID: ${data?.id}`)
 }
 
@@ -45,6 +56,10 @@ export const sendWaitlistNotReadyEmail = async ({ email }: SendWaitlistEmailPara
     return
   }
 
-  const data = await sendEmail({ to: email, templateId: 'waitlist-not-ready' })
+  const data = await sendEmail({
+    to: email,
+    subject: "You're on the Thunderbolt waitlist!",
+    react: <WaitlistNotReadyEmail />,
+  })
   console.info(`✅ Waitlist not-ready email sent successfully. ID: ${data?.id}`)
 }

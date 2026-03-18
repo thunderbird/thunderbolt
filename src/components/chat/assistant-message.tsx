@@ -117,6 +117,12 @@ export const AssistantMessage = memo(
 
     const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
 
+    const hasWidgets = useMemo(
+      () =>
+        message.parts.some((part) => part.type === 'text' && /<widget:(weather-forecast|link-preview)/.test(part.text)),
+      [message.parts],
+    )
+
     return (
       <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>
         {partElements.map((partElement, index) => (
@@ -126,7 +132,7 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
-        {!isStreaming && copyText && (
+        {!isStreaming && copyText && !hasWidgets && (
           <div className="flex items-center gap-2.5 px-4 -mt-6">
             <CopyMessageButton text={copyText} />
           </div>

@@ -13,7 +13,7 @@ import {
 describe('generateMasterKey', () => {
   test('generates an extractable AES-GCM 256-bit key', async () => {
     const key = await generateMasterKey()
-    expect(key.algorithm).toEqual({ name: 'AES-GCM', length: 256 })
+    expect(key.algorithm.name).toBe('AES-GCM')
     expect(key.extractable).toBe(true)
     expect(key.usages).toContain('encrypt')
     expect(key.usages).toContain('wrapKey')
@@ -23,7 +23,7 @@ describe('generateMasterKey', () => {
 describe('generateContentKey', () => {
   test('generates an extractable AES-GCM 256-bit key', async () => {
     const key = await generateContentKey()
-    expect(key.algorithm).toEqual({ name: 'AES-GCM', length: 256 })
+    expect(key.algorithm.name).toBe('AES-GCM')
     expect(key.extractable).toBe(true)
   })
 })

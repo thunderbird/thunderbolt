@@ -5,16 +5,15 @@ import { useState } from 'react'
 
 type ImportPassphraseStepProps = {
   isVerifying: boolean
-  onVerify: () => void
-  onSetPassphrase: (passphrase: string) => void
+  error: string | null
+  onVerify: (passphrase: string) => void
 }
 
-export const ImportPassphraseStep = ({ isVerifying, onVerify, onSetPassphrase }: ImportPassphraseStepProps) => {
+export const ImportPassphraseStep = ({ isVerifying, error, onVerify }: ImportPassphraseStepProps) => {
   const [passphrase, setPassphrase] = useState('')
 
   const handleSubmit = () => {
-    onSetPassphrase(passphrase)
-    onVerify()
+    onVerify(passphrase)
   }
 
   return (
@@ -37,6 +36,8 @@ export const ImportPassphraseStep = ({ isVerifying, onVerify, onSetPassphrase }:
           }
         }}
       />
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button disabled={passphrase.trim().length === 0 || isVerifying} onClick={handleSubmit}>
         {isVerifying ? (

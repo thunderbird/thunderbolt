@@ -1,13 +1,16 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 
 type CreatePassphraseStepProps = {
+  isVerifying: boolean
+  error: string | null
   onSubmitPassphrase: (passphrase: string) => void
   onSkip: () => void
 }
 
-export const CreatePassphraseStep = ({ onSubmitPassphrase, onSkip }: CreatePassphraseStepProps) => {
+export const CreatePassphraseStep = ({ isVerifying, error, onSubmitPassphrase, onSkip }: CreatePassphraseStepProps) => {
   const [passphrase, setPassphrase] = useState('')
 
   return (
@@ -25,18 +28,27 @@ export const CreatePassphraseStep = ({ onSubmitPassphrase, onSkip }: CreatePassp
         placeholder="Enter a passphrase (optional)"
         value={passphrase}
         onChange={(e) => setPassphrase(e.target.value)}
+        disabled={isVerifying}
         autoFocus
       />
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={onSkip}>
-          Skip (random key)
+        <Button variant="outline" className="flex-1" onClick={onSkip} disabled={isVerifying}>
+          {isVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Skip (random key)'}
         </Button>
         <Button
           className="flex-1"
-          disabled={passphrase.trim().length === 0}
+          disabled={passphrase.trim().length === 0 || isVerifying}
           onClick={() => onSubmitPassphrase(passphrase)}
         >
-          Use passphrase
+          {isVerifying ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            'Use passphrase'
+          )}
         </Button>
       </div>
     </div>

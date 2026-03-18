@@ -5,10 +5,13 @@ import { fromHex, toHex } from './utils'
 export const deriveKeyFromPassphrase = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
   const passphraseBytes = new TextEncoder().encode(passphrase)
 
-  const baseKey = await crypto.subtle.importKey('raw', passphraseBytes, 'PBKDF2', false, ['deriveBits', 'deriveKey'])
+  const baseKey = await crypto.subtle.importKey('raw', passphraseBytes as BufferSource, 'PBKDF2', false, [
+    'deriveBits',
+    'deriveKey',
+  ])
 
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 310_000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 310_000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     true,

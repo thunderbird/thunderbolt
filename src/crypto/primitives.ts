@@ -15,13 +15,17 @@ export const encrypt = async (
   plaintext: Uint8Array,
 ): Promise<{ iv: Uint8Array; ciphertext: Uint8Array }> => {
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext))
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext as BufferSource),
+  )
   return { iv, ciphertext }
 }
 
 /** Decrypt ciphertext with a key. Propagates DOMException on auth tag failure. */
 export const decrypt = async (key: CryptoKey, iv: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> =>
-  new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext))
+  new Uint8Array(
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, ciphertext as BufferSource),
+  )
 
 /**
  * Wrap (encrypt) a content key using the master key via AES-GCM.
@@ -29,7 +33,9 @@ export const decrypt = async (key: CryptoKey, iv: Uint8Array, ciphertext: Uint8A
  */
 export const wrapContentKey = async (masterKey: CryptoKey, contentKey: CryptoKey): Promise<Uint8Array> => {
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const wrapped = new Uint8Array(await crypto.subtle.wrapKey('raw', contentKey, masterKey, { name: 'AES-GCM', iv }))
+  const wrapped = new Uint8Array(
+    await crypto.subtle.wrapKey('raw', contentKey, masterKey, { name: 'AES-GCM', iv: iv as BufferSource }),
+  )
   const result = new Uint8Array(iv.length + wrapped.length)
   result.set(iv)
   result.set(wrapped, iv.length)
@@ -45,9 +51,9 @@ export const unwrapContentKey = (masterKey: CryptoKey, wrappedKeyWithIv: Uint8Ar
   const wrappedKey = wrappedKeyWithIv.slice(12)
   return crypto.subtle.unwrapKey(
     'raw',
-    wrappedKey,
+    wrappedKey as BufferSource,
     masterKey,
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt'],
@@ -60,7 +66,7 @@ export const exportKeyBytes = async (key: CryptoKey): Promise<Uint8Array> =>
 
 /** Import raw bytes as an AES-256-GCM CryptoKey. */
 export const importKeyBytes = (bytes: Uint8Array, extractable: boolean): Promise<CryptoKey> =>
-  crypto.subtle.importKey('raw', bytes, { name: 'AES-GCM', length: 256 }, extractable, [
+  crypto.subtle.importKey('raw', bytes as BufferSource, { name: 'AES-GCM', length: 256 }, extractable, [
     'encrypt',
     'decrypt',
     ...(extractable ? (['wrapKey', 'unwrapKey'] as const) : []),

@@ -66,8 +66,6 @@ describe('encodeRecoveryKey / decodeRecoveryKey', () => {
   })
 
   test('produces lowercase hex', () => {
-    const bytes = new Uint8Array([171, 205, 239, 0, 255])
-    // encodeRecoveryKey is for 32-byte keys, but toHex works on any length
     const hex = encodeRecoveryKey(new Uint8Array(32))
     expect(hex).toMatch(/^[0-9a-f]{64}$/)
   })

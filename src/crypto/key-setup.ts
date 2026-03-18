@@ -3,9 +3,8 @@ import type { KeyCanary } from './canary'
 import { ValidationError } from './errors'
 import { decodeRecoveryKey, deriveKeyFromPassphrase, encodeRecoveryKey, generateSalt } from './key-derivation'
 import { keyStorage } from './key-storage'
-import { getMasterKey, getSalt, setMasterKey, setSalt } from './master-key'
+import { getSalt, setMasterKey, setSalt } from './master-key'
 import { exportKeyBytes, generateMasterKey, importKeyBytes } from './primitives'
-import { toBase64 } from './utils'
 
 export type KeySetupResult =
   | { success: true }

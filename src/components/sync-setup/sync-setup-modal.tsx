@@ -68,7 +68,12 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         {state.step === 'choose-method' && <ChooseMethodStep onSelect={actions.selectMethod} />}
 
         {state.step === 'create-passphrase' && (
-          <CreatePassphraseStep onSubmitPassphrase={actions.generateKey} onSkip={actions.skipPassphrase} />
+          <CreatePassphraseStep
+            isVerifying={state.isVerifying}
+            error={state.error}
+            onSubmitPassphrase={actions.generateKey}
+            onSkip={actions.skipPassphrase}
+          />
         )}
 
         {state.step === 'create-show-key' && (
@@ -83,8 +88,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         {state.step === 'import-passphrase' && (
           <ImportPassphraseStep
             isVerifying={state.isVerifying}
+            error={state.error}
             onVerify={actions.startVerification}
-            onSetPassphrase={actions.setPassphrase}
           />
         )}
 

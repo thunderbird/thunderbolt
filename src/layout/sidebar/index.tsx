@@ -3,7 +3,7 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads } from '@/dal'
+import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
@@ -90,6 +90,16 @@ export default function Sidebar() {
       }
     },
   })
+
+  const renameChatMutation = useMutation({
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
+      await updateChatThread(db, id, { title })
+    },
+  })
+
+  const handleRename = (threadId: string, title: string) => {
+    renameChatMutation.mutate({ id: threadId, title })
+  }
 
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
@@ -185,6 +195,7 @@ export default function Sidebar() {
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
             onCreateNewChat={() => createNewChat()}
+            onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}
             onSearchQueryChange={setSearchQuery}

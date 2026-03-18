@@ -36,6 +36,7 @@ export type ChatListProps = {
   showSearch: boolean
   searchInputRef: RefObject<HTMLInputElement | null>
   onChatClick: (threadId: string) => void
+  onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
 }
@@ -49,4 +50,5 @@ export type ChatListItemProps = {
   threadIdRef: RefObject<string | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   onChatClick: (threadId: string) => void
+  onRename: (threadId: string, title: string) => void
 }

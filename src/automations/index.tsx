@@ -36,7 +36,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
 import { Pen, Play, Plus, Search, Trash2 } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { memo, useOptimistic, useState, useTransition } from 'react'
 import { useNavigate } from 'react-router'
 import AutomationFormModal from './automation-form-modal'
 
@@ -255,29 +255,21 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
 
   // For now, use the first trigger's enabled state, or true if no triggers
   const primaryTrigger = triggers[0]
-  const [isEnabled, setIsEnabled] = useState(primaryTrigger?.isEnabled === 1 || !primaryTrigger)
-
-  // Update local state when trigger data changes
-  useEffect(() => {
-    setIsEnabled(primaryTrigger?.isEnabled === 1 || !primaryTrigger)
-  }, [primaryTrigger])
-
-  const toggleTriggerMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      if (primaryTrigger) {
-        await db
-          .update(triggersTable)
-          .set({ isEnabled: enabled ? 1 : 0 })
-          .where(eq(triggersTable.id, primaryTrigger.id))
-      }
-    },
-  })
+  const serverEnabled = primaryTrigger?.isEnabled === 1 || !primaryTrigger
+  const [optimisticEnabled, setOptimisticEnabled] = useOptimistic(serverEnabled)
+  const [, startTransition] = useTransition()
 
   const handleToggleChange = (enabled: boolean) => {
-    setIsEnabled(enabled)
-    if (primaryTrigger) {
-      toggleTriggerMutation.mutate(enabled)
+    if (!primaryTrigger) {
+      return
     }
+    startTransition(async () => {
+      setOptimisticEnabled(enabled)
+      await db
+        .update(triggersTable)
+        .set({ isEnabled: enabled ? 1 : 0 })
+        .where(eq(triggersTable.id, primaryTrigger.id))
+    })
   }
 
   return (
@@ -312,29 +304,29 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
                     >
                       <input
                         type="checkbox"
-                        checked={primaryTrigger ? isEnabled : false}
+                        checked={primaryTrigger ? optimisticEnabled : false}
                         onChange={primaryTrigger ? (e) => handleToggleChange(e.target.checked) : undefined}
                         className="sr-only"
-                        disabled={!primaryTrigger || toggleTriggerMutation.isPending}
+                        disabled={!primaryTrigger}
                       />
                       <div
                         className={cn(
                           'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
-                          primaryTrigger && isEnabled ? 'bg-primary' : 'bg-muted',
-                          (!primaryTrigger || toggleTriggerMutation.isPending) && 'opacity-50',
+                          primaryTrigger && optimisticEnabled ? 'bg-primary' : 'bg-muted',
+                          !primaryTrigger && 'opacity-50',
                         )}
                       >
                         <span
                           className={cn(
                             'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                            primaryTrigger && isEnabled ? 'translate-x-4' : 'translate-x-0',
+                            primaryTrigger && optimisticEnabled ? 'translate-x-4' : 'translate-x-0',
                           )}
                         />
                       </div>
                     </label>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {primaryTrigger ? (isEnabled ? 'Enabled' : 'Disabled') : 'No Trigger Configured'}
+                    {primaryTrigger ? (optimisticEnabled ? 'Enabled' : 'Disabled') : 'No Trigger Configured'}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

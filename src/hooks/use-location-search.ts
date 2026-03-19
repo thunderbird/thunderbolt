@@ -1,6 +1,6 @@
 import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useTransition } from 'react'
 
 type LocationData = {
   name: string
@@ -15,21 +15,18 @@ type LocationState = {
   open: boolean
   searchQuery: string
   locations: LocationData[]
-  isSearching: boolean
 }
 
 type LocationAction =
   | { type: 'SET_OPEN'; payload: boolean }
   | { type: 'SET_SEARCH_QUERY'; payload: string }
   | { type: 'SET_LOCATIONS'; payload: LocationData[] }
-  | { type: 'SET_IS_SEARCHING'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
 
 const createInitialState = (autoOpen = false): LocationState => ({
   open: autoOpen,
   searchQuery: '',
   locations: [],
-  isSearching: false,
 })
 
 const locationReducer = (state: LocationState, action: LocationAction): LocationState => {
@@ -40,8 +37,6 @@ const locationReducer = (state: LocationState, action: LocationAction): Location
       return { ...state, searchQuery: action.payload }
     case 'SET_LOCATIONS':
       return { ...state, locations: action.payload }
-    case 'SET_IS_SEARCHING':
-      return { ...state, isSearching: action.payload }
     case 'CLEAR_LOCATION_SEARCH':
       return { ...state, searchQuery: '', locations: [] }
     default:
@@ -59,17 +54,17 @@ type UseLocationSearchOptions = {
 export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
-  const { open, searchQuery, locations, isSearching } = locationState
+  const { open, searchQuery, locations } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  const [isSearching, startTransition] = useTransition()
 
   useEffect(() => {
-    const searchLocations = async () => {
-      if (debouncedSearchQuery.trim().length <= 1) {
-        dispatch({ type: 'SET_LOCATIONS', payload: [] })
-        return
-      }
+    if (debouncedSearchQuery.trim().length <= 1) {
+      dispatch({ type: 'SET_LOCATIONS', payload: [] })
+      return
+    }
 
-      dispatch({ type: 'SET_IS_SEARCHING', payload: true })
+    startTransition(async () => {
       try {
         const data = await httpClient
           .get('locations', {
@@ -97,12 +92,8 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
       } catch (error) {
         console.error('Error searching locations:', error)
         dispatch({ type: 'SET_LOCATIONS', payload: [] })
-      } finally {
-        dispatch({ type: 'SET_IS_SEARCHING', payload: false })
       }
-    }
-
-    searchLocations()
+    })
   }, [debouncedSearchQuery, httpClient])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })

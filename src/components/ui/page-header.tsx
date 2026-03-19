@@ -11,7 +11,7 @@ type PageHeaderProps = {
  * @example
  * ```tsx
  * <PageHeader title="Models">
- *   <Button size="icon" className="rounded-[var(--radius-lg)]">
+ *   <Button size="icon" className="rounded-lg">
  *     <Plus />
  *   </Button>
  * </PageHeader>

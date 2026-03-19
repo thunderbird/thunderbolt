@@ -148,7 +148,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
           {dedupedParts.map((part, index) => {
             if (part.type === 'text') {
               return (
-                <div key={`text-${index}`} className="p-4 rounded-[var(--radius-default)] my-2">
+                <div key={`text-${index}`} className="p-4 rounded-md my-2">
                   <MemoizedMarkdown
                     key={`${messageId}-text-${index}`}
                     id={`${messageId}-${index}`}
@@ -180,7 +180,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
       {deduplicateLinkPreviews(processedParts).map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
-            <div key={`text-${index}`} className="p-4 rounded-[var(--radius-default)] my-2">
+            <div key={`text-${index}`} className="p-4 rounded-md my-2">
               <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={contentPart.content} />
             </div>
           )

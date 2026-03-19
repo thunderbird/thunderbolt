@@ -30,7 +30,7 @@ type LinkPreviewMetadata = {
 export const LinkPreviewSkeleton = () => {
   return (
     <div className="my-4">
-      <Card className="flex-row flex p-0 gap-0 rounded-[var(--radius-lg)] overflow-hidden">
+      <Card className="flex-row flex p-0 gap-0 rounded-lg overflow-hidden">
         <Skeleton className="h-24 w-24 flex-shrink-0 rounded-none" />
         <CardHeader className="flex-1 flex flex-col pl-4 py-4">
           <Skeleton className="h-5 w-3/4 mb-2" />

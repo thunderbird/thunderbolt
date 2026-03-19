@@ -42,7 +42,7 @@ export const TriggerMessage = memo(
           <MemoizedMarkdown id={chatThreadId} content={prompt} />
         </Expandable>
       ) : (
-        <div className="shadow-none w-full max-w-[696px] rounded-[var(--radius-lg)] border border-transparent px-4 py-2">
+        <div className="shadow-none w-full max-w-[696px] rounded-lg border border-transparent px-4 py-2">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground text-sm font-medium whitespace-pre-wrap">

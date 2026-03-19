@@ -1,5 +1,5 @@
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, Loader2, LogOut, Sparkles, Terminal } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { LogoutModal } from '@/components/logout-modal'
@@ -21,7 +21,7 @@ type SidebarFooterProps = {
 }
 
 type AccountMenuItem = {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   onClick?: () => void
   to?: string
@@ -29,7 +29,7 @@ type AccountMenuItem = {
 
 const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) => {
   const className = cn(
-    'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-[var(--radius-xl)] transition-colors text-left cursor-pointer',
+    'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-xl transition-colors text-left cursor-pointer',
     'hover:bg-accent/50',
   )
 
@@ -54,7 +54,7 @@ const iconSize = 'size-[var(--icon-size-default)]'
 
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(
-    'flex w-full items-center gap-2 rounded-[var(--radius-xl)] border border-border px-[var(--spacing-x-md)] h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+    'flex w-full items-center gap-2 rounded-xl border border-border px-[var(--spacing-x-md)] h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
     isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
   )
 
@@ -122,7 +122,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             {isPending ? (
               // Loading state
               <SidebarMenuButton size="lg" className="cursor-default">
-                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-[var(--radius-lg)]">
+                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg">
                   <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
                 </div>
                 {isExpanded && (
@@ -134,7 +134,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             ) : !user ? (
               // Not logged in - show "Sign In" button
               <SidebarMenuButton size="lg" className="cursor-pointer" onClick={handleSignInClick}>
-                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-[var(--radius-lg)] border border-border">
+                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg border border-border">
                   <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
                 </div>
                 {isExpanded && (
@@ -191,13 +191,13 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         sideOffset={7}
         align={isMobile ? 'center' : 'start'}
         collisionPadding={isMobile ? 16 : 0}
-        className={cn('p-0 rounded-[var(--radius-2xl)] shadow-lg overflow-hidden', showBlur && 'z-[70]')}
+        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
         style={{ width: isMobile ? 'calc(100vw - 2rem)' : 'var(--radix-popover-trigger-width)' }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col gap-2 bg-background">
           <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[length:var(--font-size-body)]">
-            <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-[var(--radius-lg)] border border-border">
+            <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-lg border border-border">
               <Sparkles className={cn(iconSize, 'text-muted-foreground')} />
             </div>
             <div className="flex flex-1 flex-col justify-center text-left leading-tight min-w-0">

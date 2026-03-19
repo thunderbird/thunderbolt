@@ -68,7 +68,7 @@ export const ReasoningGroup = ({
   return (
     <div className="mt-6">
       <Expandable
-        className="shadow-none tool-invocation-card rounded-[var(--radius-lg)] overflow-hidden transition-colors"
+        className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
         icon={
           isGroupReasoning ? (
             <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />

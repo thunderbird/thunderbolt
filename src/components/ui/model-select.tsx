@@ -39,7 +39,7 @@ export const ModelSelect = memo(({ chatThread, models, selectedModelId, onModelC
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center justify-between gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-[var(--radius-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)] border h-[var(--touch-height-default)] min-w-[140px]',
+        'flex items-center justify-between gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border h-[var(--touch-height-default)] min-w-[140px]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >

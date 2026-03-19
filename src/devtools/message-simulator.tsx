@@ -200,7 +200,7 @@ const SimulatorChat = ({ sseContent, onStop, stopRef }: SimulatorChatProps) => {
               <CardDescription>This shows the UIMessage as it's being built from the SSE log.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-[var(--radius-default)] p-4">
+              <div className="border rounded-md p-4">
                 {messages
                   .filter((msg) => msg.role === 'assistant')
                   .map((message) => (
@@ -362,7 +362,7 @@ const SimulatorContent = () => {
 
               {/* Scenario Metadata */}
               {Object.keys(metadata).length > 0 && (
-                <div className="rounded-[var(--radius-default)] border p-4 bg-muted/50">
+                <div className="rounded-md border p-4 bg-muted/50">
                   <h4 className="font-medium mb-3">Scenario Properties</h4>
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                     {(metadata as any).description && (

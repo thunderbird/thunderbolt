@@ -54,7 +54,7 @@ export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning }
   return (
     <button
       onClick={onClick}
-      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-[var(--radius-default)] transition-colors group text-left"
+      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
     >
       <div className="flex gap-3 flex-row flex-1 items-center">
         {itemData.isLoading ? (

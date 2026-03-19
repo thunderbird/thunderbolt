@@ -19,12 +19,12 @@ export const ThemeToggle = () => {
         setTheme(value as 'light' | 'dark' | 'system')
         trackEvent('settings_theme_set', { theme: value })
       }}
-      className="justify-start rounded-[var(--radius-lg)]"
+      className="justify-start rounded-lg"
     >
       <ToggleGroupItem
         value="light"
         aria-label="Light mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-[var(--radius-lg)] last:rounded-r-[var(--radius-lg)]"
+        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
       >
         <Sun className="h-4 w-4" />
         Light
@@ -32,7 +32,7 @@ export const ThemeToggle = () => {
       <ToggleGroupItem
         value="dark"
         aria-label="Dark mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-[var(--radius-lg)] last:rounded-r-[var(--radius-lg)]"
+        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
       >
         <Moon className="h-4 w-4" />
         Dark
@@ -40,7 +40,7 @@ export const ThemeToggle = () => {
       <ToggleGroupItem
         value="system"
         aria-label="System theme"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-[var(--radius-lg)] last:rounded-r-[var(--radius-lg)]"
+        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
       >
         <Monitor className="h-4 w-4" />
         System

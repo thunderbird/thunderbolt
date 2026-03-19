@@ -59,7 +59,7 @@ const DialogContent = ({
           ' bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 grid gap-4 p-6 duration-200',
           fullScreen
             ? 'w-full top-0 left-0 border-0 rounded-none translate-x-0 translate-y-0 shadow-none'
-            : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-[var(--radius-lg)] border sm:max-w-lg shadow-lg',
+            : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg border sm:max-w-lg shadow-lg',
           className,
         )}
         {...props}

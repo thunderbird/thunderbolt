@@ -328,7 +328,7 @@ export default function AutomationFormModal({
                   showSubmitButton={false}
                   noForm
                   isMobile={false}
-                  className="flex flex-col gap-2 bg-secondary p-4 rounded-[var(--radius-default)] w-full"
+                  className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
                 />
               </CardHeader>
 

@@ -78,9 +78,9 @@
   --gap-default: 0.375rem; /* 6px */
   --gap-sm: 0.25rem; /* 4px */
 
-  /* Border radius */
+  /* Border radius - overrides Tailwind's default --radius-* theme values */
   --radius-sm: 0.25rem; /* 4px mobile */
-  --radius-default: 0.5rem; /* 8px mobile */
+  --radius-md: 0.5rem; /* 8px mobile */
   --radius-lg: 0.75rem; /* 12px mobile */
   --radius-xl: 1rem; /* 16px mobile */
   --radius-2xl: 1.25rem; /* 20px mobile */
@@ -112,9 +112,9 @@
     --font-size-sm: 0.75rem; /* 12px desktop */
     --font-size-xs: 0.625rem; /* 10px desktop */
 
-    /* Border radius */
+    /* Border radius - overrides Tailwind's default --radius-* theme values */
     --radius-sm: 0.125rem; /* 2px desktop */
-    --radius-default: 0.375rem; /* 6px desktop */
+    --radius-md: 0.375rem; /* 6px desktop */
     --radius-lg: 0.5rem; /* 8px desktop */
     --radius-xl: 0.75rem; /* 12px desktop */
     --radius-2xl: 1rem; /* 16px desktop */

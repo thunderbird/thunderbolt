@@ -78,6 +78,6 @@ When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Na
 - Padding Y: `py-[var(--spacing-y-default)]`, `py-[var(--spacing-y-md)]`, `py-[var(--spacing-y-sm)]`
 - Gaps: `gap-[var(--gap-default)]`, `gap-[var(--gap-lg)]`, `gap-[var(--gap-sm)]`
 - Minimum heights: `min-h-[var(--min-touch-height)]`
-- Border radius: `rounded-[var(--radius-default)]`, `rounded-[var(--radius-sm)]`, `rounded-[var(--radius-lg)]`, `rounded-[var(--radius-xl)]`, `rounded-[var(--radius-2xl)]`
+- Border radius: Use standard Tailwind classes (`rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`). The underlying `--radius-*` CSS variables are overridden in `/src/index.css` with responsive mobile/desktop values — do NOT use `rounded-[var(--radius-*)]` syntax.
 
 All variables are defined in `/src/index.css` with mobile (larger) and desktop (smaller) values that switch at 768px breakpoint.

@@ -61,7 +61,7 @@ export const WaitlistPage = () => {
             >
               <InputOTPGroup className="gap-2">
                 {[0, 1, 2, 3, 4, 5].map((i) => (
-                  <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-[var(--radius-lg)]" />
+                  <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
                 ))}
               </InputOTPGroup>
             </InputOTP>
@@ -109,7 +109,7 @@ export const WaitlistPage = () => {
               disabled={state.status === 'joining'}
               variant="filled"
               inputSize="xl"
-              className="w-full rounded-[var(--radius-xl)]"
+              className="w-full rounded-xl"
               autoComplete="email"
             />
 

@@ -186,7 +186,7 @@ export const ConnectIntegrationWidget = memo(
 
     if (state.isDismissed) {
       return (
-        <Card className="w-full border border-border rounded-[var(--radius-lg)] my-4">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground text-center">You can connect integrations later in Settings.</p>
           </CardContent>
@@ -198,7 +198,7 @@ export const ConnectIntegrationWidget = memo(
 
     if (isLoadingIntegrationStatus) {
       return (
-        <Card className="w-full border border-border rounded-[var(--radius-lg)] my-4">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <div className="flex items-center justify-center">
               <p className="text-sm text-muted-foreground">Loading...</p>
@@ -229,7 +229,7 @@ export const ConnectIntegrationWidget = memo(
       const MicrosoftIconComp = getIconComponent('microsoft', service)
 
       return (
-        <Card className="w-full border border-border rounded-[var(--radius-lg)] my-4">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6 flex flex-col min-h-[400px]">
             <div className="flex flex-col items-center space-y-4 flex-1">
               <div className="text-center space-y-2">
@@ -240,7 +240,7 @@ export const ConnectIntegrationWidget = memo(
                 <button
                   onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'google' })}
                   disabled={isConnecting}
-                  className="flex flex-col items-center justify-center p-4 border border-border rounded-[var(--radius-lg)] hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
                     <div className="scale-[2.5] origin-center">
@@ -256,7 +256,7 @@ export const ConnectIntegrationWidget = memo(
                 <button
                   onClick={() => dispatch({ type: 'SET_SELECTED_PROVIDER', payload: 'microsoft' })}
                   disabled={isConnecting}
-                  className="flex flex-col items-center justify-center p-4 border border-border rounded-[var(--radius-lg)] hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-accent hover:border-accent-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-20 h-20 mb-2 overflow-hidden">
                     <div className="scale-[2.5] origin-center">
@@ -298,7 +298,7 @@ export const ConnectIntegrationWidget = memo(
       const ConnectedIconComponent = getIconComponent(state.connectedProvider, service)
 
       return (
-        <Card className="w-full border border-border rounded-[var(--radius-lg)] my-4">
+        <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <div className="flex flex-col items-center space-y-4">
               <div className="flex items-center justify-center w-20 h-20 overflow-hidden">
@@ -335,7 +335,7 @@ export const ConnectIntegrationWidget = memo(
     }
 
     return (
-      <Card className="w-full border border-border rounded-[var(--radius-lg)] my-4">
+      <Card className="w-full border border-border rounded-lg my-4">
         <CardContent className="p-6 flex flex-col min-h-[400px] relative">
           {provider === '' && (
             <Button
@@ -362,7 +362,7 @@ export const ConnectIntegrationWidget = memo(
             </div>
 
             {error && (
-              <div className="w-full p-3 rounded-[var(--radius-default)] bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+              <div className="w-full p-3 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
                 <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
               </div>
             )}

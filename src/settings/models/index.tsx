@@ -3,7 +3,7 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,6 @@ import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToD
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
-import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
@@ -32,7 +31,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import ky from 'ky'
-import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
+import { Check, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -216,12 +215,10 @@ export default function ModelsPage() {
     isTestingConnection,
     connectionStatus,
     connectionError,
-    modelSelectOpen,
     availableModels,
     isLoadingModels,
     selectedModelId,
     allAvailableModels,
-    modelSearchQuery,
     modelLoadError,
   } = state
 
@@ -734,19 +731,17 @@ export default function ModelsPage() {
     deleteModelMutation.mutate(modelId)
   }
 
-  // Filter models based on search query
-  const getFilteredModels = () => {
-    if (!modelSearchQuery.trim()) {
-      return availableModels // Show top 10 by default
+  const comboboxItems = useMemo((): ComboboxItem[] => {
+    const items: ComboboxItem[] = allAvailableModels.map((model) => ({
+      id: model.id,
+      label: model.name || model.id,
+      description: model.name ? model.id : undefined,
+    }))
+    if (form.getValues('provider') !== 'thunderbolt') {
+      items.push({ id: 'custom', label: 'Custom' })
     }
-
-    // Search through all available models when user types
-    return allAvailableModels.filter(
-      (model) =>
-        model.id.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
-        (model.name && model.name.toLowerCase().includes(modelSearchQuery.toLowerCase())),
-    )
-  }
+    return items
+  }, [allAvailableModels, form])
 
   // Calculate whether the currently selected model supports tools
   const supportsToolsSelected = (() => {
@@ -773,7 +768,7 @@ export default function ModelsPage() {
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-[var(--radius-lg)]">
+            <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -792,7 +787,7 @@ export default function ModelsPage() {
                       <FormLabel>Provider</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger className="w-full rounded-[var(--radius-lg)]">
+                          <SelectTrigger className="w-full rounded-lg">
                             <SelectValue placeholder="Select provider" />
                           </SelectTrigger>
                           <SelectContent>
@@ -819,11 +814,7 @@ export default function ModelsPage() {
                         <FormLabel>URL</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Input
-                              {...field}
-                              placeholder="http://localhost:11434/v1"
-                              className="pr-10 rounded-[var(--radius-lg)]"
-                            />
+                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10 rounded-lg" />
                             {isLoadingModels && (
                               <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                             )}
@@ -847,12 +838,7 @@ export default function ModelsPage() {
                       <FormItem>
                         <FormLabel>API Key{form.watch('provider') === 'custom' ? ' (Optional)' : ''}</FormLabel>
                         <FormControl>
-                          <Input
-                            type="password"
-                            {...field}
-                            placeholder="sk-..."
-                            className="rounded-[var(--radius-lg)]"
-                          />
+                          <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
                         </FormControl>
                         {modelLoadError && form.watch('provider') !== 'custom' && (
                           <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
@@ -891,105 +877,18 @@ export default function ModelsPage() {
                       render={() => (
                         <FormItem className="flex flex-col">
                           <FormLabel>Model</FormLabel>
-                          <Popover
-                            open={modelSelectOpen}
-                            onOpenChange={(open) => {
-                              if (open) {
-                                dispatch({ type: 'OPEN_MODEL_SELECT' })
-                              } else {
-                                dispatch({ type: 'CLOSE_MODEL_SELECT' })
-                              }
-                            }}
-                          >
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  aria-expanded={modelSelectOpen}
-                                  className={cn(
-                                    'w-full justify-between rounded-[var(--radius-lg)]',
-                                    !selectedModelId && 'text-muted-foreground',
-                                  )}
-                                >
-                                  {selectedModelId === 'custom'
-                                    ? 'Custom Model'
-                                    : selectedModelId
-                                      ? availableModels.find((m) => m.id === selectedModelId)?.name || selectedModelId
-                                      : 'Select model...'}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="p-0 w-full" side="bottom" align="start" sideOffset={4}>
-                              <Command>
-                                <CommandInput
-                                  placeholder="Search models..."
-                                  value={modelSearchQuery}
-                                  onValueChange={(value) =>
-                                    dispatch({ type: 'UPDATE_MODEL_SEARCH_QUERY', query: value })
-                                  }
-                                />
-                                <div className="h-[200px] overflow-y-auto">
-                                  <CommandList className="max-h-none">
-                                    {isLoadingModels && (
-                                      <div className="py-6 text-center text-sm">Loading models...</div>
-                                    )}
-                                    {!isLoadingModels &&
-                                      (() => {
-                                        const filteredModels = getFilteredModels()
-
-                                        if (filteredModels.length === 0) {
-                                          return (
-                                            <CommandEmpty>
-                                              {modelSearchQuery
-                                                ? 'No models found matching your search.'
-                                                : 'No models found.'}
-                                            </CommandEmpty>
-                                          )
-                                        }
-
-                                        return (
-                                          <CommandGroup>
-                                            {filteredModels.map((model) => (
-                                              <CommandItem
-                                                key={model.id}
-                                                value={model.id}
-                                                onSelect={() => handleSelectModel(model.id)}
-                                              >
-                                                <Check
-                                                  className={cn(
-                                                    'mr-2 h-4 w-4',
-                                                    selectedModelId === model.id ? 'opacity-100' : 'opacity-0',
-                                                  )}
-                                                />
-                                                <div className="flex flex-col">
-                                                  <span>{model.name || model.id}</span>
-                                                  {model.name && (
-                                                    <span className="text-xs text-muted-foreground">{model.id}</span>
-                                                  )}
-                                                </div>
-                                              </CommandItem>
-                                            ))}
-                                            {form.watch('provider') !== 'thunderbolt' && (
-                                              <CommandItem value="custom" onSelect={() => handleSelectModel('custom')}>
-                                                <Check
-                                                  className={cn(
-                                                    'mr-2 h-4 w-4',
-                                                    selectedModelId === 'custom' ? 'opacity-100' : 'opacity-0',
-                                                  )}
-                                                />
-                                                <span className="italic">Custom</span>
-                                              </CommandItem>
-                                            )}
-                                          </CommandGroup>
-                                        )
-                                      })()}
-                                  </CommandList>
-                                </div>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
+                          <FormControl>
+                            <Combobox
+                              items={comboboxItems}
+                              value={selectedModelId || undefined}
+                              onValueChange={(id) => handleSelectModel(id)}
+                              placeholder="Select model..."
+                              searchPlaceholder="Search models..."
+                              emptyMessage="No models found."
+                              loading={isLoadingModels}
+                              loadingMessage="Loading models..."
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1009,7 +908,7 @@ export default function ModelsPage() {
                           <Input
                             {...field}
                             placeholder="e.g., gpt-4-turbo-preview"
-                            className="rounded-[var(--radius-lg)]"
+                            className="rounded-lg"
                             onChange={(e) => {
                               field.onChange(e)
                               form.setValue('model', e.target.value)
@@ -1032,7 +931,7 @@ export default function ModelsPage() {
                         <FormItem>
                           <FormLabel>Display Name</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-[var(--radius-lg)]" />
+                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1140,7 +1039,7 @@ export default function ModelsPage() {
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-[var(--radius-default)] font-medium flex-shrink-0">
+                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">

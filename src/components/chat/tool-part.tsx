@@ -56,13 +56,13 @@ export const ToolPart = memo(({ part }: ToolPartProps) => {
 
   return (
     <Expandable
-      className="shadow-none tool-invocation-card rounded-[var(--radius-lg)] overflow-hidden transition-colors"
+      className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
       icon={getToolIcon(state)}
       defaultOpen={false}
       title={titleNode}
     >
       <div className="tool-result w-full">
-        <div className="rounded-[var(--radius-default)]">
+        <div className="rounded-md">
           <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">
             {formatToolOutput(part.output)}
           </p>

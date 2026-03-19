@@ -45,8 +45,8 @@ export const EmailThreadView = () => {
         <div className="flex items-center justify-between mb-2">
           <Skeleton className="h-6 w-3/4" />
           <div className="flex gap-1">
-            <Skeleton className="h-8 w-8 rounded-[var(--radius-default)]" />
-            <Skeleton className="h-8 w-8 rounded-[var(--radius-default)]" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
           </div>
         </div>
         <Skeleton className="h-20 w-full" />

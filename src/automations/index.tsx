@@ -111,7 +111,7 @@ export default function AutomationsPage() {
             <Button
               variant="outline"
               size="icon"
-              className="rounded-[var(--radius-lg)]"
+              className="rounded-lg"
               onClick={() => {
                 setIsCreateModalOpen(true)
                 trackEvent('automation_modal_create_open')
@@ -125,7 +125,7 @@ export default function AutomationsPage() {
           <SearchInput
             placeholder="Search automations..."
             debouncedOnChange={(value) => setDebouncedSearchQuery(value)}
-            className="rounded-[var(--radius-xl)]"
+            className="rounded-xl"
           />
 
           {/* Content */}

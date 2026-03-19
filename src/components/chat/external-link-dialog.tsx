@@ -53,14 +53,14 @@ export const ExternalLinkDialog = memo(
             <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
             <button
               onClick={() => onOpenChange(false)}
-              className="absolute right-4 top-4 rounded-[var(--radius-sm)] opacity-70 transition-opacity hover:opacity-100"
+              className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
             >
               <X className="size-4" />
               <span className="sr-only">Close</span>
             </button>
           </AlertDialogHeader>
 
-          <div className="rounded-[var(--radius-default)] border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
+          <div className="rounded-md border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
             {url}
           </div>
 

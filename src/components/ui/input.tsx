@@ -4,7 +4,7 @@ import { forwardRef, type InputHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const inputVariants = cva(
-  'border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-[var(--radius-default)] border bg-transparent px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+  'border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-md border bg-transparent px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -16,9 +16,9 @@ const inputVariants = cva(
       },
       inputSize: {
         default: 'h-[var(--touch-height-default)] w-full',
-        sm: 'h-[var(--touch-height-sm)] text-xs px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)] rounded-[var(--radius-default)]',
-        lg: 'h-[var(--touch-height-lg)] text-base px-[var(--spacing-x-default)] py-[var(--spacing-y-default)] rounded-[var(--radius-default)]',
-        xl: 'h-[var(--touch-height-xl)] text-lg px-[var(--spacing-x-lg)] py-[var(--spacing-y-md)] rounded-[var(--radius-lg)]',
+        sm: 'h-[var(--touch-height-sm)] text-xs px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)] rounded-md',
+        lg: 'h-[var(--touch-height-lg)] text-base px-[var(--spacing-x-default)] py-[var(--spacing-y-default)] rounded-md',
+        xl: 'h-[var(--touch-height-xl)] text-lg px-[var(--spacing-x-lg)] py-[var(--spacing-y-md)] rounded-lg',
       },
       state: {
         default: '',

@@ -1,8 +1,7 @@
 import { useAuth } from '@/contexts'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
-import { type ReactNode, type RefObject, useCallback, useEffect, useRef } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
@@ -72,8 +71,6 @@ export const SignInForm = ({
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const displayName = preferredName.value as string
-  const emailInputRef = useRef<HTMLInputElement>(null)
-  const { isMobile } = useIsMobile()
 
   const { state, isValidEmail, actions } = useSignInFormState({
     authClient,
@@ -103,14 +100,6 @@ export const SignInForm = ({
       goBackRef.current = handleGoBack
     }
   }, [goBackRef, handleGoBack])
-
-  // Auto-focus email input on desktop when component mounts
-  useEffect(() => {
-    // Only autofocus on desktop - mobile keyboards are disruptive
-    if (!isMobile && emailInputRef.current) {
-      emailInputRef.current.focus()
-    }
-  }, [isMobile])
 
   // Success state
   if (state.status === 'success') {
@@ -151,7 +140,6 @@ export const SignInForm = ({
         onSubmit={actions.handleSubmit}
         onEmailChange={actions.setEmail}
         variant={variant}
-        emailInputRef={emailInputRef}
       />
     </div>
   )

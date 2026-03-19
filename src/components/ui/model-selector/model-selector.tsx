@@ -60,7 +60,7 @@ export const categorizeModels = (
   const groups: SearchableMenuGroup<ModelItemData>[] = []
 
   if (provided.length > 0) {
-    groups.push({ id: 'provided', label: 'Provided Models', items: provided })
+    groups.push({ id: 'provided', items: provided })
   }
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })

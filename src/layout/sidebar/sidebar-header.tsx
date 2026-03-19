@@ -60,7 +60,11 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem className="w-auto">
-                    <SidebarMenuButton onClick={onToggle} tooltip="Toggle Sidebar" className="cursor-pointer w-8">
+                    <SidebarMenuButton
+                      onClick={onToggle}
+                      tooltip="Toggle Sidebar"
+                      className="cursor-pointer size-8 justify-center"
+                    >
                       <PanelLeft className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">Toggle Sidebar</span>
                     </SidebarMenuButton>

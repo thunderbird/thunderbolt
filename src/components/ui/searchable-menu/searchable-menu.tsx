@@ -204,7 +204,7 @@ export const SearchableMenu = <T,>({
       <PopoverContent
         align={isMobile ? 'center' : align}
         side={side}
-        sideOffset={7}
+        sideOffset={5}
         collisionPadding={16}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}

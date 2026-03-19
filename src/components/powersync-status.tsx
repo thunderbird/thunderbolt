@@ -91,7 +91,7 @@ export const PowerSyncStatus = () => {
           </TooltipTrigger>
           <TooltipContent side="bottom">{getStatusText()}</TooltipContent>
         </Tooltip>
-        <PopoverContent align="end" side="bottom" sideOffset={7}>
+        <PopoverContent align="end" side="bottom" sideOffset={5} className="rounded-2xl">
           <div className="flex flex-col gap-3">
             <div>
               <div className="flex flex-row items-center justify-between mb-2">

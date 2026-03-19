@@ -1,21 +1,23 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Search } from 'lucide-react'
 import { Button } from './button'
 import { SearchInput, type SearchInputProps } from './search-input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 import { cn } from '@/lib/utils'
 
-type PageSearchContext = {
+type PageSearchContextValue = {
   open: boolean
   toggle: () => void
-  inputRef: React.RefObject<HTMLInputElement | null>
+  inputRef: RefObject<HTMLInputElement | null>
 }
 
-const PageSearchContext = createContext<PageSearchContext | null>(null)
+const PageSearchContext = createContext<PageSearchContextValue | null>(null)
 
 const usePageSearchContext = () => {
   const ctx = useContext(PageSearchContext)
-  if (!ctx) throw new Error('PageSearch sub-components must be used within <PageSearch>')
+  if (!ctx) {
+    throw new Error('PageSearch sub-components must be used within <PageSearch>')
+  }
   return ctx
 }
 

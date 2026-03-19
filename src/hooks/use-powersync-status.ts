@@ -1,6 +1,6 @@
 import { getPowerSyncInstance } from '@/db/powersync'
 import type { SyncStatus } from '@powersync/web'
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 export type PowerSyncConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'not-configured'
 
@@ -19,6 +19,65 @@ export type PowerSyncStatusInfo = {
   lastSyncedAt: Date | null
 }
 
+const defaultStatus: PowerSyncStatusInfo = {
+  isPowerSync: false,
+  connectionStatus: 'not-configured',
+  isUploading: false,
+  isDownloading: false,
+  hasSynced: false,
+  lastSyncedAt: null,
+}
+
+const mapSyncStatus = (syncStatus: SyncStatus): PowerSyncStatusInfo => {
+  const connected = syncStatus.connected
+  const connecting = syncStatus.connecting
+
+  let connectionStatus: PowerSyncConnectionStatus = 'disconnected'
+  if (connected) {
+    connectionStatus = 'connected'
+  } else if (connecting) {
+    connectionStatus = 'connecting'
+  }
+
+  return {
+    isPowerSync: true,
+    connectionStatus,
+    isUploading: syncStatus.dataFlowStatus?.uploading ?? false,
+    isDownloading: syncStatus.dataFlowStatus?.downloading ?? false,
+    hasSynced: syncStatus.hasSynced ?? false,
+    lastSyncedAt: syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt) : null,
+  }
+}
+
+/** Cached snapshot for referential stability required by useSyncExternalStore */
+let cachedSnapshot: PowerSyncStatusInfo = defaultStatus
+
+const subscribe = (callback: () => void) => {
+  const powerSync = getPowerSyncInstance()
+  if (!powerSync) {
+    cachedSnapshot = defaultStatus
+    return () => {}
+  }
+
+  // Set initial snapshot
+  const currentStatus = powerSync.currentStatus
+  cachedSnapshot = currentStatus ? mapSyncStatus(currentStatus) : { ...defaultStatus, isPowerSync: true }
+
+  // Listen for changes
+  const unsubscribe = powerSync.registerListener({
+    statusChanged: (syncStatus: SyncStatus) => {
+      cachedSnapshot = mapSyncStatus(syncStatus)
+      callback()
+    },
+  })
+
+  return () => {
+    unsubscribe?.()
+  }
+}
+
+const getSnapshot = () => cachedSnapshot
+
 /**
  * Hook that provides PowerSync connection and sync status.
  * Returns status info that can be used to show sync indicators in the UI.
@@ -33,68 +92,5 @@ export type PowerSyncStatusInfo = {
  * ```
  */
 export const usePowerSyncStatus = (): PowerSyncStatusInfo => {
-  const [status, setStatus] = useState<PowerSyncStatusInfo>({
-    isPowerSync: false,
-    connectionStatus: 'not-configured',
-    isUploading: false,
-    isDownloading: false,
-    hasSynced: false,
-    lastSyncedAt: null,
-  })
-
-  useEffect(() => {
-    const powerSync = getPowerSyncInstance()
-
-    if (!powerSync) {
-      setStatus({
-        isPowerSync: false,
-        connectionStatus: 'not-configured',
-        isUploading: false,
-        isDownloading: false,
-        hasSynced: false,
-        lastSyncedAt: null,
-      })
-      return
-    }
-
-    const updateStatus = (syncStatus: SyncStatus) => {
-      const connected = syncStatus.connected
-      const connecting = syncStatus.connecting
-
-      let connectionStatus: PowerSyncConnectionStatus = 'disconnected'
-      if (connected) {
-        connectionStatus = 'connected'
-      } else if (connecting) {
-        connectionStatus = 'connecting'
-      }
-
-      setStatus({
-        isPowerSync: true,
-        connectionStatus,
-        isUploading: syncStatus.dataFlowStatus?.uploading ?? false,
-        isDownloading: syncStatus.dataFlowStatus?.downloading ?? false,
-        hasSynced: syncStatus.hasSynced ?? false,
-        lastSyncedAt: syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt) : null,
-      })
-    }
-
-    // Set initial status
-    const currentStatus = powerSync.currentStatus
-    if (currentStatus) {
-      updateStatus(currentStatus)
-    } else {
-      setStatus((prev) => ({ ...prev, isPowerSync: true }))
-    }
-
-    // Listen for status changes
-    const unsubscribe = powerSync.registerListener({
-      statusChanged: updateStatus,
-    })
-
-    return () => {
-      unsubscribe?.()
-    }
-  }, [])
-
-  return status
+  return useSyncExternalStore(subscribe, getSnapshot)
 }

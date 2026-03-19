@@ -19,7 +19,7 @@ describe('ExternalLinkDialog', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-      expect(screen.getByText('Open external link')).toBeInTheDocument()
+      expect(screen.getByText('Open External Link')).toBeInTheDocument()
     })
 
     it('should not display dialog when open is false', () => {
@@ -38,7 +38,7 @@ describe('ExternalLinkDialog', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
       expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
     })
 
     it('should display openError when provided', () => {
@@ -66,14 +66,14 @@ describe('ExternalLinkDialog', () => {
 
       expect(screen.getByRole('button', { name: 'Open in Sidebar' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open in Browser' })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Open link' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Open Link' })).not.toBeInTheDocument()
     })
 
     it('should not render "Open in Sidebar" button when onOpenInApp is not provided', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
       expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
     })
   })
 
@@ -98,7 +98,7 @@ describe('ExternalLinkDialog', () => {
       const mockConfirm = mock()
       render(<ExternalLinkDialog {...defaultProps} onConfirm={mockConfirm} />)
 
-      const openButton = screen.getByRole('button', { name: 'Open link' })
+      const openButton = screen.getByRole('button', { name: 'Open Link' })
       fireEvent.click(openButton)
 
       expect(mockConfirm).toHaveBeenCalledTimes(1)
@@ -151,7 +151,7 @@ describe('ExternalLinkDialog', () => {
       const onOpenError = (err: unknown) => resolveReport!(err)
       render(<ExternalLinkDialog {...defaultProps} onConfirm={mockConfirm} onOpenError={onOpenError} />)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Open link' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open Link' }))
 
       const reportedError = await reported
       expect(reportedError).toBe(rejectError)
@@ -169,7 +169,7 @@ describe('ExternalLinkDialog', () => {
     it('should have proper title', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      expect(screen.getByText('Open external link')).toBeInTheDocument()
+      expect(screen.getByText('Open External Link')).toBeInTheDocument()
     })
   })
 })

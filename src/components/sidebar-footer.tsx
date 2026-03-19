@@ -37,9 +37,10 @@ type AccountMenuItem = {
   label: string
   onClick?: () => void
   to?: string
+  onNavigate?: () => void
 }
 
-const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) => {
+const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: AccountMenuItem) => {
   const className = cn(
     'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
     'hover:bg-accent/50',
@@ -47,7 +48,7 @@ const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) =>
 
   if (to) {
     return (
-      <NavLink to={to} className={className}>
+      <NavLink to={to} className={className} onClick={onNavigate}>
         {icon}
         <span>{label}</span>
       </NavLink>
@@ -112,6 +113,10 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const handleMenuAction = (action: () => void) => {
     setMenuOpen(false)
     action()
+  }
+
+  const handleMenuNavigate = () => {
+    setMenuOpen(false)
   }
 
   const triggerContent = (
@@ -267,11 +272,13 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               icon={<Terminal className={iconSize} />}
               label="Dev Settings"
               to="/settings/dev-settings"
+              onNavigate={handleMenuNavigate}
             />
             <AccountMenuItemButton
               icon={<Terminal className={iconSize} />}
               label="Message Simulator"
               to="/message-simulator"
+              onNavigate={handleMenuNavigate}
             />
           </div>
 

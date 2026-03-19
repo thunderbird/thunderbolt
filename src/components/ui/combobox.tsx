@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useMemo, useRef, useState } from 'react'
 
 export type ComboboxItem = {
   id: string
@@ -53,18 +53,14 @@ export const Combobox = ({
     )
   }, [items, search])
 
-  useEffect(() => {
-    if (!open) {
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } else {
       setSearch('')
     }
-  }, [open])
-
-  useEffect(() => {
-    if (open) {
-      // Focus the search input after the popover opens
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
-  }, [open])
+  }
 
   const handleSelect = (id: string) => {
     onValueChange(id)
@@ -72,7 +68,7 @@ export const Combobox = ({
   }
 
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+    <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
       <PopoverPrimitive.Trigger asChild>
         <button
           type="button"

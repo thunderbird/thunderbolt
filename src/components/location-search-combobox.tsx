@@ -4,7 +4,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 
 type LocationSearchComboboxProps = {
   value?: string | null
@@ -21,16 +20,7 @@ export const LocationSearchCombobox = ({
   autoOpen = false,
   className,
 }: LocationSearchComboboxProps) => {
-  const locationSearch = useLocationSearch()
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (autoOpen) {
-      buttonRef.current?.click()
-      searchInputRef.current?.focus()
-    }
-  }, [autoOpen])
+  const locationSearch = useLocationSearch({ autoOpen })
 
   const handleSelect = (location: LocationData) => {
     onSelect(location)
@@ -49,7 +39,6 @@ export const LocationSearchCombobox = ({
     >
       <PopoverTrigger asChild>
         <Button
-          ref={buttonRef}
           variant="outline"
           role="combobox"
           aria-expanded={locationSearch.open}
@@ -67,7 +56,6 @@ export const LocationSearchCombobox = ({
       >
         <Command>
           <CommandInput
-            ref={searchInputRef}
             placeholder="Search for locations..."
             value={locationSearch.searchQuery}
             onValueChange={locationSearch.setSearchQuery}

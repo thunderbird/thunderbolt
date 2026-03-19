@@ -25,12 +25,12 @@ type LocationAction =
   | { type: 'SET_IS_SEARCHING'; payload: boolean }
   | { type: 'CLEAR_LOCATION_SEARCH' }
 
-const initialLocationState: LocationState = {
-  open: false,
+const createInitialState = (autoOpen = false): LocationState => ({
+  open: autoOpen,
   searchQuery: '',
   locations: [],
   isSearching: false,
-}
+})
 
 const locationReducer = (state: LocationState, action: LocationAction): LocationState => {
   switch (action.type) {
@@ -49,12 +49,16 @@ const locationReducer = (state: LocationState, action: LocationAction): Location
   }
 }
 
+type UseLocationSearchOptions = {
+  autoOpen?: boolean
+}
+
 /**
  * Custom hook for location search functionality
  */
-export const useLocationSearch = () => {
+export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
-  const [locationState, dispatch] = useReducer(locationReducer, initialLocationState)
+  const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
   const { open, searchQuery, locations, isSearching } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 

@@ -51,7 +51,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       className={cn(
         'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-body)] border border-border',
         iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-2 px-3 h-[var(--touch-height-default)]',
-        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+        isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >
       {selected?.icon ?? <MessageSquare className={iconSize} />}

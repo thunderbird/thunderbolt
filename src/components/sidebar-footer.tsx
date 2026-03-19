@@ -119,7 +119,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={cn(!isMobile && 'border-t border-border !p-0 !gap-0', className)}>
+      <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
             {isPending ? (
@@ -205,12 +205,12 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       <PopoverContent
         side="top"
         sideOffset={8}
-        align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? 16 : 8}
+        align="start"
+        collisionPadding={8}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
         style={{
           width: isMobile
-            ? 'calc(100vw - 2rem)'
+            ? 'calc(100vw - 1rem)'
             : isDesktopCollapsed
               ? '16rem'
               : 'calc(var(--radix-popover-trigger-width) - 1rem)',

@@ -24,7 +24,7 @@ export const MobileSidebar = ({
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
 
-  const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.85 : 300)
+  const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300)
 
   // Transform x position to overlay opacity (fade out as sidebar moves away).
   // Output [0, 1] so backdrop-blur and bg dimming render at full strength when open
@@ -145,7 +145,7 @@ export const MobileSidebar = ({
             ...style,
           }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[85vw] border-r shadow-lg flex flex-col',
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] border-r shadow-lg flex flex-col',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

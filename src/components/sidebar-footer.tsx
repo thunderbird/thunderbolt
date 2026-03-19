@@ -29,7 +29,7 @@ type AccountMenuItem = {
 
 const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) => {
   const className = cn(
-    'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-xl transition-colors text-left cursor-pointer',
+    'w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors text-left cursor-pointer',
     'hover:bg-accent/50',
   )
 
@@ -54,7 +54,7 @@ const iconSize = 'size-[var(--icon-size-default)]'
 
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(
-    'flex w-full items-center gap-2 rounded-xl border border-border px-[var(--spacing-x-md)] h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+    'flex w-full items-center gap-2 rounded-xl border border-border px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
     isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
   )
 

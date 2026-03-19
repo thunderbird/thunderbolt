@@ -40,7 +40,7 @@ export const ChatNavButton = ({ chatTitle, threadId, className, asChild = false,
         <div className="flex items-center w-full">
           <Button
             variant="ghost"
-            className="flex items-center justify-between gap-2 h-[var(--touch-height-lg)] px-[var(--spacing-x-md)] w-full"
+            className="flex items-center justify-between gap-2 h-[var(--touch-height-lg)] px-3 w-full"
             onClick={handleButtonClick}
           >
             <div className="flex items-center gap-2">

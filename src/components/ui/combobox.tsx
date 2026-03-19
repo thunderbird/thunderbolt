@@ -75,7 +75,7 @@ export const Combobox = ({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-between gap-2 rounded-md border bg-transparent px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] text-[length:var(--font-size-body)] whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-[var(--touch-height-default)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-[length:var(--font-size-body)] whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-[var(--touch-height-default)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
             !value && 'text-muted-foreground',
             className,
           )}
@@ -94,7 +94,7 @@ export const Combobox = ({
           style={{ width: 'var(--radix-popover-trigger-width)' }}
         >
           {/* Search input */}
-          <div className="flex items-center gap-2 border-b px-[var(--spacing-x-sm)]">
+          <div className="flex items-center gap-2 border-b px-2">
             <SearchIcon className="size-4 text-muted-foreground shrink-0" />
             <input
               ref={inputRef}
@@ -125,7 +125,7 @@ export const Combobox = ({
                   disabled={item.disabled}
                   onClick={() => handleSelect(item.id)}
                   className={cn(
-                    "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-md py-[var(--spacing-y-md)] pr-9 md:pr-8 pl-[var(--spacing-x-sm)] text-[length:var(--font-size-body)] outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                    "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-md py-1.5 pr-9 md:pr-8 pl-2 text-[length:var(--font-size-body)] outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
                   )}
                 >
                   {item.icon && <span className="shrink-0">{item.icon}</span>}

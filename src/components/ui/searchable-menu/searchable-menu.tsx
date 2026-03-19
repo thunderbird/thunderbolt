@@ -30,7 +30,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -94,7 +94,7 @@ const DefaultTrigger = <T,>({
 }) => (
   <div
     className={cn(
-      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
+      'flex items-center gap-2 px-3 py-1 rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
       isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
     )}
   >

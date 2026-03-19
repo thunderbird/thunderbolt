@@ -136,11 +136,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       </form>
     )
 
-    return (
-      <div className="flex flex-col items-center w-full">
-        <div className="w-full max-w-[696px] min-w-[268px] dark:bg-input/30 rounded-2xl">{formElement}</div>
-      </div>
-    )
+    return formElement
   },
 )
 

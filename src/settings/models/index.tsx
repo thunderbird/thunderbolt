@@ -198,7 +198,7 @@ export default function ModelsPage() {
     modelLoadError,
   } = state
 
-  // Ensure form state resets whenever the add-model dialog fully closes
+  // Ensure form state (including validation errors) resets whenever the dialog closes
   useEffect(() => {
     if (!isAddDialogOpen) {
       form.reset({
@@ -210,6 +210,7 @@ export default function ModelsPage() {
         apiKey: '',
         toolUsage: true,
       })
+      form.clearErrors()
     }
   }, [isAddDialogOpen])
 

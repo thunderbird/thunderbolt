@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
-import { usePageSearch } from '@/components/ui/page-search'
+import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -48,12 +48,6 @@ export default function AutomationsPage() {
   const [deletingPromptId, setDeletingPromptId] = useState<string | null>(null)
 
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
-
-  const { searchButton, searchInput } = usePageSearch({
-    placeholder: 'Search automations...',
-    tooltip: 'Search',
-    onSearch: setDebouncedSearchQuery,
-  })
 
   const { data: prompts = [], isLoading } = useQuery({
     queryKey: ['prompts', debouncedSearchQuery],
@@ -113,22 +107,24 @@ export default function AutomationsPage() {
     <div className="flex flex-col overflow-hidden">
       <div className="flex-1">
         <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
-          <PageHeader title="Automations">
-            {searchButton}
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => {
-                setIsCreateModalOpen(true)
-                trackEvent('automation_modal_create_open')
-              }}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </PageHeader>
+          <PageSearch onSearch={setDebouncedSearchQuery}>
+            <PageHeader title="Automations">
+              <PageSearch.Button tooltip="Search" />
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-lg"
+                onClick={() => {
+                  setIsCreateModalOpen(true)
+                  trackEvent('automation_modal_create_open')
+                }}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </PageHeader>
 
-          {searchInput}
+            <PageSearch.Input placeholder="Search automations..." onSearch={setDebouncedSearchQuery} />
+          </PageSearch>
 
           {/* Content */}
           <div className="flex-1">

@@ -1,6 +1,6 @@
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 
 type ReasoningDisplayProps = {
   text?: string
@@ -16,72 +16,70 @@ type ReasoningDisplayProps = {
  * - Cleans up timers properly
  */
 export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
-  const [displayText, setDisplayText] = useState(text ?? '')
   const [shouldShow, setShouldShow] = useState(isStreaming)
-  const [currentKey, setCurrentKey] = useState(instanceKey)
   const displayStartTimeRef = useRef(Date.now())
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const prevInstanceKeyRef = useRef(instanceKey)
+  const prevIsStreamingRef = useRef(isStreaming)
 
   const hasText = Boolean(text && text.trim())
 
-  // Update display text and reset timers when text or key changes
-  useEffect(() => {
-    // New reasoning instance or text changed
-    if (text !== displayText || instanceKey !== currentKey) {
-      setDisplayText(text ?? '')
-      setCurrentKey(instanceKey)
-      setShouldShow(true)
-      displayStartTimeRef.current = Date.now()
-
-      // Clear any pending fade timeout
-      if (fadeTimeoutRef.current) {
-        clearTimeout(fadeTimeoutRef.current)
-        fadeTimeoutRef.current = null
-      }
+  // Reset when instanceKey changes (new reasoning instance)
+  if (instanceKey !== prevInstanceKeyRef.current) {
+    prevInstanceKeyRef.current = instanceKey
+    setShouldShow(true)
+    displayStartTimeRef.current = Date.now()
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current)
+      fadeTimeoutRef.current = null
     }
-  }, [text, displayText, instanceKey, currentKey])
+  }
 
-  // Handle fade-out logic when streaming stops (only if there's text)
-  useEffect(() => {
-    if (!isStreaming && shouldShow && hasText) {
-      // Clear any existing timeout
-      if (fadeTimeoutRef.current) {
-        clearTimeout(fadeTimeoutRef.current)
-      }
+  // Reset shouldShow when streaming starts again
+  if (isStreaming && !prevIsStreamingRef.current && !shouldShow) {
+    setShouldShow(true)
+    displayStartTimeRef.current = Date.now()
+  }
+  prevIsStreamingRef.current = isStreaming
 
-      const timeDisplayed = Date.now() - displayStartTimeRef.current
-      const minDisplayTime = 3000 // 3 seconds minimum
-      const fadeDelay = 3000 // 3 seconds after stopping
-
-      // Calculate how long to wait before fading
-      const remainingMinTime = Math.max(0, minDisplayTime - timeDisplayed)
-      const totalWaitTime = remainingMinTime + fadeDelay
-
-      fadeTimeoutRef.current = setTimeout(() => {
-        setShouldShow(false)
-        fadeTimeoutRef.current = null
-      }, totalWaitTime)
+  const onScheduleFade = useEffectEvent(() => {
+    if (!shouldShow || !hasText) {
+      return
     }
 
-    // Cleanup on unmount or when dependencies change
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current)
+    }
+
+    const timeDisplayed = Date.now() - displayStartTimeRef.current
+    const minDisplayTime = 3000
+    const fadeDelay = 3000
+
+    const remainingMinTime = Math.max(0, minDisplayTime - timeDisplayed)
+    const totalWaitTime = remainingMinTime + fadeDelay
+
+    fadeTimeoutRef.current = setTimeout(() => {
+      setShouldShow(false)
+      fadeTimeoutRef.current = null
+    }, totalWaitTime)
+  })
+
+  // Handle fade-out logic when streaming stops
+  useEffect(() => {
+    if (!isStreaming) {
+      onScheduleFade()
+    }
+
     return () => {
       if (fadeTimeoutRef.current) {
         clearTimeout(fadeTimeoutRef.current)
         fadeTimeoutRef.current = null
       }
     }
-  }, [isStreaming, shouldShow, hasText])
-
-  // Reset shouldShow when streaming starts again
-  useEffect(() => {
-    if (isStreaming && !shouldShow) {
-      setShouldShow(true)
-      displayStartTimeRef.current = Date.now()
-    }
-  }, [isStreaming, shouldShow])
+  }, [isStreaming, onScheduleFade])
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
-    dependencies: [displayText.length],
+    dependencies: [text?.length],
     smooth: true,
     isStreaming: false,
     rootMargin: '0px',
@@ -103,7 +101,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
           >
             <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
             <div className="max-h-[200px] px-4 hide-scrollbar py-3">
-              {displayText}
+              {text}
               <div ref={scrollTargetRef} />
             </div>
             <div className="absolute bottom-0 w-full h-6 bg-gradient-to-b from-transparent to-background" />

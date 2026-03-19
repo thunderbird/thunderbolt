@@ -54,8 +54,10 @@ const iconSize = 'size-[var(--icon-size-default)]'
 
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(
-    'flex w-full items-center gap-2 rounded-xl border border-border px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-    isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+    'flex w-full items-center gap-2 px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+    isOpen
+      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+      : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
   )
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
@@ -69,6 +71,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
+  const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
   const handleSignInClick = () => {
     // Close mobile sidebar first so modal is visible
@@ -116,7 +119,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={className}>
+      <ShadcnSidebarFooter className={cn(!isMobile && 'border-t border-border !p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
             {isPending ? (
@@ -144,6 +147,19 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   </div>
                 )}
               </SidebarMenuButton>
+            ) : isDesktopCollapsed ? (
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
+                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                    menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                  )}
+                >
+                  <Sparkles className="size-[var(--icon-size-default)] text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
             ) : (
               <PopoverTrigger asChild>
                 <button ref={triggerRef} type="button" className={triggerButtonClassName(menuOpen)}>
@@ -188,11 +204,17 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
       <PopoverContent
         side="top"
-        sideOffset={7}
+        sideOffset={8}
         align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? 16 : 0}
+        collisionPadding={isMobile ? 16 : 8}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
-        style={{ width: isMobile ? 'calc(100vw - 2rem)' : 'var(--radix-popover-trigger-width)' }}
+        style={{
+          width: isMobile
+            ? 'calc(100vw - 2rem)'
+            : isDesktopCollapsed
+              ? '16rem'
+              : 'calc(var(--radix-popover-trigger-width) - 1rem)',
+        }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col gap-2 bg-background">

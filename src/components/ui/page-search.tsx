@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
 import { Search } from 'lucide-react'
 import { Button } from './button'
 import { SearchInput, type SearchInputProps } from './search-input'
@@ -9,6 +9,8 @@ type PageSearchContextValue = {
   open: boolean
   toggle: () => void
   inputRef: RefObject<HTMLInputElement | null>
+  searchValue: string
+  setSearchValue: (value: string) => void
 }
 
 const PageSearchContext = createContext<PageSearchContextValue | null>(null)
@@ -38,6 +40,7 @@ type PageSearchProps = {
  */
 export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
   const [open, setOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const toggle = () => {
@@ -46,11 +49,14 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
     if (next) {
       requestAnimationFrame(() => inputRef.current?.focus())
     } else {
+      setSearchValue('')
       onSearch('')
     }
   }
 
-  return <PageSearchContext value={{ open, toggle, inputRef }}>{children}</PageSearchContext>
+  return (
+    <PageSearchContext value={{ open, toggle, inputRef, searchValue, setSearchValue }}>{children}</PageSearchContext>
+  )
 }
 
 type PageSearchButtonProps = {
@@ -76,13 +82,17 @@ const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
   )
 }
 
-type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value'> & {
+type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange'> & {
   delay?: number
   onSearch: (value: string) => void
 }
 
 const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: PageSearchInputProps) => {
-  const { open, inputRef } = usePageSearchContext()
+  const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSearchValue(event.target.value)
+  }
 
   return (
     <div
@@ -97,6 +107,8 @@ const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: 
         showIcon
         className="rounded-full"
         placeholder={placeholder}
+        value={searchValue}
+        onChange={handleChange}
         debouncedOnChange={onSearch}
         delay={delay}
         {...searchInputProps}

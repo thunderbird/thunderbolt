@@ -265,13 +265,6 @@ export default function ModelsPage() {
     },
   })
 
-  // Load Thunderbolt models when dialog opens
-  useEffect(() => {
-    if (isAddDialogOpen && form.getValues('provider') === 'thunderbolt' && allAvailableModels.length === 0) {
-      fetchAvailableModels('thunderbolt')
-    }
-  }, [isAddDialogOpen])
-
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     // Use customModel if it's a custom selection, otherwise use model
     const modelId = selectedModelId === 'custom' && values.customModel ? values.customModel : values.model

@@ -69,24 +69,16 @@ describe('ChatListItem', () => {
     expect(screen.getByText('Delete')).toBeInTheDocument()
   })
 
-  it('enters edit mode when Rename is clicked', () => {
+  it('displays the chat title', () => {
     renderWithProviders(createProps())
-    fireEvent.click(screen.getByText('Rename'))
-
-    const input = screen.getByDisplayValue('My Chat')
-    expect(input).toBeInTheDocument()
-    expect(input.tagName).toBe('INPUT')
+    expect(screen.getByText('My Chat')).toBeInTheDocument()
   })
 
-  it('does not navigate when clicking the input', () => {
+  it('navigates when clicking the chat item', () => {
     const onChatClick = mock()
     renderWithProviders(createProps({ onChatClick }))
-    fireEvent.click(screen.getByText('Rename'))
-
-    const input = screen.getByDisplayValue('My Chat')
-    fireEvent.click(input)
-
-    expect(onChatClick).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('My Chat'))
+    expect(onChatClick).toHaveBeenCalledWith('thread-1')
   })
 
   it('renders icon-only view when collapsed', () => {

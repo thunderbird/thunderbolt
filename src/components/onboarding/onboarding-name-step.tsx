@@ -43,8 +43,6 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
     },
   })
 
-  const isFormDirty = form.formState.isDirty && isInitialized
-
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus()
@@ -66,13 +64,10 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
       const hasValidName = !!(value.preferredName && value.preferredName.trim().length > 0)
       actions.setNameValue(value.preferredName || '')
       actions.setNameValid(hasValidName)
+      onFormDirtyChange?.(form.formState.isDirty)
     })
     return () => subscription.unsubscribe()
-  }, [form, actions, isInitialized])
-
-  useEffect(() => {
-    onFormDirtyChange?.(isFormDirty)
-  }, [isFormDirty, onFormDirtyChange])
+  }, [form, actions, isInitialized, onFormDirtyChange])
 
   useEffect(() => {
     form.reset(form.getValues())

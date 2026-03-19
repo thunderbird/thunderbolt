@@ -97,11 +97,12 @@ export default function Sidebar() {
     },
   })
 
+  const renameMutate = renameChatMutation.mutate
   const handleRename = useCallback(
     (threadId: string, title: string) => {
-      renameChatMutation.mutate({ id: threadId, title })
+      renameMutate({ id: threadId, title })
     },
-    [renameChatMutation],
+    [renameMutate],
   )
 
   const deleteAllChatsMutation = useMutation({

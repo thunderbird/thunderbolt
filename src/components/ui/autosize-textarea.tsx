@@ -8,7 +8,6 @@ import {
   forwardRef,
   useEffect,
   useRef,
-  useState,
   type MutableRefObject,
   type TextareaHTMLAttributes,
   type Ref,
@@ -70,11 +69,10 @@ export const AutosizeTextarea = forwardRef<AutosizeTextAreaRef, AutosizeTextArea
     ref: Ref<AutosizeTextAreaRef>,
   ) => {
     const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
-    const [triggerAutoSize, setTriggerAutoSize] = useState('')
 
     useAutosizeTextArea({
       textAreaRef,
-      triggerAutoSize: triggerAutoSize,
+      triggerAutoSize: (value as string) ?? '',
       maxHeight,
       minHeight,
     })
@@ -86,10 +84,6 @@ export const AutosizeTextarea = forwardRef<AutosizeTextAreaRef, AutosizeTextArea
       minHeight,
     }))
 
-    useEffect(() => {
-      setTriggerAutoSize(value as string)
-    }, [props?.defaultValue, value])
-
     return (
       <textarea
         {...props}
@@ -99,10 +93,7 @@ export const AutosizeTextarea = forwardRef<AutosizeTextAreaRef, AutosizeTextArea
           'flex w-full rounded-lg border border-input bg-background px-3 py-2 text-[length:var(--font-size-body)] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
-        onChange={(e) => {
-          setTriggerAutoSize(e.target.value)
-          onChange?.(e)
-        }}
+        onChange={onChange}
       />
     )
   },

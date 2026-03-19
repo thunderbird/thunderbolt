@@ -13,6 +13,17 @@
   </head>
 
   <body>
+    <script>
+      // Apply theme before first paint to prevent flash of white on dark mode.
+      // Must stay in sync with the storageKey and logic in src/lib/theme-provider.tsx.
+      ;(function () {
+        var theme = localStorage.getItem('ui-theme')
+        var isDark =
+          theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.add(isDark ? 'dark' : 'light')
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', isDark ? '#0a0a0a' : '#fff')
+      })()
+    </script>
     <div id="root"></div>
     <script src="/src/index.tsx" type="module"></script>
   </body>

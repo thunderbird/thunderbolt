@@ -1,4 +1,5 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { iconSizeClass } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageSquare, Microscope } from 'lucide-react'
@@ -12,14 +13,16 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
+const iconSize = iconSizeClass
+
 const iconMap: Record<string, ReactNode> = {
-  'message-square': <MessageSquare className="size-[var(--icon-size-default)]" />,
-  globe: <Globe className="size-[var(--icon-size-default)]" />,
-  microscope: <Microscope className="size-[var(--icon-size-default)]" />,
+  'message-square': <MessageSquare className={iconSize} />,
+  globe: <Globe className={iconSize} />,
+  microscope: <Microscope className={iconSize} />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return iconMap[iconName] ?? <MessageSquare className="size-[var(--icon-size-default)]" />
+  return iconMap[iconName] ?? <MessageSquare className={iconSize} />
 }
 
 type ModeItemData = {
@@ -51,7 +54,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >
-      {selected?.icon ?? <MessageSquare className="size-[var(--icon-size-default)]" />}
+      {selected?.icon ?? <MessageSquare className={iconSize} />}
       {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )

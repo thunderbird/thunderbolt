@@ -22,11 +22,11 @@ export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollTo
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full bg-background/80 backdrop-blur-sm shadow-md size-[var(--touch-height-sm)]"
+          className="rounded-full bg-background/80 backdrop-blur-sm shadow-md size-[var(--min-touch-height)] md:size-8"
           onClick={onClick}
           aria-label="Scroll to bottom"
         >
-          <ChevronDown className="size-[var(--icon-size-default)]" />
+          <ChevronDown className="size-[var(--icon-size-default)] md:size-4" />
         </Button>
       </motion.div>
     )}

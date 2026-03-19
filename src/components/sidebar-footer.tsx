@@ -25,6 +25,7 @@ import {
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { iconSizeClass } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 type SidebarFooterProps = {
@@ -62,7 +63,7 @@ const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: Account
   )
 }
 
-const iconSize = 'size-[var(--icon-size-default)]'
+const iconSize = iconSizeClass
 
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(

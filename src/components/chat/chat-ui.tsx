@@ -125,7 +125,7 @@ export default function ChatUI() {
             )}
 
             <motion.div
-              className="w-full max-w-[696px] min-w-[268px] bg-background border dark:border-input dark:bg-input/30 rounded-2xl"
+              className="w-full max-w-[696px] min-w-[268px] bg-background border dark:border-input rounded-2xl"
               layout
               transition={{
                 type: 'tween',

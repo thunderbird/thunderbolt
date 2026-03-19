@@ -198,7 +198,7 @@ export default function ModelsPage() {
     modelLoadError,
   } = state
 
-  // Ensure form state (including validation errors) resets whenever the dialog closes
+  // Ensure form state resets whenever the add-model dialog fully closes
   useEffect(() => {
     if (!isAddDialogOpen) {
       form.reset({
@@ -210,7 +210,6 @@ export default function ModelsPage() {
         apiKey: '',
         toolUsage: true,
       })
-      form.clearErrors()
     }
   }, [isAddDialogOpen])
 
@@ -959,7 +958,7 @@ export default function ModelsPage() {
                 )}
 
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+                  <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={addModelMutation.isPending}>

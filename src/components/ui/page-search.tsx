@@ -1,43 +1,30 @@
-import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Button } from './button'
 import { SearchInput, type SearchInputProps } from './search-input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 import { cn } from '@/lib/utils'
 
-type PageSearchContextValue = {
-  open: boolean
-  toggle: () => void
-  inputRef: RefObject<HTMLInputElement | null>
-}
-
-const PageSearchContext = createContext<PageSearchContextValue | null>(null)
-
-const usePageSearchContext = () => {
-  const ctx = useContext(PageSearchContext)
-  if (!ctx) {
-    throw new Error('PageSearch sub-components must be used within <PageSearch>')
-  }
-  return ctx
-}
-
-type PageSearchProps = {
+type PageSearchProps = Omit<SearchInputProps, 'onChange' | 'value'> & {
   onSearch: (value: string) => void
-  children: ReactNode
+  delay?: number
+  tooltip?: string
 }
 
 /**
- * Compound component for page-level search.
- * Provides a togglable search button and collapsible search input.
- *
- * Usage:
- *   <PageSearch onSearch={handleSearch}>
- *     <PageSearch.Button tooltip="Search" />
- *     <PageSearch.Input placeholder="Search..." />
- *   </PageSearch>
+ * A search toggle button + collapsible search input for page-level search.
+ * Renders a ghost search icon button (to place in a PageHeader) and a
+ * slide-down SearchInput that appears when toggled.
  */
-export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
+export const usePageSearch = ({
+  onSearch,
+  delay,
+  tooltip = 'Search',
+  placeholder,
+  ...searchInputProps
+}: PageSearchProps) => {
   const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const toggle = () => {
@@ -46,21 +33,12 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
     if (next) {
       requestAnimationFrame(() => inputRef.current?.focus())
     } else {
+      setValue('')
       onSearch('')
     }
   }
 
-  return <PageSearchContext value={{ open, toggle, inputRef }}>{children}</PageSearchContext>
-}
-
-type PageSearchButtonProps = {
-  tooltip?: string
-}
-
-const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
-  const { toggle } = usePageSearchContext()
-
-  return (
+  const searchButton = (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -74,17 +52,8 @@ const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
       </Tooltip>
     </TooltipProvider>
   )
-}
 
-type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value'> & {
-  delay?: number
-  onSearch: (value: string) => void
-}
-
-const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: PageSearchInputProps) => {
-  const { open, inputRef } = usePageSearchContext()
-
-  return (
+  const searchInput = (
     <div
       className={cn(
         'transition-all duration-300 ease-in-out flex-shrink-0 pr-2',
@@ -97,13 +66,14 @@ const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: 
         showIcon
         className="rounded-full"
         placeholder={placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         debouncedOnChange={onSearch}
         delay={delay}
         {...searchInputProps}
       />
     </div>
   )
-}
 
-PageSearch.Button = PageSearchButton
-PageSearch.Input = PageSearchInput
+  return { searchButton, searchInput }
+}

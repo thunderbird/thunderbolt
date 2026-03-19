@@ -1,4 +1,4 @@
-import React from 'react'
+import { type ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -6,7 +6,7 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown } from 'lucide-react'
 
-type LocationSearchComboboxProps = Omit<React.ComponentProps<typeof Button>, 'onSelect'> & {
+type LocationSearchComboboxProps = Omit<ComponentProps<typeof Button>, 'onSelect'> & {
   value?: string | null
   onSelect: (location: LocationData) => void | Promise<void>
   placeholder?: string

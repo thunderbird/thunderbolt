@@ -1,4 +1,4 @@
-import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form'
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import type { LocationData } from '@/hooks/use-location-search'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -146,7 +146,9 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
             name="locationName"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <LocationSearchCombobox value={field.value} onSelect={handleSelectLocation} autoOpen />
+                <FormControl>
+                  <LocationSearchCombobox value={field.value} onSelect={handleSelectLocation} autoOpen />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

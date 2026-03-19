@@ -1,3 +1,4 @@
+import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -5,12 +6,11 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown } from 'lucide-react'
 
-type LocationSearchComboboxProps = {
+type LocationSearchComboboxProps = React.ComponentProps<typeof Button> & {
   value?: string | null
   onSelect: (location: LocationData) => void
   placeholder?: string
   autoOpen?: boolean
-  className?: string
 }
 
 export const LocationSearchCombobox = ({
@@ -19,6 +19,7 @@ export const LocationSearchCombobox = ({
   placeholder = 'Select location...',
   autoOpen = false,
   className,
+  ...triggerProps
 }: LocationSearchComboboxProps) => {
   const locationSearch = useLocationSearch({ autoOpen })
 
@@ -43,6 +44,7 @@ export const LocationSearchCombobox = ({
           role="combobox"
           aria-expanded={locationSearch.open}
           className={cn('w-full justify-between rounded-lg', !value && 'text-muted-foreground', className)}
+          {...triggerProps}
         >
           {value || placeholder}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

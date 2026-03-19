@@ -6,9 +6,9 @@ import { useLocationSearch, type LocationData } from '@/hooks/use-location-searc
 import { cn } from '@/lib/utils'
 import { ChevronsUpDown } from 'lucide-react'
 
-type LocationSearchComboboxProps = React.ComponentProps<typeof Button> & {
+type LocationSearchComboboxProps = Omit<React.ComponentProps<typeof Button>, 'onSelect'> & {
   value?: string | null
-  onSelect: (location: LocationData) => void
+  onSelect: (location: LocationData) => void | Promise<void>
   placeholder?: string
   autoOpen?: boolean
 }

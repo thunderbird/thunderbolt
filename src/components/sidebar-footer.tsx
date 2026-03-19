@@ -39,7 +39,7 @@ type AccountMenuItem = {
 
 const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) => {
   const className = cn(
-    'w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors text-left cursor-pointer',
+    'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
     'hover:bg-accent/50',
   )
 

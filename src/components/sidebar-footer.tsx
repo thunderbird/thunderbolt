@@ -228,14 +228,14 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         side="top"
         sideOffset={5}
         align={isMobile ? 'center' : 'start'}
-        collisionPadding={16}
+        collisionPadding={isMobile ? 16 : 4}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
         style={{
           width: isMobile
             ? 'calc(100vw - 2rem)'
             : isDesktopCollapsed
               ? '16rem'
-              : 'calc(var(--radix-popover-trigger-width) - 1rem)',
+              : 'calc(var(--radix-popover-trigger-width) - 8px)',
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

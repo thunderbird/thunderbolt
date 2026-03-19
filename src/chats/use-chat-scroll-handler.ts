@@ -1,5 +1,5 @@
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef } from 'react'
 import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 
@@ -45,34 +45,37 @@ export const useChatScrollHandler = ({
     rootMargin: '0px 0px 20px 0px',
   })
 
+  const onSubmitScroll = useEffectEvent(() => {
+    hasScrolledForFirstTokenRef.current = false
+
+    if (!shouldUseViewportPositioning(messages.length)) {
+      rawScrollToBottom(true, true)
+    } else {
+      const userMessage = messages[messages.length - 1]
+
+      if (userMessage?.role === 'user') {
+        rawScrollToElement(`[data-message-id="${userMessage.id}"]`, userMessageViewportOffsetPx, true, true)
+      } else {
+        rawScrollToBottom(true, true)
+      }
+    }
+  })
+
+  const onFirstTokenScroll = useEffectEvent(() => {
+    if (!shouldUseViewportPositioning(messages.length)) {
+      rawScrollToBottom(true, true)
+    }
+  })
+
   // Scroll on status transition: submit
   useEffect(() => {
     const prevStatus = prevStatusRef.current
     prevStatusRef.current = status
 
-    const justSubmitted = status === 'submitted' && prevStatus !== 'submitted'
-
-    if (justSubmitted) {
-      hasScrolledForFirstTokenRef.current = false // Reset for new message
-
-      // For first two messages, just scroll to bottom
-      // From 3rd message onwards, immediately position viewport (grow up to make space for response)
-      if (!shouldUseViewportPositioning(messages.length)) {
-        rawScrollToBottom(true, true)
-      } else {
-        // Find user message (last message, which was just submitted)
-        const userMessage = messages[messages.length - 1]
-
-        if (userMessage?.role === 'user') {
-          // Position user message at top with breathing room - viewport "grows up" to anticipate response
-          rawScrollToElement(`[data-message-id="${userMessage.id}"]`, userMessageViewportOffsetPx, true, true)
-        } else {
-          // Fallback if last message isn't user message
-          rawScrollToBottom(true, true)
-        }
-      }
+    if (status === 'submitted' && prevStatus !== 'submitted') {
+      onSubmitScroll()
     }
-  }, [status, rawScrollToBottom, rawScrollToElement, messages])
+  }, [status, onSubmitScroll])
 
   // Scroll when first token arrives (only for first message exchange)
   useEffect(() => {
@@ -82,17 +85,11 @@ export const useChatScrollHandler = ({
         const hasContent = lastMessage.parts.some((part) => part.type === 'text' && part.text.length > 0)
         if (hasContent) {
           hasScrolledForFirstTokenRef.current = true
-
-          // For first message exchange (2 messages: 1 user + 1 assistant), scroll to bottom
-          // For 3rd+ messages, viewport was already positioned on submit, so do nothing
-          if (!shouldUseViewportPositioning(messages.length)) {
-            rawScrollToBottom(true, true)
-          }
-          // Otherwise: viewport already positioned on submit, no additional scroll needed
+          onFirstTokenScroll()
         }
       }
     }
-  }, [isStreaming, messages, rawScrollToBottom])
+  }, [isStreaming, messages, onFirstTokenScroll])
 
   const scrollToBottomAndActivate = useCallback(
     (smooth?: boolean) => {

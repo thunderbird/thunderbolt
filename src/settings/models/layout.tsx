@@ -1,8 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
-import { useEffect } from 'react'
-import { Outlet, useNavigate, useParams } from 'react-router'
+import { Navigate, Outlet, useNavigate, useParams } from 'react-router'
 import { useDatabase } from '@/contexts'
 import { getAllModels } from '@/dal'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -24,12 +23,10 @@ export default function ModelsLayout() {
   // Check if we're on the "new" route
   const isNewRoute = window.location.pathname.endsWith('/models/new')
 
-  // Navigate to first model if no model is selected and we're not on the new route
-  useEffect(() => {
-    if (!modelId && models.length > 0 && !isNewRoute) {
-      navigate(`/settings/models/${models[0].id}`)
-    }
-  }, [modelId, models, navigate, isNewRoute])
+  // Redirect to first model if no model is selected and we're not on the new route
+  if (!modelId && models.length > 0 && !isNewRoute) {
+    return <Navigate to={`/settings/models/${models[0].id}`} replace />
+  }
 
   const handleModelSelect = (value: string) => {
     navigate(`/settings/models/${value}`)

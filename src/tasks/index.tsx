@@ -289,13 +289,10 @@ export default function TasksPage() {
     placeholderData: (previousData) => previousData,
   })
 
-  // Reset optimistic order when tasks change significantly
-  useEffect(() => {
-    // Only reset if we're not dragging and the task count changed
-    if (!activeId && optimisticOrder.length !== tasks.length) {
-      setOptimisticOrder([])
-    }
-  }, [tasks.length, activeId, optimisticOrder.length])
+  // Reset optimistic order when tasks change significantly (render-time check)
+  if (!activeId && optimisticOrder.length > 0 && optimisticOrder.length !== tasks.length) {
+    setOptimisticOrder([])
+  }
 
   // Create ordered tasks
   const orderedTasks = useMemo(() => {

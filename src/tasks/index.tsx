@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
-import { SearchInput } from '@/components/ui/search-input'
+import { usePageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
@@ -253,6 +253,17 @@ export default function TasksPage() {
 
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 
+  const { searchButton, searchInput } = usePageSearch({
+    placeholder: 'Search tasks...',
+    tooltip: 'Search',
+    onSearch: (value) => {
+      setDebouncedSearchQuery(value)
+      if (value.trim()) {
+        trackEvent('task_search', { query_length: value.length })
+      }
+    },
+  })
+
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -465,39 +476,31 @@ export default function TasksPage() {
         <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
           <PageHeader title="Tasks">
             {!showEmptyState && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="rounded-lg"
-                      onClick={() => setIsAddingNew(true)}
-                      disabled={isAddingNew}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Add Task</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <>
+                {searchButton}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="rounded-lg"
+                        onClick={() => setIsAddingNew(true)}
+                        disabled={isAddingNew}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Add Task</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </>
             )}
           </PageHeader>
 
-          {/* Search - always visible to maintain focus and avoid flicker */}
-          <SearchInput
-            placeholder="Search tasks..."
-            inputSize="lg"
-            className="rounded-xl"
-            debouncedOnChange={(value) => {
-              setDebouncedSearchQuery(value)
-              if (value.trim()) {
-                trackEvent('task_search', { query_length: value.length })
-              }
-            }}
-          />
+          {searchInput}
 
           {showEmptyState ? (
             <div className="flex items-center justify-center p-16">

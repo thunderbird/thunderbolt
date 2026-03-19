@@ -296,7 +296,7 @@ export default function McpServersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>

@@ -36,7 +36,7 @@ export default function ModelsLayout() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="mt-8 text-4xl font-bold tracking-tight mb-2 text-primary">Models</h1>
         <Button variant="outline" size="icon" onClick={() => navigate('/settings/models/new')}>

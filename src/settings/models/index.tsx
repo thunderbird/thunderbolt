@@ -764,7 +764,7 @@ export default function ModelsPage() {
   }, [watchedApiKey, watchedModel, watchedProvider])
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>

@@ -355,38 +355,36 @@ export default function PreferencesSettingsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Preferences" />
 
-      <SectionCard title="Appearance">
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium">Theme</label>
-          <ThemeToggle />
-          <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Haptic Feedback">
-        <div className="flex-row flex items-center gap-4">
-          <div className="flex-1">
-            <ModificationIndicator
-              as="label"
-              className="text-sm font-medium"
-              hasModifications={hapticsEnabled.isModified}
-              onReset={hapticsEnabled.reset}
-            >
-              Haptic feedback
-            </ModificationIndicator>
-            <p className="text-sm text-muted-foreground">
-              Trigger haptic feedback when interacting with buttons, switches, and other controls.
-            </p>
+      <SectionCard title="User Experience">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Theme</label>
+            <ThemeToggle />
+            <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
           </div>
-          <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex-row flex items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={hapticsEnabled.isModified}
+                onReset={hapticsEnabled.reset}
+              >
+                Haptic Feedback
+              </ModificationIndicator>
+              <p className="text-sm text-muted-foreground">Enable vibration feedback for interactive elements.</p>
+            </div>
+            <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+          </div>
         </div>
       </SectionCard>
 
       <div className="h-6" />
 
-      <SectionCard title="Personal Information">
+      <SectionCard title="Personalization">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
@@ -423,8 +421,8 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Location">
-        <div className="flex flex-col gap-4">
+      <SectionCard title="Localization">
+        <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
               as="label"
@@ -498,13 +496,9 @@ export default function PreferencesSettingsPage() {
             </Popover>
             <p className="text-sm text-muted-foreground">Select your location to enable location-based features.</p>
           </div>
-        </div>
-      </SectionCard>
 
-      <div className="h-6" />
+          <div className="h-px bg-border -mx-6" />
 
-      <SectionCard title="Localization">
-        <div className="flex flex-col gap-4">
           <div className="flex flex-row items-center gap-4">
             <div className="flex-1">
               <ModificationIndicator
@@ -763,70 +757,109 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Preview Features">
-        <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
+      <SectionCard title="Help Thunderbolt Improve">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
+            <label className="text-sm font-medium">Preview Features</label>
 
-        <div className="flex-row flex items-center gap-4">
-          <div className="flex-1">
-            <ModificationIndicator
-              as="label"
-              className="text-sm font-medium"
-              hasModifications={experimentalFeatureTasks.isModified}
-              onReset={experimentalFeatureTasks.reset}
-            >
-              Tasks
-            </ModificationIndicator>
+            <div className="flex-row flex items-center gap-4">
+              <div className="flex-1">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={experimentalFeatureTasks.isModified}
+                  onReset={experimentalFeatureTasks.reset}
+                >
+                  Tasks
+                </ModificationIndicator>
+              </div>
+              <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+            </div>
           </div>
-          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex-row flex items-center gap-4">
+            <div>
+              <div className="mb-2">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={dataCollection.isModified}
+                  onReset={dataCollection.reset}
+                >
+                  Anonymous Usage Data
+                </ModificationIndicator>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
+                personal data is collected or stored. Read more about our{' '}
+                <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
+                  privacy policy
+                </a>
+                .
+              </p>
+            </div>
+            <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+          </div>
         </div>
       </SectionCard>
 
       <div className="h-6" />
 
-      <SectionCard title="Privacy">
-        <div className="flex-row flex items-center gap-4">
-          <div>
-            <div className="mb-2">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={dataCollection.isModified}
-                onReset={dataCollection.reset}
-              >
-                Data Collection
-              </ModificationIndicator>
+      <SectionCard title="Data">
+        <div className="flex flex-col gap-6">
+          <div className="flex-row flex items-center gap-4 justify-between">
+            <div>
+              <div className="mb-2">
+                <label className="text-sm font-medium">Sync data between devices</label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Enable cloud synchronization to keep your data synced across devices.
+              </p>
+              {!isAuthenticated && <p className="text-xs text-muted-foreground mt-1">Sign in to enable sync.</p>}
             </div>
-            <p className="text-sm text-muted-foreground">
-              Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
-              personal data is collected or stored. Read more about our{' '}
-              <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
-                privacy policy
-              </a>
-              .
-            </p>
+            <Switch
+              checked={syncEnabled}
+              onCheckedChange={handleSyncToggle}
+              disabled={!isAuthenticated || isConnecting}
+            />
           </div>
-          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
-        </div>
-      </SectionCard>
 
-      <div className="h-6" />
+          {!isAuthenticated && (
+            <>
+              <div className="h-px bg-border -mx-6" />
 
-      <SectionCard title="Sync">
-        <div className="flex-row flex items-center gap-4 justify-between">
-          <div>
-            <div className="mb-2">
-              <label className="text-sm font-medium">Cloud Sync</label>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Enable cloud synchronization to keep your data synced across devices.
-            </p>
-            {!isAuthenticated && <p className="text-xs text-muted-foreground mt-1">Sign in to enable sync.</p>}
-          </div>
-          <Switch
-            checked={syncEnabled}
-            onCheckedChange={handleSyncToggle}
-            disabled={!isAuthenticated || isConnecting}
-          />
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="secondary" disabled={isResetting}>
+                      {isResetting ? 'Resetting...' : 'Reset Database'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all of your local data including settings, chat history, and cached
+                        information. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleResetDatabase}
+                        className="bg-destructive text-white hover:bg-destructive/90"
+                      >
+                        Reset Database
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </>
+          )}
         </div>
       </SectionCard>
 
@@ -837,39 +870,6 @@ export default function PreferencesSettingsPage() {
       />
 
       <div className="h-6" />
-
-      {!isAuthenticated && (
-        <SectionCard title="Local Database">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="secondary" disabled={isResetting}>
-                  {isResetting ? 'Resetting...' : 'Reset Database'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete all of your local data including settings, chat history, and cached
-                    information. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleResetDatabase}
-                    className="bg-destructive text-white hover:bg-destructive/90"
-                  >
-                    Reset Database
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </SectionCard>
-      )}
 
       {isAuthenticated && (
         <SectionCard title="Account">

@@ -959,7 +959,7 @@ export default function ModelsPage() {
                 )}
 
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+                  <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={addModelMutation.isPending}>

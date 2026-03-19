@@ -22,18 +22,10 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     }
   }, [title, optimisticTitle])
 
-  useEffect(() => {
-    if (!isEditing) {
-      return
-    }
-    // setTimeout is needed (not rAF) because Radix dropdown restores focus
-    // to the trigger after closing — setTimeout defers past that restoration
-    const timer = setTimeout(() => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [isEditing])
+  const focusInput = () => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }
 
   const handleRenameStart = () => {
     cancelledRef.current = false
@@ -68,6 +60,7 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     setEditValue,
     displayTitle,
     inputRef,
+    focusInput,
     handleRenameStart,
     handleRenameSubmit,
     handleRenameCancel,

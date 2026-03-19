@@ -38,6 +38,7 @@ export const ChatListItem = ({
     setEditValue,
     displayTitle,
     inputRef,
+    focusInput,
     handleRenameStart,
     handleRenameSubmit,
     handleRenameCancel,
@@ -124,7 +125,17 @@ export const ChatListItem = ({
             </DropdownMenuTrigger>
           )}
         </SidebarMenuButton>
-        <DropdownMenuContent side="right" align="start" className="min-w-56 rounded-lg">
+        <DropdownMenuContent
+          side="right"
+          align="start"
+          className="min-w-56 rounded-lg"
+          onCloseAutoFocus={(e) => {
+            if (isEditing) {
+              e.preventDefault()
+              focusInput()
+            }
+          }}
+        >
           <DropdownMenuItem onClick={handleRenameStart} className="cursor-pointer">
             <Pencil className="size-4 mr-2" />
             Rename

@@ -13,3 +13,5 @@ export const WaitlistReminderEmail = () => (
     </Section>
   </EmailLayout>
 )
+
+export default WaitlistReminderEmail

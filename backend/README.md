@@ -78,6 +78,17 @@ bun run build
 bun run start
 ```
 
+## Email Templates
+
+Email templates are built with [React Email](https://react.email) and live in `src/emails/`. They're sent via [Resend](https://resend.com).
+
+```bash
+# Preview templates in the browser at http://localhost:3000
+bun run email
+```
+
+Templates are React components that accept typed props and are passed directly to Resend's `react` option — no hosted templates or template IDs needed.
+
 ## OpenTelemetry
 
 OpenTelemetry integration is available for distributed tracing and observability. To enable:

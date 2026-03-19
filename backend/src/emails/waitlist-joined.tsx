@@ -13,3 +13,5 @@ export const WaitlistJoinedEmail = () => (
     </Section>
   </EmailLayout>
 )
+
+export default WaitlistJoinedEmail

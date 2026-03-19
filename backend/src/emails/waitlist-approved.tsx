@@ -24,3 +24,10 @@ export const WaitlistApprovedEmail = ({ code, magicLinkUrl }: WaitlistApprovedEm
     </Section>
   </EmailLayout>
 )
+
+WaitlistApprovedEmail.PreviewProps = {
+  code: '882999',
+  magicLinkUrl: 'https://thunderbolt.io/auth/verify?email=user@example.com&otp=882999',
+} satisfies WaitlistApprovedEmailProps
+
+export default WaitlistApprovedEmail

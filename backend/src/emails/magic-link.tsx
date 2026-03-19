@@ -20,3 +20,10 @@ export const MagicLinkEmail = ({ code, magicLinkUrl }: MagicLinkEmailProps) => (
     </Section>
   </EmailLayout>
 )
+
+MagicLinkEmail.PreviewProps = {
+  code: '882999',
+  magicLinkUrl: 'https://thunderbolt.io/auth/verify?email=user@example.com&otp=882999',
+} satisfies MagicLinkEmailProps
+
+export default MagicLinkEmail

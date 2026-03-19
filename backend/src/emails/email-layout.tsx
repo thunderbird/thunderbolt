@@ -12,7 +12,7 @@ import {
   pixelBasedPreset,
 } from '@react-email/components'
 
-const baseURL = process.env.NODE_ENV === 'production' ? 'https://thunderbolt.io' : 'http://localhost:1420'
+const baseURL = 'https://thunderbolt.io'
 
 type EmailLayoutProps = {
   preview: string

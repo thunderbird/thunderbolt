@@ -56,6 +56,7 @@ type OAuthCallbackData = {
 
 /**
  * Checks if there's a valid (non-expired) connecting state in sessionStorage.
+ * Clears expired state as a side effect.
  */
 const getInitialConnectingState = (key: string | undefined): boolean => {
   if (!key) {
@@ -70,7 +71,12 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
   const startTime = timestamp ? parseInt(timestamp, 10) : 0
   const elapsed = Date.now() - startTime
 
-  return elapsed <= connectingTimeoutMs
+  if (elapsed > connectingTimeoutMs) {
+    clearOAuthConnectingState(key)
+    return false
+  }
+
+  return true
 }
 
 /**
@@ -144,26 +150,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       await updateSettings(db, { preferred_name: userInfo.name })
     }
   }
-
-  // Clear expired connecting state from sessionStorage on mount
-  useEffect(() => {
-    if (!activeKey) {
-      return
-    }
-
-    const wasConnecting = sessionStorage.getItem(getConnectingKey(activeKey)) === 'true'
-    if (!wasConnecting) {
-      return
-    }
-
-    const timestamp = sessionStorage.getItem(getTimestampKey(activeKey))
-    const startTime = timestamp ? parseInt(timestamp, 10) : 0
-    const elapsed = Date.now() - startTime
-
-    if (elapsed > connectingTimeoutMs) {
-      clearConnecting(activeKey)
-    }
-  }, [activeKey])
 
   // Active timer to clear connecting state when timeout expires
   useEffect(() => {

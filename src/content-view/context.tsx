@@ -47,7 +47,11 @@ type ContentViewProviderProps = {
  * Optionally accepts initial sideview state to open on mount
  */
 export const ContentViewProvider = ({ children, initialSideviewType, initialSideviewId }: ContentViewProviderProps) => {
-  const [state, setState] = useState<ContentViewState>({ type: null, data: null })
+  const [state, setState] = useState<ContentViewState>(() =>
+    initialSideviewType && initialSideviewId
+      ? { type: 'sideview' as const, data: { sideviewType: initialSideviewType, sideviewId: initialSideviewId } }
+      : { type: null, data: null },
+  )
   const [previewHidden, setPreviewHidden] = useState(false)
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
@@ -107,13 +111,6 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
     }
     setState({ type: null, data: null })
   }, [])
-
-  // Initialize with sideview if provided
-  useEffect(() => {
-    if (initialSideviewType && initialSideviewId) {
-      showSideview(initialSideviewType, initialSideviewId)
-    }
-  }, [initialSideviewType, initialSideviewId, showSideview])
 
   // Close content view when crossing into mobile mode (only on transition, not continuously)
   useEffect(() => {

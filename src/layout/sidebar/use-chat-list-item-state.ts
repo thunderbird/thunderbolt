@@ -23,17 +23,12 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     }
   }, [title, optimisticTitle])
 
-  const focusInput = () => {
+  useEffect(() => {
+    if (!isEditing || !pendingFocusRef.current) return
+    pendingFocusRef.current = false
     inputRef.current?.focus()
     inputRef.current?.select()
-  }
-
-  /** Whether the dropdown should hand off focus to the rename input on close. */
-  const shouldFocusOnClose = () => {
-    if (!pendingFocusRef.current) return false
-    pendingFocusRef.current = false
-    return true
-  }
+  }, [isEditing])
 
   const handleRenameStart = () => {
     cancelledRef.current = false
@@ -69,8 +64,6 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
     setEditValue,
     displayTitle,
     inputRef,
-    focusInput,
-    shouldFocusOnClose,
     handleRenameStart,
     handleRenameSubmit,
     handleRenameCancel,

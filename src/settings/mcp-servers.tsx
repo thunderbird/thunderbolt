@@ -46,6 +46,7 @@ export default function McpServersPage() {
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
 
   // TODO: Add support for stdio servers
@@ -96,14 +97,6 @@ export default function McpServersPage() {
       fetchServerTools()
     }
   }, [servers, mcpServers]) // Removed selectedTools from dependencies to avoid infinite loop
-
-  // Clear copied indication after 2 seconds
-  useEffect(() => {
-    if (copiedUrl) {
-      const timer = setTimeout(() => setCopiedUrl(null), 2000)
-      return () => clearTimeout(timer)
-    }
-  }, [copiedUrl])
 
   const toggleServerMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -223,6 +216,10 @@ export default function McpServersPage() {
     try {
       await navigator.clipboard.writeText(url)
       setCopiedUrl(url)
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current)
+      }
+      copiedTimerRef.current = setTimeout(() => setCopiedUrl(null), 2000)
     } catch (error) {
       console.error('Failed to copy URL:', error)
     }

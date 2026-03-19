@@ -3,7 +3,6 @@ import {
   Fragment,
   memo,
   useCallback,
-  useEffect,
   useMemo,
   useContext,
   type ReactNode,
@@ -179,11 +178,13 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
   const setPreviewHidden = useSetPreviewHidden()
   const desktop = isDesktop() && !!showPreview
 
-  // Hide the native sidebar webview while the dialog is open (Tauri webviews render above DOM)
-  useEffect(() => {
-    setPreviewHidden?.(dialogOpen)
-    return () => setPreviewHidden?.(false)
-  }, [dialogOpen, setPreviewHidden])
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setDialogOpen(open)
+      setPreviewHidden?.(open)
+    },
+    [setDialogOpen, setPreviewHidden],
+  )
 
   const handleOpenInApp = useCallback(() => {
     if (showPreview) {
@@ -196,7 +197,7 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
       {children}
       <ExternalLinkDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         url={pendingUrl}
         onConfirm={handleConfirm}
         onOpenInApp={desktop ? handleOpenInApp : undefined}

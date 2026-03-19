@@ -24,6 +24,7 @@ export const usePageSearch = ({
   ...searchInputProps
 }: PageSearchProps) => {
   const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const toggle = () => {
@@ -32,6 +33,7 @@ export const usePageSearch = ({
     if (next) {
       requestAnimationFrame(() => inputRef.current?.focus())
     } else {
+      setValue('')
       onSearch('')
     }
   }
@@ -64,6 +66,8 @@ export const usePageSearch = ({
         showIcon
         className="rounded-full"
         placeholder={placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         debouncedOnChange={onSearch}
         delay={delay}
         {...searchInputProps}

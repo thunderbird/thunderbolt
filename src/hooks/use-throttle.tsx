@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 /**
  * Hook that throttles a value
@@ -51,14 +51,9 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
   callback: T,
   interval: number,
 ): ((...args: Parameters<T>) => void) => {
-  const callbackRef = useRef(callback)
   const lastCallTime = useRef<number>(0)
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
-
-  // Keep callback ref up to date
-  useEffect(() => {
-    callbackRef.current = callback
-  }, [callback])
+  const onCallback = useEffectEvent(callback)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -77,7 +72,7 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
       if (timeSinceLastCall >= interval) {
         // Enough time has passed, call immediately
         lastCallTime.current = now
-        callbackRef.current(...args)
+        onCallback(...args)
       } else {
         // Not enough time has passed, schedule a call
         if (timeoutRef.current) {
@@ -86,10 +81,10 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
 
         timeoutRef.current = setTimeout(() => {
           lastCallTime.current = Date.now()
-          callbackRef.current(...args)
+          onCallback(...args)
         }, interval - timeSinceLastCall)
       }
     },
-    [interval],
+    [interval, onCallback],
   )
 }

@@ -239,7 +239,6 @@ export default function ModelsPage() {
     },
     onSuccess: () => {
       dispatch({ type: 'CLOSE_DIALOG' })
-      form.reset()
     },
   })
 

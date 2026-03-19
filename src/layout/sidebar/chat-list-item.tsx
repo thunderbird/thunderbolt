@@ -135,13 +135,13 @@ export const ChatListItem = ({
               deleteChatDialogRef.current?.open()
             }}
             disabled={deleteChatMutation.isPending}
-            className="text-destructive cursor-pointer"
+            className="cursor-pointer"
           >
             {deleteChatMutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <>
-                <Trash2 className="size-4 mr-2 text-destructive" />
+                <Trash2 className="size-4 mr-2" />
                 Delete
               </>
             )}

@@ -262,7 +262,7 @@ export const SearchableMenu = <T,>({
             </div>
           </div>
 
-          {footer && <div className="border-t px-4 py-4">{footer}</div>}
+          {footer && <div className="border-t px-2 py-2">{footer}</div>}
         </div>
       </PopoverContent>
     </Popover>

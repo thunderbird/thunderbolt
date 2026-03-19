@@ -95,9 +95,6 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  // Local state for name input (only save on blur to avoid DB writes on every keystroke)
-  const [nameInput, setNameInput] = useState('')
-
   const { syncEnabled, syncEnableWarningOpen, setSyncEnableWarningOpen, handleSyncToggle, handleConfirmEnableSync } =
     useSyncEnabledToggle()
   const { connectionStatus } = usePowerSyncStatus()
@@ -134,6 +131,10 @@ export default function PreferencesSettingsPage() {
     cloud_url: 'http://localhost:8000/v1',
   })
 
+  // Local state for name input (only save on blur to avoid DB writes on every keystroke)
+  const [nameInput, setNameInput] = useState('')
+  const prevPreferredNameRef = useRef(preferredName.value)
+
   // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
   const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits()
@@ -150,10 +151,11 @@ export default function PreferencesSettingsPage() {
     await experimentalFeatureTasks.setValue(false)
   }
 
-  // Sync local name input with settings value
-  useEffect(() => {
+  // Sync local name input when settings value changes (e.g., async load)
+  if (preferredName.value !== prevPreferredNameRef.current) {
+    prevPreferredNameRef.current = preferredName.value
     setNameInput(preferredName.value || '')
-  }, [preferredName.value])
+  }
 
   // Auto-populate localization settings from country data if not set
   useEffect(() => {

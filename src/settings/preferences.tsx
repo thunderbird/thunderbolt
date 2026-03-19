@@ -66,6 +66,82 @@ const initialState: PreferencesState = {
   pendingCountryUnits: null,
 }
 
+type LocalizationDropdownItem = {
+  id: string
+  label: string
+  filterValue?: string
+}
+
+type LocalizationDropdownProps = {
+  label: string
+  isModified: boolean
+  onReset: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  loading: boolean
+  displayValue: string
+  items: LocalizationDropdownItem[]
+  onSelect: (id: string) => Promise<void>
+  searchPlaceholder?: string
+  contentClassName?: string
+}
+
+const LocalizationDropdown = ({
+  label,
+  isModified,
+  onReset,
+  open,
+  onOpenChange,
+  loading,
+  displayValue,
+  items,
+  onSelect,
+  searchPlaceholder,
+  contentClassName,
+}: LocalizationDropdownProps) => (
+  <div className="flex flex-row items-center gap-4">
+    <div className="flex-1">
+      <ModificationIndicator as="label" className="text-sm font-medium" hasModifications={isModified} onReset={onReset}>
+        {label}
+      </ModificationIndicator>
+    </div>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          disabled={loading}
+          className={cn('w-auto justify-between rounded-lg', !displayValue && 'text-muted-foreground')}
+        >
+          {loading ? 'Loading...' : displayValue || 'Loading...'}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className={cn('rounded-lg p-0 w-auto', contentClassName)} align="end">
+        <Command>
+          {searchPlaceholder && <CommandInput placeholder={searchPlaceholder} />}
+          <CommandList>
+            <CommandGroup>
+              {items.map((item) => (
+                <CommandItem
+                  key={item.id}
+                  value={item.filterValue ?? item.id}
+                  onSelect={async () => {
+                    await onSelect(item.id)
+                    onOpenChange(false)
+                  }}
+                >
+                  {item.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  </div>
+)
+
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
   switch (action.type) {
     case 'SET_IS_RESETTING':
@@ -437,259 +513,112 @@ export default function PreferencesSettingsPage() {
 
           <div className="h-px bg-border -mx-6" />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={distanceUnit.isModified}
-                onReset={() => handleResetLocalizationSetting('distance')}
-              >
-                Distance
-              </ModificationIndicator>
-            </div>
-            <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between rounded-lg', !distanceUnit.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : distanceUnit.value
-                      ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1)
-                      : 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.units?.map((unit) => (
-                        <CommandItem
-                          key={unit}
-                          value={unit}
-                          onSelect={async () => {
-                            await distanceUnit.setValue(unit)
-                            trackEvent('settings_localization_update')
-                            setDistanceDropdownOpen(false)
-                          }}
-                        >
-                          {unit.charAt(0).toUpperCase() + unit.slice(1)}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <LocalizationDropdown
+            label="Distance"
+            isModified={distanceUnit.isModified}
+            onReset={() => handleResetLocalizationSetting('distance')}
+            open={distanceDropdownOpen}
+            onOpenChange={setDistanceDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              distanceUnit.value ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1) : ''
+            }
+            items={(unitsOptionsData?.units ?? []).map((u) => ({
+              id: u,
+              label: u.charAt(0).toUpperCase() + u.slice(1),
+            }))}
+            onSelect={async (v) => {
+              await distanceUnit.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={temperatureUnit.isModified}
-                onReset={() => handleResetLocalizationSetting('temperature')}
-              >
-                Temperature
-              </ModificationIndicator>
-            </div>
-            <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between rounded-lg', !temperatureUnit.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : unitsOptionsData?.temperature?.find((temp) => temp.symbol === temperatureUnit.value)?.name ||
-                      temperatureUnit.value ||
-                      'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.temperature?.map((temp) => (
-                        <CommandItem
-                          key={temp.symbol}
-                          value={temp.symbol}
-                          onSelect={async () => {
-                            await temperatureUnit.setValue(temp.symbol)
-                            trackEvent('settings_localization_update')
-                            setTemperatureDropdownOpen(false)
-                          }}
-                        >
-                          {temp.name}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <LocalizationDropdown
+            label="Temperature"
+            isModified={temperatureUnit.isModified}
+            onReset={() => handleResetLocalizationSetting('temperature')}
+            open={temperatureDropdownOpen}
+            onOpenChange={setTemperatureDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              unitsOptionsData?.temperature?.find((t) => t.symbol === temperatureUnit.value)?.name ||
+              temperatureUnit.value ||
+              ''
+            }
+            items={(unitsOptionsData?.temperature ?? []).map((t) => ({
+              id: t.symbol,
+              label: t.name,
+            }))}
+            onSelect={async (v) => {
+              await temperatureUnit.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={dateFormat.isModified}
-                onReset={() => handleResetLocalizationSetting('date')}
-              >
-                Date Format
-              </ModificationIndicator>
-            </div>
-            <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between rounded-lg', !dateFormat.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : dateFormat.value
-                      ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example ||
-                        dateFormat.value
-                      : 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.dateFormats?.map((format) => (
-                        <CommandItem
-                          key={format.format}
-                          value={format.example}
-                          onSelect={async () => {
-                            await dateFormat.setValue(format.format)
-                            trackEvent('settings_localization_update')
-                            setDateFormatDropdownOpen(false)
-                          }}
-                        >
-                          {format.example}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <LocalizationDropdown
+            label="Date Format"
+            isModified={dateFormat.isModified}
+            onReset={() => handleResetLocalizationSetting('date')}
+            open={dateFormatDropdownOpen}
+            onOpenChange={setDateFormatDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              dateFormat.value
+                ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example || dateFormat.value
+                : ''
+            }
+            items={(unitsOptionsData?.dateFormats ?? []).map((f) => ({
+              id: f.format,
+              label: f.example,
+              filterValue: f.example,
+            }))}
+            onSelect={async (v) => {
+              await dateFormat.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={timeFormat.isModified}
-                onReset={() => handleResetLocalizationSetting('time')}
-              >
-                Time Format
-              </ModificationIndicator>
-            </div>
-            <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between rounded-lg', !timeFormat.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading ? 'Loading...' : timeFormat.value || 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.timeFormat?.map((format) => (
-                        <CommandItem
-                          key={format}
-                          value={format}
-                          onSelect={async () => {
-                            await timeFormat.setValue(format)
-                            trackEvent('settings_localization_update')
-                            setTimeFormatDropdownOpen(false)
-                          }}
-                        >
-                          {format}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <LocalizationDropdown
+            label="Time Format"
+            isModified={timeFormat.isModified}
+            onReset={() => handleResetLocalizationSetting('time')}
+            open={timeFormatDropdownOpen}
+            onOpenChange={setTimeFormatDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={timeFormat.value || ''}
+            items={(unitsOptionsData?.timeFormat ?? []).map((f) => ({
+              id: f,
+              label: f,
+            }))}
+            onSelect={async (v) => {
+              await timeFormat.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={currency.isModified}
-                onReset={() => handleResetLocalizationSetting('currency')}
-              >
-                Currency
-              </ModificationIndicator>
-            </div>
-            <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between rounded-lg', !currency.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : (() => {
-                        const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
-                        return selectedCurrency ? `${selectedCurrency.name} (${selectedCurrency.symbol})` : 'Loading...'
-                      })()}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="rounded-lg p-0 w-[300px]" align="end">
-                <Command>
-                  <CommandInput placeholder="Search currency by code, symbol, or name..." />
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.currencies?.map((currencyOption) => (
-                        <CommandItem
-                          key={currencyOption.code}
-                          value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
-                          onSelect={async () => {
-                            await currency.setValue(currencyOption.code)
-                            trackEvent('settings_localization_update')
-                            setCurrencyDropdownOpen(false)
-                          }}
-                        >
-                          {currencyOption.name} ({currencyOption.symbol})
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <LocalizationDropdown
+            label="Currency"
+            isModified={currency.isModified}
+            onReset={() => handleResetLocalizationSetting('currency')}
+            open={currencyDropdownOpen}
+            onOpenChange={setCurrencyDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={(() => {
+              const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
+              return c ? `${c.name} (${c.symbol})` : ''
+            })()}
+            items={(unitsOptionsData?.currencies ?? []).map((c) => ({
+              id: c.code,
+              label: `${c.name} (${c.symbol})`,
+              filterValue: `${c.code} ${c.symbol} ${c.name}`,
+            }))}
+            onSelect={async (v) => {
+              await currency.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+            searchPlaceholder="Search currency by code, symbol, or name..."
+            contentClassName="w-[300px]"
+          />
         </div>
       </SectionCard>
 

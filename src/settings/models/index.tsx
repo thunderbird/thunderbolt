@@ -210,7 +210,6 @@ export default function ModelsPage() {
         apiKey: '',
         toolUsage: true,
       })
-      form.clearErrors()
     }
   }, [isAddDialogOpen])
 
@@ -371,40 +370,12 @@ export default function ModelsPage() {
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
-      // Reset form before opening to ensure clean state
-      form.reset({
-        provider: 'thunderbolt',
-        name: '',
-        model: '',
-        customModel: '',
-        url: '',
-        apiKey: '',
-        toolUsage: true,
-      })
-      form.clearErrors()
       dispatch({ type: 'OPEN_DIALOG' })
-      if (form.getValues('provider') === 'thunderbolt') {
-        fetchAvailableModels('thunderbolt')
-      }
+      fetchAvailableModels('thunderbolt')
     } else {
       dispatch({ type: 'CLOSE_DIALOG' })
-      // Reset form with explicit default values
-      form.reset({
-        provider: 'thunderbolt',
-        name: '',
-        model: '',
-        customModel: '',
-        url: '',
-        apiKey: '',
-        toolUsage: true,
-      })
-      form.clearErrors()
-      // Additional cleanup to ensure form state is fully cleared
-      setTimeout(() => {
-        form.clearErrors()
-        form.trigger() // Re-trigger validation to clear any lingering errors
-      }, 0)
     }
+    // The useEffect on isAddDialogOpen handles form reset for both open/close
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -710,11 +681,11 @@ export default function ModelsPage() {
       label: model.name || model.id,
       description: model.name ? model.id : undefined,
     }))
-    if (form.getValues('provider') !== 'thunderbolt') {
+    if (watchedProvider !== 'thunderbolt') {
       items.push({ id: 'custom', label: 'Custom' })
     }
     return items
-  }, [allAvailableModels, form])
+  }, [allAvailableModels, watchedProvider])
 
   // Calculate whether the currently selected model supports tools
   const supportsToolsSelected = (() => {

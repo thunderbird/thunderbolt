@@ -75,7 +75,7 @@
   /* Switch component specific */
   --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
   --switch-track-width: 2.75rem; /* 44px mobile */
-  --switch-thumb-size: 1.125rem; /* 18px mobile */
+  --switch-thumb-size: 1.25rem; /* 20px mobile */
   --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
 }
 

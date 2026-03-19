@@ -95,11 +95,9 @@ export const SignInForm = ({
   }, [actions, onGoBack])
 
   // Expose goBack to parent via ref (for page variant where back button is external).
-  useEffect(() => {
-    if (goBackRef) {
-      goBackRef.current = handleGoBack
-    }
-  }, [goBackRef, handleGoBack])
+  if (goBackRef) {
+    goBackRef.current = handleGoBack
+  }
 
   // Success state
   if (state.status === 'success') {

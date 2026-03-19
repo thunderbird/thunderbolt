@@ -1,11 +1,28 @@
 import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
-import { getClock } from '@/testing-library'
-import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test'
+
+/** Create a minimal ky-like response wrapper for mocking ky.get/ky.put */
+const createKyResponse = (body: Record<string, unknown>, status: number) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  json: () => Promise.resolve(body),
+})
+
+const kyGetMock = mock()
+const kyPutMock = mock()
+
+mock.module('ky', () => ({
+  default: Object.assign(
+    () => {
+      throw new Error('ky default call not expected')
+    },
+    { get: kyGetMock, put: kyPutMock },
+  ),
+}))
 
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof mock>
@@ -96,21 +113,14 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 })
 
 describe('ThunderboltConnector', () => {
-  let savedFetch: typeof globalThis.fetch
-  let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
-    savedFetch = globalThis.fetch
-    fetchMock = mock()
     dispatchSpy = mock(() => {})
-    globalThis.fetch = fetchMock as unknown as typeof fetch
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    kyGetMock.mockReset()
+    kyPutMock.mockReset()
     clearAuthToken()
-  })
-
-  afterEach(() => {
-    globalThis.fetch = savedFetch
   })
 
   it('fetchCredentials returns null when no auth token', async () => {
@@ -120,7 +130,7 @@ describe('ThunderboltConnector', () => {
     const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(kyGetMock).not.toHaveBeenCalled()
   })
 
   it('fetchCredentials returns credentials when backend returns 200', async () => {
@@ -130,12 +140,7 @@ describe('ThunderboltConnector', () => {
       expiresAt: '2025-12-31T00:00:00Z',
       powerSyncUrl: 'wss://ps.test/sync',
     }
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify(tokenData), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+    kyGetMock.mockReturnValue(createKyResponse(tokenData, 200))
     const connector = new ThunderboltConnector(backendUrl)
 
     const result = await connector.fetchCredentials()
@@ -145,20 +150,14 @@ describe('ThunderboltConnector', () => {
       token: tokenData.token,
       expiresAt: new Date(tokenData.expiresAt),
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [request] = fetchMock.mock.calls[0] as [Request]
-    expect(request.url).toContain('/powersync/token')
-    expect(request.method).toBe('GET')
+    expect(kyGetMock).toHaveBeenCalledTimes(1)
+    const [url] = kyGetMock.mock.calls[0] as [string]
+    expect(url).toContain('/powersync/token')
   })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
     setAuthToken(authToken)
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({}), {
-        status: 410,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+    kyGetMock.mockReturnValue(createKyResponse({}, 410))
     const connector = new ThunderboltConnector(backendUrl)
 
     const result = await connector.fetchCredentials()
@@ -172,12 +171,7 @@ describe('ThunderboltConnector', () => {
 
   it('fetchCredentials returns null when backend returns 401 (no event)', async () => {
     setAuthToken(authToken)
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({}), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+    kyGetMock.mockReturnValue(createKyResponse({}, 401))
     const connector = new ThunderboltConnector(backendUrl)
 
     const result = await connector.fetchCredentials()
@@ -188,14 +182,12 @@ describe('ThunderboltConnector', () => {
 
   it('fetchCredentials returns null on network error', async () => {
     setAuthToken(authToken)
-    fetchMock.mockRejectedValue(new Error('Network error'))
+    kyGetMock.mockImplementation(() => {
+      throw new Error('Network error')
+    })
     const connector = new ThunderboltConnector(backendUrl)
 
-    const resultPromise = connector.fetchCredentials()
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-    const result = await resultPromise
+    const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
   })

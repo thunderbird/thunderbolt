@@ -47,11 +47,9 @@ export default function Sidebar() {
     experimental_feature_tasks: false,
   })
 
-  useEffect(() => {
-    if (location.pathname.startsWith('/chats/')) {
-      lastChatPathRef.current = location.pathname
-    }
-  }, [location.pathname])
+  if (location.pathname.startsWith('/chats/')) {
+    lastChatPathRef.current = location.pathname
+  }
 
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {

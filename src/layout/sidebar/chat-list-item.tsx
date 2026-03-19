@@ -39,6 +39,7 @@ export const ChatListItem = ({
     displayTitle,
     inputRef,
     focusInput,
+    shouldFocusOnClose,
     handleRenameStart,
     handleRenameSubmit,
     handleRenameCancel,
@@ -130,7 +131,7 @@ export const ChatListItem = ({
           align="start"
           className="min-w-56 rounded-lg"
           onCloseAutoFocus={(e) => {
-            if (isEditing) {
+            if (shouldFocusOnClose()) {
               e.preventDefault()
               focusInput()
             }

@@ -1,3 +1,4 @@
+import { DEFAULT_CHAT_TITLE } from '@/lib/constants'
 import { useEffect, useRef, useState } from 'react'
 
 type UseChatListItemStateParams = {
@@ -37,7 +38,7 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
 
   const handleRenameStart = () => {
     cancelledRef.current = false
-    setEditValue(title ?? 'New Chat')
+    setEditValue(title ?? DEFAULT_CHAT_TITLE)
     setIsEditing(true)
   }
 
@@ -47,8 +48,8 @@ export const useChatListItemState = ({ title, onRename }: UseChatListItemStatePa
       return
     }
     const trimmed = editValue.trim()
-    const newTitle = trimmed || 'New Chat'
-    if (newTitle !== (title ?? 'New Chat')) {
+    const newTitle = trimmed || DEFAULT_CHAT_TITLE
+    if (newTitle !== (title ?? DEFAULT_CHAT_TITLE)) {
       setOptimisticTitle(newTitle)
       onRename(newTitle)
     }

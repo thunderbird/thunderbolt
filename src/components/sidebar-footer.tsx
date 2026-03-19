@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { iconSizeClass } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 type SidebarFooterProps = {
@@ -60,7 +62,7 @@ const AccountMenuItemButton = ({ icon, label, onClick, to }: AccountMenuItem) =>
   )
 }
 
-const iconSize = 'size-[var(--icon-size-default)]'
+const iconSize = iconSizeClass
 
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(
@@ -196,13 +198,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
       {/* Mobile: full-screen blur portaled above sidebar (z-50) */}
       {showBlur &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[60] backdrop-blur-sm bg-white/30 dark:bg-black/30"
-            onClick={() => setMenuOpen(false)}
-          />,
-          document.body,
-        )}
+        createPortal(<MobileBlurBackdrop onClick={() => setMenuOpen(false)} className="z-[60]" />, document.body)}
 
       {/* Mobile: clone of trigger portaled above blur so it appears unblurred */}
       {showBlur &&

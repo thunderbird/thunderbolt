@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
@@ -194,12 +195,7 @@ export const SearchableMenu = <T,>({
         </button>
       </PopoverTrigger>
 
-      {showBlur && (
-        <div
-          className="fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30"
-          onClick={() => setOpen(false)}
-        />
-      )}
+      {showBlur && <MobileBlurBackdrop onClick={() => setOpen(false)} />}
 
       <PopoverContent
         align={isMobile ? 'center' : align}

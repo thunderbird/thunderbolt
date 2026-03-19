@@ -52,12 +52,9 @@ type ModelState = {
   isTestingConnection: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
-  modelSelectOpen: boolean
-  availableModels: AvailableModel[]
   isLoadingModels: boolean
   selectedModelId: string
   allAvailableModels: AvailableModel[]
-  modelSearchQuery: string
   modelLoadError: string | null
 }
 
@@ -70,9 +67,6 @@ type ModelAction =
   | { type: 'FETCH_MODELS_START' }
   | { type: 'FETCH_MODELS_SUCCESS'; models: AvailableModel[] }
   | { type: 'FETCH_MODELS_FAILURE'; error: string }
-  | { type: 'OPEN_MODEL_SELECT' }
-  | { type: 'CLOSE_MODEL_SELECT' }
-  | { type: 'UPDATE_MODEL_SEARCH_QUERY'; query: string }
   | { type: 'SELECT_MODEL'; modelId: string }
   | { type: 'PROVIDER_CHANGED' }
   | { type: 'OPEN_DELETE_CONFIRM'; modelId: string }
@@ -84,12 +78,9 @@ const initialState: ModelState = {
   isTestingConnection: false,
   connectionStatus: 'idle',
   connectionError: null,
-  modelSelectOpen: false,
-  availableModels: [],
   isLoadingModels: false,
   selectedModelId: '',
   allAvailableModels: [],
-  modelSearchQuery: '',
   modelLoadError: null,
 }
 
@@ -113,14 +104,12 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
         ...state,
         isLoadingModels: true,
         modelLoadError: null,
-        availableModels: [],
         allAvailableModels: [],
       }
     case 'FETCH_MODELS_SUCCESS':
       return {
         ...state,
         isLoadingModels: false,
-        availableModels: action.models,
         allAvailableModels: action.models,
       }
     case 'FETCH_MODELS_FAILURE':
@@ -128,31 +117,19 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
         ...state,
         isLoadingModels: false,
         modelLoadError: action.error,
-        availableModels: [],
         allAvailableModels: [],
       }
 
-    case 'OPEN_MODEL_SELECT':
-      return { ...state, modelSelectOpen: true }
-    case 'CLOSE_MODEL_SELECT':
-      return { ...state, modelSelectOpen: false, modelSearchQuery: '' }
-
-    case 'UPDATE_MODEL_SEARCH_QUERY':
-      return { ...state, modelSearchQuery: action.query }
-
     case 'SELECT_MODEL':
-      return { ...state, selectedModelId: action.modelId, modelSelectOpen: false, modelSearchQuery: '' }
+      return { ...state, selectedModelId: action.modelId }
 
     case 'PROVIDER_CHANGED':
       return {
         ...state,
         selectedModelId: '',
-        availableModels: [],
         allAvailableModels: [],
-        modelSearchQuery: '',
         modelLoadError: null,
         isLoadingModels: false,
-        modelSelectOpen: false,
         connectionStatus: 'idle',
         connectionError: null,
         isTestingConnection: false,
@@ -215,7 +192,6 @@ export default function ModelsPage() {
     isTestingConnection,
     connectionStatus,
     connectionError,
-    availableModels,
     isLoadingModels,
     selectedModelId,
     allAvailableModels,
@@ -308,7 +284,7 @@ export default function ModelsPage() {
 
   // Load Thunderbolt models when dialog opens
   useEffect(() => {
-    if (isAddDialogOpen && form.getValues('provider') === 'thunderbolt' && availableModels.length === 0) {
+    if (isAddDialogOpen && form.getValues('provider') === 'thunderbolt' && allAvailableModels.length === 0) {
       fetchAvailableModels('thunderbolt')
     }
   }, [isAddDialogOpen])
@@ -637,8 +613,7 @@ export default function ModelsPage() {
       form.setValue('model', modelId)
       form.setValue('customModel', '')
 
-      // Find the model in all available models (not just the filtered ones)
-      const model = allAvailableModels.find((m) => m.id === modelId) || availableModels.find((m) => m.id === modelId)
+      const model = allAvailableModels.find((m) => m.id === modelId)
 
       if (model?.name) {
         form.setValue('name', model.name)
@@ -652,8 +627,6 @@ export default function ModelsPage() {
       const supportsTools = (model as any)?.supports_tools === true
       form.setValue('toolUsage', supportsTools, { shouldDirty: false })
     }
-
-    dispatch({ type: 'CLOSE_MODEL_SELECT' })
   }
 
   // Watch for provider changes with proper cleanup
@@ -748,8 +721,7 @@ export default function ModelsPage() {
     if (!selectedModelId || selectedModelId === 'custom') {
       return true
     }
-    const model =
-      allAvailableModels.find((m) => m.id === selectedModelId) || availableModels.find((m) => m.id === selectedModelId)
+    const model = allAvailableModels.find((m) => m.id === selectedModelId)
     return (model as any)?.supports_tools === true
   })()
 

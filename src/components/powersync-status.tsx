@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { useState } from 'react'
 
 /**
@@ -96,12 +97,7 @@ export const PowerSyncStatus = () => {
           <TooltipContent side="bottom">{getStatusText()}</TooltipContent>
         </Tooltip>
 
-        {isMobile && popoverOpen && (
-          <div
-            className="fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30"
-            onClick={() => setPopoverOpen(false)}
-          />
-        )}
+        {isMobile && popoverOpen && <MobileBlurBackdrop onClick={() => setPopoverOpen(false)} />}
 
         <PopoverContent
           align={isMobile ? 'center' : 'end'}

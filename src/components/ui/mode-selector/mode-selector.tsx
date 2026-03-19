@@ -1,4 +1,5 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { iconSizeClass } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageSquare, Microscope } from 'lucide-react'
@@ -12,7 +13,7 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
-const iconSize = 'size-[var(--icon-size-default)]'
+const iconSize = iconSizeClass
 
 const iconMap: Record<string, ReactNode> = {
   'message-square': <MessageSquare className={iconSize} />,

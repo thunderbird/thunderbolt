@@ -135,13 +135,13 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
     }
   }, [part.text, hasNewSources, sources])
 
+  const dedupedParts = useMemo(() => deduplicateLinkPreviews(processedParts), [processedParts])
+
   if (!part.text) {
     return null
   }
 
   if (hasCitations && hasText) {
-    const dedupedParts = deduplicateLinkPreviews(processedParts)
-
     return (
       <CitationPopoverProvider>
         <CitationContext.Provider value={citations}>
@@ -177,7 +177,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
   // Default behavior for block-level widgets or no citations
   return (
     <>
-      {deduplicateLinkPreviews(processedParts).map((contentPart, index) => {
+      {dedupedParts.map((contentPart, index) => {
         if (contentPart.type === 'text') {
           return (
             <div key={`text-${index}`} className="p-4 my-2">

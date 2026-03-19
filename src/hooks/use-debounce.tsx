@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 /**
  * Hook that debounces a value
@@ -32,13 +32,8 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
   callback: T,
   delay: number,
 ): ((...args: Parameters<T>) => void) => {
-  const callbackRef = useRef(callback)
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
-
-  // Keep callback ref up to date
-  useEffect(() => {
-    callbackRef.current = callback
-  }, [callback])
+  const onCallback = useEffectEvent(callback)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -56,9 +51,9 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
       }
 
       timeoutRef.current = setTimeout(() => {
-        callbackRef.current(...args)
+        onCallback(...args)
       }, delay)
     },
-    [delay],
+    [delay, onCallback],
   )
 }

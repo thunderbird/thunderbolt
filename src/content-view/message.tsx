@@ -4,15 +4,17 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { formatDate } from '@/lib/utils'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 
 // @todo re-implement types
 export const EmailMessageView = ({ message, isOpen: defaultIsOpen = true }: { message: any; isOpen?: boolean }) => {
   const [isOpen, setIsOpen] = useState(defaultIsOpen)
+  const prevDefaultIsOpenRef = useRef(defaultIsOpen)
 
-  useEffect(() => {
+  if (defaultIsOpen !== prevDefaultIsOpenRef.current) {
+    prevDefaultIsOpenRef.current = defaultIsOpen
     setIsOpen(defaultIsOpen)
-  }, [defaultIsOpen])
+  }
 
   return (
     <Card className="p-0">

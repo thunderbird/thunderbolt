@@ -31,7 +31,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import ky from 'ky'
-import { Check, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
+import { Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -1174,9 +1174,7 @@ export default function ModelsPage() {
         {models.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <Cpu className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No models configured</h3>
               <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
               <Button onClick={() => handleDialogOpenChange(true)} variant="outline">

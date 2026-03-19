@@ -101,7 +101,7 @@ export default function DevicesSettingsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium truncate">{device.name}</span>
                         {isCurrent && (
-                          <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
                             This device
                           </span>
                         )}

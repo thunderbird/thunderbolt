@@ -23,7 +23,7 @@ import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -508,9 +508,7 @@ export default function McpServersPage() {
         {servers.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <Server className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No MCP servers configured</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.

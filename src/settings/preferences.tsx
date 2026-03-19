@@ -455,7 +455,7 @@ export default function PreferencesSettingsPage() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="p-0 w-[--radix-popover-trigger-width]"
+                className="rounded-lg p-0 w-[--radix-popover-trigger-width]"
                 side="bottom"
                 align="start"
                 sideOffset={4}
@@ -532,7 +532,7 @@ export default function PreferencesSettingsPage() {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
+              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
                 <Command>
                   <CommandList>
                     <CommandGroup>
@@ -583,7 +583,7 @@ export default function PreferencesSettingsPage() {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
+              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
                 <Command>
                   <CommandList>
                     <CommandGroup>
@@ -635,7 +635,7 @@ export default function PreferencesSettingsPage() {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
+              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
                 <Command>
                   <CommandList>
                     <CommandGroup>
@@ -682,7 +682,7 @@ export default function PreferencesSettingsPage() {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
+              <PopoverContent className="rounded-lg p-0 w-auto" align="end">
                 <Command>
                   <CommandList>
                     <CommandGroup>
@@ -734,7 +734,7 @@ export default function PreferencesSettingsPage() {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-[300px]">
+              <PopoverContent className="rounded-lg p-0 w-[300px]" align="end">
                 <Command>
                   <CommandInput placeholder="Search currency by code, symbol, or name..." />
                   <CommandList>

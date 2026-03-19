@@ -291,10 +291,10 @@ export default function AutomationFormModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
-            <Card className="border-0 shadow-none">
+            <Card className="border-0 shadow-none rounded-none gap-3 pt-0 pb-6">
               {/* Main Content - Title Input (only when editing) */}
               {prompt && (
-                <CardHeader className="px-6 pb-2">
+                <CardHeader className="px-6 pb-0">
                   <FormField
                     control={form.control}
                     name="title"
@@ -305,7 +305,7 @@ export default function AutomationFormModal({
                             placeholder="Automation title"
                             value={titleText}
                             onChange={(e) => handleTitleChange(e.target.value)}
-                            className="text-lg font-medium"
+                            className="rounded-lg"
                           />
                         </FormControl>
                         <FormMessage />
@@ -316,7 +316,7 @@ export default function AutomationFormModal({
               )}
 
               {/* Main Content - Prompt Input */}
-              <CardHeader className="px-6 pb-0 pt-2">
+              <CardHeader className="px-6 pb-0 pt-0">
                 <PromptInput
                   chatThread={null}
                   value={promptText}
@@ -328,7 +328,7 @@ export default function AutomationFormModal({
                   showSubmitButton={false}
                   noForm
                   isMobile={false}
-                  className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
+                  className="flex flex-col gap-2 bg-secondary p-4 rounded-lg w-full"
                 />
               </CardHeader>
 
@@ -385,7 +385,7 @@ export default function AutomationFormModal({
               )}
 
               {/* Footer with Submit Button */}
-              <CardFooter className="px-6 pt-4">
+              <CardFooter className="px-6 pt-0">
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Saving...' : prompt ? 'Update Automation' : 'Create Automation'}
                 </Button>

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type RefCallback, type TouchEvent, type WheelEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type RefCallback,
+  type TouchEvent,
+  type WheelEvent,
+} from 'react'
 
 const smoothScrollDuration = 300
 
@@ -207,11 +216,15 @@ export const useAutoScroll = ({
     return () => observer.disconnect()
   }, [scrollContainer, scrollTarget, rootMargin, ...dependencies])
 
-  // Scroll when dependencies change (if auto-scroll is enabled)
-  useEffect(() => {
+  const onAutoScroll = useEffectEvent(() => {
     if (!userHasScrolledRef.current && scrollContainer) {
       scrollToBottom()
     }
+  })
+
+  // Scroll when dependencies change (if auto-scroll is enabled)
+  useEffect(() => {
+    onAutoScroll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollContainer, ...dependencies])
 

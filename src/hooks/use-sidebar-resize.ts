@@ -159,9 +159,6 @@ export const useSidebarResize = ({
   const dragOffset = useRef(0)
   const railRect = useRef<DOMRect | null>(null)
 
-  // Refs for auto-collapse threshold
-  const autoCollapseThresholdPx = useRef(0)
-
   // Memoize min/max width calculations for performance
   const minWidthPx = useMemo(() => toPx(minResizeWidth), [minResizeWidth])
   const maxWidthPx = useMemo(() => toPx(maxResizeWidth), [maxResizeWidth])
@@ -202,11 +199,6 @@ export const useSidebarResize = ({
     },
     [direction, isNested],
   )
-
-  // Update auto-collapse threshold when dependencies change
-  useEffect(() => {
-    autoCollapseThresholdPx.current = enableAutoCollapse ? minWidthPx * autoCollapseThreshold : 0
-  }, [minWidthPx, enableAutoCollapse, autoCollapseThreshold])
 
   // Persist width to cookie if cookie name is provided
   const persistWidth = useCallback(

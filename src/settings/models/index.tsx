@@ -348,7 +348,10 @@ export default function ModelsPage() {
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
       dispatch({ type: 'OPEN_DIALOG' })
-      fetchAvailableModels('thunderbolt')
+
+      if (form.getValues('provider') === 'thunderbolt' && allAvailableModels.length === 0) {
+        fetchAvailableModels('thunderbolt')
+      }
     } else {
       form.reset()
       form.clearErrors()

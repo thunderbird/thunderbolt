@@ -92,6 +92,8 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const isExpanded = isMobile || state === 'expanded'
   const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
+  const showDownloadAppButton = showAppDownloads && !isTauri() && isWebDesktopPlatform()
+
   const handleSignInClick = () => {
     // Close mobile sidebar first so modal is visible
     setOpenMobile(false)
@@ -99,8 +101,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   }
 
   const { data: session, isPending } = authClient.useSession()
-  // TODO: TEMP MOCK - remove after testing sidebar-footer
-  const user = session?.user ?? { id: 'test', name: 'Test User', email: 'test@example.com' }
+  const user = session?.user
 
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = user ? (preferredName.value as string) || user.name || null : null
@@ -264,17 +265,21 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             <AccountMenuItemButton icon={<Sparkles className={iconSize} />} label="Upgrade to Pro" />
           </div>
 
-          <div className="h-px bg-border" />
+          {showDownloadAppButton && (
+            <>
+              <div className="h-px bg-border" />
 
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton
-              icon={<Download className={iconSize} />}
-              label="Download App"
-              onClick={() =>
-                openLink(downloadLinks[getWebOsPlatform() as 'macos' | 'windows' | 'linux'] ?? downloadLinks.macos)
-              }
-            />
-          </div>
+              <div className="flex flex-col gap-1 px-2">
+                <AccountMenuItemButton
+                  icon={<Download className={iconSize} />}
+                  label="Download App"
+                  onClick={() =>
+                    openLink(downloadLinks[getWebOsPlatform() as 'macos' | 'windows' | 'linux'] ?? downloadLinks.macos)
+                  }
+                />
+              </div>
+            </>
+          )}
 
           <div className="h-px bg-border" />
 

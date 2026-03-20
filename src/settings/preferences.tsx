@@ -10,7 +10,7 @@ import { getAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { trackEvent } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import ky from 'ky'
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -334,11 +334,21 @@ export default function PreferencesSettingsPage() {
     trackEvent('settings_localization_reset')
   }
 
-  // Currency display value
-  const currencyDisplayValue = (() => {
+  // Currency items and display value (memoized for referential stability)
+  const currencyItems = useMemo(
+    () =>
+      (unitsOptionsData?.currencies ?? []).map((c) => ({
+        id: c.code,
+        label: `${c.name} (${c.symbol})`,
+        filterValue: `${c.code} ${c.symbol} ${c.name}`,
+      })),
+    [unitsOptionsData?.currencies],
+  )
+
+  const currencyDisplayValue = useMemo(() => {
     const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
     return c ? `${c.name} (${c.symbol})` : ''
-  })()
+  }, [unitsOptionsData?.currencies, currency.value])
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
@@ -571,11 +581,7 @@ export default function PreferencesSettingsPage() {
               </ModificationIndicator>
             </div>
             <Combobox
-              items={(unitsOptionsData?.currencies ?? []).map((c) => ({
-                id: c.code,
-                label: `${c.name} (${c.symbol})`,
-                filterValue: `${c.code} ${c.symbol} ${c.name}`,
-              }))}
+              items={currencyItems}
               value={currency.value}
               onValueChange={async (v) => {
                 await currency.setValue(v)

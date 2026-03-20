@@ -139,9 +139,9 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
-        {!isStreaming && copyText && !hasWidgets && (
+        {!isStreaming && copyText && (
           <div
-            className={`flex items-center gap-2.5 px-4 -mt-6 ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
+            className={`flex items-center gap-2.5 px-4 ${hasWidgets ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
           >
             <CopyMessageButton text={copyText} />
           </div>

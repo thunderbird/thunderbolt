@@ -134,9 +134,11 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
+      const headers = new Headers(buildHeaders())
+      headers.set('Content-Type', 'application/json')
       const response = await fetch(`${this.backendUrl}/powersync/upload`, {
         method: 'PUT',
-        headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ operations }),
       })
 

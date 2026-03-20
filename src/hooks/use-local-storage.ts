@@ -9,10 +9,16 @@ const defaultDebounceMs = 0
  * @param key - localStorage key
  * @param defaultValue - returned when key is absent; also used to detect "empty" state for cleanup
  * @param options.debounceMs - debounce writes by this many ms (0 = immediate)
+ * @param options.disabled - when true, acts like useState without touching localStorage
  */
-export const useLocalStorage = (key: string, defaultValue: string, options?: { debounceMs?: number }) => {
+export const useLocalStorage = (
+  key: string,
+  defaultValue: string,
+  options?: { debounceMs?: number; disabled?: boolean },
+) => {
+  const disabled = options?.disabled ?? false
   const debounceMs = options?.debounceMs ?? defaultDebounceMs
-  const [value, setValueState] = useState(() => localStorage.getItem(key) ?? defaultValue)
+  const [value, setValueState] = useState(() => (disabled ? defaultValue : (localStorage.getItem(key) ?? defaultValue)))
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingValueRef = useRef<string | null>(null)
   const keyRef = useRef(key)
@@ -23,23 +29,29 @@ export const useLocalStorage = (key: string, defaultValue: string, options?: { d
     // not the next one (keyRef.current will already point to the new key by cleanup time)
     const currentKey = key
     keyRef.current = key
-    setValueState(localStorage.getItem(key) ?? defaultValue)
+    if (!disabled) {
+      setValueState(localStorage.getItem(key) ?? defaultValue)
+    }
 
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
         timerRef.current = null
       }
-      if (pendingValueRef.current !== null) {
+      if (!disabled && pendingValueRef.current !== null) {
         writeToStorage(currentKey, pendingValueRef.current, defaultValue)
         pendingValueRef.current = null
       }
     }
-  }, [key, defaultValue])
+  }, [key, defaultValue, disabled])
 
   const setValue = useCallback(
     (next: string, setOptions?: { immediate?: boolean }) => {
       setValueState(next)
+
+      if (disabled) {
+        return
+      }
 
       if (debounceMs === 0 || setOptions?.immediate) {
         if (timerRef.current) {
@@ -63,7 +75,7 @@ export const useLocalStorage = (key: string, defaultValue: string, options?: { d
         pendingValueRef.current = null
       }, debounceMs)
     },
-    [debounceMs, defaultValue],
+    [debounceMs, defaultValue, disabled],
   )
 
   return [value, setValue] as const

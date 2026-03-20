@@ -8,8 +8,11 @@ const draftKeyPrefix = 'draft:'
  * Debounces writes so rapid typing doesn't thrash storage.
  * Returns [input, setInput, clearDraft] — drop-in replacement for useState('').
  */
-export const useDraftInput = (chatThreadId: string) => {
-  const [input, setInput] = useLocalStorage(`${draftKeyPrefix}${chatThreadId}`, '', { debounceMs: 300 })
+export const useDraftInput = (chatThreadId: string, { persist = true }: { persist?: boolean } = {}) => {
+  const [input, setInput] = useLocalStorage(`${draftKeyPrefix}${chatThreadId}`, '', {
+    debounceMs: 300,
+    disabled: !persist,
+  })
 
   const clearDraft = useCallback(() => {
     setInput('', { immediate: true })

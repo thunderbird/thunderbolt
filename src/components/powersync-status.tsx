@@ -100,12 +100,12 @@ export const PowerSyncStatus = () => {
         {isMobile && popoverOpen && <MobileBlurBackdrop onClick={() => setPopoverOpen(false)} />}
 
         <PopoverContent
-          align={isMobile ? 'center' : 'end'}
+          align="end"
           side="bottom"
           sideOffset={5}
           collisionPadding={isMobile ? 16 : 0}
           className={cn('rounded-2xl shadow-lg duration-100', isMobile && popoverOpen && 'z-50')}
-          style={{ width: isMobile ? 'calc(100vw - 2rem)' : undefined }}
+          style={{ width: isMobile ? 'calc(80vw - 2rem)' : undefined }}
         >
           <div className="flex flex-col gap-3">
             <div>

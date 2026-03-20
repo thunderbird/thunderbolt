@@ -12,6 +12,7 @@ import {
 import { type ReactNode, useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -119,7 +120,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   )
 
   return (
-    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+    <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
       <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -175,7 +176,10 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               </PopoverTrigger>
             ) : (
               <PopoverTrigger asChild>
-                <button type="button" className={triggerButtonClassName(menuOpen)}>
+                <button
+                  type="button"
+                  className={cn(triggerButtonClassName(menuOpen), isMobile && menuOpen && 'relative z-50')}
+                >
                   {triggerContent}
                 </button>
               </PopoverTrigger>
@@ -185,12 +189,14 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
       </ShadcnSidebarFooter>
 
+      {isMobile && menuOpen && <MobileBlurBackdrop onClick={() => setMenuOpen(false)} />}
+
       <PopoverContent
         side="top"
         sideOffset={5}
         align="start"
         collisionPadding={4}
-        className="p-0 rounded-2xl shadow-lg overflow-hidden"
+        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
           width: isDesktopCollapsed ? '16rem' : 'calc(var(--radix-popover-trigger-width) - 8px)',
         }}

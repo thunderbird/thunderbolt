@@ -51,7 +51,9 @@ export const LocationSearchCombobox = ({
       open={locationSearch.open}
       onOpenChange={(open) => {
         locationSearch.setOpen(open)
-        if (!open) locationSearch.clearSearch()
+        if (!open) {
+          locationSearch.clearSearch()
+        }
       }}
       className={className}
       disabled={disabled}

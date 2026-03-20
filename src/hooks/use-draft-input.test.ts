@@ -110,6 +110,27 @@ describe('useDraftInput', () => {
     expect(localStorage.getItem('draft:thread-1')).toBe('unsaved text')
   })
 
+  it('does not persist to localStorage when persist is false', () => {
+    const clock = getClock()
+    const { result } = renderHook(() => useDraftInput('new', { persist: false }))
+
+    act(() => {
+      result.current[1]('hello')
+    })
+    act(() => {
+      clock.tick(300)
+    })
+
+    expect(result.current[0]).toBe('hello')
+    expect(localStorage.getItem('draft:new')).toBeNull()
+  })
+
+  it('does not load from localStorage when persist is false', () => {
+    localStorage.setItem('draft:new', 'stale draft')
+    const { result } = renderHook(() => useDraftInput('new', { persist: false }))
+    expect(result.current[0]).toBe('')
+  })
+
   it('loads correct draft when chatThreadId changes', () => {
     localStorage.setItem('draft:thread-1', 'draft one')
     localStorage.setItem('draft:thread-2', 'draft two')

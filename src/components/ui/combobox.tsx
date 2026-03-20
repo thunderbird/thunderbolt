@@ -66,7 +66,9 @@ export const Combobox = ({
 
   const setOpen = useCallback(
     (nextOpen: boolean) => {
-      if (!isControlled) setInternalOpen(nextOpen)
+      if (!isControlled) {
+        setInternalOpen(nextOpen)
+      }
       controlledOnOpenChange?.(nextOpen)
     },
     [isControlled, controlledOnOpenChange],

@@ -3,6 +3,7 @@ import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
+import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2 } from 'lucide-react'
 import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
@@ -109,12 +110,14 @@ export const PowerSyncStatus = () => {
         )}
 
         <PopoverContent
-          align="end"
+          align={isMobile ? 'center' : 'end'}
           side="bottom"
           sideOffset={5}
-          collisionPadding={0}
+          collisionPadding={
+            isMobile ? { left: edgeSpacing.mobile, right: Math.round(window.innerWidth * 0.2) + edgeSpacing.mobile } : 0
+          }
           className={cn('rounded-2xl shadow-lg duration-100', isMobile && popoverOpen && 'z-50')}
-          style={{ width: isMobile ? 'calc(80vw - 1rem)' : undefined }}
+          style={{ width: isMobile ? `calc(80vw - ${edgeSpacing.mobile * 2}px)` : undefined }}
           onPointerDownOutside={(e) => {
             if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * 0.8) {
               setOpenMobile(false)

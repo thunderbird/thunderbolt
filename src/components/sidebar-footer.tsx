@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
+import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 type SidebarFooterProps = {
@@ -202,11 +203,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         side="top"
         sideOffset={isMobile ? 8 : 5}
         align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? 0 : 4}
+        collisionPadding={isMobile ? edgeSpacing.mobile : 4}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
           width: isMobile
-            ? 'calc(80vw - 1rem)'
+            ? `calc(80vw - ${edgeSpacing.mobile * 2}px)`
             : isDesktopCollapsed
               ? '16rem'
               : 'calc(var(--radix-popover-trigger-width) - 8px)',

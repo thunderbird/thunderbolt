@@ -2,6 +2,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
@@ -185,7 +186,11 @@ export const SearchableMenu = <T,>({
       <DefaultTrigger selected={selected} isOpen={open} />
     )
 
-  const contentWidth = isMobile ? 'calc(100vw - 2rem)' : typeof width === 'number' ? `${width}px` : width
+  const contentWidth = isMobile
+    ? `calc(100vw - ${edgeSpacing.mobile * 2}px)`
+    : typeof width === 'number'
+      ? `${width}px`
+      : width
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
@@ -201,7 +206,7 @@ export const SearchableMenu = <T,>({
         align={isMobile ? 'center' : align}
         side={side}
         sideOffset={5}
-        collisionPadding={16}
+        collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}

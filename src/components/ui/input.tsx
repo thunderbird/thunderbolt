@@ -4,7 +4,7 @@ import { forwardRef, type InputHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const inputVariants = cva(
-  'border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-md border bg-transparent px-3 py-1 text-base outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+  'border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-lg border bg-transparent px-3 py-1 text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -15,10 +15,10 @@ const inputVariants = cva(
         ghost: 'border-none focus-visible:bg-accent/50 focus-visible:ring-0',
       },
       inputSize: {
-        default: 'h-9 w-full',
-        sm: 'h-8 text-xs px-2.5 py-0.5 rounded-md',
-        lg: 'h-10 text-base px-4 py-2 rounded-md',
-        xl: 'h-12 text-lg px-5 py-2.5 rounded-lg',
+        default: 'h-[var(--touch-height-default)] w-full',
+        sm: 'h-[var(--touch-height-sm)] w-full text-xs px-2 py-1 rounded-lg',
+        lg: 'h-[var(--touch-height-lg)] w-full text-base px-4 py-2 rounded-lg',
+        xl: 'h-[var(--touch-height-xl)] w-full text-lg px-6 py-1.5 rounded-lg',
       },
       state: {
         default: '',

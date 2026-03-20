@@ -4,7 +4,7 @@ import { Search, X } from 'lucide-react'
 import { forwardRef, useState, type ChangeEvent } from 'react'
 import { Input, type InputProps } from './input'
 
-type SearchInputProps = InputProps & {
+export type SearchInputProps = InputProps & {
   containerClassName?: string
   debouncedOnChange?: (value: string) => void
   delay?: number

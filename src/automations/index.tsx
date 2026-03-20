@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent } from '@/components/ui/card'
-import { SearchInput } from '@/components/ui/search-input'
+import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -107,40 +107,42 @@ export default function AutomationsPage() {
     <div className="flex flex-col overflow-hidden">
       <div className="flex-1">
         <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
-          <PageHeader title="Automations">
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => {
-                setIsCreateModalOpen(true)
-                trackEvent('automation_modal_create_open')
-              }}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </PageHeader>
+          <PageSearch onSearch={setDebouncedSearchQuery}>
+            <PageHeader title="Automations">
+              <PageSearch.Button tooltip="Search" />
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-lg"
+                onClick={() => {
+                  setIsCreateModalOpen(true)
+                  trackEvent('automation_modal_create_open')
+                }}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </PageHeader>
 
-          {/* Search */}
-          <SearchInput
-            placeholder="Search automations..."
-            debouncedOnChange={(value) => setDebouncedSearchQuery(value)}
-          />
+            <PageSearch.Input placeholder="Search automations..." onSearch={setDebouncedSearchQuery} />
+          </PageSearch>
 
           {/* Content */}
           <div className="flex-1">
             {isLoading && prompts.length === 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Card key={i}>
-                    <CardContent className="p-4">
-                      <Skeleton className="h-4 w-full mb-2" />
-                      <Skeleton className="h-4 w-3/4 mb-4" />
-                      <Skeleton className="h-px w-full mb-4" />
-                      <div className="flex justify-end gap-2">
-                        <Skeleton className="h-8 w-8" />
-                        <Skeleton className="h-8 w-8" />
-                        <Skeleton className="h-8 w-8" />
+                    <CardContent className="px-5 py-4">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1 min-w-0">
+                          <Skeleton className="h-4 w-1/3 mb-1.5" />
+                          <Skeleton className="h-3.5 w-2/3" />
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Skeleton className="h-8 w-8 rounded-lg" />
+                          <Skeleton className="h-8 w-8 rounded-lg" />
+                          <Skeleton className="h-8 w-8 rounded-lg" />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -152,7 +154,7 @@ export default function AutomationsPage() {
                   <Search className="h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No matching results</h3>
                   <p className="text-muted-foreground mb-4 max-w-md">
-                    No automations found matching "{debouncedSearchQuery}". Try adjusting your search terms.
+                    No automations found matching "{debouncedSearchQuery}".
                   </p>
                 </div>
               ) : (
@@ -169,7 +171,7 @@ export default function AutomationsPage() {
                 </div>
               )
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-4">
                 {prompts.map((prompt) => (
                   <PromptCard
                     key={prompt.id}
@@ -278,18 +280,15 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
     }
   }
 
-  const truncatedPrompt = prompt.prompt.length > 100 ? prompt.prompt.substring(0, 100) + '...' : prompt.prompt
-
   return (
-    <Card className="h-full flex flex-col pb-0">
-      <CardContent className="p-4 flex flex-col flex-1">
-        {/* Header with title and toggle */}
-        <div className="flex items-center justify-between mb-8">
-          {/* Left: Title with reset indicator */}
-          <div className="flex-1 min-w-0 mr-6">
+    <Card>
+      <CardContent className="px-5 py-4">
+        <div className="flex items-center gap-4">
+          {/* Left: Title + preview */}
+          <div className="flex-1 min-w-0">
             <ModificationIndicator
               as="h3"
-              className="text-lg font-semibold text-foreground truncate"
+              className="text-sm font-medium text-foreground truncate"
               hasModifications={isAutomationModified(prompt)}
               onReset={() => onReset(prompt.id)}
               customMessage="You've customized this automation."
@@ -298,93 +297,86 @@ const PromptCard = memo(({ prompt, triggersEnabled, onRun, onEdit, onDelete, onR
             >
               {prompt.title || 'Untitled Automation'}
             </ModificationIndicator>
+            <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{prompt.prompt}</p>
           </div>
 
-          {/* Right: Toggle - only show if triggers are enabled */}
-          {triggersEnabled && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <label
-                    className="flex items-center gap-2 text-sm cursor-pointer"
-                    onClick={!primaryTrigger ? () => onEdit(prompt) : undefined}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={primaryTrigger ? isEnabled : false}
-                      onChange={primaryTrigger ? (e) => handleToggleChange(e.target.checked) : undefined}
-                      className="sr-only"
-                      disabled={!primaryTrigger || toggleTriggerMutation.isPending}
-                    />
-                    <div
-                      className={cn(
-                        'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
-                        primaryTrigger && isEnabled ? 'bg-primary' : 'bg-muted',
-                        (!primaryTrigger || toggleTriggerMutation.isPending) && 'opacity-50',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                          primaryTrigger && isEnabled ? 'translate-x-4' : 'translate-x-0',
-                        )}
-                      />
-                    </div>
-                  </label>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {primaryTrigger ? (isEnabled ? 'Enabled' : 'Disabled') : 'No Trigger Configured'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-
-        {/* Prompt Preview */}
-        <div className="flex-1">
-          <p className="text-sm text-foreground leading-relaxed">{truncatedPrompt}</p>
-        </div>
-      </CardContent>
-
-      {/* Action Buttons with full-width divider */}
-      <CardContent className="px-4 pb-4">
-        <div className="flex justify-end">
-          <ButtonGroup size="icon">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ButtonGroupItem variant="outline" onClick={() => onRun(prompt.id)}>
-                    <Play className="h-3 w-3" />
-                  </ButtonGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Run Automation</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ButtonGroupItem variant="outline" onClick={() => onEdit(prompt)}>
-                    <Pen className="h-3 w-3" />
-                  </ButtonGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Edit Automation</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {!prompt.defaultHash && (
+          {/* Right: Toggle + actions */}
+          <div className="flex items-center gap-3 shrink-0">
+            {triggersEnabled && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </ButtonGroupItem>
+                    <label
+                      className="flex items-center gap-2 text-sm cursor-pointer"
+                      onClick={!primaryTrigger ? () => onEdit(prompt) : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={primaryTrigger ? isEnabled : false}
+                        onChange={primaryTrigger ? (e) => handleToggleChange(e.target.checked) : undefined}
+                        className="sr-only"
+                        disabled={!primaryTrigger || toggleTriggerMutation.isPending}
+                      />
+                      <div
+                        className={cn(
+                          'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
+                          primaryTrigger && isEnabled ? 'bg-primary' : 'bg-muted',
+                          (!primaryTrigger || toggleTriggerMutation.isPending) && 'opacity-50',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                            primaryTrigger && isEnabled ? 'translate-x-4' : 'translate-x-0',
+                          )}
+                        />
+                      </div>
+                    </label>
                   </TooltipTrigger>
-                  <TooltipContent>Delete Automation</TooltipContent>
+                  <TooltipContent>
+                    {primaryTrigger ? (isEnabled ? 'Enabled' : 'Disabled') : 'No Trigger Configured'}
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
-          </ButtonGroup>
+
+            <ButtonGroup size="icon">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ButtonGroupItem variant="outline" onClick={() => onRun(prompt.id)}>
+                      <Play className="h-3 w-3" />
+                    </ButtonGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Run Automation</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ButtonGroupItem variant="outline" onClick={() => onEdit(prompt)}>
+                      <Pen className="h-3 w-3" />
+                    </ButtonGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit Automation</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {!prompt.defaultHash && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <ButtonGroupItem variant="outline" onClick={() => onDelete(prompt.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </ButtonGroupItem>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete Automation</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </ButtonGroup>
+          </div>
         </div>
       </CardContent>
     </Card>

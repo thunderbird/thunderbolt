@@ -3,6 +3,8 @@ context: fork
 description: "Stage, commit, and push changes"
 ---
 
+For the full commit formatting reference, read `.thunderbot/references/commit-conventions.md`.
+
 Stage, commit (atomic, conventional), and push all current changes.
 
 ## Steps

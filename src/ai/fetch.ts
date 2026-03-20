@@ -185,7 +185,7 @@ export const aiFetchStreamingResponse = async ({
           console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
           continue
         }
-        toolset[name] = tool
+        toolset[name] = tool as Tool
       }
     }
   } else {

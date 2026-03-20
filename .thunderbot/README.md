@@ -1,31 +1,54 @@
 # thunderbot
 
-Thunderbot is an Autonomous coding agent using Claude Code that helps us build Thunderbolt, an AI client from the Thunderbird team (coming soon). It uses the following workflow - most steps correspond to commands that are useful for human engineers, too:
+Thunderbot is an autonomous coding agent using Claude Code that helps us build Thunderbolt, an AI client from the Thunderbird team (coming soon). It features a modular architecture with a compact orchestrator and specialized reference files, supporting both single-agent mode for small/medium tasks and multi-agent team orchestration for large tasks.
 
-1. Checks that it has all necessary tools and that they are authenticated
-2. Checks who the current git author is
-3. Finds a task in Linear that it thinks it can handle
-4. Assigns the task to itself
-5. Creates a worktree for a new branch (or existing)
-6. Spins up the dev environment in Docker
-7. Launches 2-3 subagents that explore the task and codebase
-8. Generates a detailed plan / spec
-9. Updates Linear ticket with its plan
-10. Works on the task
-11. Reviews and improves its code quality (/thunderimprove - our version of Claude's /simplify)
-12. Checks for and fixes any security issues with /security-review (Claude built-in skill)
-13. Creates clean, conventional, atomic commits
-14. Submits a PR
-15. Monitors the PR for comments and failures
-16. Fixes any comments or failures
-17. Repeats steps 15-16 until everything is done
-18. Cleans up and outputs a report
-19. Goes back to step 1 (in daemon mode)
+### How It Works
+
+1. Checks prerequisites (tools, auth, identity)
+2. Selects a task from Linear (or accepts a task ID)
+3. Assesses task complexity for scale routing
+4. Creates an isolated environment (worktree, Docker, deps)
+5. Explores the codebase with parallel subagents
+6. Generates a spec and implementation plan
+7. Implements with quality gates (make check, tests, /thunderimprove)
+8. Creates and manages a PR through CI and review feedback
+9. Cleans up and reports
+
+For large tasks, ThunderBot switches to team mode: an Architect (Opus) designs the system and defines module contracts, parallel Implementers (Sonnet) build each module with exclusive file ownership, QA (Sonnet) validates the integration, and the Team Lead (the orchestrator) manages the PR.
+
+## Architecture
+
+ThunderBot v2 uses a modular design:
+
+```
+.thunderbot/
+  thunderbot.md          # Core orchestrator (~200 lines) -- mode detection, phase routing
+  thunderimprove.md      # Code review with tiered analysis and confidence scoring
+  thunderpush.md         # Atomic conventional commits
+  thunderfix.md          # PR fix loop (CI + review comments)
+  thundersync.md         # Subtree sync with upstream
+  references/            # Detailed knowledge loaded on demand
+    implementation.md    # Exploration, spec, planning, quality standards
+    review.md            # Subagent prompt templates for code review
+    pr-workflow.md       # PR creation, CI monitoring, comment processing
+    commit-conventions.md# Conventional commits format and rules
+    subagent-playbook.md # When/how to parallelize with subagents
+    team-orchestration.md# Multi-agent team mode for large tasks
+  assess.ts              # Task complexity scoring
+  daemon.ts              # Background polling mode
+  setup.sh               # Installation script
+```
+
+The orchestrator (thunderbot.md) stays compact by delegating detailed knowledge to reference files. References are loaded on demand based on the current operation -- not all at once.
 
 ## Ideal Tasks
+
 Thunderbot is good at well-scoped tasks where it can establish a feedback loop to check its work. This tends to be straightforward features, bugs, and anything where automated tests are able to give it clear feedback on whether the task was done correctly. With Claude's /chrome feature, it is able to handle browser-based debugging and feedback very well as long as it is clearly able to tell whether the task was completed properly.
 
+For large, multi-domain tasks, team orchestration mode coordinates multiple specialized agents working in parallel with exclusive file ownership to avoid conflicts.
+
 ## Safety
+
 - We recommend running this inside of a Docker container or VM and then giving it --dangerously-skip-permissions. This way it does not need to constantly stop and ask for permission to do things but has a limited blast-radius when things go wrong.
 - It operates using CLI tools, so you'll need to set up those tools for it by logging in or setting API keys for them. You should create accounts or API keys for it that have limited permissions. For example, it should not have the ability to push to the main branch on GitHub. Treat it like an open-source contributor.
 
@@ -72,6 +95,19 @@ thunderbot skills are built on top of these CLIs:
 | `thunderpush` | Stage, commit, and push changes |
 | `thundersync` | Sync skills with upstream thunderbot |
 | `thunderup` | Bootstrap the dev environment |
+
+## References
+
+Reference files in `.thunderbot/references/` contain detailed knowledge that commands and the agent load on demand. They are not symlinked -- commands read them directly by path.
+
+| Reference | Content | Loaded By |
+|-----------|---------|-----------|
+| `implementation.md` | Codebase exploration, spec generation, planning, quality standards | thunderbot (Phases 5-7), implement mode |
+| `review.md` | Subagent prompt templates for code review (Enhanced Code Reviewer, Type Design Analyzer, PR Test Analyzer, Diff Triage) | thunderimprove (Tier B/C diffs) |
+| `pr-workflow.md` | PR creation, CI monitoring, review comment processing, fix loop | thunderbot (Phases 8-10), thunderfix |
+| `commit-conventions.md` | Conventional commits format, type definitions, good/bad examples | thunderpush |
+| `subagent-playbook.md` | Decision framework for parallelization, concurrency limits, prompt templates, anti-patterns | thunderbot (all modes), thunderimprove |
+| `team-orchestration.md` | Multi-agent team roles, coordination protocol, module contracts, security integration | thunderbot (large tasks only) |
 
 ### Manual Install
 

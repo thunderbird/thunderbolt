@@ -98,6 +98,23 @@ jobs:
           env-id: ${{ secrets.POSTHOG_CLI_ENV_ID }}
           cli-token: ${{ secrets.POSTHOG_CLI_TOKEN }}
 
+      - name: Compute and save metrics baseline
+        if: github.ref == 'refs/heads/main'
+        run: |
+          bun test ./src ./scripts --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          COVERAGE=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          bunx size-limit --json > /tmp/size-limit.json 2>/dev/null || true
+          BUNDLE=$(jq -r '.[0].size // 0' /tmp/size-limit.json 2>/dev/null || echo 0)
+          mkdir -p .metrics-baseline
+          printf '{"bundleSize":%s,"coverage":"%s"}\n' "${BUNDLE:-0}" "${COVERAGE:-N/A}" > .metrics-baseline/metrics.json
+
+      - name: Cache metrics baseline
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .metrics-baseline
+          key: pr-metrics-main-${{ github.sha }}
+
   rust:
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'

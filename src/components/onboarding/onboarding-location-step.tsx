@@ -1,15 +1,12 @@
-import { Button } from '@/components/ui/button'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/hooks/use-location-search'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
-import { cn } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ChevronsUpDown, MapPin } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { MapPin } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { LocationSearchCombobox } from '../location-search-combobox'
 import { IconCircle } from './icon-circle'
 
 const locationFormSchema = z
@@ -48,9 +45,6 @@ type OnboardingLocationStepProps = {
 }
 
 export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
-  const locationSearch = useLocationSearch()
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
   const form = useForm<LocationFormData>({
@@ -69,7 +63,6 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
     form.trigger()
-    locationSearch.setOpen(false)
 
     try {
       await actions.submitLocation({
@@ -81,15 +74,6 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       console.error('Failed to save location:', error)
     }
   }
-
-  useEffect(() => {
-    if (buttonRef.current) {
-      buttonRef.current.click()
-    }
-    if (searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-  }, [])
 
   useEffect(() => {
     if (!isInitialized) {
@@ -162,72 +146,9 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
             name="locationName"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <Popover
-                  open={locationSearch.open}
-                  onOpenChange={(newOpen) => {
-                    locationSearch.setOpen(newOpen)
-                    if (!newOpen) {
-                      locationSearch.clearSearch()
-                    }
-                  }}
-                >
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        ref={buttonRef}
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={locationSearch.open}
-                        className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
-                      >
-                        {field.value || 'Select location...'}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="p-0 w-[--radix-popover-trigger-width]"
-                    side="bottom"
-                    align="start"
-                    sideOffset={4}
-                  >
-                    <Command>
-                      <CommandInput
-                        ref={searchInputRef}
-                        placeholder="Search for locations..."
-                        value={locationSearch.searchQuery}
-                        onValueChange={locationSearch.setSearchQuery}
-                      />
-                      <CommandList>
-                        {locationSearch.searchQuery.trim().length > 0 && locationSearch.isSearching && (
-                          <div className="py-6 text-center text-sm">
-                            <div className="inline-flex items-center gap-2">
-                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                              Searching...
-                            </div>
-                          </div>
-                        )}
-                        {locationSearch.searchQuery.trim().length > 0 &&
-                          !locationSearch.isSearching &&
-                          locationSearch.locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
-                        {!locationSearch.isSearching && locationSearch.locations.length > 0 && (
-                          <CommandGroup>
-                            {locationSearch.locations.map((location) => (
-                              <CommandItem
-                                key={`${location.coordinates.lat}-${location.coordinates.lng}`}
-                                value={location.name}
-                                onSelect={() => handleSelectLocation(location)}
-                                className="pl-2"
-                              >
-                                {location.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        )}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <FormControl>
+                  <LocationSearchCombobox value={field.value} onSelect={handleSelectLocation} autoOpen />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

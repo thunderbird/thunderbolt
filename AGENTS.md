@@ -66,3 +66,17 @@ See [docs/powersync-account-devices.md](docs/powersync-account-devices.md#pr-flo
 ## CORS and API headers
 
 When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Name`), update `backend/src/config/settings.ts` so `corsAllowHeaders` includes them. Otherwise CORS preflight will fail and requests from the browser will be blocked.
+
+## Responsive Sizing
+
+The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root` with responsive mobile/desktop values that switch at the 768px breakpoint. Use standard Tailwind classes — **do NOT** use `var()` syntax for properties that have Tailwind equivalents.
+
+**Standard Tailwind classes (responsive via theme overrides):**
+- Border radius: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`
+- Spacing: Use standard Tailwind spacing (`px-2`, `px-3`, `py-1.5`, `gap-2`, etc.)
+
+**Custom CSS variables (no Tailwind equivalent — use `var()` syntax):**
+- Text: `text-[length:var(--font-size-body)]`, `text-[length:var(--font-size-sm)]`, `text-[length:var(--font-size-xs)]`
+- Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
+- Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
+- Minimum heights: `min-h-[var(--min-touch-height)]`

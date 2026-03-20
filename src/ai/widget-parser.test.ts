@@ -801,4 +801,51 @@ describe('parseContentParts', () => {
       expect(result).toEqual([{ type: 'text', content: 'Normal text without any brackets.' }])
     })
   })
+
+  describe('text with [N] citations and widget tags', () => {
+    it('produces both text parts with [N] citations and widget parts', () => {
+      const text =
+        "Here's a demo:\n\n- Inline link [1]\n\n" + '<widget:link-preview url="https://example.com" source="1" />'
+      const result = parseContentParts(text)
+
+      const textParts = result.filter((p) => p.type === 'text')
+      const widgetParts = result.filter((p) => p.type === 'widget')
+
+      expect(textParts.length).toBeGreaterThanOrEqual(1)
+      expect(widgetParts.length).toBeGreaterThanOrEqual(1)
+
+      expect(textParts.some((p) => p.type === 'text' && p.content.includes('[1]'))).toBe(true)
+      expect(widgetParts.some((p) => p.type === 'widget' && p.widget.widget === 'link-preview')).toBe(true)
+    })
+
+    it('preserves multiple widget parts after text with multiple [N] citations', () => {
+      const text = [
+        'Sources [1] and [2] confirm this.',
+        '<widget:link-preview url="https://a.com" source="1" />',
+        '<widget:link-preview url="https://b.com" source="2" />',
+      ].join('\n\n')
+      const result = parseContentParts(text)
+
+      const textParts = result.filter((p) => p.type === 'text')
+      const widgetParts = result.filter((p) => p.type === 'widget')
+
+      expect(textParts.length).toBeGreaterThanOrEqual(1)
+      expect(widgetParts).toHaveLength(2)
+    })
+
+    it('preserves widget order relative to text when citations are present', () => {
+      const text =
+        'First point [1].\n\n' +
+        '<widget:link-preview url="https://first.com" source="1" />\n\n' +
+        'Second point [2].\n\n' +
+        '<widget:link-preview url="https://second.com" source="2" />'
+      const result = parseContentParts(text)
+
+      expect(result.length).toBeGreaterThanOrEqual(4)
+      expect(result[0].type).toBe('text')
+      expect(result[1].type).toBe('widget')
+      expect(result[2].type).toBe('text')
+      expect(result[3].type).toBe('widget')
+    })
+  })
 })

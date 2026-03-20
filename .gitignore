@@ -47,6 +47,8 @@ mise.toml
 !.claude/commands/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/rules/
+!.claude/rules/**
 .zed/**
 .zedscratches/**
 .mcp.json

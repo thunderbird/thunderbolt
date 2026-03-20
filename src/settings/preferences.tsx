@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts'
+import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { useCountryUnits } from '@/hooks/use-country-units'
-import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/hooks/use-location-search'
 import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
@@ -14,6 +15,7 @@ import { ChevronsUpDown } from 'lucide-react'
 import ky from 'ky'
 import { useEffect, useReducer, useRef, useState } from 'react'
 
+import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
@@ -32,7 +34,7 @@ import {
 import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
@@ -64,6 +66,82 @@ const initialState: PreferencesState = {
   pendingCountryUnits: null,
 }
 
+type LocalizationDropdownItem = {
+  id: string
+  label: string
+  filterValue?: string
+}
+
+type LocalizationDropdownProps = {
+  label: string
+  isModified: boolean
+  onReset: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  loading: boolean
+  displayValue: string
+  items: LocalizationDropdownItem[]
+  onSelect: (id: string) => Promise<void>
+  searchPlaceholder?: string
+  contentClassName?: string
+}
+
+const LocalizationDropdown = ({
+  label,
+  isModified,
+  onReset,
+  open,
+  onOpenChange,
+  loading,
+  displayValue,
+  items,
+  onSelect,
+  searchPlaceholder,
+  contentClassName,
+}: LocalizationDropdownProps) => (
+  <div className="flex flex-row items-center gap-4">
+    <div className="flex-1">
+      <ModificationIndicator as="label" className="text-sm font-medium" hasModifications={isModified} onReset={onReset}>
+        {label}
+      </ModificationIndicator>
+    </div>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          disabled={loading}
+          className={cn('w-auto justify-between rounded-lg', !displayValue && 'text-muted-foreground')}
+        >
+          {loading ? 'Loading...' : displayValue || 'Loading...'}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className={cn('rounded-lg p-0 w-auto', contentClassName)} align="end">
+        <Command>
+          {searchPlaceholder && <CommandInput placeholder={searchPlaceholder} />}
+          <CommandList>
+            <CommandGroup>
+              {items.map((item) => (
+                <CommandItem
+                  key={item.id}
+                  value={item.filterValue ?? item.id}
+                  onSelect={async () => {
+                    await onSelect(item.id)
+                    onOpenChange(false)
+                  }}
+                >
+                  {item.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  </div>
+)
+
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
   switch (action.type) {
     case 'SET_IS_RESETTING':
@@ -84,10 +162,10 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { isResetting, isDeletingAccount, localizationDialogOpen, pendingCountryUnits } = state
-  const locationSearch = useLocationSearch()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
+  const { openSignInModal } = useSignInModal()
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -231,8 +309,6 @@ export default function PreferencesSettingsPage() {
       locationLng.setValue(String(location.coordinates.lng)),
     ])
 
-    locationSearch.setOpen(false)
-
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
       location_name: location.name,
     })
@@ -355,38 +431,35 @@ export default function PreferencesSettingsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Preferences" />
 
-      <SectionCard title="Appearance">
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium">Theme</label>
-          <ThemeToggle />
-          <p className="text-sm text-muted-foreground">Choose your preferred theme.</p>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Haptic Feedback">
-        <div className="flex-row flex items-center gap-4">
-          <div className="flex-1">
-            <ModificationIndicator
-              as="label"
-              className="text-sm font-medium"
-              hasModifications={hapticsEnabled.isModified}
-              onReset={hapticsEnabled.reset}
-            >
-              Haptic feedback
-            </ModificationIndicator>
-            <p className="text-sm text-muted-foreground">
-              Trigger haptic feedback when interacting with buttons, switches, and other controls.
-            </p>
+      <SectionCard title="User Experience">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Theme</label>
+            <ThemeToggle />
           </div>
-          <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex-row flex items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={hapticsEnabled.isModified}
+                onReset={hapticsEnabled.reset}
+              >
+                Haptic Feedback
+              </ModificationIndicator>
+              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
+            </div>
+            <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+          </div>
         </div>
       </SectionCard>
 
       <div className="h-6" />
 
-      <SectionCard title="Personal Information">
+      <SectionCard title="Personalization">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
@@ -402,6 +475,7 @@ export default function PreferencesSettingsPage() {
             </ModificationIndicator>
             <Input
               placeholder="Your name"
+              className="rounded-lg"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onBlur={async (e) => {
@@ -415,15 +489,15 @@ export default function PreferencesSettingsPage() {
                 }
               }}
             />
-            <p className="text-sm text-muted-foreground">Your assistant will use this name to address you.</p>
+            <p className="text-sm text-muted-foreground">How Thunderbolt salutes you</p>
           </div>
         </div>
       </SectionCard>
 
       <div className="h-6" />
 
-      <SectionCard title="Location">
-        <div className="flex flex-col gap-4">
+      <SectionCard title="Localization">
+        <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
               as="label"
@@ -433,399 +507,223 @@ export default function PreferencesSettingsPage() {
             >
               Location
             </ModificationIndicator>
-            <Popover
-              open={locationSearch.open}
-              onOpenChange={(newOpen) => {
-                locationSearch.setOpen(newOpen)
-                if (!newOpen) {
-                  locationSearch.clearSearch()
-                }
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={locationSearch.open}
-                  className={cn('w-full justify-between', !locationName.value && 'text-muted-foreground')}
-                >
-                  {locationName.value || 'Select location...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="p-0 w-[--radix-popover-trigger-width]"
-                side="bottom"
-                align="start"
-                sideOffset={4}
-              >
-                <Command>
-                  <CommandInput
-                    placeholder="Search for locations..."
-                    value={locationSearch.searchQuery}
-                    onValueChange={locationSearch.setSearchQuery}
-                  />
-                  <CommandList>
-                    {locationSearch.searchQuery.trim().length > 0 && locationSearch.isSearching && (
-                      <div className="py-6 text-center text-sm">
-                        <div className="inline-flex items-center gap-2">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                          Searching...
-                        </div>
-                      </div>
-                    )}
-                    {locationSearch.searchQuery.trim().length > 0 &&
-                      !locationSearch.isSearching &&
-                      locationSearch.locations.length === 0 && <CommandEmpty>No locations found.</CommandEmpty>}
-                    {!locationSearch.isSearching && locationSearch.locations.length > 0 && (
-                      <CommandGroup>
-                        {locationSearch.locations.map((location) => (
-                          <CommandItem
-                            key={`${location.coordinates.lat}-${location.coordinates.lng}`}
-                            value={location.name}
-                            onSelect={() => handleSelectLocation(location)}
-                            className="pl-2"
-                          >
-                            {location.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            <p className="text-sm text-muted-foreground">Select your location to enable location-based features.</p>
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Localization">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={distanceUnit.isModified}
-                onReset={() => handleResetLocalizationSetting('distance')}
-              >
-                Distance
-              </ModificationIndicator>
-            </div>
-            <Popover open={distanceDropdownOpen} onOpenChange={setDistanceDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between', !distanceUnit.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : distanceUnit.value
-                      ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1)
-                      : 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.units?.map((unit) => (
-                        <CommandItem
-                          key={unit}
-                          value={unit}
-                          onSelect={async () => {
-                            await distanceUnit.setValue(unit)
-                            trackEvent('settings_localization_update')
-                            setDistanceDropdownOpen(false)
-                          }}
-                        >
-                          {unit.charAt(0).toUpperCase() + unit.slice(1)}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <LocationSearchCombobox value={locationName.value} onSelect={handleSelectLocation} />
+            <p className="text-sm text-muted-foreground">Enables location-based responses</p>
           </div>
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={temperatureUnit.isModified}
-                onReset={() => handleResetLocalizationSetting('temperature')}
-              >
-                Temperature
-              </ModificationIndicator>
-            </div>
-            <Popover open={temperatureDropdownOpen} onOpenChange={setTemperatureDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between', !temperatureUnit.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : unitsOptionsData?.temperature?.find((temp) => temp.symbol === temperatureUnit.value)?.name ||
-                      temperatureUnit.value ||
-                      'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.temperature?.map((temp) => (
-                        <CommandItem
-                          key={temp.symbol}
-                          value={temp.symbol}
-                          onSelect={async () => {
-                            await temperatureUnit.setValue(temp.symbol)
-                            trackEvent('settings_localization_update')
-                            setTemperatureDropdownOpen(false)
-                          }}
-                        >
-                          {temp.name}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <div className="h-px bg-border -mx-6" />
 
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={dateFormat.isModified}
-                onReset={() => handleResetLocalizationSetting('date')}
-              >
-                Date Format
-              </ModificationIndicator>
-            </div>
-            <Popover open={dateFormatDropdownOpen} onOpenChange={setDateFormatDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between', !dateFormat.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : dateFormat.value
-                      ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example ||
-                        dateFormat.value
-                      : 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.dateFormats?.map((format) => (
-                        <CommandItem
-                          key={format.format}
-                          value={format.example}
-                          onSelect={async () => {
-                            await dateFormat.setValue(format.format)
-                            trackEvent('settings_localization_update')
-                            setDateFormatDropdownOpen(false)
-                          }}
-                        >
-                          {format.example}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={timeFormat.isModified}
-                onReset={() => handleResetLocalizationSetting('time')}
-              >
-                Time Format
-              </ModificationIndicator>
-            </div>
-            <Popover open={timeFormatDropdownOpen} onOpenChange={setTimeFormatDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between', !timeFormat.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading ? 'Loading...' : timeFormat.value || 'Loading...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-auto">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.timeFormat?.map((format) => (
-                        <CommandItem
-                          key={format}
-                          value={format}
-                          onSelect={async () => {
-                            await timeFormat.setValue(format)
-                            trackEvent('settings_localization_update')
-                            setTimeFormatDropdownOpen(false)
-                          }}
-                        >
-                          {format}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={currency.isModified}
-                onReset={() => handleResetLocalizationSetting('currency')}
-              >
-                Currency
-              </ModificationIndicator>
-            </div>
-            <Popover open={currencyDropdownOpen} onOpenChange={setCurrencyDropdownOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  disabled={unitsOptionsLoading}
-                  className={cn('w-auto justify-between', !currency.value && 'text-muted-foreground')}
-                >
-                  {unitsOptionsLoading
-                    ? 'Loading...'
-                    : (() => {
-                        const selectedCurrency = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
-                        return selectedCurrency ? `${selectedCurrency.name} (${selectedCurrency.symbol})` : 'Loading...'
-                      })()}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-[300px]">
-                <Command>
-                  <CommandInput placeholder="Search currency by code, symbol, or name..." />
-                  <CommandList>
-                    <CommandGroup>
-                      {unitsOptionsData?.currencies?.map((currencyOption) => (
-                        <CommandItem
-                          key={currencyOption.code}
-                          value={`${currencyOption.code} ${currencyOption.symbol} ${currencyOption.name}`}
-                          onSelect={async () => {
-                            await currency.setValue(currencyOption.code)
-                            trackEvent('settings_localization_update')
-                            setCurrencyDropdownOpen(false)
-                          }}
-                        >
-                          {currencyOption.name} ({currencyOption.symbol})
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Preview Features">
-        <p className="mb-4 text-sm text-muted-foreground">Try out experimental beta features.</p>
-
-        <div className="flex-row flex items-center gap-4">
-          <div className="flex-1">
-            <ModificationIndicator
-              as="label"
-              className="text-sm font-medium"
-              hasModifications={experimentalFeatureTasks.isModified}
-              onReset={experimentalFeatureTasks.reset}
-            >
-              Tasks
-            </ModificationIndicator>
-          </div>
-          <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Privacy">
-        <div className="flex-row flex items-center gap-4">
-          <div>
-            <div className="mb-2">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={dataCollection.isModified}
-                onReset={dataCollection.reset}
-              >
-                Data Collection
-              </ModificationIndicator>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. No
-              personal data is collected or stored. Read more about our{' '}
-              <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
-                privacy policy
-              </a>
-              .
-            </p>
-          </div>
-          <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
-      <SectionCard title="Sync">
-        <div className="flex-row flex items-center gap-4 justify-between">
-          <div>
-            <div className="mb-2">
-              <label className="text-sm font-medium">Cloud Sync</label>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Enable cloud synchronization to keep your data synced across devices.
-            </p>
-            {!isAuthenticated && <p className="text-xs text-muted-foreground mt-1">Sign in to enable sync.</p>}
-          </div>
-          <Switch
-            checked={syncEnabled}
-            onCheckedChange={handleSyncToggle}
-            disabled={!isAuthenticated || isConnecting}
+          <LocalizationDropdown
+            label="Distance"
+            isModified={distanceUnit.isModified}
+            onReset={() => handleResetLocalizationSetting('distance')}
+            open={distanceDropdownOpen}
+            onOpenChange={setDistanceDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              distanceUnit.value ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1) : ''
+            }
+            items={(unitsOptionsData?.units ?? []).map((u) => ({
+              id: u,
+              label: u.charAt(0).toUpperCase() + u.slice(1),
+            }))}
+            onSelect={async (v) => {
+              await distanceUnit.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
           />
+
+          <LocalizationDropdown
+            label="Temperature"
+            isModified={temperatureUnit.isModified}
+            onReset={() => handleResetLocalizationSetting('temperature')}
+            open={temperatureDropdownOpen}
+            onOpenChange={setTemperatureDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              unitsOptionsData?.temperature?.find((t) => t.symbol === temperatureUnit.value)?.name ||
+              temperatureUnit.value ||
+              ''
+            }
+            items={(unitsOptionsData?.temperature ?? []).map((t) => ({
+              id: t.symbol,
+              label: t.name,
+            }))}
+            onSelect={async (v) => {
+              await temperatureUnit.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
+
+          <LocalizationDropdown
+            label="Date Format"
+            isModified={dateFormat.isModified}
+            onReset={() => handleResetLocalizationSetting('date')}
+            open={dateFormatDropdownOpen}
+            onOpenChange={setDateFormatDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={
+              dateFormat.value
+                ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example || dateFormat.value
+                : ''
+            }
+            items={(unitsOptionsData?.dateFormats ?? []).map((f) => ({
+              id: f.format,
+              label: f.example,
+              filterValue: f.example,
+            }))}
+            onSelect={async (v) => {
+              await dateFormat.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
+
+          <LocalizationDropdown
+            label="Time Format"
+            isModified={timeFormat.isModified}
+            onReset={() => handleResetLocalizationSetting('time')}
+            open={timeFormatDropdownOpen}
+            onOpenChange={setTimeFormatDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={timeFormat.value || ''}
+            items={(unitsOptionsData?.timeFormat ?? []).map((f) => ({
+              id: f,
+              label: f,
+            }))}
+            onSelect={async (v) => {
+              await timeFormat.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+          />
+
+          <LocalizationDropdown
+            label="Currency"
+            isModified={currency.isModified}
+            onReset={() => handleResetLocalizationSetting('currency')}
+            open={currencyDropdownOpen}
+            onOpenChange={setCurrencyDropdownOpen}
+            loading={unitsOptionsLoading}
+            displayValue={(() => {
+              const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
+              return c ? `${c.name} (${c.symbol})` : ''
+            })()}
+            items={(unitsOptionsData?.currencies ?? []).map((c) => ({
+              id: c.code,
+              label: `${c.name} (${c.symbol})`,
+              filterValue: `${c.code} ${c.symbol} ${c.name}`,
+            }))}
+            onSelect={async (v) => {
+              await currency.setValue(v)
+              trackEvent('settings_localization_update')
+            }}
+            searchPlaceholder="Search currency by code, symbol, or name..."
+            contentClassName="w-[300px]"
+          />
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Help Thunderbolt Improve">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
+            <label className="text-sm font-medium">Preview Features</label>
+
+            <div className="flex-row flex items-center gap-4">
+              <div className="flex-1">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={experimentalFeatureTasks.isModified}
+                  onReset={experimentalFeatureTasks.reset}
+                >
+                  Tasks
+                </ModificationIndicator>
+              </div>
+              <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+            </div>
+          </div>
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex-row flex items-center gap-4">
+            <div>
+              <div className="mb-2">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={dataCollection.isModified}
+                  onReset={dataCollection.reset}
+                >
+                  Anonymous Usage Data
+                </ModificationIndicator>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read
+                more about our{' '}
+                <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
+                  privacy policy
+                </a>
+                .
+              </p>
+            </div>
+            <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+          </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Data">
+        <div className="flex flex-col gap-6">
+          {isAuthenticated ? (
+            <div className="flex-row flex items-center gap-4 justify-between">
+              <div>
+                <label className="text-sm font-medium">Sync Data Between Devices</label>
+              </div>
+              <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Sync Data Between Devices</label>
+              <Button onClick={openSignInModal}>Sign In</Button>
+            </div>
+          )}
+
+          {!isAuthenticated && (
+            <>
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Delete All Local Data</label>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="secondary" disabled={isResetting}>
+                      {isResetting ? 'Resetting...' : 'Reset Database'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all of your local data including settings, chat history, and cached
+                        information. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleResetDatabase}
+                        className="bg-destructive text-white hover:bg-destructive/90"
+                      >
+                        Reset Database
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </>
+          )}
         </div>
       </SectionCard>
 
@@ -836,39 +734,6 @@ export default function PreferencesSettingsPage() {
       />
 
       <div className="h-6" />
-
-      {!isAuthenticated && (
-        <SectionCard title="Local Database">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">Delete all of your local data.</p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="secondary" disabled={isResetting}>
-                  {isResetting ? 'Resetting...' : 'Reset Database'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete all of your local data including settings, chat history, and cached
-                    information. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleResetDatabase}
-                    className="bg-destructive text-white hover:bg-destructive/90"
-                  >
-                    Reset Database
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </SectionCard>
-      )}
 
       {isAuthenticated && (
         <SectionCard title="Account">

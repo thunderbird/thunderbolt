@@ -103,10 +103,10 @@ describe('ChatPromptInput', () => {
 
       const form = container.querySelector('form')
       expect(form?.className).toContain('gap-0')
-      expect(form?.className).toContain('p-4')
+      expect(form?.className).toContain('p-2')
     })
 
-    it('should apply desktop class names when not mobile', () => {
+    it('should apply unified class names when not mobile', () => {
       const { mockUseChat } = setupStore()
 
       const { container } = render(
@@ -115,8 +115,8 @@ describe('ChatPromptInput', () => {
       )
 
       const form = container.querySelector('form')
-      expect(form?.className).toContain('gap-2')
-      expect(form?.className).toContain('p-3')
+      expect(form?.className).toContain('gap-0')
+      expect(form?.className).toContain('p-2')
     })
 
     it('should hide context usage indicator on mobile', () => {

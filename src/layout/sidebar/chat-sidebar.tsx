@@ -34,6 +34,7 @@ type ChatSidebarContentProps = {
   showTasks: boolean
   onCreateNewChat: () => void
   onChatClick: (threadId: string) => void
+  onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
   onSettingsClick: () => void
@@ -56,6 +57,7 @@ export const ChatSidebarContent = ({
   showTasks,
   onCreateNewChat,
   onChatClick,
+  onRename,
   onSearchClick,
   onSearchQueryChange,
   onSettingsClick,
@@ -98,6 +100,7 @@ export const ChatSidebarContent = ({
         showSearch={showSearch}
         searchInputRef={searchInputRef}
         onChatClick={onChatClick}
+        onRename={onRename}
         onSearchClick={onSearchClick}
         onSearchQueryChange={onSearchQueryChange}
       />

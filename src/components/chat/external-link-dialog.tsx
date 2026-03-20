@@ -49,24 +49,27 @@ export const ExternalLinkDialog = memo(
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Open external link</AlertDialogTitle>
+            <AlertDialogTitle>Open External Link</AlertDialogTitle>
             <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
             <button
               onClick={() => onOpenChange(false)}
-              className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+              className="absolute right-4 top-4 flex size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <X className="size-4" />
+              <X className="size-[var(--icon-size-default)]" />
               <span className="sr-only">Close</span>
             </button>
           </AlertDialogHeader>
 
-          <div className="rounded-md border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
+          <div className="rounded-lg border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
             {url}
           </div>
 
           {openError && <p className="text-sm text-destructive">{openError}</p>}
 
           <AlertDialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
             {onOpenInApp && (
               <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
                 <PanelRight className="size-4" />
@@ -75,7 +78,7 @@ export const ExternalLinkDialog = memo(
             )}
             <Button onClick={handleConfirmClick} disabled={isOpening}>
               {onOpenInApp && <ExternalLink className="size-4" />}
-              {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open link'}
+              {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open Link'}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

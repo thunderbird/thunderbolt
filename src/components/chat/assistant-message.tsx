@@ -5,11 +5,13 @@ import {
   groupMessageParts,
   type ReasoningGroupUIPart,
 } from '@/lib/assistant-message'
+import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
 import type { ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
+import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
@@ -113,6 +115,14 @@ export const AssistantMessage = memo(
       [groupedParts, isStreaming, message.id, reasoningTime, reasoningStartTimes, sources],
     )
 
+    const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
+
+    const hasWidgets = useMemo(
+      () =>
+        message.parts.some((part) => part.type === 'text' && /<widget:(weather-forecast|link-preview)/.test(part.text)),
+      [message.parts],
+    )
+
     return (
       <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>
         {partElements.map((partElement, index) => (
@@ -122,6 +132,11 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
+        {!isStreaming && copyText && !hasWidgets && (
+          <div className="flex items-center gap-2.5 px-4 -mt-6">
+            <CopyMessageButton text={copyText} />
+          </div>
+        )}
       </div>
     )
   },

@@ -23,7 +23,7 @@ import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -296,7 +296,7 @@ export default function McpServersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -307,11 +307,9 @@ export default function McpServersPage() {
           <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
-              <ResponsiveModalDescription>
-                Enter the URL of the MCP server you want to connect to.
-              </ResponsiveModalDescription>
+              <ResponsiveModalDescription className="sr-only">Add a new MCP server</ResponsiveModalDescription>
             </ResponsiveModalHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 pt-4 pb-2">
               <div className="grid gap-2">
                 <Label htmlFor="url">Server URL</Label>
                 <Input
@@ -363,8 +361,8 @@ export default function McpServersPage() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="ghost" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
               </Button>
               <Button onClick={handleAddServer} disabled={!newServerUrl || connectionStatus !== 'success'}>
@@ -382,7 +380,7 @@ export default function McpServersPage() {
           const isEnabled = server.enabled === 1
 
           return (
-            <Card key={server.id} className="border border-border shadow-sm">
+            <Card key={server.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -508,9 +506,7 @@ export default function McpServersPage() {
         {servers.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <Server className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No MCP servers configured</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.

@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/button'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { isTauri } from '@/lib/platform'
-import { isSafeUrl } from '@/lib/url-utils'
 import { trackEvent } from '@/lib/posthog'
+import { isSafeUrl } from '@/lib/url-utils'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Check, Copy, ExternalLink } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { ContentViewHeader } from './header'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
 
@@ -22,7 +24,7 @@ type SidebarWebviewProps = {
 export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps) => {
   const panelRef = useRef<HTMLDivElement>(null)
   const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef, hidden)
-  const [isCopied, setIsCopied] = useState(false)
+  const { copy, isCopied } = useCopyToClipboard()
 
   const handleClose = async () => {
     try {
@@ -38,14 +40,8 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
     if (!config?.url) {
       return
     }
-    try {
-      await navigator.clipboard.writeText(config.url)
-      trackEvent('preview_copy_url')
-      setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000)
-    } catch (error) {
-      console.error('Error copying URL:', error)
-    }
+    await copy(config.url)
+    trackEvent('preview_copy_url')
   }
 
   const handleOpenExternal = async () => {
@@ -53,13 +49,8 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
       return
     }
 
-    try {
-      trackEvent('preview_open_external')
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(config.url)
-    } catch (error) {
-      console.error('Error opening external URL:', error)
-    }
+    trackEvent('preview_open_external')
+    await openUrl(config.url)
   }
 
   if (!isTauri()) {

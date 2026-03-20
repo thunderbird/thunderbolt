@@ -26,7 +26,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-12 border-b border-border flex items-center justify-between px-2 flex-shrink-0">
+    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
       <div
         className="flex items-center gap-2 h-8 px-2 relative flex-1"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
@@ -38,7 +38,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
-                    <PanelLeft className="size-4" />
+                    <PanelLeft className="size-[var(--icon-size-default)]" />
                     <span className="sr-only">Expand Sidebar</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -64,8 +64,12 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem className="w-auto">
-                    <SidebarMenuButton onClick={onToggle} tooltip="Toggle Sidebar" className="cursor-pointer w-8">
-                      <PanelLeft className="size-4" />
+                    <SidebarMenuButton
+                      onClick={onToggle}
+                      tooltip="Toggle Sidebar"
+                      className="cursor-pointer size-8 justify-center"
+                    >
+                      <PanelLeft className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">Toggle Sidebar</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

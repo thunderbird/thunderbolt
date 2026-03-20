@@ -3,14 +3,14 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads } from '@/dal'
+import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -91,6 +91,20 @@ export default function Sidebar() {
     },
   })
 
+  const renameChatMutation = useMutation({
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
+      await updateChatThread(db, id, { title })
+    },
+  })
+
+  const renameMutate = renameChatMutation.mutate
+  const handleRename = useCallback(
+    (threadId: string, title: string) => {
+      renameMutate({ id: threadId, title })
+    },
+    [renameMutate],
+  )
+
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
       await deleteAllChatThreads(db)
@@ -110,13 +124,16 @@ export default function Sidebar() {
     }
   }
 
-  const handleChatClick = (threadId: string) => {
-    navigate(`/chats/${threadId}`)
-    trackEvent('chat_select', { chat_id: threadId })
-    if (isMobile) {
-      setOpenMobile(false)
-    }
-  }
+  const handleChatClick = useCallback(
+    (threadId: string) => {
+      navigate(`/chats/${threadId}`)
+      trackEvent('chat_select', { chat_id: threadId })
+      if (isMobile) {
+        setOpenMobile(false)
+      }
+    },
+    [navigate, isMobile, setOpenMobile],
+  )
 
   const handleSettingsNavigation = (path: string) => {
     navigate(path)
@@ -185,6 +202,7 @@ export default function Sidebar() {
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
             onCreateNewChat={() => createNewChat()}
+            onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}
             onSearchQueryChange={setSearchQuery}

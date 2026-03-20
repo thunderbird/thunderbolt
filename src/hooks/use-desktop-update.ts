@@ -2,6 +2,8 @@ import { useReducer, useEffect, useCallback } from 'react'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
+import { getPowerSyncInstance } from '@/db/powersync'
+import { setPostUpdateFlag, clearPostUpdateFlag } from '@/lib/post-update-redirect'
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
 
@@ -112,8 +114,18 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
 
   const restartApp = useCallback(async () => {
     try {
+      // Best-effort disconnect — don't block the relaunch if PowerSync fails
+      try {
+        await getPowerSyncInstance()?.disconnect()
+      } catch (err) {
+        console.error('Failed to disconnect PowerSync before relaunch:', err)
+      }
+      // Signal the new process to reset navigation (WebView may restore stale route)
+      setPostUpdateFlag()
       await relaunch()
     } catch (err) {
+      // Clear the flag so a stale flag doesn't force-redirect on next manual launch
+      clearPostUpdateFlag()
       console.error('Failed to restart app:', err)
       dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to restart app' })
     }

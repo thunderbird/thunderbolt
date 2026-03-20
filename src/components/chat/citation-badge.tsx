@@ -52,21 +52,21 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
   const isOpen = ctx.popover?.citationId === citationId
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
-  const toggle = (rect: DOMRect) => {
+  const toggle = (element: HTMLElement) => {
     if (isOpen) {
       ctx.close()
     } else {
-      ctx.open(citationId, sources, rect)
+      ctx.open(citationId, sources, element)
     }
   }
 
   return (
     <button
-      onClick={(e) => toggle(e.currentTarget.getBoundingClientRect())}
+      onClick={(e) => toggle(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          toggle(e.currentTarget.getBoundingClientRect())
+          toggle(e.currentTarget)
         }
       }}
       className={badgeClass}

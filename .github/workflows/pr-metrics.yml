@@ -1,0 +1,147 @@
+name: PR Metrics
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      # --- Line count (excludes tests, migrations, lockfiles) ---
+      - name: Compute line count
+        id: lines
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          STATS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD -- \
+            ':!*.test.ts' ':!*.test.tsx' ':!*.spec.ts' ':!*.spec.tsx' \
+            ':!backend/drizzle/**' ':!bun.lock' ':!*.lock')
+          ADDED=$(echo "$STATS" | awk '{sum += $1} END {print sum+0}')
+          REMOVED=$(echo "$STATS" | awk '{sum += $2} END {print sum+0}')
+          echo "added=$ADDED" >> $GITHUB_OUTPUT
+          echo "removed=$REMOVED" >> $GITHUB_OUTPUT
+
+      # --- Bundle size (gzipped, via size-limit) ---
+      - name: Build
+        id: build
+        run: bun run build
+        continue-on-error: true
+        env:
+          NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run size-limit
+        id: bundle
+        if: steps.build.outcome == 'success'
+        run: |
+          # size-limit --json outputs gzipped sizes, which is what users actually download.
+          # We extract the first entry's gzip value and save it for the metrics comment.
+          bunx size-limit --json > /tmp/size-limit.json 2>/dev/null || true
+          GZIP=$(jq -r '.[0].size // 0' /tmp/size-limit.json 2>/dev/null || echo 0)
+          echo "gzip=${GZIP}" >> $GITHUB_OUTPUT
+
+      # --- Test coverage ---
+      - name: Run tests with coverage
+        id: coverage
+        run: |
+          bun test ./src ./scripts --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          TOTAL=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          echo "total=${TOTAL:-N/A}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # --- Restore main baseline for deltas ---
+      - name: Restore main baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: .metrics-baseline
+          key: pr-metrics-main-${{ github.event.pull_request.base.sha }}
+          restore-keys: pr-metrics-main-
+
+      # --- Lighthouse (load time via Render PR preview) ---
+      # Render auto-deploys a preview at thunderbolt-pr-{number}.onrender.com for every PR.
+      # We poll until it's ready (up to 5 minutes), then run Lighthouse against it.
+      - name: Wait for Render preview
+        id: preview
+        run: |
+          URL="https://thunderbolt-pr-${{ github.event.pull_request.number }}.onrender.com"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null)
+            if [ "$STATUS" = "200" ]; then
+              echo "ready=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/30: HTTP $STATUS — retrying in 10s..."
+            sleep 10
+          done
+          echo "ready=false" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Run Lighthouse
+        id: lighthouse
+        if: steps.preview.outputs.ready == 'true'
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: ${{ steps.preview.outputs.url }}
+          runs: 1
+          uploadArtifacts: false
+        continue-on-error: true
+
+      - name: Parse Lighthouse results
+        id: lh
+        if: steps.lighthouse.outcome == 'success'
+        run: |
+          REPORT=$(ls .lighthouseci/*.report.json 2>/dev/null | head -1)
+          if [ -z "$REPORT" ]; then exit 0; fi
+          echo "perf=$(jq -r '.categories.performance.score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "fcp=$(jq -r '.audits["first-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "lcp=$(jq -r '.audits["largest-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "tbt=$(jq -r '.audits["total-blocking-time"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # --- Post or update the metrics comment ---
+      - name: Post metrics comment
+        uses: actions/github-script@v7
+        env:
+          LINES_ADDED: ${{ steps.lines.outputs.added }}
+          LINES_REMOVED: ${{ steps.lines.outputs.removed }}
+          BUNDLE_GZIP: ${{ steps.bundle.outputs.gzip }}
+          COVERAGE: ${{ steps.coverage.outputs.total }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          PREVIEW_READY: ${{ steps.preview.outputs.ready }}
+          LH_PERF: ${{ steps.lh.outputs.perf }}
+          LH_FCP: ${{ steps.lh.outputs.fcp }}
+          LH_LCP: ${{ steps.lh.outputs.lcp }}
+          LH_TBT: ${{ steps.lh.outputs.tbt }}
+        with:
+          script: |
+            const script = require('./.github/scripts/post-pr-metrics.cjs')
+            await script({ github, context })

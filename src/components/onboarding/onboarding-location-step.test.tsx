@@ -187,6 +187,7 @@ describe('OnboardingLocationStep', () => {
 
       const triggerButton = screen.getByText('Select location...').closest('button')
       expect(triggerButton).toBeInTheDocument()
+      // LocationSearchCombobox is wrapped in FormControl, so aria-invalid is set to "false" (no errors)
       expect(triggerButton?.getAttribute('aria-invalid')).toBe('false')
     })
   })

@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
-import { downloadLinks } from '@/lib/download-links'
+import { getDownloadUrl } from '@/lib/download-links'
 import { dismissDownloadBanner, shouldShowDownloadBanner } from '@/lib/download-banner-session'
-import { getWebOsPlatform, isWebDesktopPlatform, isTauri } from '@/lib/platform'
+import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
 
@@ -19,8 +19,7 @@ export const DownloadAppBannerDesktop = () => {
     return null
   }
 
-  const platform = getWebOsPlatform()
-  const downloadUrl = (downloadLinks as Record<string, string>)[platform] ?? downloadLinks.macos
+  const downloadUrl = getDownloadUrl()
 
   const handleDownload = () => {
     window.open(downloadUrl, '_blank', 'noopener,noreferrer')

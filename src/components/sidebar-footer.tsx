@@ -25,8 +25,8 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
-import { downloadLinks } from '@/lib/download-links'
-import { getWebOsPlatform, isWebDesktopPlatform, isTauri } from '@/lib/platform'
+import { getDownloadUrl } from '@/lib/download-links'
+import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { cn } from '@/lib/utils'
 
@@ -273,9 +273,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 <AccountMenuItemButton
                   icon={<Download className={iconSize} />}
                   label="Download App"
-                  onClick={() =>
-                    openLink(downloadLinks[getWebOsPlatform() as 'macos' | 'windows' | 'linux'] ?? downloadLinks.macos)
-                  }
+                  onClick={() => openLink(getDownloadUrl())}
                 />
               </div>
             </>

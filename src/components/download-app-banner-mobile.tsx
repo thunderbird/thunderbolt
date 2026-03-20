@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
-import { downloadLinks } from '@/lib/download-links'
+import { getDownloadUrl } from '@/lib/download-links'
 import { dismissDownloadBanner, shouldShowDownloadBanner } from '@/lib/download-banner-session'
-import { getWebOsPlatform, isWebMobilePlatform, isTauri } from '@/lib/platform'
+import { isWebMobilePlatform, isTauri } from '@/lib/platform'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
 
@@ -19,14 +19,7 @@ export const DownloadAppBannerMobile = () => {
     return null
   }
 
-  const platform = getWebOsPlatform()
-  const storeUrl = platform === 'ios' ? downloadLinks.ios : downloadLinks.android
-
-  const handleDownload = () => {
-    window.open(storeUrl, '_blank', 'noopener,noreferrer')
-    setDismissed(true)
-    dismissDownloadBanner()
-  }
+  const storeUrl = getDownloadUrl()
 
   const handleDismiss = () => {
     setDismissed(true)
@@ -58,8 +51,18 @@ export const DownloadAppBannerMobile = () => {
               <p className="text-xs text-muted-foreground truncate">Get Thunderbolt free app</p>
             </div>
 
-            <Button size="sm" onClick={handleDownload} className="flex-shrink-0">
-              Download
+            <Button
+              size="sm"
+              asChild
+              className="flex-shrink-0"
+              onClick={() => {
+                setDismissed(true)
+                dismissDownloadBanner()
+              }}
+            >
+              <a href={storeUrl} target="_blank" rel="noopener noreferrer">
+                Download
+              </a>
             </Button>
           </div>
         </motion.div>

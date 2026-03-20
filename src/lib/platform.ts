@@ -239,18 +239,6 @@ export const getDeviceDisplayName = (): string => {
   }
   const browser = getWebBrowser()
   const browserDisplay = browser === 'unknown' ? 'Browser' : browser.charAt(0).toUpperCase() + browser.slice(1)
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-  let os = 'Unknown'
-  if (ua.includes('Mac')) {
-    os = platformDisplayNames.macos
-  } else if (ua.includes('Win')) {
-    os = platformDisplayNames.windows
-  } else if (ua.includes('Linux')) {
-    os = platformDisplayNames.linux
-  } else if (ua.includes('iPhone') || ua.includes('iPad')) {
-    os = platformDisplayNames.ios
-  } else if (ua.includes('Android')) {
-    os = platformDisplayNames.android
-  }
+  const os = formatPlatformName(getWebOsPlatform())
   return `${browserDisplay} on ${os}`
 }

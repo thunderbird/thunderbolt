@@ -334,8 +334,6 @@ const SimulatorContent = () => {
                   placeholder="Select SSE log..."
                   searchPlaceholder="Search SSE logs..."
                   emptyMessage="No SSE log found."
-                  className="w-[400px]"
-                  contentClassName="w-[400px]"
                   disabled={isRunning}
                 />
               </div>
@@ -371,7 +369,7 @@ const SimulatorContent = () => {
                 placeholder="SSE content will be processed by the actual streamText function..."
                 value={sseContent}
                 onChange={(e) => setSseContent(e.target.value)}
-                className="min-h-[200px] font-mono text-xs"
+                className="min-h-[200px] font-mono text-xs rounded-lg"
                 disabled={isRunning}
               />
 

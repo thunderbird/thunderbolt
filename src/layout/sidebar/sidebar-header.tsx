@@ -27,7 +27,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   return (
     <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
       <div
-        className="flex items-center gap-2 h-8 px-2 relative flex-1"
+        className="flex items-center gap-3 h-8 px-2 relative flex-1"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
         onMouseLeave={() => !isMobile && !isExpanded && setShowExpandButton(false)}
       >

@@ -20,6 +20,7 @@ type AssistantMessageProps = {
   message: ThunderboltUIMessage
   isStreaming: boolean
   isLastMessage?: boolean
+  isLastAssistantMessage?: boolean
 }
 
 // Viewport positioning constant - ensures enough space for scrolling user message to top
@@ -82,7 +83,7 @@ export const mountMessageParts = (
 }
 
 export const AssistantMessage = memo(
-  ({ message, isStreaming, isLastMessage = false }: AssistantMessageProps) => {
+  ({ message, isStreaming, isLastMessage = false, isLastAssistantMessage = false }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => {
       const filtered = filterMessageParts(message.parts) as GroupableUIPart[]
@@ -123,8 +124,14 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
+    const showCopyOnHover = !isLastAssistantMessage
+
     return (
-      <div data-message-id={message.id} style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}>
+      <div
+        data-message-id={message.id}
+        className={showCopyOnHover ? 'group' : undefined}
+        style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}
+      >
         {partElements.map((partElement, index) => (
           // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
           // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
@@ -133,7 +140,9 @@ export const AssistantMessage = memo(
           </div>
         ))}
         {!isStreaming && copyText && !hasWidgets && (
-          <div className="flex items-center gap-2.5 px-4 -mt-6">
+          <div
+            className={`flex items-center gap-2.5 px-4 -mt-6 ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
+          >
             <CopyMessageButton text={copyText} />
           </div>
         )}
@@ -147,7 +156,8 @@ export const AssistantMessage = memo(
       prevProps.message.parts === nextProps.message.parts &&
       prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.isStreaming === nextProps.isStreaming &&
-      prevProps.isLastMessage === nextProps.isLastMessage
+      prevProps.isLastMessage === nextProps.isLastMessage &&
+      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage
     )
   },
 )

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #0a0a0a">
   <head>
     <meta charset="utf-8" />
     <meta
@@ -17,11 +17,12 @@
       // Apply theme before first paint to prevent flash of white on dark mode.
       // Must stay in sync with the storageKey and logic in src/lib/theme-provider.tsx.
       ;(function () {
-        var theme = localStorage.getItem('ui-theme')
+        var theme = localStorage.getItem('ui_theme')
         var isDark =
           theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.add(isDark ? 'dark' : 'light')
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', isDark ? '#0a0a0a' : '#fff')
+        document.documentElement.style.backgroundColor = isDark ? '#0a0a0a' : '#fff'
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#0a0a0a' : '#fff')
       })()
     </script>
     <div id="root"></div>

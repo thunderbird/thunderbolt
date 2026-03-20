@@ -76,6 +76,10 @@ export const getWebOsPlatform = (): WebOsPlatform => {
     return 'android'
   }
   if (/Mac/.test(ua)) {
+    // iPadOS 13+ reports a desktop "Macintosh" UA — distinguish via touch support
+    if (navigator.maxTouchPoints > 0) {
+      return 'ios'
+    }
     return 'macos'
   }
   if (/Win/.test(ua)) {

@@ -1,14 +1,4 @@
-import {
-  BadgeCheck,
-  Bell,
-  ChevronsUpDown,
-  CreditCard,
-  Loader2,
-  LogOut,
-  Sparkles,
-  Terminal,
-  UserRound,
-} from 'lucide-react'
+import { ChevronsUpDown, Loader2, LogOut, Terminal, UserRound } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
@@ -230,36 +220,26 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             </div>
           </div>
 
-          <div className="h-px bg-border" />
+          {import.meta.env.DEV && (
+            <>
+              <div className="h-px bg-border" />
 
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton icon={<Sparkles className={iconSize} />} label="Upgrade to Pro" />
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton icon={<BadgeCheck className={iconSize} />} label="Account" />
-            <AccountMenuItemButton icon={<CreditCard className={iconSize} />} label="Billing" />
-            <AccountMenuItemButton icon={<Bell className={iconSize} />} label="Notifications" />
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton
-              icon={<Terminal className={iconSize} />}
-              label="Dev Settings"
-              to="/settings/dev-settings"
-              onNavigate={handleMenuNavigate}
-            />
-            <AccountMenuItemButton
-              icon={<Terminal className={iconSize} />}
-              label="Message Simulator"
-              to="/message-simulator"
-              onNavigate={handleMenuNavigate}
-            />
-          </div>
+              <div className="flex flex-col gap-1 px-2">
+                <AccountMenuItemButton
+                  icon={<Terminal className={iconSize} />}
+                  label="Dev Settings"
+                  to="/settings/dev-settings"
+                  onNavigate={handleMenuNavigate}
+                />
+                <AccountMenuItemButton
+                  icon={<Terminal className={iconSize} />}
+                  label="Message Simulator"
+                  to="/message-simulator"
+                  onNavigate={handleMenuNavigate}
+                />
+              </div>
+            </>
+          )}
 
           <div className="h-px bg-border" />
 

@@ -2,16 +2,13 @@ import { useAuth } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import type { LocationData } from '@/hooks/use-location-search'
-import { useLocalizationDropdowns } from '@/hooks/use-localization-dropdowns'
 import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { getAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { trackEvent } from '@/lib/posthog'
-import { cn } from '@/lib/utils'
 import type { CountryUnitsData } from '@/types'
-import { ChevronsUpDown } from 'lucide-react'
 import ky from 'ky'
 import { useEffect, useReducer, useRef, useState } from 'react'
 
@@ -33,10 +30,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { PageHeader } from '@/components/ui/page-header'
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { resetAppDir } from '@/lib/fs'
@@ -66,82 +63,6 @@ const initialState: PreferencesState = {
   pendingCountryUnits: null,
 }
 
-type LocalizationDropdownItem = {
-  id: string
-  label: string
-  filterValue?: string
-}
-
-type LocalizationDropdownProps = {
-  label: string
-  isModified: boolean
-  onReset: () => void
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  loading: boolean
-  displayValue: string
-  items: LocalizationDropdownItem[]
-  onSelect: (id: string) => Promise<void>
-  searchPlaceholder?: string
-  contentClassName?: string
-}
-
-const LocalizationDropdown = ({
-  label,
-  isModified,
-  onReset,
-  open,
-  onOpenChange,
-  loading,
-  displayValue,
-  items,
-  onSelect,
-  searchPlaceholder,
-  contentClassName,
-}: LocalizationDropdownProps) => (
-  <div className="flex flex-row items-center gap-4">
-    <div className="flex-1">
-      <ModificationIndicator as="label" className="text-sm font-medium" hasModifications={isModified} onReset={onReset}>
-        {label}
-      </ModificationIndicator>
-    </div>
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          disabled={loading}
-          className={cn('w-auto justify-between rounded-lg', !displayValue && 'text-muted-foreground')}
-        >
-          {loading ? 'Loading...' : displayValue || 'Loading...'}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className={cn('rounded-lg p-0 w-auto', contentClassName)} align="end">
-        <Command>
-          {searchPlaceholder && <CommandInput placeholder={searchPlaceholder} />}
-          <CommandList>
-            <CommandGroup>
-              {items.map((item) => (
-                <CommandItem
-                  key={item.id}
-                  value={item.filterValue ?? item.id}
-                  onSelect={async () => {
-                    await onSelect(item.id)
-                    onOpenChange(false)
-                  }}
-                >
-                  {item.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  </div>
-)
-
 const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
   switch (action.type) {
     case 'SET_IS_RESETTING':
@@ -168,20 +89,6 @@ export default function PreferencesSettingsPage() {
   const { openSignInModal } = useSignInModal()
 
   const { fetchCountryUnits } = useCountryUnits()
-
-  // Localization dropdown states
-  const {
-    distanceDropdownOpen,
-    temperatureDropdownOpen,
-    dateFormatDropdownOpen,
-    timeFormatDropdownOpen,
-    currencyDropdownOpen,
-    setDistanceDropdownOpen,
-    setTemperatureDropdownOpen,
-    setDateFormatDropdownOpen,
-    setTimeFormatDropdownOpen,
-    setCurrencyDropdownOpen,
-  } = useLocalizationDropdowns()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -427,6 +334,12 @@ export default function PreferencesSettingsPage() {
     trackEvent('settings_localization_reset')
   }
 
+  // Currency display value
+  const currencyDisplayValue = (() => {
+    const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
+    return c ? `${c.name} (${c.symbol})` : ''
+  })()
+
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Preferences" />
@@ -513,112 +426,171 @@ export default function PreferencesSettingsPage() {
 
           <div className="h-px bg-border -mx-6" />
 
-          <LocalizationDropdown
-            label="Distance"
-            isModified={distanceUnit.isModified}
-            onReset={() => handleResetLocalizationSetting('distance')}
-            open={distanceDropdownOpen}
-            onOpenChange={setDistanceDropdownOpen}
-            loading={unitsOptionsLoading}
-            displayValue={
-              distanceUnit.value ? distanceUnit.value.charAt(0).toUpperCase() + distanceUnit.value.slice(1) : ''
-            }
-            items={(unitsOptionsData?.units ?? []).map((u) => ({
-              id: u,
-              label: u.charAt(0).toUpperCase() + u.slice(1),
-            }))}
-            onSelect={async (v) => {
-              await distanceUnit.setValue(v)
-              trackEvent('settings_localization_update')
-            }}
-          />
+          {/* Distance */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={distanceUnit.isModified}
+                onReset={() => handleResetLocalizationSetting('distance')}
+              >
+                Distance
+              </ModificationIndicator>
+            </div>
+            <Select
+              value={distanceUnit.value}
+              onValueChange={async (v) => {
+                await distanceUnit.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+              disabled={unitsOptionsLoading}
+            >
+              <SelectTrigger className="w-auto rounded-lg">
+                <SelectValue placeholder="Loading..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(unitsOptionsData?.units ?? []).map((u) => (
+                  <SelectItem key={u} value={u}>
+                    {u.charAt(0).toUpperCase() + u.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <LocalizationDropdown
-            label="Temperature"
-            isModified={temperatureUnit.isModified}
-            onReset={() => handleResetLocalizationSetting('temperature')}
-            open={temperatureDropdownOpen}
-            onOpenChange={setTemperatureDropdownOpen}
-            loading={unitsOptionsLoading}
-            displayValue={
-              unitsOptionsData?.temperature?.find((t) => t.symbol === temperatureUnit.value)?.name ||
-              temperatureUnit.value ||
-              ''
-            }
-            items={(unitsOptionsData?.temperature ?? []).map((t) => ({
-              id: t.symbol,
-              label: t.name,
-            }))}
-            onSelect={async (v) => {
-              await temperatureUnit.setValue(v)
-              trackEvent('settings_localization_update')
-            }}
-          />
+          {/* Temperature */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={temperatureUnit.isModified}
+                onReset={() => handleResetLocalizationSetting('temperature')}
+              >
+                Temperature
+              </ModificationIndicator>
+            </div>
+            <Select
+              value={temperatureUnit.value}
+              onValueChange={async (v) => {
+                await temperatureUnit.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+              disabled={unitsOptionsLoading}
+            >
+              <SelectTrigger className="w-auto rounded-lg">
+                <SelectValue placeholder="Loading..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(unitsOptionsData?.temperature ?? []).map((t) => (
+                  <SelectItem key={t.symbol} value={t.symbol}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <LocalizationDropdown
-            label="Date Format"
-            isModified={dateFormat.isModified}
-            onReset={() => handleResetLocalizationSetting('date')}
-            open={dateFormatDropdownOpen}
-            onOpenChange={setDateFormatDropdownOpen}
-            loading={unitsOptionsLoading}
-            displayValue={
-              dateFormat.value
-                ? unitsOptionsData?.dateFormats?.find((f) => f.format === dateFormat.value)?.example || dateFormat.value
-                : ''
-            }
-            items={(unitsOptionsData?.dateFormats ?? []).map((f) => ({
-              id: f.format,
-              label: f.example,
-              filterValue: f.example,
-            }))}
-            onSelect={async (v) => {
-              await dateFormat.setValue(v)
-              trackEvent('settings_localization_update')
-            }}
-          />
+          {/* Date Format */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={dateFormat.isModified}
+                onReset={() => handleResetLocalizationSetting('date')}
+              >
+                Date Format
+              </ModificationIndicator>
+            </div>
+            <Select
+              value={dateFormat.value}
+              onValueChange={async (v) => {
+                await dateFormat.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+              disabled={unitsOptionsLoading}
+            >
+              <SelectTrigger className="w-auto rounded-lg">
+                <SelectValue placeholder="Loading..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(unitsOptionsData?.dateFormats ?? []).map((f) => (
+                  <SelectItem key={f.format} value={f.format}>
+                    {f.example}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <LocalizationDropdown
-            label="Time Format"
-            isModified={timeFormat.isModified}
-            onReset={() => handleResetLocalizationSetting('time')}
-            open={timeFormatDropdownOpen}
-            onOpenChange={setTimeFormatDropdownOpen}
-            loading={unitsOptionsLoading}
-            displayValue={timeFormat.value || ''}
-            items={(unitsOptionsData?.timeFormat ?? []).map((f) => ({
-              id: f,
-              label: f,
-            }))}
-            onSelect={async (v) => {
-              await timeFormat.setValue(v)
-              trackEvent('settings_localization_update')
-            }}
-          />
+          {/* Time Format */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={timeFormat.isModified}
+                onReset={() => handleResetLocalizationSetting('time')}
+              >
+                Time Format
+              </ModificationIndicator>
+            </div>
+            <Select
+              value={timeFormat.value}
+              onValueChange={async (v) => {
+                await timeFormat.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+              disabled={unitsOptionsLoading}
+            >
+              <SelectTrigger className="w-auto rounded-lg">
+                <SelectValue placeholder="Loading..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(unitsOptionsData?.timeFormat ?? []).map((f) => (
+                  <SelectItem key={f} value={f}>
+                    {f}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <LocalizationDropdown
-            label="Currency"
-            isModified={currency.isModified}
-            onReset={() => handleResetLocalizationSetting('currency')}
-            open={currencyDropdownOpen}
-            onOpenChange={setCurrencyDropdownOpen}
-            loading={unitsOptionsLoading}
-            displayValue={(() => {
-              const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
-              return c ? `${c.name} (${c.symbol})` : ''
-            })()}
-            items={(unitsOptionsData?.currencies ?? []).map((c) => ({
-              id: c.code,
-              label: `${c.name} (${c.symbol})`,
-              filterValue: `${c.code} ${c.symbol} ${c.name}`,
-            }))}
-            onSelect={async (v) => {
-              await currency.setValue(v)
-              trackEvent('settings_localization_update')
-            }}
-            searchPlaceholder="Search currency by code, symbol, or name..."
-            contentClassName="w-[300px]"
-          />
+          {/* Currency - searchable, uses Combobox */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={currency.isModified}
+                onReset={() => handleResetLocalizationSetting('currency')}
+              >
+                Currency
+              </ModificationIndicator>
+            </div>
+            <Combobox
+              items={(unitsOptionsData?.currencies ?? []).map((c) => ({
+                id: c.code,
+                label: `${c.name} (${c.symbol})`,
+                filterValue: `${c.code} ${c.symbol} ${c.name}`,
+              }))}
+              value={currency.value}
+              onValueChange={async (v) => {
+                await currency.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+              displayValue={currencyDisplayValue || undefined}
+              placeholder="Loading..."
+              searchPlaceholder="Search currencies..."
+              loading={unitsOptionsLoading}
+              className="w-auto"
+              contentClassName="w-[300px]"
+              align="end"
+              disabled={unitsOptionsLoading}
+            />
+          </div>
         </div>
       </SectionCard>
 

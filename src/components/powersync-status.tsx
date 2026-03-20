@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts/auth-context'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSidebar } from '@/components/ui/sidebar'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { cn } from '@/lib/utils'
 import { Cloud, CloudOff, Loader2 } from 'lucide-react'
@@ -24,6 +25,7 @@ export const PowerSyncStatus = () => {
   const { openSignInModal } = useSignInModal()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const { isMobile } = useIsMobile()
+  const { setOpenMobile } = useSidebar()
 
   const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const { syncEnabled, syncEnableWarningOpen, setSyncEnableWarningOpen, handleSyncToggle, handleConfirmEnableSync } =
@@ -97,15 +99,27 @@ export const PowerSyncStatus = () => {
           <TooltipContent side="bottom">{getStatusText()}</TooltipContent>
         </Tooltip>
 
-        {isMobile && popoverOpen && <MobileBlurBackdrop onClick={() => setPopoverOpen(false)} />}
+        {isMobile && popoverOpen && (
+          <MobileBlurBackdrop
+            onClick={() => {
+              setPopoverOpen(false)
+              setOpenMobile(false)
+            }}
+          />
+        )}
 
         <PopoverContent
           align="end"
           side="bottom"
           sideOffset={5}
-          collisionPadding={isMobile ? 16 : 0}
+          collisionPadding={0}
           className={cn('rounded-2xl shadow-lg duration-100', isMobile && popoverOpen && 'z-50')}
-          style={{ width: isMobile ? 'calc(80vw - 2rem)' : undefined }}
+          style={{ width: isMobile ? 'calc(80vw - 1rem)' : undefined }}
+          onPointerDownOutside={(e) => {
+            if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * 0.8) {
+              setOpenMobile(false)
+            }
+          }}
         >
           <div className="flex flex-col gap-3">
             <div>

@@ -1,8 +1,9 @@
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useLongPress } from '@/hooks/use-long-press'
 import { extractTextFromParts } from '@/lib/message-utils'
 import type { UIMessage } from 'ai'
 import { Copy } from 'lucide-react'
-import { type MouseEvent, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { MessageBubbles } from './message-bubbles'
 
 type MobileUserMessageProps = {
@@ -14,10 +15,7 @@ export const MobileUserMessage = ({ message }: MobileUserMessageProps) => {
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
   const { copy } = useCopyToClipboard()
 
-  const handleContextMenu = useCallback((e: MouseEvent) => {
-    e.preventDefault()
-    setIsMenuOpen(true)
-  }, [])
+  const longPressHandlers = useLongPress(() => setIsMenuOpen(true))
 
   const handleClose = useCallback(() => setIsMenuOpen(false), [])
   const handleCopy = useCallback(async () => {
@@ -27,7 +25,7 @@ export const MobileUserMessage = ({ message }: MobileUserMessageProps) => {
 
   return (
     <div data-message-id={message.id}>
-      <div onContextMenu={handleContextMenu} className={isMenuOpen ? 'relative z-50' : undefined}>
+      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50 select-none' : 'select-none'}>
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
           <MessageBubbles message={message} />
         </div>

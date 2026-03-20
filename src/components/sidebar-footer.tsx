@@ -189,16 +189,32 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
       </ShadcnSidebarFooter>
 
-      {isMobile && menuOpen && <MobileBlurBackdrop onClick={() => setMenuOpen(false)} />}
+      {isMobile && menuOpen && (
+        <MobileBlurBackdrop
+          onClick={() => {
+            setMenuOpen(false)
+            setOpenMobile(false)
+          }}
+        />
+      )}
 
       <PopoverContent
         side="top"
-        sideOffset={5}
-        align="start"
-        collisionPadding={4}
+        sideOffset={isMobile ? 8 : 5}
+        align={isMobile ? 'center' : 'start'}
+        collisionPadding={isMobile ? 0 : 4}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
-          width: isDesktopCollapsed ? '16rem' : 'calc(var(--radix-popover-trigger-width) - 8px)',
+          width: isMobile
+            ? 'calc(80vw - 1rem)'
+            : isDesktopCollapsed
+              ? '16rem'
+              : 'calc(var(--radix-popover-trigger-width) - 8px)',
+        }}
+        onPointerDownOutside={(e) => {
+          if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * 0.8) {
+            setOpenMobile(false)
+          }
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

@@ -9,8 +9,7 @@ import {
   Terminal,
   UserRound,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { type ReactNode, useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
 import { NavLink } from '@/components/ui/nav-link'
@@ -24,7 +23,6 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { cn } from '@/lib/utils'
 
 type SidebarFooterProps = {
@@ -78,8 +76,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
 
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
@@ -97,17 +93,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = user ? (preferredName.value as string) || user.name || null : null
   const displayEmail = user?.email
-
-  const showBlur = isMobile && menuOpen
-
-  // Capture trigger position when blur activates so we can render a clone above it
-  useEffect(() => {
-    if (showBlur && triggerRef.current) {
-      setTriggerRect(triggerRef.current.getBoundingClientRect())
-    } else {
-      setTriggerRect(null)
-    }
-  }, [showBlur])
 
   const handleMenuAction = (action: () => void) => {
     setMenuOpen(false)
@@ -134,7 +119,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   )
 
   return (
-    <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
+    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
       <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -190,7 +175,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               </PopoverTrigger>
             ) : (
               <PopoverTrigger asChild>
-                <button ref={triggerRef} type="button" className={triggerButtonClassName(menuOpen)}>
+                <button type="button" className={triggerButtonClassName(menuOpen)}>
                   {triggerContent}
                 </button>
               </PopoverTrigger>
@@ -200,42 +185,14 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
       </ShadcnSidebarFooter>
 
-      {/* Mobile: full-screen blur portaled above sidebar (z-50) */}
-      {showBlur &&
-        createPortal(<MobileBlurBackdrop onClick={() => setMenuOpen(false)} className="z-[60]" />, document.body)}
-
-      {/* Mobile: clone of trigger portaled above blur so it appears unblurred */}
-      {showBlur &&
-        triggerRect &&
-        createPortal(
-          <button
-            type="button"
-            className={cn(triggerButtonClassName(true), 'fixed z-[65] bg-secondary')}
-            style={{
-              top: triggerRect.top,
-              left: triggerRect.left,
-              width: triggerRect.width,
-              height: triggerRect.height,
-            }}
-            onClick={() => setMenuOpen(false)}
-          >
-            {triggerContent}
-          </button>,
-          document.body,
-        )}
-
       <PopoverContent
         side="top"
         sideOffset={5}
-        align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? 16 : 4}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
+        align="start"
+        collisionPadding={4}
+        className="p-0 rounded-2xl shadow-lg overflow-hidden"
         style={{
-          width: isMobile
-            ? 'calc(100vw - 2rem)'
-            : isDesktopCollapsed
-              ? '16rem'
-              : 'calc(var(--radix-popover-trigger-width) - 8px)',
+          width: isDesktopCollapsed ? '16rem' : 'calc(var(--radix-popover-trigger-width) - 8px)',
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

@@ -350,9 +350,10 @@ export default function ModelsPage() {
       dispatch({ type: 'OPEN_DIALOG' })
       fetchAvailableModels('thunderbolt')
     } else {
+      form.reset()
+      form.clearErrors()
       dispatch({ type: 'CLOSE_DIALOG' })
     }
-    // The useEffect on isAddDialogOpen handles form reset for both open/close
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -935,7 +936,7 @@ export default function ModelsPage() {
                 )}
 
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+                  <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={addModelMutation.isPending}>

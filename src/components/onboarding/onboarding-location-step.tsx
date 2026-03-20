@@ -61,7 +61,6 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
     form.trigger()
-    onFormDirtyChange?.(true)
 
     try {
       await actions.submitLocation({
@@ -88,9 +87,10 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       )
       actions.setLocationValue(value.locationName || '')
       actions.setLocationValid(hasValidLocation)
+      onFormDirtyChange?.(form.formState.isDirty)
     })
     return () => subscription.unsubscribe()
-  }, [form, actions, isInitialized])
+  }, [form, actions, isInitialized, onFormDirtyChange])
 
   useEffect(() => {
     form.reset(form.getValues())

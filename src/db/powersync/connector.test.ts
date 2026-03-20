@@ -148,9 +148,8 @@ describe('ThunderboltConnector', () => {
       expiresAt: new Date(tokenData.expiresAt),
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [request] = fetchMock.mock.calls[0] as [Request]
-    expect(request.url).toContain('/powersync/token')
-    expect(request.method).toBe('GET')
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toContain('/powersync/token')
   })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {

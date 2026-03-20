@@ -4,19 +4,11 @@ import { useSettings } from './use-settings'
 import {
   triggerImpact,
   triggerNotification,
+  triggerSelection,
   type ImpactFeedbackStyle,
   type NotificationFeedbackType,
 } from '@/lib/haptics'
 import { isMobile, isTauri } from '@/lib/platform'
-
-/** Shift each Tauri impact style up one notch for stronger native feedback */
-const tauriImpactBoost: Record<ImpactFeedbackStyle, ImpactFeedbackStyle> = {
-  soft: 'light',
-  light: 'medium',
-  medium: 'heavy',
-  heavy: 'rigid',
-  rigid: 'rigid',
-}
 
 type HapticsContextValue = {
   triggerSelection: () => void
@@ -47,8 +39,7 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
       return
     }
     if (isTauri() && isMobile()) {
-      // Use impact('light') instead of selectionFeedback for stronger native haptics
-      void triggerImpact('light')
+      void triggerSelection()
     } else {
       void trigger('selection')
     }
@@ -60,7 +51,7 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
         return
       }
       if (isTauri() && isMobile()) {
-        void triggerImpact(tauriImpactBoost[style])
+        void triggerImpact(style)
       } else {
         void trigger(style)
       }

@@ -724,6 +724,48 @@ export default function PreferencesSettingsPage() {
               </div>
             </>
           )}
+
+          {isAuthenticated && (
+            <>
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Permanently delete your account and all data on our servers and this device.
+                </p>
+                {deleteAccountError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {deleteAccountError}
+                  </p>
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" disabled={isDeletingAccount}>
+                      {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete your account and all of your data on our servers and on this
+                        device, including settings, chat history, and cached information. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAccount}
+                        className="bg-destructive text-white hover:bg-destructive/90"
+                      >
+                        Delete account
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </>
+          )}
         </div>
       </SectionCard>
 
@@ -732,48 +774,6 @@ export default function PreferencesSettingsPage() {
         onOpenChange={setSyncEnableWarningOpen}
         onConfirm={handleConfirmEnableSync}
       />
-
-      <div className="h-6" />
-
-      {isAuthenticated && (
-        <SectionCard title="Account">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              Permanently delete your account and all data on our servers and this device. This action cannot be undone.
-            </p>
-            {deleteAccountError && (
-              <p className="text-sm text-destructive" role="alert">
-                {deleteAccountError}
-              </p>
-            )}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isDeletingAccount}>
-                  {isDeletingAccount ? 'Deleting...' : 'Delete my account'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete your account?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete your account and all of your data on our servers and on this device,
-                    including settings, chat history, and cached information. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDeleteAccount}
-                    className="bg-destructive text-white hover:bg-destructive/90"
-                  >
-                    Delete account
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </SectionCard>
-      )}
 
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 

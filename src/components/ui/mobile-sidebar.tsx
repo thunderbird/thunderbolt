@@ -39,12 +39,12 @@ export const MobileSidebar = ({
     side === 'left' ? [0, 1] : [1, 0],
   )
 
-  // Trigger haptic feedback on open/close state changes
+  // Trigger haptic feedback when sidebar opens
   useEffect(() => {
-    if (open !== prevOpenRef.current) {
+    if (open && !prevOpenRef.current) {
       triggerImpact('light')
-      prevOpenRef.current = open
     }
+    prevOpenRef.current = open
   }, [open, triggerImpact])
 
   // Handle external open/close requests
@@ -93,6 +93,7 @@ export const MobileSidebar = ({
       return
     }
 
+    triggerImpact('light')
     const width = getSidebarWidth()
     setIsAnimating(true)
     await animate(x, side === 'left' ? -width : width, {
@@ -112,7 +113,6 @@ export const MobileSidebar = ({
       side === 'left' ? info.offset.x < -50 || info.velocity.x < -500 : info.offset.x > 50 || info.velocity.x > 500
 
     if (shouldClose) {
-      triggerImpact('light')
       await handleClose()
     } else {
       // Snap back to position with animation

@@ -1,6 +1,5 @@
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
-import ky from 'ky'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 
 /** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
@@ -81,9 +80,8 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
-      const response = await ky.get(`${this.backendUrl}/powersync/token`, {
+      const response = await fetch(`${this.backendUrl}/powersync/token`, {
         headers: buildHeaders(),
-        throwHttpErrors: false,
       })
 
       if (!response.ok) {
@@ -136,10 +134,10 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
-      const response = await ky.put(`${this.backendUrl}/powersync/upload`, {
-        headers: buildHeaders(),
-        json: { operations },
-        throwHttpErrors: false,
+      const response = await fetch(`${this.backendUrl}/powersync/upload`, {
+        method: 'PUT',
+        headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operations }),
       })
 
       if (!response.ok) {

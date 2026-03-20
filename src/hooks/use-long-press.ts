@@ -46,9 +46,13 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
 
   const onTouchEnd = useCallback(() => clear(), [clear])
 
-  const onContextMenu = useCallback((e: MouseEvent) => {
-    e.preventDefault()
-  }, [])
+  const onContextMenu = useCallback(
+    (e: MouseEvent) => {
+      e.preventDefault()
+      onLongPress()
+    },
+    [onLongPress],
+  )
 
   return { onTouchStart, onTouchMove, onTouchEnd, onContextMenu }
 }

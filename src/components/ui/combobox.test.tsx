@@ -96,7 +96,7 @@ describe('Combobox', () => {
         />,
       )
       const input = screen.getByPlaceholderText('Search...')
-      fireEvent.change(input, { target: { value: 'test' } })
+      fireEvent.input(input, { target: { value: 'test' } })
       expect(handleSearchChange).toHaveBeenCalledWith('test')
     })
 

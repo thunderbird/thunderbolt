@@ -29,7 +29,9 @@ export const useLocalStorage = (
     // not the next one (keyRef.current will already point to the new key by cleanup time)
     const currentKey = key
     keyRef.current = key
-    if (!disabled) {
+    if (disabled) {
+      setValueState(defaultValue)
+    } else {
       setValueState(localStorage.getItem(key) ?? defaultValue)
     }
 

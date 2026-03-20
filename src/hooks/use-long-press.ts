@@ -8,6 +8,7 @@ const longPressDuration = 500
  */
 export const useLongPress = (onLongPress: () => void, duration = longPressDuration) => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const firedRef = useRef(false)
   const startPos = useRef<{ x: number; y: number } | null>(null)
 
   const clear = useCallback(() => {
@@ -19,10 +20,12 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
 
   const onTouchStart = useCallback(
     (e: TouchEvent) => {
+      firedRef.current = false
       const touch = e.touches[0]
       startPos.current = { x: touch.clientX, y: touch.clientY }
       timerRef.current = setTimeout(() => {
         timerRef.current = null
+        firedRef.current = true
         onLongPress()
       }, duration)
     },
@@ -49,6 +52,10 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
       e.preventDefault()
+      if (firedRef.current) {
+        return
+      }
+      firedRef.current = true
       onLongPress()
     },
     [onLongPress],

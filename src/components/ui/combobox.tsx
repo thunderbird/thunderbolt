@@ -86,7 +86,7 @@ export const Combobox = ({
 
   const handleSelect = (id: string) => {
     onValueChange(id)
-    setOpen(false)
+    handleOpenChange(false)
   }
 
   const hasListContent = items.length > 0 || (isAsync ? !!emptyMessage : !loading && !!emptyMessage)
@@ -137,7 +137,7 @@ export const Combobox = ({
             </div>
             {hasListContent && (
               <CommandList className="max-h-[min(300px,var(--radix-popover-content-available-height,300px))] overscroll-contain p-1">
-                {(isAsync || !loading) && emptyMessage && <CommandEmpty>{emptyMessage}</CommandEmpty>}
+                {!loading && emptyMessage && <CommandEmpty>{emptyMessage}</CommandEmpty>}
                 {items.map((item) => (
                   <CommandItem
                     key={item.id}

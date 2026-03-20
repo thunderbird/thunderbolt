@@ -37,7 +37,14 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
   }, [isStreaming, chatError, triggerNotification])
 
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages])
-  const lastAssistantMessage = useMemo(() => messages.findLast((m) => m.role === 'assistant'), [messages])
+  const lastAssistantMessage = useMemo(
+    () =>
+      messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === 'assistant' && (m.parts?.length ?? 0) > 0),
+    [messages],
+  )
 
   const hasError = useMemo(() => {
     if (chatError) {

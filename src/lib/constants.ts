@@ -16,3 +16,6 @@ export const edgeSpacing = {
   mobile: 12,
   desktop: 16,
 } as const
+
+/** Mobile sidebar width as a fraction of viewport width (0–1) */
+export const mobileSidebarWidthRatio = 0.8

@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronsUpDown,
   CreditCard,
+  Download,
   Loader2,
   LogOut,
   Sparkles,
@@ -24,8 +25,14 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
+import { downloadLinks } from '@/lib/download-links'
+import { getWebOsPlatform, isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { cn } from '@/lib/utils'
+
+const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
+
+const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
 
 type SidebarFooterProps = {
   className?: string
@@ -92,7 +99,8 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   }
 
   const { data: session, isPending } = authClient.useSession()
-  const user = session?.user
+  // TODO: TEMP MOCK - remove after testing sidebar-footer
+  const user = session?.user ?? { id: 'test', name: 'Test User', email: 'test@example.com' }
 
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = user ? (preferredName.value as string) || user.name || null : null
@@ -254,6 +262,18 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
           <div className="flex flex-col gap-1 px-2">
             <AccountMenuItemButton icon={<Sparkles className={iconSize} />} label="Upgrade to Pro" />
+          </div>
+
+          <div className="h-px bg-border" />
+
+          <div className="flex flex-col gap-1 px-2">
+            <AccountMenuItemButton
+              icon={<Download className={iconSize} />}
+              label="Download App"
+              onClick={() =>
+                openLink(downloadLinks[getWebOsPlatform() as 'macos' | 'windows' | 'linux'] ?? downloadLinks.macos)
+              }
+            />
           </div>
 
           <div className="h-px bg-border" />

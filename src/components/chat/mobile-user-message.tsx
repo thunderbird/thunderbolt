@@ -36,7 +36,7 @@ export const MobileUserMessage = ({ message }: MobileUserMessageProps) => {
             <div className="rounded-xl bg-card shadow-lg border overflow-hidden">
               <button
                 onClick={handleCopy}
-                className="flex items-center justify-between gap-8 px-4 py-3 text-sm w-full active:bg-accent"
+                className="flex items-center gap-3 px-3 py-2 text-sm w-full active:bg-accent"
               >
                 <Copy className="size-4 text-muted-foreground" />
                 Copy

@@ -3,6 +3,7 @@ import {
   Fragment,
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useContext,
   type ReactNode,
@@ -185,6 +186,11 @@ export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactN
     },
     [setDialogOpen, setPreviewHidden],
   )
+
+  // Reset preview visibility when the component unmounts while dialog is open
+  useEffect(() => {
+    return () => setPreviewHidden?.(false)
+  }, [setPreviewHidden])
 
   const handleOpenInApp = useCallback(() => {
     if (showPreview) {

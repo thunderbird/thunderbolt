@@ -2,7 +2,7 @@ import type React from 'react'
 import { Resend } from 'resend'
 
 /** Default sender address for all outgoing emails */
-const emailFrom = 'hello@auth.thunderbolt.io'
+export const emailFrom = 'hello@auth.thunderbolt.io'
 
 /**
  * Shared Resend client instance for sending emails

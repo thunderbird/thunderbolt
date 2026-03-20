@@ -11,6 +11,7 @@ import {
   Text,
   pixelBasedPreset,
 } from '@react-email/components'
+import { emailFrom } from '@/lib/resend'
 
 const baseURL = 'https://thunderbolt.io'
 
@@ -53,7 +54,7 @@ export const EmailLayout = ({ preview, children }: EmailLayoutProps) => (
           <Section className="text-center mt-6">
             <Text className="text-xs text-tb-text m-0">
               Questions?{' '}
-              <Link href="mailto:hello@auth.thunderbolt.io" className="text-tb-link underline">
+              <Link href={`mailto:${emailFrom}`} className="text-tb-link underline">
                 You can reply to this email
               </Link>
             </Text>

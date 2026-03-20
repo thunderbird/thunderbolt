@@ -103,7 +103,7 @@ describe('SourceCard', () => {
 
       // Dialog should appear with the URL
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-      expect(screen.getByText('Open external link')).toBeInTheDocument()
+      expect(screen.getByText('Open External Link')).toBeInTheDocument()
       expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
     })
 
@@ -117,7 +117,7 @@ describe('SourceCard', () => {
       const link = screen.getByRole('listitem')
       fireEvent.click(link)
 
-      const openButton = screen.getByRole('button', { name: 'Open link' })
+      const openButton = screen.getByRole('button', { name: 'Open Link' })
       fireEvent.click(openButton)
 
       expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com/article', '_blank', 'noopener,noreferrer')

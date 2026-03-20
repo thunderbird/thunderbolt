@@ -3,7 +3,7 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,6 @@ import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToD
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
-import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
@@ -32,7 +31,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import ky from 'ky'
-import { Check, ChevronsUpDown, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
+import { Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -53,12 +52,9 @@ type ModelState = {
   isTestingConnection: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
-  modelSelectOpen: boolean
-  availableModels: AvailableModel[]
   isLoadingModels: boolean
   selectedModelId: string
   allAvailableModels: AvailableModel[]
-  modelSearchQuery: string
   modelLoadError: string | null
 }
 
@@ -71,9 +67,6 @@ type ModelAction =
   | { type: 'FETCH_MODELS_START' }
   | { type: 'FETCH_MODELS_SUCCESS'; models: AvailableModel[] }
   | { type: 'FETCH_MODELS_FAILURE'; error: string }
-  | { type: 'OPEN_MODEL_SELECT' }
-  | { type: 'CLOSE_MODEL_SELECT' }
-  | { type: 'UPDATE_MODEL_SEARCH_QUERY'; query: string }
   | { type: 'SELECT_MODEL'; modelId: string }
   | { type: 'PROVIDER_CHANGED' }
   | { type: 'OPEN_DELETE_CONFIRM'; modelId: string }
@@ -85,12 +78,9 @@ const initialState: ModelState = {
   isTestingConnection: false,
   connectionStatus: 'idle',
   connectionError: null,
-  modelSelectOpen: false,
-  availableModels: [],
   isLoadingModels: false,
   selectedModelId: '',
   allAvailableModels: [],
-  modelSearchQuery: '',
   modelLoadError: null,
 }
 
@@ -114,14 +104,12 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
         ...state,
         isLoadingModels: true,
         modelLoadError: null,
-        availableModels: [],
         allAvailableModels: [],
       }
     case 'FETCH_MODELS_SUCCESS':
       return {
         ...state,
         isLoadingModels: false,
-        availableModels: action.models,
         allAvailableModels: action.models,
       }
     case 'FETCH_MODELS_FAILURE':
@@ -129,31 +117,19 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
         ...state,
         isLoadingModels: false,
         modelLoadError: action.error,
-        availableModels: [],
         allAvailableModels: [],
       }
 
-    case 'OPEN_MODEL_SELECT':
-      return { ...state, modelSelectOpen: true }
-    case 'CLOSE_MODEL_SELECT':
-      return { ...state, modelSelectOpen: false, modelSearchQuery: '' }
-
-    case 'UPDATE_MODEL_SEARCH_QUERY':
-      return { ...state, modelSearchQuery: action.query }
-
     case 'SELECT_MODEL':
-      return { ...state, selectedModelId: action.modelId, modelSelectOpen: false, modelSearchQuery: '' }
+      return { ...state, selectedModelId: action.modelId }
 
     case 'PROVIDER_CHANGED':
       return {
         ...state,
         selectedModelId: '',
-        availableModels: [],
         allAvailableModels: [],
-        modelSearchQuery: '',
         modelLoadError: null,
         isLoadingModels: false,
-        modelSelectOpen: false,
         connectionStatus: 'idle',
         connectionError: null,
         isTestingConnection: false,
@@ -216,16 +192,13 @@ export default function ModelsPage() {
     isTestingConnection,
     connectionStatus,
     connectionError,
-    modelSelectOpen,
-    availableModels,
     isLoadingModels,
     selectedModelId,
     allAvailableModels,
-    modelSearchQuery,
     modelLoadError,
   } = state
 
-  // Ensure form state resets whenever the add-model dialog fully closes
+  // Ensure form state (including validation errors) resets whenever the dialog closes
   useEffect(() => {
     if (!isAddDialogOpen) {
       form.reset({
@@ -267,7 +240,6 @@ export default function ModelsPage() {
     },
     onSuccess: () => {
       dispatch({ type: 'CLOSE_DIALOG' })
-      form.reset()
     },
   })
 
@@ -311,7 +283,7 @@ export default function ModelsPage() {
 
   // Load Thunderbolt models when dialog opens
   useEffect(() => {
-    if (isAddDialogOpen && form.getValues('provider') === 'thunderbolt' && availableModels.length === 0) {
+    if (isAddDialogOpen && form.getValues('provider') === 'thunderbolt' && allAvailableModels.length === 0) {
       fetchAvailableModels('thunderbolt')
     }
   }, [isAddDialogOpen])
@@ -398,40 +370,12 @@ export default function ModelsPage() {
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
-      // Reset form before opening to ensure clean state
-      form.reset({
-        provider: 'thunderbolt',
-        name: '',
-        model: '',
-        customModel: '',
-        url: '',
-        apiKey: '',
-        toolUsage: true,
-      })
-      form.clearErrors()
       dispatch({ type: 'OPEN_DIALOG' })
-      if (form.getValues('provider') === 'thunderbolt') {
-        fetchAvailableModels('thunderbolt')
-      }
+      fetchAvailableModels('thunderbolt')
     } else {
       dispatch({ type: 'CLOSE_DIALOG' })
-      // Reset form with explicit default values
-      form.reset({
-        provider: 'thunderbolt',
-        name: '',
-        model: '',
-        customModel: '',
-        url: '',
-        apiKey: '',
-        toolUsage: true,
-      })
-      form.clearErrors()
-      // Additional cleanup to ensure form state is fully cleared
-      setTimeout(() => {
-        form.clearErrors()
-        form.trigger() // Re-trigger validation to clear any lingering errors
-      }, 0)
     }
+    // The useEffect on isAddDialogOpen handles form reset for both open/close
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -640,8 +584,7 @@ export default function ModelsPage() {
       form.setValue('model', modelId)
       form.setValue('customModel', '')
 
-      // Find the model in all available models (not just the filtered ones)
-      const model = allAvailableModels.find((m) => m.id === modelId) || availableModels.find((m) => m.id === modelId)
+      const model = allAvailableModels.find((m) => m.id === modelId)
 
       if (model?.name) {
         form.setValue('name', model.name)
@@ -655,8 +598,6 @@ export default function ModelsPage() {
       const supportsTools = (model as any)?.supports_tools === true
       form.setValue('toolUsage', supportsTools, { shouldDirty: false })
     }
-
-    dispatch({ type: 'CLOSE_MODEL_SELECT' })
   }
 
   // Watch for provider changes with proper cleanup
@@ -734,27 +675,24 @@ export default function ModelsPage() {
     deleteModelMutation.mutate(modelId)
   }
 
-  // Filter models based on search query
-  const getFilteredModels = () => {
-    if (!modelSearchQuery.trim()) {
-      return availableModels // Show top 10 by default
+  const comboboxItems = useMemo((): ComboboxItem[] => {
+    const items: ComboboxItem[] = allAvailableModels.map((model) => ({
+      id: model.id,
+      label: model.name || model.id,
+      description: model.name ? model.id : undefined,
+    }))
+    if (watchedProvider !== 'thunderbolt') {
+      items.push({ id: 'custom', label: 'Custom' })
     }
-
-    // Search through all available models when user types
-    return allAvailableModels.filter(
-      (model) =>
-        model.id.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
-        (model.name && model.name.toLowerCase().includes(modelSearchQuery.toLowerCase())),
-    )
-  }
+    return items
+  }, [allAvailableModels, watchedProvider])
 
   // Calculate whether the currently selected model supports tools
   const supportsToolsSelected = (() => {
     if (!selectedModelId || selectedModelId === 'custom') {
       return true
     }
-    const model =
-      allAvailableModels.find((m) => m.id === selectedModelId) || availableModels.find((m) => m.id === selectedModelId)
+    const model = allAvailableModels.find((m) => m.id === selectedModelId)
     return (model as any)?.supports_tools === true
   })()
 
@@ -769,7 +707,7 @@ export default function ModelsPage() {
   }, [watchedApiKey, watchedModel, watchedProvider])
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
@@ -780,10 +718,10 @@ export default function ModelsPage() {
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
-              <ResponsiveModalDescription>Configure a new AI model for your assistant.</ResponsiveModalDescription>
+              <ResponsiveModalDescription className="sr-only">Add a new AI model</ResponsiveModalDescription>
             </ResponsiveModalHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="grid gap-4 py-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="grid gap-4 pt-4 pb-2">
                 <FormField
                   control={form.control}
                   name="provider"
@@ -792,7 +730,7 @@ export default function ModelsPage() {
                       <FormLabel>Provider</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full rounded-lg">
                             <SelectValue placeholder="Select provider" />
                           </SelectTrigger>
                           <SelectContent>
@@ -819,7 +757,7 @@ export default function ModelsPage() {
                         <FormLabel>URL</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10" />
+                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10 rounded-lg" />
                             {isLoadingModels && (
                               <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                             )}
@@ -843,7 +781,7 @@ export default function ModelsPage() {
                       <FormItem>
                         <FormLabel>API Key{form.watch('provider') === 'custom' ? ' (Optional)' : ''}</FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} placeholder="sk-..." />
+                          <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
                         </FormControl>
                         {modelLoadError && form.watch('provider') !== 'custom' && (
                           <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
@@ -882,102 +820,18 @@ export default function ModelsPage() {
                       render={() => (
                         <FormItem className="flex flex-col">
                           <FormLabel>Model</FormLabel>
-                          <Popover
-                            open={modelSelectOpen}
-                            onOpenChange={(open) => {
-                              if (open) {
-                                dispatch({ type: 'OPEN_MODEL_SELECT' })
-                              } else {
-                                dispatch({ type: 'CLOSE_MODEL_SELECT' })
-                              }
-                            }}
-                          >
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  aria-expanded={modelSelectOpen}
-                                  className={cn('w-full justify-between', !selectedModelId && 'text-muted-foreground')}
-                                >
-                                  {selectedModelId === 'custom'
-                                    ? 'Custom Model'
-                                    : selectedModelId
-                                      ? availableModels.find((m) => m.id === selectedModelId)?.name || selectedModelId
-                                      : 'Select model...'}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="p-0 w-full" side="bottom" align="start" sideOffset={4}>
-                              <Command>
-                                <CommandInput
-                                  placeholder="Search models..."
-                                  value={modelSearchQuery}
-                                  onValueChange={(value) =>
-                                    dispatch({ type: 'UPDATE_MODEL_SEARCH_QUERY', query: value })
-                                  }
-                                />
-                                <div className="h-[200px] overflow-y-auto">
-                                  <CommandList className="max-h-none">
-                                    {isLoadingModels && (
-                                      <div className="py-6 text-center text-sm">Loading models...</div>
-                                    )}
-                                    {!isLoadingModels &&
-                                      (() => {
-                                        const filteredModels = getFilteredModels()
-
-                                        if (filteredModels.length === 0) {
-                                          return (
-                                            <CommandEmpty>
-                                              {modelSearchQuery
-                                                ? 'No models found matching your search.'
-                                                : 'No models found.'}
-                                            </CommandEmpty>
-                                          )
-                                        }
-
-                                        return (
-                                          <CommandGroup>
-                                            {filteredModels.map((model) => (
-                                              <CommandItem
-                                                key={model.id}
-                                                value={model.id}
-                                                onSelect={() => handleSelectModel(model.id)}
-                                              >
-                                                <Check
-                                                  className={cn(
-                                                    'mr-2 h-4 w-4',
-                                                    selectedModelId === model.id ? 'opacity-100' : 'opacity-0',
-                                                  )}
-                                                />
-                                                <div className="flex flex-col">
-                                                  <span>{model.name || model.id}</span>
-                                                  {model.name && (
-                                                    <span className="text-xs text-muted-foreground">{model.id}</span>
-                                                  )}
-                                                </div>
-                                              </CommandItem>
-                                            ))}
-                                            {form.watch('provider') !== 'thunderbolt' && (
-                                              <CommandItem value="custom" onSelect={() => handleSelectModel('custom')}>
-                                                <Check
-                                                  className={cn(
-                                                    'mr-2 h-4 w-4',
-                                                    selectedModelId === 'custom' ? 'opacity-100' : 'opacity-0',
-                                                  )}
-                                                />
-                                                <span className="italic">Custom</span>
-                                              </CommandItem>
-                                            )}
-                                          </CommandGroup>
-                                        )
-                                      })()}
-                                  </CommandList>
-                                </div>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
+                          <FormControl>
+                            <Combobox
+                              items={comboboxItems}
+                              value={selectedModelId || undefined}
+                              onValueChange={(id) => handleSelectModel(id)}
+                              placeholder="Select model..."
+                              searchPlaceholder="Search models..."
+                              emptyMessage="No models found."
+                              loading={isLoadingModels}
+                              loadingMessage="Loading models..."
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -997,6 +851,7 @@ export default function ModelsPage() {
                           <Input
                             {...field}
                             placeholder="e.g., gpt-4-turbo-preview"
+                            className="rounded-lg"
                             onChange={(e) => {
                               field.onChange(e)
                               form.setValue('model', e.target.value)
@@ -1019,7 +874,7 @@ export default function ModelsPage() {
                         <FormItem>
                           <FormLabel>Display Name</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" />
+                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1103,8 +958,8 @@ export default function ModelsPage() {
                   />
                 )}
 
-                <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={addModelMutation.isPending}>
@@ -1123,7 +978,7 @@ export default function ModelsPage() {
           const isSystemModel = model.isSystem === 1
 
           return (
-            <Card key={model.id} className="border border-border shadow-sm">
+            <Card key={model.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1262,9 +1117,7 @@ export default function ModelsPage() {
         {models.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <Cpu className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No models configured</h3>
               <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
               <Button onClick={() => handleDialogOpenChange(true)} variant="outline">

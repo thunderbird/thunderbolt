@@ -4,7 +4,7 @@ import { getDeviceId, getAuthToken } from '@/lib/auth-token'
 import { useSettings } from '@/hooks/use-settings'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
-import { SectionCard } from '@/components/ui/section-card'
+import { Card, CardContent } from '@/components/ui/card'
 import { useMutation } from '@tanstack/react-query'
 import {
   AlertDialog,
@@ -77,60 +77,58 @@ export default function DevicesSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Devices" />
-      <p className="text-sm text-muted-foreground">
-        Devices that have signed in to your account. Revoking a device signs it out and clears its local data on next
-        sync.
-      </p>
-      <SectionCard title="Connected devices">
-        {isLoading ? (
-          <p className="text-muted-foreground py-4">Loading devices…</p>
-        ) : visibleDevices.length === 0 ? (
-          <p className="text-muted-foreground py-4">No devices yet. Sign in with sync to see devices here.</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {visibleDevices.map((device) => {
-              const isCurrent = device.id === currentDeviceId
-              const isRevoked = device.revokedAt != null
-              return (
-                <li key={device.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium truncate">{device.name}</span>
-                        {isCurrent && (
-                          <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                            This device
-                          </span>
-                        )}
-                        {isRevoked && (
-                          <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                            Revoked
-                          </span>
-                        )}
+      {isLoading ? (
+        <p className="text-muted-foreground py-4">Loading devices…</p>
+      ) : visibleDevices.length === 0 ? (
+        <p className="text-muted-foreground py-4">No devices yet. Sign in with sync to see devices here.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {visibleDevices.map((device) => {
+            const isCurrent = device.id === currentDeviceId
+            const isRevoked = device.revokedAt != null
+            return (
+              <Card key={device.id}>
+                <CardContent>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <Smartphone className="size-5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium truncate">{device.name}</span>
+                          {isCurrent && (
+                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                              This device
+                            </span>
+                          )}
+                          {isRevoked && (
+                            <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              Revoked
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Last seen: {formatLastSeen(device.lastSeen)}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">Last seen: {formatLastSeen(device.lastSeen)}</p>
                     </div>
+                    {!isRevoked && !isCurrent && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRevoke(device.id)}
+                        disabled={revokeMutation.isPending}
+                      >
+                        <Trash2 className="size-4 mr-1" />
+                        Revoke
+                      </Button>
+                    )}
                   </div>
-                  {!isRevoked && !isCurrent && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRevoke(device.id)}
-                      disabled={revokeMutation.isPending}
-                    >
-                      <Trash2 className="size-4 mr-1" />
-                      Revoke
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </SectionCard>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
       <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent>

@@ -100,12 +100,12 @@ describe('SignInModal', () => {
   describe('rendering', () => {
     it('renders when open', async () => {
       renderModal({ open: true })
-      expect(await screen.findByText('Unlock more features')).toBeInTheDocument()
+      expect(await screen.findByText('Sign In')).toBeInTheDocument()
     })
 
     it('does not render content when closed', () => {
       renderModal({ open: false })
-      expect(screen.queryByText('Unlock more features')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sign In')).not.toBeInTheDocument()
     })
 
     it('displays feature cards', async () => {
@@ -452,7 +452,7 @@ describe('SignInModal', () => {
 
       expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Send Magic Link' })).toBeInTheDocument()
-      expect(screen.getByText('Unlock more features')).toBeInTheDocument()
+      expect(screen.getByText('Sign In')).toBeInTheDocument()
       expect(screen.queryByText('Or enter the 6-digit code')).not.toBeInTheDocument()
     })
   })

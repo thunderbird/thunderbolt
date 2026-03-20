@@ -4,7 +4,7 @@ import { type ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
 import { type FormEvent, forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { ModelSelect } from './model-select'
+import { ModelSelector } from './model-selector'
 
 type PromptInputProps = {
   value: string
@@ -20,13 +20,11 @@ type PromptInputProps = {
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
-  /** Required for responsive layout. Parent controls mobile detection for consistency and testability. */
-  isMobile: boolean
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
-  selectedModelId?: string
-  onModelChange?: (model: string | null) => void
+  selectedModel?: Model | null
+  onModelChange?: (modelId: string) => void
 }
 
 /**
@@ -43,16 +41,15 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onSubmit,
       isLoading = false,
       autoFocus = false,
-      className = 'flex flex-col gap-2 bg-secondary p-4 rounded-md w-full max-w-[696px] min-w-[268px]',
+      className = 'flex flex-col w-full gap-0 p-2',
       submitOnEnter = false,
       noForm = false,
       isStreaming = false,
       onStop,
       footerStartElements,
-      isMobile,
       chatThread = null,
       models,
-      selectedModelId,
+      selectedModel,
       onModelChange,
     },
     ref,
@@ -97,18 +94,17 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         </Button>
       ))
 
-    // Mobile layout: textarea on top, controls below (Claude-style)
-    const mobileContent = (
+    const content = (
       <>
         <AutosizeTextarea
           value={value}
           onChange={handleTextareaChange}
           onKeyDown={submitOnEnter ? handleKeyDown : undefined}
           placeholder={placeholder}
-          minHeight={28}
+          minHeight={42}
           maxHeight={240}
           autoFocus={autoFocus}
-          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 pt-1 pb-0 text-base leading-5"
+          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-2 text-base leading-5"
         />
 
         <div className="flex justify-between items-end w-full">
@@ -116,11 +112,13 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
           <div className="flex gap-2 items-center">
             {showModelSelect && (
-              <ModelSelect
+              <ModelSelector
                 chatThread={chatThread}
                 models={models}
-                selectedModelId={selectedModelId}
+                selectedModel={selectedModel ?? null}
                 onModelChange={onModelChange}
+                side="top"
+                align="end"
               />
             )}
 
@@ -130,48 +128,15 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       </>
     )
 
-    // Desktop layout: textarea on top, footer with mode selector and buttons below
-    const desktopContent = (
-      <>
-        <AutosizeTextarea
-          value={value}
-          onChange={handleTextareaChange}
-          onKeyDown={submitOnEnter ? handleKeyDown : undefined}
-          placeholder={placeholder}
-          minHeight={52}
-          maxHeight={240}
-          autoFocus={autoFocus}
-          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-1"
-        />
-
-        <div className="flex gap-2 justify-between items-center w-full">
-          <div className="flex items-center gap-2">{footerStartElements}</div>
-
-          <div className="flex gap-2 items-center">
-            {showModelSelect && (
-              <ModelSelect
-                chatThread={chatThread}
-                models={models}
-                selectedModelId={selectedModelId}
-                onModelChange={onModelChange}
-              />
-            )}
-
-            {submitButton}
-          </div>
-        </div>
-      </>
-    )
-
-    const content = isMobile ? mobileContent : desktopContent
-
-    return noForm ? (
+    const formElement = noForm ? (
       <div className={className}>{content}</div>
     ) : (
       <form ref={ref} onSubmit={handleSubmit} className={className}>
         {content}
       </form>
     )
+
+    return formElement
   },
 )
 

@@ -7,6 +7,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
+import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { PanelLeft } from 'lucide-react'
 import { useState } from 'react'
@@ -25,7 +26,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-[var(--spacing-x-sm)] flex-shrink-0">
+    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
       <div
         className="flex items-center gap-2 h-8 px-2 relative flex-1"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
@@ -54,13 +55,20 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
       {isExpanded && (
         <div className="flex items-center">
           {isMobile ? (
-            <SidebarCloseButton onClick={onToggle} />
+            <>
+              <PowerSyncStatus />
+              <SidebarCloseButton onClick={onToggle} />
+            </>
           ) : (
             <SidebarGroup className="p-0 w-auto">
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem className="w-auto">
-                    <SidebarMenuButton onClick={onToggle} tooltip="Toggle Sidebar" className="cursor-pointer w-8">
+                    <SidebarMenuButton
+                      onClick={onToggle}
+                      tooltip="Toggle Sidebar"
+                      className="cursor-pointer size-8 justify-center"
+                    >
                       <PanelLeft className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">Toggle Sidebar</span>
                     </SidebarMenuButton>

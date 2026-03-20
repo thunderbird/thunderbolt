@@ -69,14 +69,14 @@ When adding new custom headers to API requests (e.g. `X-Device-ID`, `X-Device-Na
 
 ## Responsive Sizing
 
-**Prefer** CSS custom properties that automatically respond to breakpoints over manual responsive classes like `h-11 md:h-9`, `size-5 md:size-4`, or `text-base md:text-sm`:
+The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root` with responsive mobile/desktop values that switch at the 768px breakpoint. Use standard Tailwind classes — **do NOT** use `var()` syntax for properties that have Tailwind equivalents.
 
+**Standard Tailwind classes (responsive via theme overrides):**
+- Border radius: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`
+- Spacing: Use standard Tailwind spacing (`px-2`, `px-3`, `py-1.5`, `gap-2`, etc.)
+
+**Custom CSS variables (no Tailwind equivalent — use `var()` syntax):**
+- Text: `text-[length:var(--font-size-body)]`, `text-[length:var(--font-size-sm)]`, `text-[length:var(--font-size-xs)]`
 - Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
-- Text: `text-[length:var(--font-size-body)]`, `text-[length:var(--font-size-sm)]`, `text-[length:var(--font-size-xs)]`
-- Padding X: `px-[var(--spacing-x-default)]`, `px-[var(--spacing-x-md)]`, `px-[var(--spacing-x-sm)]`, `px-[var(--spacing-x-lg)]`
-- Padding Y: `py-[var(--spacing-y-default)]`, `py-[var(--spacing-y-md)]`, `py-[var(--spacing-y-sm)]`
-- Gaps: `gap-[var(--gap-default)]`, `gap-[var(--gap-lg)]`, `gap-[var(--gap-sm)]`
 - Minimum heights: `min-h-[var(--min-touch-height)]`
-
-All variables are defined in `/src/index.css` with mobile (larger) and desktop (smaller) values that switch at 768px breakpoint.

@@ -130,11 +130,13 @@ describe('ThunderboltConnector', () => {
       expiresAt: '2025-12-31T00:00:00Z',
       powerSyncUrl: 'wss://ps.test/sync',
     }
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify(tokenData), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(tokenData), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     )
     const connector = new ThunderboltConnector(backendUrl)
 
@@ -153,11 +155,13 @@ describe('ThunderboltConnector', () => {
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
     setAuthToken(authToken)
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({}), {
-        status: 410,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     )
     const connector = new ThunderboltConnector(backendUrl)
 
@@ -172,11 +176,13 @@ describe('ThunderboltConnector', () => {
 
   it('fetchCredentials returns null when backend returns 401 (no event)', async () => {
     setAuthToken(authToken)
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({}), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     )
     const connector = new ThunderboltConnector(backendUrl)
 
@@ -188,7 +194,7 @@ describe('ThunderboltConnector', () => {
 
   it('fetchCredentials returns null on network error', async () => {
     setAuthToken(authToken)
-    fetchMock.mockRejectedValue(new Error('Network error'))
+    fetchMock.mockImplementation(() => Promise.reject(new Error('Network error')))
     const connector = new ThunderboltConnector(backendUrl)
 
     const resultPromise = connector.fetchCredentials()

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -12,6 +13,8 @@ export type ModelSelectorProps = {
   chatThread: ChatThread | null
   onModelChange: (modelId: string) => void
   onAddModels?: () => void
+  side?: 'top' | 'bottom' | 'left' | 'right'
+  align?: 'start' | 'center' | 'end'
 }
 
 type ModelItemData = {
@@ -57,7 +60,7 @@ export const categorizeModels = (
   const groups: SearchableMenuGroup<ModelItemData>[] = []
 
   if (provided.length > 0) {
-    groups.push({ id: 'provided', label: 'Provided Models', items: provided })
+    groups.push({ id: 'provided', items: provided })
   }
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })
@@ -88,13 +91,15 @@ export const ModelSelector = ({
   chatThread,
   onModelChange,
   onAddModels,
+  side,
+  align,
 }: ModelSelectorProps) => {
   const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
@@ -107,7 +112,7 @@ export const ModelSelector = ({
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
     <div
       className={cn(
-        'w-full flex items-center justify-between px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -124,14 +129,10 @@ export const ModelSelector = ({
   )
 
   const footer = onAddModels ? (
-    <button
-      type="button"
-      onClick={onAddModels}
-      className="flex items-center gap-2 text-sm font-medium hover:text-foreground text-muted-foreground transition-colors w-full cursor-pointer"
-    >
+    <Button variant="ghost" onClick={onAddModels} className="w-full justify-start gap-2 text-muted-foreground">
       <Plus className="size-4" />
       Add Models
-    </button>
+    </Button>
   ) : undefined
 
   const { triggerSelection } = useHaptics()
@@ -148,6 +149,7 @@ export const ModelSelector = ({
       items={groupedItems}
       value={selectedModel?.id}
       onValueChange={handleModelChange}
+      searchable={models.length > 10}
       searchPlaceholder="Search Models"
       emptyMessage="No models found"
       blurBackdrop
@@ -156,6 +158,8 @@ export const ModelSelector = ({
       footer={footer}
       width={320}
       maxHeight={340}
+      side={side}
+      align={align}
     />
   )
 }

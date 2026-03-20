@@ -3,7 +3,8 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { PromptInput } from '@/components/ui/prompt-input'
+import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
+import { ModelSelector } from '@/components/ui/model-selector'
 import {
   ResponsiveModalContentComposable,
   ResponsiveModalHeader,
@@ -103,9 +104,9 @@ export default function AutomationFormModal({
   })
 
   const handleModelChange = useCallback(
-    (value: string | null) => {
+    (value: string) => {
       setModelId(value)
-      form.setValue('modelId', value || '')
+      form.setValue('modelId', value)
     },
     [form],
   )
@@ -291,10 +292,10 @@ export default function AutomationFormModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
-            <Card className="border-0 shadow-none">
+            <Card className="border-0 shadow-none rounded-none gap-3 pt-0 pb-6">
               {/* Main Content - Title Input (only when editing) */}
               {prompt && (
-                <CardHeader className="px-6 pb-2">
+                <CardHeader className="px-6 pb-0">
                   <FormField
                     control={form.control}
                     name="title"
@@ -305,7 +306,7 @@ export default function AutomationFormModal({
                             placeholder="Automation title"
                             value={titleText}
                             onChange={(e) => handleTitleChange(e.target.value)}
-                            className="text-lg font-medium"
+                            className="rounded-lg"
                           />
                         </FormControl>
                         <FormMessage />
@@ -316,20 +317,29 @@ export default function AutomationFormModal({
               )}
 
               {/* Main Content - Prompt Input */}
-              <CardHeader className="px-6 pb-0 pt-2">
-                <PromptInput
-                  chatThread={null}
-                  value={promptText}
-                  onChange={handlePromptChange}
-                  placeholder="Enter your prompt here..."
-                  models={models}
-                  selectedModelId={modelId ?? undefined}
-                  onModelChange={handleModelChange}
-                  showSubmitButton={false}
-                  noForm
-                  isMobile={false}
-                  className="flex flex-col gap-2 bg-secondary p-4 rounded-md w-full"
-                />
+              <CardHeader className="px-6 pb-0 pt-0">
+                <div className="flex flex-col gap-2">
+                  <AutosizeTextarea
+                    value={promptText}
+                    onChange={(e) => handlePromptChange(e.target.value)}
+                    placeholder="Enter your prompt here..."
+                    minHeight={132}
+                    maxHeight={240}
+                    className="resize-none ring-offset-0 focus-visible:ring-offset-0"
+                  />
+                  {models.length > 0 && (
+                    <div className="flex justify-start">
+                      <ModelSelector
+                        chatThread={null}
+                        models={models}
+                        selectedModel={models.find((m) => m.id === modelId) ?? null}
+                        onModelChange={handleModelChange}
+                        side="bottom"
+                        align="start"
+                      />
+                    </div>
+                  )}
+                </div>
               </CardHeader>
 
               {/* Trigger Section - Direct Below Prompt */}
@@ -385,9 +395,12 @@ export default function AutomationFormModal({
               )}
 
               {/* Footer with Submit Button */}
-              <CardFooter className="px-6 pt-4">
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Saving...' : prompt ? 'Update Automation' : 'Create Automation'}
+              <CardFooter className="px-6 pt-4 justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isLoading}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? 'Saving...' : 'Save'}
                 </Button>
               </CardFooter>
             </Card>

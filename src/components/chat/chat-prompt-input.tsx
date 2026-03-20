@@ -3,7 +3,6 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
-import { cn } from '@/lib/utils'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -152,12 +151,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           onStop={stop}
           autoFocus={!isMobile}
           submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-          className={cn(
-            'flex flex-col bg-background dark:bg-input/30 border dark:border-input rounded-2xl w-full',
-            isMobile ? 'gap-0 p-2' : 'gap-2 p-3',
-          )}
+          className="flex flex-col w-full gap-0 p-2"
           footerStartElements={footerStartElements}
-          isMobile={isMobile}
         />
         <ContextOverflowModal
           isOpen={showOverflowModal}

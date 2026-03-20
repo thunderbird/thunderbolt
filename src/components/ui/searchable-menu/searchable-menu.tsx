@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
@@ -30,7 +31,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-[var(--spacing-x-md)] py-[var(--spacing-y-default)] rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -51,16 +52,17 @@ type GroupSectionProps<T> = {
   value?: string
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
+  hideLabel?: boolean
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSectionProps<T>) => {
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
   if (group.items.length === 0) {
     return null
   }
 
   return (
     <div className="flex flex-col gap-1">
-      {group.label && (
+      {!hideLabel && group.label && (
         <div className="px-3 pt-2">
           <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
@@ -93,7 +95,7 @@ const DefaultTrigger = <T,>({
 }) => (
   <div
     className={cn(
-      'flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
+      'flex items-center gap-2 px-3 py-1 rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
       isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
     )}
   >
@@ -193,31 +195,27 @@ export const SearchableMenu = <T,>({
         </button>
       </PopoverTrigger>
 
-      {showBlur && (
-        <div
-          className="fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30"
-          onClick={() => setOpen(false)}
-        />
-      )}
+      {showBlur && <MobileBlurBackdrop onClick={() => setOpen(false)} />}
 
       <PopoverContent
         align={isMobile ? 'center' : align}
         side={side}
+        sideOffset={5}
         collisionPadding={16}
-        className={cn('p-0 rounded-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
+        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col gap-2 bg-background">
           {searchable && (
-            <div className="px-4 pt-4">
+            <div className="px-2 pt-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   placeholder={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 rounded-lg"
                   autoFocus={false}
                 />
               </div>
@@ -228,7 +226,7 @@ export const SearchableMenu = <T,>({
             className="overflow-y-auto"
             style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
           >
-            <div className={cn('flex flex-col gap-4 px-2 pb-2', !searchable && 'pt-2')}>
+            <div className={cn('flex flex-col gap-4 px-2', !searchable && 'pt-2', !footer && 'pb-2')}>
               {isGroupedItems(filteredItems) ? (
                 filteredItems.map((group) => (
                   <GroupSection
@@ -237,6 +235,7 @@ export const SearchableMenu = <T,>({
                     value={value}
                     onSelect={handleSelect}
                     renderItem={renderItem}
+                    hideLabel={filteredItems.length === 1}
                   />
                 ))
               ) : (
@@ -259,7 +258,7 @@ export const SearchableMenu = <T,>({
             </div>
           </div>
 
-          {footer && <div className="border-t px-4 py-4">{footer}</div>}
+          {footer && <div className="border-t px-2 py-2">{footer}</div>}
         </div>
       </PopoverContent>
     </Popover>

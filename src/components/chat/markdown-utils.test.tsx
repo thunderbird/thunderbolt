@@ -251,12 +251,12 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(screen.getByText('https://example.com')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
 
     const originalOpen = window.open
     const mockWindowOpen = mock(() => ({}) as Window)
     window.open = mockWindowOpen as typeof window.open
-    fireEvent.click(screen.getByRole('button', { name: 'Open link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Link' }))
     expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
     window.open = originalOpen
   })

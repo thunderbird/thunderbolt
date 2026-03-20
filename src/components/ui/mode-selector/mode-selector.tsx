@@ -2,6 +2,7 @@ import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } fro
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageSquare, Microscope } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useMemo, type ReactNode } from 'react'
 
 export type ModeSelectorProps = {
@@ -11,16 +12,14 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
-const iconSize = 'size-[var(--icon-size-default)]'
-
 const iconMap: Record<string, ReactNode> = {
-  'message-square': <MessageSquare className={iconSize} />,
-  globe: <Globe className={iconSize} />,
-  microscope: <Microscope className={iconSize} />,
+  'message-square': <MessageSquare className="size-[var(--icon-size-default)]" />,
+  globe: <Globe className="size-[var(--icon-size-default)]" />,
+  microscope: <Microscope className="size-[var(--icon-size-default)]" />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return iconMap[iconName] ?? <MessageSquare className={iconSize} />
+  return iconMap[iconName] ?? <MessageSquare className="size-[var(--icon-size-default)]" />
 }
 
 type ModeItemData = {
@@ -41,19 +40,18 @@ const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] =>
 ]
 
 export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = false }: ModeSelectorProps) => {
+  const { isMobile } = useIsMobile()
   const groupedItems = useMemo(() => createModeGroups(modes), [modes])
 
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
-        iconOnly
-          ? 'size-[var(--touch-height-default)] justify-center'
-          : 'gap-1 px-[var(--spacing-x-sm)] py-[var(--spacing-y-sm)]',
-        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-body)] border border-border',
+        iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-2 px-3 h-[var(--touch-height-default)]',
+        isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >
-      {selected?.icon ?? <MessageSquare className={iconSize} />}
+      {selected?.icon ?? <MessageSquare className="size-[var(--icon-size-default)]" />}
       {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )
@@ -64,8 +62,8 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-[var(--spacing-x-md)] py-[var(--spacing-y-md)] rounded-xl transition-colors text-left cursor-pointer',
-          isSelected ? 'bg-muted' : 'hover:bg-accent/50',
+          'w-full flex items-center gap-2 px-3 py-3 md:py-2 rounded-lg transition-colors text-left cursor-pointer',
+          isSelected ? 'bg-accent' : 'hover:bg-accent/50',
         )}
       >
         {item.icon}
@@ -82,13 +80,12 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       onValueChange={onModeChange}
       searchable={false}
       blurBackdrop
-      side="top"
+      side={isMobile ? 'top' : 'bottom'}
       align="start"
       trigger={renderTrigger}
       renderItem={renderItem}
       width={280}
       maxHeight={300}
-      contentClassName="rounded-2xl shadow-lg overflow-hidden"
     />
   )
 }

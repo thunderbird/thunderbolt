@@ -56,7 +56,7 @@ export const ToolPart = memo(({ part }: ToolPartProps) => {
 
   return (
     <Expandable
-      className="shadow-none tool-invocation-card rounded-lg overflow-hidden transition-colors"
+      className="shadow-none tool-invocation-card rounded-xl overflow-hidden transition-colors"
       icon={getToolIcon(state)}
       defaultOpen={false}
       title={titleNode}

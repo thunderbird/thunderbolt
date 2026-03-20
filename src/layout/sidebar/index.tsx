@@ -10,7 +10,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -97,9 +97,13 @@ export default function Sidebar() {
     },
   })
 
-  const handleRename = (threadId: string, title: string) => {
-    renameChatMutation.mutate({ id: threadId, title })
-  }
+  const renameMutate = renameChatMutation.mutate
+  const handleRename = useCallback(
+    (threadId: string, title: string) => {
+      renameMutate({ id: threadId, title })
+    },
+    [renameMutate],
+  )
 
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
@@ -120,13 +124,16 @@ export default function Sidebar() {
     }
   }
 
-  const handleChatClick = (threadId: string) => {
-    navigate(`/chats/${threadId}`)
-    trackEvent('chat_select', { chat_id: threadId })
-    if (isMobile) {
-      setOpenMobile(false)
-    }
-  }
+  const handleChatClick = useCallback(
+    (threadId: string) => {
+      navigate(`/chats/${threadId}`)
+      trackEvent('chat_select', { chat_id: threadId })
+      if (isMobile) {
+        setOpenMobile(false)
+      }
+    },
+    [navigate, isMobile, setOpenMobile],
+  )
 
   const handleSettingsNavigation = (path: string) => {
     navigate(path)

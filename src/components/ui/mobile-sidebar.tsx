@@ -1,7 +1,8 @@
+import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 type MobileSidebarProps = {
   open: boolean
@@ -23,8 +24,10 @@ export const MobileSidebar = ({
   const [isAnimating, setIsAnimating] = useState(false)
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
+  const { triggerImpact } = useHaptics()
+  const prevOpenRef = useRef(open)
 
-  const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.85 : 300)
+  const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300)
 
   // Transform x position to overlay opacity (fade out as sidebar moves away).
   // Output [0, 1] so backdrop-blur and bg dimming render at full strength when open
@@ -35,6 +38,14 @@ export const MobileSidebar = ({
     side === 'left' ? [-sidebarWidth, 0] : [0, sidebarWidth],
     side === 'left' ? [0, 1] : [1, 0],
   )
+
+  // Trigger haptic feedback on open/close state changes
+  useEffect(() => {
+    if (open !== prevOpenRef.current) {
+      triggerImpact('light')
+      prevOpenRef.current = open
+    }
+  }, [open, triggerImpact])
 
   // Handle external open/close requests
   useEffect(() => {
@@ -101,6 +112,7 @@ export const MobileSidebar = ({
       side === 'left' ? info.offset.x < -50 || info.velocity.x < -500 : info.offset.x > 50 || info.velocity.x > 500
 
     if (shouldClose) {
+      triggerImpact('light')
       await handleClose()
     } else {
       // Snap back to position with animation
@@ -145,7 +157,7 @@ export const MobileSidebar = ({
             ...style,
           }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[85vw] border-r shadow-lg flex flex-col',
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] border-r shadow-lg flex flex-col',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

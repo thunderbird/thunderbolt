@@ -45,7 +45,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
       <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
         {step === 'otp' && <BackButton onClick={handleGoBack} className="absolute left-4 top-4" />}
         <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
-          {step === 'email' ? 'Unlock more features' : 'Enter your code'}
+          {step === 'email' ? 'Sign In' : 'Enter your code'}
         </ResponsiveModalTitle>
         {step === 'email' && (
           <ResponsiveModalDescription>Sign in to get more out of Thunderbolt</ResponsiveModalDescription>

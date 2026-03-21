@@ -89,7 +89,7 @@ export const Combobox = ({
     handleOpenChange(false)
   }
 
-  const hasListContent = items.length > 0 || (isAsync ? !!emptyMessage : !loading && !!emptyMessage)
+  const hasListContent = items.length > 0 || (!loading && !!emptyMessage)
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>

@@ -118,8 +118,6 @@ afterEach(() => {
     globalClock = null
   }
   cleanup()
-  // Remove all stale DOM content (e.g. Radix UI portals) that cleanup() misses
-  document.body.innerHTML = ''
 })
 
 /**

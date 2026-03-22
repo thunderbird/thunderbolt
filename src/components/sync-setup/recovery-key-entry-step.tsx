@@ -18,30 +18,32 @@ export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit }: Recov
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold">Enter recovery key</h2>
-        <p className="text-sm text-muted-foreground mt-2">
+    <div className="w-full flex flex-col">
+      <div className="text-center space-y-4">
+        <h2 className="text-2xl font-bold">Enter recovery key</h2>
+        <p className="text-muted-foreground">
           Enter the 64-character recovery key you saved when you first set up sync.
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="a1b2c3d4e5f6a7b8..."
-          className="font-mono"
-          state={error ? 'error' : 'default'}
-          autoFocus
-        />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-      </div>
+      <div className="pt-5 space-y-4">
+        <div className="flex flex-col gap-2">
+          <Input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="a1b2c3d4e5f6a7b8..."
+            className="font-mono"
+            state={error ? 'error' : 'default'}
+            autoFocus
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
 
-      <Button className="w-full" onClick={onSubmit}>
-        Submit
-      </Button>
+        <Button className="w-full" onClick={onSubmit}>
+          Submit
+        </Button>
+      </div>
     </div>
   )
 }

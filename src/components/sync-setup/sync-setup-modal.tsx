@@ -4,6 +4,7 @@ import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
+import { IconCircle } from '@/components/onboarding/icon-circle'
 import { ArrowLeft, Lock, Monitor, Plus, ShieldCheck } from 'lucide-react'
 
 type SyncSetupModalProps = {
@@ -111,24 +112,23 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 // =============================================================================
 
 const IntroStep = ({ onContinue }: { onContinue: () => void }) => (
-  <div className="flex flex-col gap-6">
-    <div className="flex justify-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-        <ShieldCheck className="size-6 text-primary" />
-      </div>
-    </div>
-
-    <div className="text-center">
-      <h2 className="text-lg font-semibold">Set up sync</h2>
-      <p className="text-sm text-muted-foreground mt-2">
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <ShieldCheck className="w-8 h-8 text-primary" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">Set up sync</h2>
+      <p className="text-muted-foreground">
         Keep your data in sync across all your devices. Everything is encrypted end-to-end — only your devices can read
         your data.
       </p>
     </div>
 
-    <Button className="w-full" onClick={onContinue}>
-      Continue
-    </Button>
+    <div className="pt-5">
+      <Button className="w-full" onClick={onContinue}>
+        Continue
+      </Button>
+    </div>
   </div>
 )
 
@@ -142,17 +142,17 @@ type DetectingStepProps = {
 }
 
 const DetectingStep = ({ onFirstDevice, onAdditionalDevice }: DetectingStepProps) => (
-  <div className="flex flex-col gap-6">
-    <div className="text-center">
-      <h2 className="text-lg font-semibold">Detecting your devices…</h2>
-      <p className="text-xs text-muted-foreground/60 mt-1">
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <h2 className="text-2xl font-bold">Detecting your devices…</h2>
+      <p className="text-xs text-muted-foreground/60">
         (Testing only — in production this step auto-detects via BE request)
       </p>
     </div>
 
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 pt-5">
       <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onFirstDevice}>
-        <Monitor className="size-5 shrink-0" />
+        <Monitor className="w-6 h-6 shrink-0" />
         <div className="text-left">
           <div className="font-medium">First device</div>
           <div className="text-xs text-muted-foreground">No other devices have sync enabled yet</div>
@@ -160,7 +160,7 @@ const DetectingStep = ({ onFirstDevice, onAdditionalDevice }: DetectingStepProps
       </Button>
 
       <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onAdditionalDevice}>
-        <Plus className="size-5 shrink-0" />
+        <Plus className="w-6 h-6 shrink-0" />
         <div className="text-left">
           <div className="font-medium">Additional device</div>
           <div className="text-xs text-muted-foreground">Other trusted devices already exist</div>
@@ -175,23 +175,22 @@ const DetectingStep = ({ onFirstDevice, onAdditionalDevice }: DetectingStepProps
 // =============================================================================
 
 const FirstDeviceSetupStep = ({ onContinue }: { onContinue: () => void }) => (
-  <div className="flex flex-col gap-6">
-    <div className="flex justify-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-        <Lock className="size-6 text-primary" />
-      </div>
-    </div>
-
-    <div className="text-center">
-      <h2 className="text-lg font-semibold">First device setup</h2>
-      <p className="text-sm text-muted-foreground mt-2">
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <Lock className="w-8 h-8 text-primary" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">First device setup</h2>
+      <p className="text-muted-foreground">
         This is the first device on your account. We&apos;ll generate an encryption key and show you a recovery key to
         save. The recovery key is the only way to recover your data if you lose all your devices.
       </p>
     </div>
 
-    <Button className="w-full" onClick={onContinue}>
-      Continue
-    </Button>
+    <div className="pt-5">
+      <Button className="w-full" onClick={onContinue}>
+        Continue
+      </Button>
+    </div>
   </div>
 )

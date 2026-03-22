@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable, modesTable } from '@/db/tables'
+import { agentsTable, modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread } from '@/dal/chat-threads'
 import { getModel } from '@/dal/models'
@@ -90,6 +90,22 @@ const createTestModel = async () => {
 }
 
 /**
+ * Helper function to create a built-in agent (required for getSelectedAgent)
+ */
+const createDefaultAgent = async () => {
+  const db = getDb()
+  await db.insert(agentsTable).values({
+    id: 'agent-built-in',
+    name: 'Thunderbolt',
+    type: 'built-in',
+    transport: 'in-process',
+    isSystem: 1,
+    enabled: 1,
+    deletedAt: null,
+  })
+}
+
+/**
  * Helper function to create a test thread
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
@@ -147,9 +163,11 @@ describe('useHydrateChatStore', () => {
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
-    // Create default mode (required for getSelectedMode) and system model (required for getDefaultModelForThread)
+    // Create default mode (required for getSelectedMode), system model (required for getDefaultModelForThread),
+    // and default agent (required for getSelectedAgent)
     await createDefaultMode()
     await createSystemModel()
+    await createDefaultAgent()
   })
 
   afterEach(async () => {

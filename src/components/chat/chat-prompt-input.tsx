@@ -44,7 +44,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const {
+      chatInstance,
+      chatThread,
+      id: chatThreadId,
+      selectedAgent,
+      selectedMode,
+      selectedModel,
+    } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
@@ -126,9 +133,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    // Mode selector is only shown for built-in agents (which declare modes via ACP).
+    // External agents may not have modes, so the selector hides.
+    const showModeSelector = modes.length > 0 && selectedAgent?.type === 'built-in'
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        {modes.length > 0 && (
+        {showModeSelector && (
           <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} iconOnly={isMobile} />
         )}
         {isContextKnown && !isMobile && (

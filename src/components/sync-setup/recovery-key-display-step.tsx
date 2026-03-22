@@ -32,7 +32,8 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
       <div className="text-center space-y-4">
         <h2 className="text-2xl font-bold">Save your recovery key</h2>
         <p className="text-muted-foreground">
-          This is the only way to recover your data if you lose all your devices. We will never show this again.
+          Store this key somewhere safe. You&apos;ll need it to recover your data if you lose access to all your
+          devices. This key won&apos;t be shown again.
         </p>
       </div>
 

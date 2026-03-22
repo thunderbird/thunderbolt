@@ -61,3 +61,4 @@ src-tauri/gen/apple/.bundle/
 
 # Powersync
 public/@powersync/**
+test-results/

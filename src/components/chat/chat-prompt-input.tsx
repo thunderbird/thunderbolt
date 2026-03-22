@@ -51,6 +51,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       messages,
       status,
       availableModes,
+      configOptions,
     } = useCurrentChatSession()
 
     // Convert ACP SessionMode[] to Mode-like objects for the mode selector
@@ -149,10 +150,38 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    // Extract model config option from ACP session
+    const modelConfig = configOptions.find((o) => o.category === 'model')
+    const modelOptions =
+      modelConfig && modelConfig.type === 'select' && Array.isArray(modelConfig.options)
+        ? (modelConfig.options as Array<{ value: string; name: string }>)
+        : []
+    const currentModelValue = modelConfig && 'currentValue' in modelConfig ? String(modelConfig.currentValue) : null
+
+    const handleModelChange = useCallback(
+      (modelId: string) => {
+        useChatStore.getState().setSelectedModel(chatThreadId, modelId).catch(console.error)
+      },
+      [chatThreadId],
+    )
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
           <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} iconOnly={isMobile} />
+        )}
+        {modelOptions.length > 1 && (
+          <select
+            value={currentModelValue ?? ''}
+            onChange={(e) => handleModelChange(e.target.value)}
+            className="h-[var(--touch-height-sm)] text-[length:var(--font-size-xs)] bg-transparent border rounded-lg px-2 text-muted-foreground cursor-pointer"
+          >
+            {modelOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.name}
+              </option>
+            ))}
+          </select>
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />

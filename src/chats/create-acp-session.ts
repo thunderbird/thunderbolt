@@ -1,9 +1,12 @@
 import { createAcpClient } from '@/acp/client'
 import { createBuiltInAgent } from '@/acp/built-in-agent'
 import { createInProcessStreams } from '@/acp/streams'
+import { connectToLocalAgent } from '@/acp/local-agent'
+import { connectToRemoteAgent } from '@/acp/remote-agent'
 import { runBuiltInPrompt } from '@/acp/run-built-in-prompt'
 import { handleSessionUpdate } from './use-acp-chat'
 import { useChatStore } from './chat-store'
+import { isTauri, isDesktop } from '@/lib/platform'
 import type { Agent, Mode, Model } from '@/types'
 import type { AcpClient } from '@/acp/client'
 import type { AgentSessionState } from '@/acp/types'
@@ -39,16 +42,16 @@ export const createAcpSession = async ({
   selectedModelId,
   mcpClients,
 }: CreateAcpSessionOptions): Promise<AcpSessionResult> => {
-  if (agent.type !== 'built-in') {
-    throw new Error(
-      `Agent "${agent.name}" (${agent.type}) is not available. ` +
-        (agent.type === 'local'
-          ? 'Local CLI agents require the desktop app with ACP stdio transport.'
-          : 'Remote agents require a configured server connection.'),
-    )
+  // Route to appropriate transport based on agent type
+  if (agent.type === 'local') {
+    return createLocalAgentSession(chatId, agent)
   }
 
-  // Create in-process streams for the built-in agent
+  if (agent.type === 'remote') {
+    return createRemoteAgentSession(chatId, agent)
+  }
+
+  // Built-in agent: in-process streams
   const { clientStream, agentStream } = createInProcessStreams()
 
   // Create the built-in agent handler
@@ -105,6 +108,77 @@ export const createAcpSession = async ({
   new AgentSideConnection(agentHandler, agentStream)
 
   // Initialize and create session
+  await acpClient.initialize()
+  const sessionState = await acpClient.createSession()
+
+  return { acpClient, sessionState }
+}
+
+/**
+ * Create an ACP session for a local CLI agent (stdio transport).
+ * Only available on Tauri desktop.
+ */
+const createLocalAgentSession = async (chatId: string, agent: Agent): Promise<AcpSessionResult> => {
+  if (!isTauri() || !isDesktop()) {
+    throw new Error(`Local agent "${agent.name}" requires the desktop app.`)
+  }
+
+  const { createTauriSpawner } = await import('@/acp/tauri-spawner')
+  const spawner = createTauriSpawner()
+
+  const agentConfig = {
+    id: agent.id,
+    name: agent.name,
+    type: agent.type as 'local',
+    transport: agent.transport as 'stdio',
+    command: agent.command ?? undefined,
+    args: agent.args ? JSON.parse(agent.args) : undefined,
+    isSystem: agent.isSystem === 1,
+    enabled: agent.enabled === 1,
+  }
+
+  const { stream } = await connectToLocalAgent({ agentConfig, spawner })
+
+  const acpClient = createAcpClient({
+    stream,
+    onSessionUpdate: (update) => {
+      handleSessionUpdate(chatId, update)
+    },
+  })
+
+  await acpClient.initialize()
+  const sessionState = await acpClient.createSession()
+
+  return { acpClient, sessionState }
+}
+
+/**
+ * Create an ACP session for a remote agent (WebSocket transport).
+ */
+const createRemoteAgentSession = async (chatId: string, agent: Agent): Promise<AcpSessionResult> => {
+  if (!agent.url) {
+    throw new Error(`Remote agent "${agent.name}" has no URL configured.`)
+  }
+
+  const agentConfig = {
+    id: agent.id,
+    name: agent.name,
+    type: agent.type as 'remote',
+    transport: agent.transport as 'websocket',
+    url: agent.url ?? undefined,
+    isSystem: agent.isSystem === 1,
+    enabled: agent.enabled === 1,
+  }
+
+  const { stream } = await connectToRemoteAgent({ agentConfig })
+
+  const acpClient = createAcpClient({
+    stream,
+    onSessionUpdate: (update) => {
+      handleSessionUpdate(chatId, update)
+    },
+  })
+
   await acpClient.initialize()
   const sessionState = await acpClient.createSession()
 

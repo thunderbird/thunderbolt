@@ -1,2 +1,5 @@
 [test]
 preload = ["./happydom.ts", "./src/testing-library.ts"]
+
+# Only run unit tests in src/ — exclude e2e/ (uses @playwright/test) and backend/ (separate deps)
+root = "./src"

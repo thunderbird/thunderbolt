@@ -1,11 +1,14 @@
-import { createMockChatInstance, createMockUseChat, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { hydrateStore, resetStore, createMockModel } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatScrollHandler } from './use-chat-scroll-handler'
+import type { ChatStatus } from './chat-store'
+import type { ThunderboltUIMessage } from '@/types'
 
 type MockUseAutoScrollReturn = {
   scrollToBottom: ReturnType<typeof mock>
+  scrollToElement: ReturnType<typeof mock>
   resetUserScroll: ReturnType<typeof mock>
   mockHook: typeof import('@/hooks/use-auto-scroll').useAutoScroll
 }
@@ -14,7 +17,10 @@ const createMockUseAutoScroll = (
   isAtBottom: boolean = true,
   scrollSucceeds: boolean = true,
 ): MockUseAutoScrollReturn => {
-  const scrollToBottom = mock((_smooth?: boolean) => scrollSucceeds)
+  const scrollToBottom = mock((_smooth?: boolean, _force?: boolean) => scrollSucceeds)
+  const scrollToElement = mock(
+    (_selector: string, _offset?: number, _smooth?: boolean, _force?: boolean) => scrollSucceeds,
+  )
   const resetUserScroll = mock(() => {})
   const scrollContainerRef = () => {}
   const scrollTargetRef = () => {}
@@ -32,6 +38,7 @@ const createMockUseAutoScroll = (
     scrollContainerRef,
     scrollTargetRef,
     scrollToBottom,
+    scrollToElement,
     resetUserScroll,
     scrollHandlers,
     isAtBottom,
@@ -39,10 +46,20 @@ const createMockUseAutoScroll = (
 
   return {
     scrollToBottom,
+    scrollToElement,
     resetUserScroll,
     mockHook,
   }
 }
+
+const createMockSession = (messages: ThunderboltUIMessage[] = [], status: ChatStatus = 'ready') => ({
+  chatThread: null,
+  id: 'thread-1',
+  messages,
+  status,
+  selectedModel: createMockModel(),
+  triggerData: null,
+})
 
 describe('useChatScrollHandler', () => {
   beforeEach(() => {
@@ -55,21 +72,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should return all required refs and handlers', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll()
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -84,21 +91,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should return isAtBottom as true when at bottom', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll(true)
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -106,21 +103,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should return isAtBottom as false when not at bottom', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook } = createMockUseAutoScroll(false)
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -128,21 +115,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should only call scrollToBottom when scrollToBottom is called', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll()
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -155,21 +132,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should call both scrollToBottom and resetUserScroll when scrollToBottomAndActivate succeeds', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(true, true)
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -182,21 +149,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should not call resetUserScroll when scrollToBottomAndActivate fails (container not ready)', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom, resetUserScroll } = createMockUseAutoScroll(true, false)
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -209,21 +166,11 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should pass smooth parameter to scrollToBottom', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const { mockHook, scrollToBottom } = createMockUseAutoScroll()
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -235,8 +182,6 @@ describe('useChatScrollHandler', () => {
   })
 
   it('should pass correct options to useAutoScroll', () => {
-    const mockChatInstance = createMockChatInstance([], 'streaming')
-    const mockUseChat = createMockUseChat(mockChatInstance)
     const capturedOptions: unknown[] = []
 
     const mockUseAutoScroll = ((options?: unknown) => {
@@ -245,23 +190,16 @@ describe('useChatScrollHandler', () => {
         scrollContainerRef: () => {},
         scrollTargetRef: () => {},
         scrollToBottom: mock(),
+        scrollToElement: mock(),
         resetUserScroll: mock(),
         scrollHandlers: { onWheel: () => {}, onTouchStart: () => {} },
         isAtBottom: true,
       }
     }) as unknown as typeof import('@/hooks/use-auto-scroll').useAutoScroll
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession([], 'streaming'))
 
-    renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockUseAutoScroll }), {
+    renderHook(() => useChatScrollHandler({ useAutoScroll: mockUseAutoScroll }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -272,22 +210,12 @@ describe('useChatScrollHandler', () => {
     expect(options.dependencies).toBeDefined()
   })
 
-  it('should work with dependency injection for useChat and useAutoScroll', () => {
-    const mockChatInstance = createMockChatInstance()
-    const mockUseChat = createMockUseChat(mockChatInstance)
+  it('should work with dependency injection for useAutoScroll', () => {
     const { mockHook } = createMockUseAutoScroll()
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+    hydrateStore(createMockSession())
 
-    const { result } = renderHook(() => useChatScrollHandler({ useChat: mockUseChat, useAutoScroll: mockHook }), {
+    const { result } = renderHook(() => useChatScrollHandler({ useAutoScroll: mockHook }), {
       wrapper: createQueryTestWrapper(),
     })
 

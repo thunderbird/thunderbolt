@@ -20,7 +20,9 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
     }
   }, [])
 

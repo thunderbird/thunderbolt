@@ -1,16 +1,17 @@
 import { Button } from '@/components/ui/button'
-import { Copy, Check } from 'lucide-react'
+import { ArrowLeft, Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 
 type RecoveryKeyDisplayStepProps = {
   recoveryKey: string
+  onBack: () => void
   onDone: () => void
 }
 
 /** Formats a 64-char hex string into 8-char groups separated by spaces */
 const formatRecoveryKey = (key: string): string => key.match(/.{1,8}/g)?.join(' ') ?? key
 
-export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone }: RecoveryKeyDisplayStepProps) => {
+export const RecoveryKeyDisplayStep = ({ recoveryKey, onBack, onDone }: RecoveryKeyDisplayStepProps) => {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -21,6 +22,10 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone }: RecoveryKeyDispl
 
   return (
     <div className="flex flex-col gap-6">
+      <Button onClick={onBack} variant="ghost" className="justify-center w-auto self-start">
+        <ArrowLeft className="w-4 h-4" />
+      </Button>
+
       <div className="text-center">
         <h2 className="text-lg font-semibold">Save your recovery key</h2>
         <p className="text-sm text-muted-foreground mt-2">

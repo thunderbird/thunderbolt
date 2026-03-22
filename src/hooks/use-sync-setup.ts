@@ -22,6 +22,7 @@ type SyncSetupAction =
   | { type: 'SET_RECOVERY_KEY_ERROR'; payload: string | null }
   | { type: 'SET_APPROVAL_CHECKED'; payload: boolean }
   | { type: 'SET_APPROVAL_ERROR'; payload: string | null }
+  | { type: 'GO_BACK' }
   | { type: 'RESET' }
 
 const initialState: SyncSetupState = {
@@ -49,6 +50,8 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
       return { ...state, approvalChecked: action.payload, approvalError: null }
     case 'SET_APPROVAL_ERROR':
       return { ...state, approvalError: action.payload }
+    case 'GO_BACK':
+      return { ...initialState, step: 'choose-flow' }
     case 'RESET':
       return initialState
     default:
@@ -63,6 +66,7 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
 export const useSyncSetup = () => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  const goBack = () => dispatch({ type: 'GO_BACK' })
   const chooseFirstDevice = () => dispatch({ type: 'CHOOSE_FIRST_DEVICE' })
   const chooseAdditionalDevice = () => dispatch({ type: 'CHOOSE_ADDITIONAL_DEVICE' })
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
@@ -98,6 +102,7 @@ export const useSyncSetup = () => {
 
   return {
     ...state,
+    goBack,
     chooseFirstDevice,
     chooseAdditionalDevice,
     goToRecoveryKeyEntry,

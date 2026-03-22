@@ -63,7 +63,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
+          <RecoveryKeyDisplayStep
+            recoveryKey={setup.recoveryKey}
+            onBack={setup.goBack}
+            onDone={handleFirstDeviceDone}
+          />
         )}
 
         {setup.step === 'approval-waiting' && (

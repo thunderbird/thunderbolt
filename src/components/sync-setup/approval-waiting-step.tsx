@@ -32,16 +32,12 @@ export const ApprovalWaitingStep = ({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <button
-        type="button"
-        className="text-sm text-primary underline-offset-4 hover:underline text-center w-full"
-        onClick={onUseRecoveryKey}
-      >
-        Don&apos;t have another device? Use recovery key instead
-      </button>
-
       <Button className="w-full" onClick={onContinue} disabled={!checked}>
         Continue
+      </Button>
+
+      <Button variant="ghost" className="w-full" onClick={onUseRecoveryKey}>
+        Use my recovery key
       </Button>
     </div>
   </div>

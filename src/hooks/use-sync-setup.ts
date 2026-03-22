@@ -3,7 +3,13 @@ import { useReducer } from 'react'
 // Mock recovery key for UI testing (replaced with real crypto in PR 5)
 const mockRecoveryKey = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
 
-type SyncSetupStep = 'choose-flow' | 'recovery-key-display' | 'approval-waiting' | 'recovery-key-entry'
+type SyncSetupStep =
+  | 'intro'
+  | 'detecting'
+  | 'first-device-setup'
+  | 'recovery-key-display'
+  | 'approval-waiting'
+  | 'recovery-key-entry'
 
 type SyncSetupState = {
   step: SyncSetupStep
@@ -15,7 +21,9 @@ type SyncSetupState = {
 }
 
 type SyncSetupAction =
+  | { type: 'CONTINUE_INTRO' }
   | { type: 'CHOOSE_FIRST_DEVICE' }
+  | { type: 'CONTINUE_FIRST_DEVICE_SETUP' }
   | { type: 'CHOOSE_ADDITIONAL_DEVICE' }
   | { type: 'GO_TO_RECOVERY_KEY_ENTRY' }
   | { type: 'SET_RECOVERY_KEY_INPUT'; payload: string }
@@ -26,7 +34,7 @@ type SyncSetupAction =
   | { type: 'RESET' }
 
 const initialState: SyncSetupState = {
-  step: 'choose-flow',
+  step: 'intro',
   recoveryKey: mockRecoveryKey,
   recoveryKeyInput: '',
   recoveryKeyError: null,
@@ -36,7 +44,11 @@ const initialState: SyncSetupState = {
 
 const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState => {
   switch (action.type) {
+    case 'CONTINUE_INTRO':
+      return { ...state, step: 'detecting' }
     case 'CHOOSE_FIRST_DEVICE':
+      return { ...state, step: 'first-device-setup' }
+    case 'CONTINUE_FIRST_DEVICE_SETUP':
       return { ...state, step: 'recovery-key-display' }
     case 'CHOOSE_ADDITIONAL_DEVICE':
       return { ...state, step: 'approval-waiting' }
@@ -51,7 +63,7 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
     case 'SET_APPROVAL_ERROR':
       return { ...state, approvalError: action.payload }
     case 'GO_BACK':
-      return { ...initialState, step: 'choose-flow' }
+      return { ...initialState, step: 'intro' }
     case 'RESET':
       return initialState
     default:
@@ -66,8 +78,10 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
 export const useSyncSetup = () => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  const continueIntro = () => dispatch({ type: 'CONTINUE_INTRO' })
   const goBack = () => dispatch({ type: 'GO_BACK' })
   const chooseFirstDevice = () => dispatch({ type: 'CHOOSE_FIRST_DEVICE' })
+  const continueFirstDeviceSetup = () => dispatch({ type: 'CONTINUE_FIRST_DEVICE_SETUP' })
   const chooseAdditionalDevice = () => dispatch({ type: 'CHOOSE_ADDITIONAL_DEVICE' })
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
 
@@ -102,8 +116,10 @@ export const useSyncSetup = () => {
 
   return {
     ...state,
+    continueIntro,
     goBack,
     chooseFirstDevice,
+    continueFirstDeviceSetup,
     chooseAdditionalDevice,
     goToRecoveryKeyEntry,
     setRecoveryKeyInput,

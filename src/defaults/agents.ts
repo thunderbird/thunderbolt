@@ -69,9 +69,15 @@ export const defaultAgentCodex: Agent = {
   userId: null,
 }
 
-/** Agents shipped with the app. Local agents are auto-discovered at runtime. */
-export const defaultAgents: ReadonlyArray<Agent> = [
-  defaultAgentBuiltIn,
-  defaultAgentClaudeCode,
-  defaultAgentCodex,
-] as const
+/**
+ * Agents seeded into the database on all platforms.
+ * Only the built-in agent is seeded — local CLI agents (Claude Code, Codex)
+ * are discovered at runtime on desktop via the Tauri shell plugin.
+ */
+export const defaultAgents: ReadonlyArray<Agent> = [defaultAgentBuiltIn] as const
+
+/**
+ * Local CLI agent candidates for runtime discovery on desktop.
+ * These are NOT seeded into the DB — they're added only when detected on PATH.
+ */
+export const localAgentCandidates: ReadonlyArray<Agent> = [defaultAgentClaudeCode, defaultAgentCodex] as const

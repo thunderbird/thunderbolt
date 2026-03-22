@@ -13,6 +13,7 @@ import {
   isChatThreadDeleted,
   saveMessagesWithContextUpdate,
 } from '@/dal'
+import { discoverAndSeedLocalAgents } from '@/acp/discovery'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
@@ -115,6 +116,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // If the session does not exist, create it below
     const settings = await getSettings(db, { selected_model: String })
+
+    // Discover local CLI agents on desktop (adds them to DB if found on PATH)
+    await discoverAndSeedLocalAgents(db)
 
     const [
       defaultModel,

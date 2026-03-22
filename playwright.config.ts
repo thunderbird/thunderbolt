@@ -12,6 +12,8 @@ export default defineConfig({
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Fresh storage state per test to avoid stale IndexedDB/OPFS data
+    storageState: undefined,
   },
   projects: [
     {

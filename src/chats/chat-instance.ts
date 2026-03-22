@@ -33,6 +33,22 @@ export const createChatInstance = (
         throw new Error('No session found')
       }
 
+      const agentType = session.selectedAgent.type
+
+      // Only the built-in agent uses the direct AI SDK path.
+      // Local and remote agents require ACP connections which are not yet
+      // wired into the Chat transport layer — they need a fundamentally
+      // different message flow. For now, block non-built-in agents with
+      // a clear error instead of silently falling through.
+      if (agentType !== 'built-in') {
+        throw new Error(
+          `Agent "${session.selectedAgent.name}" (${agentType}) is not available. ` +
+            (agentType === 'local'
+              ? 'Local CLI agents require the desktop app.'
+              : 'Remote agents require a configured server connection.'),
+        )
+      }
+
       return aiFetchStreamingResponse({
         init,
         saveMessages,

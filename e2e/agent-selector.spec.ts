@@ -8,8 +8,9 @@ test.describe('Agent Selector', () => {
 
   test('shows Thunderbolt as default agent in header', async ({ page }) => {
     const header = page.locator('header')
+    // Wait for agent selector to render (depends on DB initialization)
     const agentButton = header.getByText('Thunderbolt')
-    await expect(agentButton).toBeVisible()
+    await expect(agentButton).toBeVisible({ timeout: 10000 })
   })
 
   test('agent selector has dropdown chevron', async ({ page }) => {

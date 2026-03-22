@@ -5,8 +5,20 @@ import type { Page } from '@playwright/test'
  */
 export const goToNewChat = async (page: Page) => {
   await page.goto('/chats/new')
-  // Wait for the agent selector in the header to appear (proves DB is initialized)
+  // Wait for the chat UI to fully initialize (DB seeding, store hydration)
   await page.waitForTimeout(3000)
+}
+
+/**
+ * Clear browser storage to ensure a fresh state.
+ * Use in beforeEach when tests depend on clean DB state.
+ */
+export const clearBrowserStorage = async (page: Page) => {
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  // Clearing IndexedDB is harder — using fresh contexts is better
 }
 
 /**

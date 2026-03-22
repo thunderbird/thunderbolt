@@ -20,12 +20,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'VITE_BYPASS_WAITLIST=true bun run dev',
+    command: 'VITE_BYPASS_WAITLIST=true VITE_SKIP_ONBOARDING=true bun run dev',
     url: 'http://localhost:1420',
     reuseExistingServer: true,
     timeout: 30000,
     env: {
       VITE_BYPASS_WAITLIST: 'true',
+      VITE_SKIP_ONBOARDING: 'true',
     },
   },
 })

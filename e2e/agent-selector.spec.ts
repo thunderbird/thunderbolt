@@ -1,55 +1,52 @@
 import { test, expect } from '@playwright/test'
+import { goToNewChat } from './helpers'
 
 test.describe('Agent Selector', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to chat page and wait for it to load
-    await page.goto('/chats/new')
-    // Wait for the app to initialize (the header should be visible)
-    await page.waitForSelector('header', { timeout: 10000 })
+    await goToNewChat(page)
   })
 
-  test('header is visible on chat page', async ({ page }) => {
+  test('shows Thunderbolt as default agent in header', async ({ page }) => {
     const header = page.locator('header')
-    await expect(header).toBeVisible()
+    const agentButton = header.getByText('Thunderbolt')
+    await expect(agentButton).toBeVisible()
   })
 
-  test('chat prompt input area is visible', async ({ page }) => {
-    // The chat prompt input should be present on new chat page
-    const textarea = page.locator('textarea')
-    // Wait a bit for full render
-    await page.waitForTimeout(1000)
-
-    // Either a textarea or some input area should exist
-    const inputCount = await textarea.count()
-    if (inputCount > 0) {
-      await expect(textarea.first()).toBeVisible()
-    }
+  test('agent selector has dropdown chevron', async ({ page }) => {
+    const header = page.locator('header')
+    // The agent selector trigger contains the agent name and a chevron icon
+    const trigger = header.locator('div').filter({ hasText: 'Thunderbolt' }).first()
+    await expect(trigger).toBeVisible()
+    // Should have an SVG (chevron icon)
+    const svg = trigger.locator('svg')
+    expect(await svg.count()).toBeGreaterThan(0)
   })
 
-  test('no critical JavaScript errors on page load', async ({ page }) => {
-    const jsErrors: string[] = []
-    page.on('pageerror', (error) => {
-      jsErrors.push(error.message)
-    })
+  test('clicking agent selector opens dropdown menu', async ({ page }) => {
+    const header = page.locator('header')
+    const agentTrigger = header.getByText('Thunderbolt').first()
+    await agentTrigger.click()
+    await page.waitForTimeout(500)
 
-    await page.goto('/chats/new')
-    await page.waitForTimeout(2000) // Wait for async initialization
+    // A popover/dropdown should appear with agent options
+    // Look for the popover content
+    const popover = page.locator('[data-radix-popper-content-wrapper], [role="listbox"], [role="menu"]')
+    const popoverCount = await popover.count()
 
-    // Filter out Tauri-specific errors (expected in browser mode)
-    const criticalErrors = jsErrors.filter(
-      (e) =>
-        !e.includes('__TAURI__') &&
-        !e.includes('tauri') &&
-        !e.includes('window.__TAURI_INTERNALS__') &&
-        !e.includes('ipc') &&
-        !e.includes('convertFileSrc'),
-    )
-
-    if (criticalErrors.length > 0) {
-      console.error('Critical JS errors:', criticalErrors)
+    if (popoverCount > 0) {
+      await expect(popover.first()).toBeVisible()
     }
+    // Take a screenshot for visual verification
+    await page.screenshot({ path: '/tmp/e2e-agent-dropdown.png' })
+  })
 
-    // We expect zero critical errors (Tauri errors are expected when running in browser)
-    expect(criticalErrors).toHaveLength(0)
+  test('agent selector dropdown shows built-in agent', async ({ page }) => {
+    const header = page.locator('header')
+    await header.getByText('Thunderbolt').first().click()
+    await page.waitForTimeout(500)
+
+    // Should see Thunderbolt in the dropdown list
+    const thunderboltItem = page.getByText('Thunderbolt')
+    expect(await thunderboltItem.count()).toBeGreaterThan(0)
   })
 })

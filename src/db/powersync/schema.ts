@@ -19,6 +19,7 @@ export const drizzleSchema = {
   modes: tables.modesTable,
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
+  agents: tables.agentsTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
 /**

@@ -1,4 +1,22 @@
+import { hashValues } from '@/lib/utils'
 import type { Agent } from '@/types'
+
+/**
+ * Compute hash of user-editable fields for an agent
+ */
+export const hashAgent = (agent: Agent): string => {
+  return hashValues([
+    agent.name,
+    agent.type,
+    agent.transport,
+    agent.command,
+    agent.args,
+    agent.url,
+    agent.icon,
+    agent.enabled,
+    agent.deletedAt,
+  ])
+}
 
 export const defaultAgentBuiltIn: Agent = {
   id: 'agent-built-in',

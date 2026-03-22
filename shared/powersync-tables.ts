@@ -17,6 +17,7 @@ export const powersyncTableNames = [
   'modes',
   'model_profiles',
   'devices',
+  'agents',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -40,4 +41,5 @@ export const powersyncTableToQueryKeys: {
   modes: [['modes']],
   model_profiles: [['modelProfiles']],
   devices: [['devices']],
+  agents: [['agents']],
 }

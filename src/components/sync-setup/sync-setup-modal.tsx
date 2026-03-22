@@ -4,7 +4,7 @@ import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
-import { Monitor, Plus } from 'lucide-react'
+import { ArrowLeft, Monitor, Plus } from 'lucide-react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -57,17 +57,24 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       }}
       className="sm:min-h-0 sm:h-auto"
     >
+      {setup.step === 'recovery-key-entry' && (
+        <button
+          type="button"
+          onClick={setup.chooseAdditionalDevice}
+          className="absolute left-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ArrowLeft className="size-[var(--icon-size-default)]" />
+          <span className="sr-only">Go back</span>
+        </button>
+      )}
+
       <ResponsiveModalContent>
         {setup.step === 'choose-flow' && (
           <ChooseFlowStep onFirstDevice={setup.chooseFirstDevice} onAdditionalDevice={setup.chooseAdditionalDevice} />
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep
-            recoveryKey={setup.recoveryKey}
-            onBack={setup.goBack}
-            onDone={handleFirstDeviceDone}
-          />
+          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
         )}
 
         {setup.step === 'approval-waiting' && (
@@ -86,7 +93,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             error={setup.recoveryKeyError}
             onChange={setup.setRecoveryKeyInput}
             onSubmit={handleRecoveryKeySubmit}
-            onBack={setup.chooseAdditionalDevice}
           />
         )}
       </ResponsiveModalContent>

@@ -8,10 +8,9 @@ type RecoveryKeyEntryStepProps = {
   error: string | null
   onChange: (value: string) => void
   onSubmit: () => void
-  onBack: () => void
 }
 
-export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, onBack }: RecoveryKeyEntryStepProps) => {
+export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit }: RecoveryKeyEntryStepProps) => {
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       onSubmit()
@@ -39,14 +38,6 @@ export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, onBack 
         />
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
-
-      <button
-        type="button"
-        className="text-sm text-muted-foreground underline-offset-4 hover:underline text-center"
-        onClick={onBack}
-      >
-        Go back
-      </button>
 
       <Button className="w-full" onClick={onSubmit}>
         Submit

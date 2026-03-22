@@ -15,7 +15,15 @@ import {
 } from '@/dal'
 import { discoverAndSeedLocalAgents } from '@/acp/discovery'
 import { isTauri, isDesktop } from '@/lib/platform'
-import type { Agent } from '@/types'
+import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
+import { useMCP } from '@/lib/mcp-provider'
+import { generateTitle } from '@/lib/title-generator'
+import { convertDbChatMessageToUIMessage } from '@/lib/utils'
+import type { Agent, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { useChatStore } from './chat-store'
+import { createAcpSession } from './create-acp-session'
 
 /**
  * Filter out local agents on non-desktop platforms.
@@ -27,15 +35,6 @@ const filterAgentsByPlatform = (agents: Agent[]): Agent[] => {
   }
   return agents.filter((a) => a.type !== 'local')
 }
-import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
-import { useMCP } from '@/lib/mcp-provider'
-import { generateTitle } from '@/lib/title-generator'
-import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
-import { useChatStore } from './chat-store'
-import { createAcpSession } from './create-acp-session'
 
 type UseHydrateChatStoreParams = {
   id: string

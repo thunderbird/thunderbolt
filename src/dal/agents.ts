@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsTable } from '../db/tables'
+import { defaultAgentBuiltIn } from '../defaults/agents'
 import type { Agent, DrizzleQueryWithPromise } from '@/types'
 
 /**
@@ -19,15 +20,19 @@ export const getAllAgents = (db: AnyDrizzleDatabase) => {
 
 /**
  * Gets all enabled agents (excluding soft-deleted).
+ * Returns hardcoded default if agents table is not available.
  */
-export const getAvailableAgents = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select()
-    .from(agentsTable)
-    .where(and(eq(agentsTable.enabled, 1), isNull(agentsTable.deletedAt)))
-    .orderBy(desc(agentsTable.isSystem), agentsTable.name)
-
-  return query as typeof query & DrizzleQueryWithPromise<Agent>
+export const getAvailableAgents = async (db: AnyDrizzleDatabase): Promise<Agent[]> => {
+  try {
+    return (await db
+      .select()
+      .from(agentsTable)
+      .where(and(eq(agentsTable.enabled, 1), isNull(agentsTable.deletedAt)))
+      .orderBy(desc(agentsTable.isSystem), agentsTable.name)) as Agent[]
+  } catch (err) {
+    console.warn('Failed to query agents table, using hardcoded default:', err)
+    return [defaultAgentBuiltIn]
+  }
 }
 
 /**
@@ -44,27 +49,34 @@ export const getAgent = async (db: AnyDrizzleDatabase, id: string): Promise<Agen
 
 /**
  * Gets the currently selected agent from settings, falling back to the built-in agent.
+ * Falls back to the hardcoded default if the agents table hasn't been seeded yet
+ * (e.g. when frontend deploys before backend migration).
  */
 export const getSelectedAgent = async (db: AnyDrizzleDatabase): Promise<Agent> => {
-  const { settingsTable } = await import('../db/tables')
-  const settings = await db.select().from(settingsTable).where(eq(settingsTable.key, 'selected_agent'))
+  try {
+    const { settingsTable } = await import('../db/tables')
+    const settings = await db.select().from(settingsTable).where(eq(settingsTable.key, 'selected_agent'))
 
-  if (settings.length > 0 && settings[0].value) {
-    const agent = await getAgent(db, settings[0].value)
-    if (agent) {
-      return agent
+    if (settings.length > 0 && settings[0].value) {
+      const agent = await getAgent(db, settings[0].value)
+      if (agent) {
+        return agent
+      }
     }
+
+    // Fall back to built-in agent from DB
+    const builtIn = await db
+      .select()
+      .from(agentsTable)
+      .where(and(eq(agentsTable.type, 'built-in'), isNull(agentsTable.deletedAt)))
+
+    if (builtIn.length > 0) {
+      return builtIn[0] as Agent
+    }
+  } catch (err) {
+    console.warn('Failed to query agents table, using hardcoded default:', err)
   }
 
-  // Fall back to built-in agent
-  const builtIn = await db
-    .select()
-    .from(agentsTable)
-    .where(and(eq(agentsTable.type, 'built-in'), isNull(agentsTable.deletedAt)))
-
-  if (builtIn.length > 0) {
-    return builtIn[0] as Agent
-  }
-
-  throw new Error('No agents available')
+  // Hardcoded fallback — keeps the app functional even if agents table is missing
+  return defaultAgentBuiltIn
 }

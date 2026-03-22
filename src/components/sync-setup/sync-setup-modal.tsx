@@ -183,7 +183,10 @@ const FirstDeviceSetupStep = ({ onContinue }: { onContinue: () => void }) => (
       <h2 className="text-2xl font-bold">First device setup</h2>
       <p className="text-muted-foreground">
         This is the first device on your account. We&apos;ll generate an encryption key and show you a recovery key to
-        save. The recovery key is the only way to recover your data if you lose all your devices.
+        save.
+      </p>
+      <p className="text-sm font-medium text-destructive">
+        The recovery key is the only way to recover your data if you lose all your devices.
       </p>
     </div>
 

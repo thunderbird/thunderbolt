@@ -55,6 +55,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           handleClose()
         }
       }}
+      className="sm:min-h-0 sm:h-auto"
     >
       <ResponsiveModalContent>
         {setup.step === 'choose-flow' && (
@@ -99,33 +100,31 @@ type ChooseFlowStepProps = {
 }
 
 const ChooseFlowStep = ({ onFirstDevice, onAdditionalDevice }: ChooseFlowStepProps) => (
-  <div className="flex flex-col flex-1">
-    <div className="flex-1 flex flex-col justify-center gap-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold">Set up sync</h2>
-        <p className="text-sm text-muted-foreground mt-2">Choose a setup flow to test.</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          (This step is for testing only — removed when real server detection is wired)
-        </p>
-      </div>
+  <div className="flex flex-col gap-6">
+    <div className="text-center">
+      <h2 className="text-lg font-semibold">Set up sync</h2>
+      <p className="text-sm text-muted-foreground mt-2">Choose a setup flow to test.</p>
+      <p className="text-xs text-muted-foreground/60 mt-1">
+        (This step is for testing only — removed when real server detection is wired)
+      </p>
+    </div>
 
-      <div className="flex flex-col gap-3">
-        <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onFirstDevice}>
-          <Monitor className="size-5 shrink-0" />
-          <div className="text-left">
-            <div className="font-medium">First device</div>
-            <div className="text-xs text-muted-foreground">No other devices have sync enabled yet</div>
-          </div>
-        </Button>
+    <div className="flex flex-col gap-3">
+      <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onFirstDevice}>
+        <Monitor className="size-5 shrink-0" />
+        <div className="text-left">
+          <div className="font-medium">First device</div>
+          <div className="text-xs text-muted-foreground">No other devices have sync enabled yet</div>
+        </div>
+      </Button>
 
-        <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onAdditionalDevice}>
-          <Plus className="size-5 shrink-0" />
-          <div className="text-left">
-            <div className="font-medium">Additional device</div>
-            <div className="text-xs text-muted-foreground">Other trusted devices already exist</div>
-          </div>
-        </Button>
-      </div>
+      <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onAdditionalDevice}>
+        <Plus className="size-5 shrink-0" />
+        <div className="text-left">
+          <div className="font-medium">Additional device</div>
+          <div className="text-xs text-muted-foreground">Other trusted devices already exist</div>
+        </div>
+      </Button>
     </div>
   </div>
 )

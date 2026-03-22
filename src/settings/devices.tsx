@@ -16,7 +16,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import dayjs from 'dayjs'
-import { Smartphone, Trash2 } from 'lucide-react'
+import { SectionCard } from '@/components/ui/section-card'
+import { CheckCircle2, Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -60,9 +61,43 @@ export default function DevicesSettingsPage() {
     }
   }
 
+  // Mock pending devices for UI review (replaced with real synced data in PR 5)
+  const mockPendingDevices = [
+    { id: 'pending-1', name: 'Chrome on Windows PC' },
+    { id: 'pending-2', name: 'Safari on iPad' },
+  ]
+
+  const handleApproveDevice = (deviceId: string) => {
+    // Stub: In PR 5, this wraps CK with pending device's public key
+    console.log('Approve device (stub):', deviceId)
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Devices" />
+
+      {mockPendingDevices.length > 0 && (
+        <SectionCard title="Pending Approvals">
+          <div className="flex flex-col gap-3">
+            {mockPendingDevices.map((device) => (
+              <div key={device.id} className="flex items-center justify-between gap-4">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Smartphone className="size-5 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium truncate">{device.name}</span>
+                    <p className="text-sm text-muted-foreground">Waiting for approval</p>
+                  </div>
+                </div>
+                <Button variant="default" size="sm" onClick={() => handleApproveDevice(device.id)}>
+                  <CheckCircle2 className="size-4 mr-1" />
+                  Approve
+                </Button>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
       {isLoading ? (
         <p className="text-muted-foreground py-4">Loading devices…</p>
       ) : visibleDevices.length === 0 ? (

@@ -74,7 +74,37 @@
           "path": "$APPDATA/*"
         }
       ]
-    }
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "which",
+          "cmd": "which",
+          "args": [{ "validator": "\\S+" }],
+          "sidecar": false
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "claude-agent-acp",
+          "cmd": "claude-agent-acp",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "codex",
+          "cmd": "codex",
+          "args": ["--acp"],
+          "sidecar": false
+        }
+      ]
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill"
   ],
   "remote": {
     "urls": ["http://localhost:1420/*"]

@@ -2,7 +2,7 @@ import ChatUI from '@/components/chat/chat-ui'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useMemo, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
-import { useParams } from 'react-router'
+import { useParams, useLocation } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 
@@ -47,10 +47,13 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
 
 export default function ChatDetailPage() {
   const params = useParams()
+  const location = useLocation()
 
   const isNew = params.chatThreadId === 'new'
 
-  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [params.chatThreadId])
+  // Include agentSwitch state in deps so switching agents on /chats/new generates a fresh session ID
+  const agentSwitch = (location.state as { agentSwitch?: number } | null)?.agentSwitch
+  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [params.chatThreadId, agentSwitch])
 
   if (!id) {
     return null

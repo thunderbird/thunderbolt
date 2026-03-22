@@ -43,10 +43,11 @@ export const Header = () => {
     }
     // Per ACP spec: a chat belongs to one agent. Switching agents creates a new chat.
     // Persist the agent selection, then navigate to a new chat which will use this agent.
+    // Pass a unique timestamp in state to force a fresh session even if already on /chats/new.
     if (chatThreadId) {
       await setSelectedAgent(chatThreadId, agentId).catch(console.error)
     }
-    navigate('/chats/new')
+    navigate('/chats/new', { state: { agentSwitch: Date.now() } })
   }
 
   const agentSelector = showAgentSelector && (

@@ -37,7 +37,6 @@ test.describe('Chat Flow - End to End', () => {
 
   test('typing in textarea persists input value', async ({ page }) => {
     const textarea = page.locator('textarea')
-    await textarea.click()
     await textarea.fill('Test message content')
     await expect(textarea).toHaveValue('Test message content')
   })
@@ -46,13 +45,11 @@ test.describe('Chat Flow - End to End', () => {
     const textarea = page.locator('textarea')
     await textarea.fill('Hello world')
 
-    // Submit via button click
     const submitButton = page.locator('form button[type="submit"]')
     await submitButton.click()
 
     // Input should be cleared after submission
-    await page.waitForTimeout(1000)
-    await expect(textarea).toHaveValue('')
+    await expect(textarea).toHaveValue('', { timeout: 5000 })
   })
 
   test('submitting a message shows user message in chat', async ({ page }) => {
@@ -63,7 +60,6 @@ test.describe('Chat Flow - End to End', () => {
     await submitButton.click()
 
     // User message should appear in the chat area
-    await page.waitForTimeout(1000)
     const userMessage = page.getByText('What is 2+2?')
     await expect(userMessage).toBeVisible({ timeout: 5000 })
   })
@@ -133,9 +129,7 @@ test.describe('Chat Mode Switching', () => {
       await searchOption.click()
       await page.waitForTimeout(500)
 
-      // Dropdown should be closed
       const popover = page.locator('[data-radix-popper-content-wrapper]')
-      // Either no popover or it's hidden
       const visible = await popover.isVisible().catch(() => false)
       expect(visible).toBe(false)
     }
@@ -147,22 +141,22 @@ test.describe('Chat Agent Switching', () => {
     await goToNewChat(page)
   })
 
-  test('selecting the same agent does not navigate away', async ({ page }) => {
-    const currentUrl = page.url()
-
+  test('selecting the same agent navigates to new chat that renders', async ({ page }) => {
     const header = page.locator('header')
     await header.getByText('Thunderbolt').first().click()
     await page.waitForTimeout(500)
 
-    // Click on Thunderbolt (same agent)
     const popover = page.locator('[data-radix-popper-content-wrapper]')
     if (await popover.isVisible().catch(() => false)) {
       const thunderboltInDropdown = popover.getByText('Thunderbolt').first()
       await thunderboltInDropdown.click()
       await page.waitForTimeout(1000)
 
-      // Should navigate to new chat (per spec: switching agent = new chat)
+      // New chat must fully render — catches blank screen regression
       expect(page.url()).toContain('/chats/')
+      const textarea = page.locator('textarea')
+      await expect(textarea).toBeVisible({ timeout: 15000 })
+      await expect(textarea).toHaveAttribute('placeholder', /ask me anything/i)
     }
   })
 })
@@ -173,7 +167,6 @@ test.describe('Chat Prompt Suggestions', () => {
   })
 
   test('prompt suggestions are visible on new chat', async ({ page }) => {
-    // At least some suggestions should be visible
     const suggestions = page.locator('[role="button"], button').filter({ hasText: /weather|message|topic/i })
     const count = await suggestions.count()
     expect(count).toBeGreaterThan(0)
@@ -186,7 +179,6 @@ test.describe('Chat Prompt Suggestions', () => {
       await suggestion.click()
       await page.waitForTimeout(2000)
 
-      // Either the textarea got filled or we navigated to a chat thread
       const textarea = page.locator('textarea')
       const inputValue = await textarea.inputValue().catch(() => '')
       const urlChanged = page.url() !== urlBefore
@@ -197,7 +189,7 @@ test.describe('Chat Prompt Suggestions', () => {
 })
 
 test.describe('Chat Navigation', () => {
-  test('new chat button creates fresh chat', async ({ page }) => {
+  test('new chat button creates fresh chat with working UI', async ({ page }) => {
     await goToNewChat(page)
 
     // Type something to dirty the chat
@@ -206,19 +198,16 @@ test.describe('Chat Navigation', () => {
 
     // Click New Chat in sidebar
     await page.getByText('New Chat').click()
-    await page.waitForTimeout(2000)
 
-    // Should be on a new chat page
-    expect(page.url()).toContain('/chats/')
-
-    // Textarea should be empty
+    // New chat should fully render — catches blank screen regression
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('textarea')).toHaveValue('')
+    expect(page.url()).toContain('/chats/')
   })
 
   test('navigating to /not-found shows 404', async ({ page }) => {
     await page.goto('/not-found')
     await page.waitForTimeout(2000)
-    // Should show some kind of not found indication
     const pageContent = await page.textContent('body')
     expect(pageContent).toBeTruthy()
   })

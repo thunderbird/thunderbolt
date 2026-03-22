@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { goToNewChat } from './helpers'
 
 test.describe('No Console Errors', () => {
   test('chat page has no critical console errors', async ({ page }) => {
@@ -20,8 +21,8 @@ test.describe('No Console Errors', () => {
       }
     })
 
-    await page.goto('/chats/new')
-    await page.waitForTimeout(4000)
+    // Use goToNewChat which asserts the page actually rendered
+    await goToNewChat(page)
 
     if (consoleErrors.length > 0) {
       console.error('Console errors:', consoleErrors)
@@ -47,8 +48,7 @@ test.describe('No Console Errors', () => {
       }
     })
 
-    await page.goto('/chats/new')
-    await page.waitForTimeout(2000)
+    await goToNewChat(page)
     await page.getByText('Settings').click()
     await page.waitForTimeout(2000)
 
@@ -70,16 +70,13 @@ test.describe('No Console Errors', () => {
       }
     })
 
-    await page.goto('/chats/new')
-    await page.waitForTimeout(4000)
+    await goToNewChat(page)
 
     // Interact with the page to trigger any lazy errors
     const textarea = page.locator('textarea')
-    if (await textarea.isVisible()) {
-      await textarea.click()
-      await textarea.fill('test input')
-      await page.waitForTimeout(500)
-    }
+    await textarea.click()
+    await textarea.fill('test input')
+    await page.waitForTimeout(500)
 
     if (pageErrors.length > 0) {
       console.error('Page errors:', pageErrors)
@@ -100,21 +97,22 @@ test.describe('No Console Errors', () => {
     })
 
     // Navigate through all main pages
-    await page.goto('/chats/new')
-    await page.waitForTimeout(2000)
+    await goToNewChat(page)
 
     await page.getByText('Settings').click()
     await page.waitForTimeout(1000)
 
     // Navigate back from settings
     await page.goBack()
-    await page.waitForTimeout(1000)
+    // Chat page must fully render after navigating back
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 15000 })
 
     await page.getByText('Automations').click()
     await page.waitForTimeout(1000)
 
     await page.getByText('New Chat').click()
-    await page.waitForTimeout(1000)
+    // New chat must fully render
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 15000 })
 
     if (pageErrors.length > 0) {
       console.error('Page errors during navigation:', pageErrors)

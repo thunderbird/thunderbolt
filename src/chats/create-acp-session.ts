@@ -114,9 +114,12 @@ export const createAcpSession = async ({
   return { acpClient, sessionState }
 }
 
+const localAgentTimeoutMs = 15_000
+
 /**
  * Create an ACP session for a local CLI agent (stdio transport).
- * Only available on Tauri desktop.
+ * Only available on Tauri desktop. Times out if the agent doesn't
+ * respond to the ACP handshake within localAgentTimeoutMs.
  */
 const createLocalAgentSession = async (chatId: string, agent: Agent): Promise<AcpSessionResult> => {
   if (!isTauri() || !isDesktop()) {
@@ -137,19 +140,35 @@ const createLocalAgentSession = async (chatId: string, agent: Agent): Promise<Ac
     enabled: agent.enabled === 1,
   }
 
-  const { stream } = await connectToLocalAgent({ agentConfig, spawner })
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Agent "${agent.name}" did not respond within ${localAgentTimeoutMs / 1000}s. Is "${agent.command}" installed and does it support ACP?`,
+          ),
+        ),
+      localAgentTimeoutMs,
+    ),
+  )
 
-  const acpClient = createAcpClient({
-    stream,
-    onSessionUpdate: (update) => {
-      handleSessionUpdate(chatId, update)
-    },
-  })
+  const connect = async (): Promise<AcpSessionResult> => {
+    const { stream } = await connectToLocalAgent({ agentConfig, spawner })
 
-  await acpClient.initialize()
-  const sessionState = await acpClient.createSession()
+    const acpClient = createAcpClient({
+      stream,
+      onSessionUpdate: (update) => {
+        handleSessionUpdate(chatId, update)
+      },
+    })
 
-  return { acpClient, sessionState }
+    await acpClient.initialize()
+    const sessionState = await acpClient.createSession()
+
+    return { acpClient, sessionState }
+  }
+
+  return Promise.race([connect(), timeout])
 }
 
 /**

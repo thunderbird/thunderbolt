@@ -45,14 +45,20 @@ export const discoverAndSeedLocalAgents = async (db: AnyDrizzleDatabase): Promis
       continue
     }
 
-    // Check if already in DB
+    // Upsert: insert if missing, or update if defaults changed (e.g., command renamed)
     const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, candidate.id))
+    const candidateHash = hashAgent(candidate)
 
     if (existing.length === 0) {
       await db.insert(agentsTable).values({
         ...candidate,
-        defaultHash: hashAgent(candidate),
+        defaultHash: candidateHash,
       })
+    } else if (existing[0].defaultHash !== candidateHash) {
+      await db
+        .update(agentsTable)
+        .set({ ...candidate, defaultHash: candidateHash })
+        .where(eq(agentsTable.id, candidate.id))
     }
 
     discovered.push(candidate)

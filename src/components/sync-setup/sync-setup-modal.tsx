@@ -6,6 +6,7 @@ import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { ArrowLeft, Lock, Monitor, Plus, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -23,9 +24,14 @@ type SyncSetupModalProps = {
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
+  const [recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
+
+  const isRecoveryKeyStep = setup.step === 'recovery-key-display'
+  const canDismiss = !isRecoveryKeyStep || recoveryKeyConfirmed
 
   const handleClose = () => {
     setup.reset()
+    setRecoveryKeyConfirmed(false)
     onOpenChange(false)
   }
 
@@ -54,11 +60,22 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     <ResponsiveModal
       open={open}
       onOpenChange={(isOpen) => {
-        if (!isOpen) {
+        if (!isOpen && canDismiss) {
           handleClose()
         }
       }}
       className="sm:min-h-0 sm:h-auto"
+      showCloseButton={canDismiss}
+      onInteractOutside={(e) => {
+        if (!canDismiss) {
+          e.preventDefault()
+        }
+      }}
+      onEscapeKeyDown={(e) => {
+        if (!canDismiss) {
+          e.preventDefault()
+        }
+      }}
     >
       {setup.step === 'recovery-key-entry' && (
         <button
@@ -81,7 +98,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         {setup.step === 'first-device-setup' && <FirstDeviceSetupStep onContinue={setup.continueFirstDeviceSetup} />}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
+          <RecoveryKeyDisplayStep
+            recoveryKey={setup.recoveryKey}
+            onDone={handleFirstDeviceDone}
+            onConfirmedChange={setRecoveryKeyConfirmed}
+          />
         )}
 
         {setup.step === 'approval-waiting' && (

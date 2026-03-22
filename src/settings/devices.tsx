@@ -67,36 +67,53 @@ export default function DevicesSettingsPage() {
     { id: 'pending-2', name: 'Safari on iPad' },
   ]
 
-  const handleApproveDevice = (deviceId: string) => {
-    // Stub: In PR 5, this wraps CK with pending device's public key
-    console.log('Approve device (stub):', deviceId)
+  const [approveTarget, setApproveTarget] = useState<string | null>(null)
+
+  const confirmApprove = () => {
+    if (approveTarget) {
+      // Stub: In PR 5, this wraps CK with pending device's public key
+      console.log('Approve device (stub):', approveTarget)
+      setApproveTarget(null)
+    }
   }
+
+  const hasPendingDevices = mockPendingDevices.length > 0
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Devices" />
 
-      {mockPendingDevices.length > 0 && (
-        <SectionCard title="Pending Approvals">
-          <div className="flex flex-col gap-3">
-            {mockPendingDevices.map((device) => (
-              <div key={device.id} className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium truncate">{device.name}</span>
-                    <p className="text-sm text-muted-foreground">Waiting for approval</p>
-                  </div>
-                </div>
-                <Button variant="default" size="sm" onClick={() => handleApproveDevice(device.id)}>
-                  <CheckCircle2 className="size-4 mr-1" />
-                  Approve
-                </Button>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
+      {hasPendingDevices && (
+        <>
+          <SectionCard title="Pending Approvals">
+            <div className="flex flex-col gap-3">
+              {mockPendingDevices.map((device) => (
+                <Card key={device.id} className="bg-secondary/50">
+                  <CardContent>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <Smartphone className="size-5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium truncate">{device.name}</span>
+                          <p className="text-sm text-muted-foreground">Waiting for approval</p>
+                        </div>
+                      </div>
+                      <Button variant="default" size="sm" onClick={() => setApproveTarget(device.id)}>
+                        <CheckCircle2 className="size-4 mr-1" />
+                        Approve
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </SectionCard>
+
+          <div className="h-px bg-border" />
+        </>
       )}
+
+      {hasPendingDevices && <h3 className="text-lg font-semibold -mb-2">Trusted Devices</h3>}
 
       {isLoading ? (
         <p className="text-muted-foreground py-4">Loading devices…</p>
@@ -148,6 +165,21 @@ export default function DevicesSettingsPage() {
           })}
         </div>
       )}
+
+      <AlertDialog open={approveTarget !== null} onOpenChange={(open) => !open && setApproveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve this device?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will share your encryption key with the device, allowing it to decrypt and sync your data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmApprove}>Approve</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent>

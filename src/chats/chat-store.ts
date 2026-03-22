@@ -170,8 +170,18 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    // Update via ACP config option
-    await session.acpClient.setConfigOption('model', modelId ?? '')
+    // Update via ACP config option — response contains updated configOptions
+    const response = await session.acpClient.setConfigOption('model', modelId ?? '')
+
+    // Propagate updated configOptions back to session state so the UI reflects the change
+    if (response?.configOptions) {
+      const nextSessions = new Map(get().sessions)
+      const currentSession = nextSessions.get(id)
+      if (currentSession) {
+        nextSessions.set(id, { ...currentSession, configOptions: response.configOptions })
+      }
+      set({ sessions: nextSessions })
+    }
 
     const db = getDb()
     await updateSettings(db, { selected_model: modelId ?? '' })

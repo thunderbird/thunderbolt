@@ -2,7 +2,7 @@ import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } fro
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types'
-import { ChevronDown, Code, Globe, Terminal, Zap } from 'lucide-react'
+import { Check, ChevronDown, Code, Globe, Terminal, Zap } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type AgentSelectorProps = {
@@ -106,6 +106,7 @@ export const AgentSelector = ({ agents, selectedAgent, onAgentChange, side, alig
           <span className="text-sm text-muted-foreground truncate">{item.description}</span>
         </div>
       </div>
+      {isSelected && <Check className="size-4 text-foreground flex-shrink-0" />}
     </div>
   )
 

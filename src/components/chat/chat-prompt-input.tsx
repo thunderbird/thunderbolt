@@ -7,7 +7,7 @@ import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model, type SaveMessagesFunction } from '@/types'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -151,38 +151,51 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
-    // Extract model config option from ACP session
+    // Extract model config option from ACP session and convert to Model-like objects
     const modelConfig = configOptions.find((o) => o.category === 'model')
-    const modelOptions =
+    const acpModelOptions =
       modelConfig && modelConfig.type === 'select' && Array.isArray(modelConfig.options)
-        ? (modelConfig.options as Array<{ value: string; name: string }>)
+        ? (modelConfig.options as Array<{ value: string; name: string; description?: string | null }>)
         : []
     const currentModelValue = modelConfig && 'currentValue' in modelConfig ? String(modelConfig.currentValue) : null
 
+    // Convert ACP config options to Model objects for the ModelSelector
+    const acpModels: Model[] = useMemo(
+      () =>
+        acpModelOptions.map((opt) => ({
+          id: opt.value,
+          name: opt.name,
+          model: opt.value,
+          description: opt.description ?? null,
+          vendor: null,
+          contextLength: null,
+          isConfidential: 0,
+          isSystem: 1,
+          enabled: 1,
+          deletedAt: null,
+          defaultHash: null,
+          userId: null,
+        })),
+      [acpModelOptions],
+    )
+
+    const acpSelectedModel = useMemo(
+      () => acpModels.find((m) => m.id === currentModelValue) ?? null,
+      [acpModels, currentModelValue],
+    )
+
     const handleModelChange = useCallback(
       (modelId: string) => {
+        triggerSelection()
         useChatStore.getState().setSelectedModel(chatThreadId, modelId).catch(console.error)
       },
-      [chatThreadId],
+      [chatThreadId, triggerSelection],
     )
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
           <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} iconOnly={isMobile} />
-        )}
-        {modelOptions.length > 1 && (
-          <select
-            value={currentModelValue ?? ''}
-            onChange={(e) => handleModelChange(e.target.value)}
-            className="h-[var(--touch-height-sm)] text-[length:var(--font-size-xs)] bg-transparent border rounded-lg px-2 text-muted-foreground cursor-pointer"
-          >
-            {modelOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.name}
-              </option>
-            ))}
-          </select>
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
@@ -206,6 +219,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
           className="flex flex-col w-full gap-0 p-2"
           footerStartElements={footerStartElements}
+          chatThread={chatThread}
+          models={acpModels.length > 1 ? acpModels : undefined}
+          selectedModel={acpSelectedModel}
+          onModelChange={acpModels.length > 1 ? handleModelChange : undefined}
         />
         <ContextOverflowModal
           isOpen={showOverflowModal}

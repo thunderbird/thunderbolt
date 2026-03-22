@@ -14,6 +14,19 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { discoverAndSeedLocalAgents } from '@/acp/discovery'
+import { isTauri, isDesktop } from '@/lib/platform'
+import type { Agent } from '@/types'
+
+/**
+ * Filter out local agents on non-desktop platforms.
+ * Local agents synced via PowerSync from desktop should not appear on web/mobile.
+ */
+const filterAgentsByPlatform = (agents: Agent[]): Agent[] => {
+  if (isTauri() && isDesktop()) {
+    return agents
+  }
+  return agents.filter((a) => a.type !== 'local')
+}
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
@@ -96,10 +109,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [agents, mcpClients] = await Promise.all([getAvailableAgents(db), getEnabledClients()])
+      const [allAgents, mcpClients] = await Promise.all([getAvailableAgents(db), getEnabledClients()])
 
       setMcpClients(mcpClients)
-      setAgents(agents)
+      setAgents(filterAgentsByPlatform(allAgents))
 
       setIsReady(true)
 
@@ -183,7 +196,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setCurrentSessionId(id)
 
     setMcpClients(mcpClients)
-    setAgents(agents)
+    setAgents(filterAgentsByPlatform(agents))
 
     setIsReady(true)
   }

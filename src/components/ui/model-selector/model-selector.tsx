@@ -4,7 +4,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { ChevronDown, Lock, Plus } from 'lucide-react'
+import { Check, ChevronDown, Lock, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -125,6 +125,7 @@ export const ModelSelector = ({
         </div>
         <span className="text-sm text-muted-foreground truncate">{item.description}</span>
       </div>
+      {isSelected && <Check className="size-4 text-foreground flex-shrink-0" />}
     </div>
   )
 

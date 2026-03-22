@@ -4,7 +4,7 @@ import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
-import { ArrowLeft, Monitor, Plus } from 'lucide-react'
+import { ArrowLeft, Lock, Monitor, Plus, ShieldCheck } from 'lucide-react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -15,8 +15,10 @@ type SyncSetupModalProps = {
 /**
  * Multi-step wizard for sync/encryption setup.
  *
- * First step is a test-only flow picker (removed in PR 5 when real
- * server detection via `firstDevice: true/false` replaces it).
+ * Flow: intro → detecting → (first-device-setup → recovery-key-display | approval-waiting)
+ *
+ * The "detecting" step uses test buttons for now. In PR 5 it will make a
+ * BE request to determine firstDevice automatically.
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
@@ -69,9 +71,13 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       )}
 
       <ResponsiveModalContent>
-        {setup.step === 'choose-flow' && (
-          <ChooseFlowStep onFirstDevice={setup.chooseFirstDevice} onAdditionalDevice={setup.chooseAdditionalDevice} />
+        {setup.step === 'intro' && <IntroStep onContinue={setup.continueIntro} />}
+
+        {setup.step === 'detecting' && (
+          <DetectingStep onFirstDevice={setup.chooseFirstDevice} onAdditionalDevice={setup.chooseAdditionalDevice} />
         )}
+
+        {setup.step === 'first-device-setup' && <FirstDeviceSetupStep onContinue={setup.continueFirstDeviceSetup} />}
 
         {setup.step === 'recovery-key-display' && (
           <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
@@ -101,21 +107,46 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 }
 
 // =============================================================================
-// Test-only first step — removed in PR 5
+// Intro step — user-facing welcome screen
 // =============================================================================
 
-type ChooseFlowStepProps = {
+const IntroStep = ({ onContinue }: { onContinue: () => void }) => (
+  <div className="flex flex-col gap-6">
+    <div className="flex justify-center">
+      <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+        <ShieldCheck className="size-6 text-primary" />
+      </div>
+    </div>
+
+    <div className="text-center">
+      <h2 className="text-lg font-semibold">Set up sync</h2>
+      <p className="text-sm text-muted-foreground mt-2">
+        Keep your data in sync across all your devices. Everything is encrypted end-to-end — only your devices can read
+        your data.
+      </p>
+    </div>
+
+    <Button className="w-full" onClick={onContinue}>
+      Continue
+    </Button>
+  </div>
+)
+
+// =============================================================================
+// Detecting step — test buttons for now, BE auto-detection in PR 5
+// =============================================================================
+
+type DetectingStepProps = {
   onFirstDevice: () => void
   onAdditionalDevice: () => void
 }
 
-const ChooseFlowStep = ({ onFirstDevice, onAdditionalDevice }: ChooseFlowStepProps) => (
+const DetectingStep = ({ onFirstDevice, onAdditionalDevice }: DetectingStepProps) => (
   <div className="flex flex-col gap-6">
     <div className="text-center">
-      <h2 className="text-lg font-semibold">Set up sync</h2>
-      <p className="text-sm text-muted-foreground mt-2">Choose a setup flow to test.</p>
+      <h2 className="text-lg font-semibold">Detecting your devices…</h2>
       <p className="text-xs text-muted-foreground/60 mt-1">
-        (This step is for testing only — removed when real server detection is wired)
+        (Testing only — in production this step auto-detects via BE request)
       </p>
     </div>
 
@@ -136,5 +167,31 @@ const ChooseFlowStep = ({ onFirstDevice, onAdditionalDevice }: ChooseFlowStepPro
         </div>
       </Button>
     </div>
+  </div>
+)
+
+// =============================================================================
+// First device setup step — explanation before recovery key
+// =============================================================================
+
+const FirstDeviceSetupStep = ({ onContinue }: { onContinue: () => void }) => (
+  <div className="flex flex-col gap-6">
+    <div className="flex justify-center">
+      <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+        <Lock className="size-6 text-primary" />
+      </div>
+    </div>
+
+    <div className="text-center">
+      <h2 className="text-lg font-semibold">First device setup</h2>
+      <p className="text-sm text-muted-foreground mt-2">
+        This is the first device on your account. We&apos;ll generate an encryption key and show you a recovery key to
+        save. The recovery key is the only way to recover your data if you lose all your devices.
+      </p>
+    </div>
+
+    <Button className="w-full" onClick={onContinue}>
+      Continue
+    </Button>
   </div>
 )

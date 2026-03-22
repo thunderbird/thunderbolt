@@ -113,15 +113,17 @@ const SidebarProvider = forwardRef<
       [setOpenProp, open],
     )
 
+    const { triggerImpact } = useHaptics()
+
     // Helper to toggle the sidebar.
     const toggleSidebar = useCallback(() => {
-      return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-    }, [
-      isMobile,
-      setOpen,
-      //* remove setOpenMobile from dependencies because setOpenMobile are state setters created by useState
-      // setOpenMobile
-    ])
+      if (isMobile) {
+        triggerImpact('light')
+        setOpenMobile((open) => !open)
+      } else {
+        setOpen((open) => !open)
+      }
+    }, [isMobile, setOpen, triggerImpact])
 
     // Adds a keyboard shortcut to toggle the sidebar.
     useEffect(() => {

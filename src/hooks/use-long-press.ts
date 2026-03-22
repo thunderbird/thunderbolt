@@ -1,4 +1,4 @@
-import { type MouseEvent, type TouchEvent, useCallback, useRef } from 'react'
+import { type MouseEvent, type TouchEvent, useCallback, useEffect, useRef } from 'react'
 
 const longPressDuration = 500
 
@@ -15,6 +15,12 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [])
 

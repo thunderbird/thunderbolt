@@ -151,7 +151,7 @@ export const Combobox = ({
                     <div className="flex flex-col gap-0.5 min-w-0">
                       <span className="truncate">{item.label}</span>
                       {item.description && (
-                        <span className="text-xs text-muted-foreground truncate">{item.description}</span>
+                        <span className="text-[length:var(--font-size-xs)] text-muted-foreground truncate">{item.description}</span>
                       )}
                     </div>
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 flex size-3.5 items-center justify-center">

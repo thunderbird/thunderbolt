@@ -1,7 +1,4 @@
-import {
-  ResponsiveModal,
-  ResponsiveModalContent,
-} from '@/components/ui/responsive-modal'
+import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
@@ -54,22 +51,18 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     <ResponsiveModal
       open={open}
       onOpenChange={(isOpen) => {
-        if (!isOpen) handleClose()
+        if (!isOpen) {
+          handleClose()
+        }
       }}
     >
       <ResponsiveModalContent>
         {setup.step === 'choose-flow' && (
-          <ChooseFlowStep
-            onFirstDevice={setup.chooseFirstDevice}
-            onAdditionalDevice={setup.chooseAdditionalDevice}
-          />
+          <ChooseFlowStep onFirstDevice={setup.chooseFirstDevice} onAdditionalDevice={setup.chooseAdditionalDevice} />
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep
-            recoveryKey={setup.recoveryKey}
-            onDone={handleFirstDeviceDone}
-          />
+          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
         )}
 
         {setup.step === 'approval-waiting' && (
@@ -110,9 +103,7 @@ const ChooseFlowStep = ({ onFirstDevice, onAdditionalDevice }: ChooseFlowStepPro
     <div className="flex-1 flex flex-col justify-center gap-6">
       <div className="text-center">
         <h2 className="text-lg font-semibold">Set up sync</h2>
-        <p className="text-sm text-muted-foreground mt-2">
-          Choose a setup flow to test.
-        </p>
+        <p className="text-sm text-muted-foreground mt-2">Choose a setup flow to test.</p>
         <p className="text-xs text-muted-foreground/60 mt-1">
           (This step is for testing only — removed when real server detection is wired)
         </p>

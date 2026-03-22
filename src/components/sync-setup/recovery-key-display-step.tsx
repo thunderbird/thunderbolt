@@ -8,8 +8,7 @@ type RecoveryKeyDisplayStepProps = {
 }
 
 /** Formats a 64-char hex string into 8-char groups separated by spaces */
-const formatRecoveryKey = (key: string): string =>
-  key.match(/.{1,8}/g)?.join(' ') ?? key
+const formatRecoveryKey = (key: string): string => key.match(/.{1,8}/g)?.join(' ') ?? key
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone }: RecoveryKeyDisplayStepProps) => {
   const [copied, setCopied] = useState(false)
@@ -26,15 +25,13 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone }: RecoveryKeyDispl
         <div className="text-center">
           <h2 className="text-lg font-semibold">Save your recovery key</h2>
           <p className="text-sm text-muted-foreground mt-2">
-            Sync is now active. This is the only way to recover your data if you lose all your devices.
-            We will never show this again.
+            Sync is now active. This is the only way to recover your data if you lose all your devices. We will never
+            show this again.
           </p>
         </div>
 
         <div className="rounded-xl bg-muted p-4">
-          <p className="font-mono text-sm text-center break-all leading-relaxed">
-            {formatRecoveryKey(recoveryKey)}
-          </p>
+          <p className="font-mono text-sm text-center break-all leading-relaxed">{formatRecoveryKey(recoveryKey)}</p>
         </div>
 
         <Button variant="outline" className="w-full" onClick={handleCopy}>

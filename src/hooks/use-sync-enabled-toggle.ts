@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 
 /**
  * Shared hook for sync toggle state and handlers used by PowerSyncStatus and
- * PreferencesSettingsPage. Manages syncEnabled state, the enable-warning dialog,
+ * PreferencesSettingsPage. Manages syncEnabled state, the sync setup modal,
  * and event listener for external changes (e.g. sign-in flow).
  */
 export const useSyncEnabledToggle = () => {
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
-  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
+  const [syncSetupOpen, setSyncSetupOpen] = useState(false)
 
   useEffect(() => {
     const handleSyncEnabledChange = (event: Event) => {
@@ -28,21 +28,21 @@ export const useSyncEnabledToggle = () => {
       trackEvent('settings_sync_disabled')
       return
     }
-    setSyncEnableWarningOpen(true)
+    setSyncSetupOpen(true)
   }
 
-  const handleConfirmEnableSync = async () => {
+  const handleSyncSetupComplete = async () => {
     await setSyncEnabled(true)
     setSyncEnabledState(true)
     trackEvent('settings_sync_enabled')
-    setSyncEnableWarningOpen(false)
+    setSyncSetupOpen(false)
   }
 
   return {
     syncEnabled,
-    syncEnableWarningOpen,
-    setSyncEnableWarningOpen,
+    syncSetupOpen,
+    setSyncSetupOpen,
     handleSyncToggle,
-    handleConfirmEnableSync,
+    handleSyncSetupComplete,
   }
 }

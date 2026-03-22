@@ -27,19 +27,11 @@ export const ApprovalWaitingStep = ({
 
       <div className="flex flex-col gap-4">
         <label className="flex items-start gap-3 cursor-pointer">
-          <Checkbox
-            checked={checked}
-            onCheckedChange={(v) => onCheckedChange(v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-sm">
-            I have approved this device on another device
-          </span>
+          <Checkbox checked={checked} onCheckedChange={(v) => onCheckedChange(v === true)} className="mt-0.5" />
+          <span className="text-sm">I have approved this device on another device</span>
         </label>
 
-        {error && (
-          <p className="text-sm text-destructive">{error}</p>
-        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       <button

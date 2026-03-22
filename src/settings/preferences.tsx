@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { SyncEnableWarningDialog } from '@/components/sync-enable-warning-dialog'
+import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { PageHeader } from '@/components/ui/page-header'
@@ -95,7 +95,7 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
-  const { syncEnabled, syncEnableWarningOpen, setSyncEnableWarningOpen, handleSyncToggle, handleConfirmEnableSync } =
+  const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
   const { connectionStatus } = usePowerSyncStatus()
   const isConnecting = connectionStatus === 'connecting'
@@ -737,11 +737,7 @@ export default function PreferencesSettingsPage() {
         </div>
       </SectionCard>
 
-      <SyncEnableWarningDialog
-        open={syncEnableWarningOpen}
-        onOpenChange={setSyncEnableWarningOpen}
-        onConfirm={handleConfirmEnableSync}
-      />
+      <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
 
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 

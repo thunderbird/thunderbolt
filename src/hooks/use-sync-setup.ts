@@ -1,13 +1,9 @@
 import { useReducer } from 'react'
 
 // Mock recovery key for UI testing (replaced with real crypto in PR 5)
-const MOCK_RECOVERY_KEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+const mockRecoveryKey = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
 
-type SyncSetupStep =
-  | 'choose-flow'
-  | 'recovery-key-display'
-  | 'approval-waiting'
-  | 'recovery-key-entry'
+type SyncSetupStep = 'choose-flow' | 'recovery-key-display' | 'approval-waiting' | 'recovery-key-entry'
 
 type SyncSetupState = {
   step: SyncSetupStep
@@ -30,7 +26,7 @@ type SyncSetupAction =
 
 const initialState: SyncSetupState = {
   step: 'choose-flow',
-  recoveryKey: MOCK_RECOVERY_KEY,
+  recoveryKey: mockRecoveryKey,
   recoveryKeyInput: '',
   recoveryKeyError: null,
   approvalChecked: false,
@@ -71,8 +67,7 @@ export const useSyncSetup = () => {
   const chooseAdditionalDevice = () => dispatch({ type: 'CHOOSE_ADDITIONAL_DEVICE' })
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
 
-  const setRecoveryKeyInput = (value: string) =>
-    dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
+  const setRecoveryKeyInput = (value: string) => dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
 
   const submitRecoveryKey = () => {
     const cleaned = state.recoveryKeyInput.replace(/\s/g, '')
@@ -88,8 +83,7 @@ export const useSyncSetup = () => {
     return true
   }
 
-  const setApprovalChecked = (checked: boolean) =>
-    dispatch({ type: 'SET_APPROVAL_CHECKED', payload: checked })
+  const setApprovalChecked = (checked: boolean) => dispatch({ type: 'SET_APPROVAL_CHECKED', payload: checked })
 
   const confirmApproval = () => {
     if (!state.approvalChecked) {

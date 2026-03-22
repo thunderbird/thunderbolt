@@ -1,3 +1,5 @@
+import { type KeyboardEvent } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -9,14 +11,8 @@ type RecoveryKeyEntryStepProps = {
   onBack: () => void
 }
 
-export const RecoveryKeyEntryStep = ({
-  value,
-  error,
-  onChange,
-  onSubmit,
-  onBack,
-}: RecoveryKeyEntryStepProps) => {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, onBack }: RecoveryKeyEntryStepProps) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       onSubmit()
     }
@@ -42,9 +38,7 @@ export const RecoveryKeyEntryStep = ({
             state={error ? 'error' : 'default'}
             autoFocus
           />
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
         <button

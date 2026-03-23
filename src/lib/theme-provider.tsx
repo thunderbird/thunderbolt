@@ -10,7 +10,9 @@ import { isTauri } from './platform'
  * before HTML loads, eliminating the need for the hidden-window workaround.
  */
 const persistThemeToNativeStore = async (theme: string) => {
-  if (!isTauri()) return
+  if (!isTauri()) {
+    return
+  }
   const { Store } = await import('@tauri-apps/plugin-store')
   const store = await Store.load('theme.json')
   await store.set('theme', theme)

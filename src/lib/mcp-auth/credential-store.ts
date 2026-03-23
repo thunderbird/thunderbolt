@@ -4,10 +4,10 @@ import { mcpServersTable } from '@/db/tables'
 import type { CredentialStore, McpCredential } from '@/types/mcp'
 
 /** Application-specific salt prefix mixed with the device hostname */
-const appSaltPrefix = 'thunderbolt-mcp-v1:'
+const APP_SALT_PREFIX = 'thunderbolt-mcp-v1:'
 
 /** PBKDF2 iteration count — must be >= 100,000 per security requirements */
-const pbkdf2Iterations = 100_000
+const PBKDF2_ITERATIONS = 100_000
 
 /** Encrypts a credential using AES-GCM with a derived key */
 type EncryptedBlob = {
@@ -23,7 +23,7 @@ const deriveKey = async (hostname: string): Promise<CryptoKey> => {
   const encoder = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(appSaltPrefix + hostname),
+    encoder.encode(APP_SALT_PREFIX + hostname),
     'PBKDF2',
     false,
     ['deriveKey'],
@@ -33,7 +33,7 @@ const deriveKey = async (hostname: string): Promise<CryptoKey> => {
     {
       name: 'PBKDF2',
       salt: encoder.encode('thunderbolt-mcp-credential-salt'),
-      iterations: pbkdf2Iterations,
+      iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
     keyMaterial,
@@ -78,17 +78,19 @@ const decrypt = async (key: CryptoKey, encryptedJson: string): Promise<string> =
  * Falls back to a static identifier in non-Tauri environments (tests).
  */
 const getDeviceId = async (): Promise<string> => {
-  try {
-    const { readTextFile, writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
-    try {
-      return await readTextFile('mcp-device-id', { baseDir: BaseDirectory.AppData })
-    } catch {
-      const id = crypto.randomUUID()
-      await writeTextFile('mcp-device-id', id, { baseDir: BaseDirectory.AppData })
-      return id
-    }
-  } catch {
+  // Dynamic import fails outside Tauri (tests, web) — fall back to static identifier
+  const fs = await import('@tauri-apps/plugin-fs').catch(() => null)
+  if (!fs) {
     return 'thunderbolt-local'
+  }
+
+  try {
+    return await fs.readTextFile('mcp-device-id', { baseDir: fs.BaseDirectory.AppData })
+  } catch {
+    // File doesn't exist yet — generate and persist a new device ID
+    const id = crypto.randomUUID()
+    await fs.writeTextFile('mcp-device-id', id, { baseDir: fs.BaseDirectory.AppData })
+    return id
   }
 }
 
@@ -96,10 +98,12 @@ const getDeviceId = async (): Promise<string> => {
 let keyPromise: Promise<CryptoKey> | null = null
 
 const getEncryptionKey = (): Promise<CryptoKey> => {
-  keyPromise ??= getDeviceId().then(deriveKey).catch((err) => {
-    keyPromise = null
-    throw err
-  })
+  keyPromise ??= getDeviceId()
+    .then(deriveKey)
+    .catch((err) => {
+      keyPromise = null
+      throw err
+    })
   return keyPromise
 }
 
@@ -107,7 +111,7 @@ const getEncryptionKey = (): Promise<CryptoKey> => {
  * Creates an encrypted credential store that persists credentials
  * in the `mcp_servers.encrypted_credential` column using AES-GCM encryption.
  *
- * Key derivation: PBKDF2(appSaltPrefix + hostname) -> 256-bit AES-GCM key.
+ * Key derivation: PBKDF2(APP_SALT_PREFIX + hostname) -> 256-bit AES-GCM key.
  * Storage format: `{ iv: base64, ciphertext: base64 }` serialized as JSON.
  *
  * Credentials are never stored in plaintext — only the encrypted blob reaches SQLite.
@@ -126,7 +130,7 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
       .where(eq(mcpServersTable.id, serverId))
 
     const row = rows[0]
-    if (!row?.encryptedCredential) { return null }
+    if (!row?.encryptedCredential) return null
 
     const key = await getEncryptionKey()
     const plaintext = await decrypt(key, row.encryptedCredential)

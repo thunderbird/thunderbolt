@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type {
   OAuthClientInformation,
@@ -20,7 +19,10 @@ const thunderboltClientId = 'https://thunderbolt.io/.well-known/oauth-client/thu
  *
  * Implements the MCP SDK's `OAuthClientProvider` interface for a single MCP server.
  * Uses the existing loopback OAuth server (Rust command `start_oauth_server`) to capture
- * the authorization code callback on localhost:17421-17423.
+ * the authorization code callback.
+ *
+ * The loopback port must be known before the SDK reads `redirectUrl`, so callers
+ * should use `createMcpOAuthProvider()` which starts the server first.
  *
  * The code verifier is held in memory only (never persisted) per security requirements.
  * Tokens are stored encrypted via the `CredentialStore`.
@@ -28,17 +30,18 @@ const thunderboltClientId = 'https://thunderbolt.io/.well-known/oauth-client/thu
 class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly serverId: string
   private readonly credentialStore: CredentialStore
+  private readonly port: number
   private codeVerifierValue: string | null = null
   private clientInfo: OAuthClientInformationFull | null = null
-  private boundPort: number | null = null
 
-  constructor(serverId: string, credentialStore: CredentialStore) {
+  constructor(serverId: string, credentialStore: CredentialStore, port: number) {
     this.serverId = serverId
     this.credentialStore = credentialStore
+    this.port = port
   }
 
   get redirectUrl(): string {
-    return `http://localhost:${this.boundPort ?? 17421}`
+    return `http://localhost:${this.port}`
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -52,7 +55,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   clientInformation(): OAuthClientInformation | undefined {
-    if (this.clientInfo) { return this.clientInfo }
+    if (this.clientInfo) {
+      return this.clientInfo
+    }
     // Return static client ID for CIMD-based registration
     return { client_id: thunderboltClientId }
   }
@@ -63,7 +68,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
 
   async tokens(): Promise<OAuthTokens | undefined> {
     const cred = await this.credentialStore.load(this.serverId)
-    if (!cred || cred.type !== 'oauth') { return undefined }
+    if (!cred || cred.type !== 'oauth') {
+      return undefined
+    }
 
     return {
       access_token: cred.accessToken,
@@ -85,7 +92,6 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    this.boundPort = await invoke<number>('start_oauth_server')
     await openUrl(authorizationUrl.toString())
   }
 
@@ -94,7 +100,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async codeVerifier(): Promise<string> {
-    if (!this.codeVerifierValue) { throw new Error('codeVerifier called before saveCodeVerifier') }
+    if (!this.codeVerifierValue) {
+      throw new Error('codeVerifier called before saveCodeVerifier')
+    }
     return this.codeVerifierValue
   }
 
@@ -111,4 +119,18 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 }
 
-export { McpOAuthClientProvider }
+/**
+ * Starts the loopback OAuth server and creates an `McpOAuthClientProvider`
+ * with the actual bound port. This ensures `redirectUrl` is correct
+ * when the SDK reads it before calling `redirectToAuthorization`.
+ */
+const createMcpOAuthProvider = async (
+  serverId: string,
+  credentialStore: CredentialStore,
+): Promise<McpOAuthClientProvider> => {
+  const { invoke } = await import('@tauri-apps/api/core')
+  const port = await invoke<number>('start_oauth_server')
+  return new McpOAuthClientProvider(serverId, credentialStore, port)
+}
+
+export { McpOAuthClientProvider, createMcpOAuthProvider }

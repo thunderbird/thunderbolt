@@ -1,6 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { createTransport } from './transport-factory'
-import { validateCommand, validateArgs, TauriStdioTransport } from './tauri-stdio-transport'
+import { TauriStdioTransport } from './tauri-stdio-transport'
+import { validateStdioCommand as validateCommand, validateStdioArgs as validateArgs } from '@/lib/mcp-utils'
 import type { McpServerConfig, CredentialStore, McpCredential } from '@/types/mcp'
 
 // Mock Tauri plugins so tests can run outside a Tauri runtime

@@ -23,7 +23,7 @@ const TransportBadge = ({ type }: { type: McpTransportType }) => (
 )
 
 const AuthBadge = ({ authType }: { authType: McpAuthType }) => {
-  if (authType === 'none') { return null }
+  if (authType === 'none') return null
   return (
     <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
       <Key className="h-3 w-3" />
@@ -79,7 +79,10 @@ export const McpServerCard = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div>
-                  <StatusIndicator status={status as 'connected' | 'connecting' | 'disconnected'} size="md" />
+                  <StatusIndicator
+                    status={status === 'error' ? 'offline' : (status as 'connected' | 'connecting' | 'disconnected')}
+                    size="md"
+                  />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">

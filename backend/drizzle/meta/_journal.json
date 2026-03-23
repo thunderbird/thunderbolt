@@ -57,6 +57,13 @@
       "when": 1772150455000,
       "tag": "0007_magenta_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774262902537,
+      "tag": "0008_ancient_rockslide",
+      "breakpoints": true
     }
   ]
 }

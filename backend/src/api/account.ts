@@ -1,6 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
-import { deleteUser, revokeDevice } from '@/dal'
+import { deleteUser, revokeDevice, deleteEnvelope } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { Elysia } from 'elysia'
 
@@ -10,8 +10,10 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
     .use(createAuthMacro(auth))
     .post(
       '/devices/:id/revoke',
-      async ({ params, set, user }) => {
-        await revokeDevice(database, params.id, user.id)
+      async ({ params, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        await deleteEnvelope(database, params.id)
+        await revokeDevice(database, params.id, userId)
         set.status = 204
       },
       { auth: true },

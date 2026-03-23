@@ -3,6 +3,7 @@ import { trackEvent } from '@/lib/posthog'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
+import { ensureAcpConnection } from './create-acp-session'
 import { useCallback, useRef } from 'react'
 
 export const maxRetries = 3
@@ -44,6 +45,9 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
   // Save user message to DB
   await saveMessages({ id: sessionId, messages: [userMessage] })
 
+  // Ensure ACP connection exists (lazy connect for local/remote agents)
+  const acpClient = await ensureAcpConnection(sessionId)
+
   // Create accumulator for assistant response
   const accumulator = createMessageAccumulator()
 
@@ -56,7 +60,7 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
     // Store the accumulator so the update handler can use it
     activeAccumulators.set(sessionId, accumulator)
 
-    const result = await session.acpClient.prompt(text)
+    const result = await acpClient.prompt(text)
 
     // Finalize the message
     const finalMessage = accumulator.buildMessage()
@@ -209,7 +213,7 @@ export const useAcpChatActions = (saveMessages: SaveMessagesFunction) => {
     }
 
     const session = sessions.get(currentSessionId)
-    if (!session) {
+    if (!session?.acpClient) {
       return
     }
 

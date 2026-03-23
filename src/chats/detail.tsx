@@ -1,6 +1,5 @@
 import ChatUI from '@/components/chat/chat-ui'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
-import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams, useLocation } from 'react-router'
@@ -13,7 +12,7 @@ type ChatHydrateHandlerProps = {
 }
 
 const ChatHydrateHandler = ({ id, isNew }: ChatHydrateHandlerProps) => {
-  const { hydrateChatStore, isReady, connectingAgentName, saveMessages } = useHydrateChatStore({ id, isNew })
+  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
   const [error, setError] = useState<Error | null>(null)
 
   useHandleIntegrationCompletion({ saveMessages })
@@ -38,16 +37,6 @@ const ChatHydrateHandler = ({ id, isNew }: ChatHydrateHandlerProps) => {
   }
 
   if (!isReady) {
-    if (connectingAgentName) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-            <span className="text-[length:var(--font-size-body)]">Connecting to {connectingAgentName}...</span>
-          </div>
-        </div>
-      )
-    }
     return null
   }
 

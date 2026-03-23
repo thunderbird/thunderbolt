@@ -155,6 +155,7 @@ export const hydrateStore = (state: {
       chatThread: state.chatThread,
       acpClient,
       agentConfig: defaultTestAgent,
+      isAgentAvailable: true,
 
       availableModes: [],
       currentModeId: null,

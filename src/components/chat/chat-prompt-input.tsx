@@ -7,6 +7,7 @@ import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model, type SaveMessagesFunction } from '@/types'
 import { useDraftInput } from '@/hooks/use-draft-input'
+import { Loader2 } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -52,6 +53,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       status,
       availableModes,
       configOptions,
+      isAgentAvailable,
+      agentConfig,
     } = useCurrentChatSession()
 
     // Convert ACP SessionMode[] to Mode-like objects for the mode selector
@@ -73,6 +76,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { sendMessage, stop } = useAcpChatActions(saveMessagesProp ?? dummySave)
 
     const isStreaming = status === 'streaming'
+    const isConnecting = status === 'connecting'
 
     // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
     // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)
@@ -207,8 +211,25 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       </div>
     )
 
+    // Agent not available on this platform — show read-only message
+    if (!isAgentAvailable) {
+      return (
+        <div className="flex items-center justify-center px-4 py-3 text-muted-foreground text-[length:var(--font-size-sm)]">
+          <span>
+            This chat uses {agentConfig.name} ({agentConfig.type === 'local' ? 'desktop only' : 'unavailable'})
+          </span>
+        </div>
+      )
+    }
+
     return (
       <>
+        {isConnecting && (
+          <div className="flex items-center justify-center gap-2 px-3 py-1.5 text-muted-foreground text-[length:var(--font-size-sm)]">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span>Connecting to {agentConfig.name}...</span>
+          </div>
+        )}
         <PromptInput
           ref={formRef}
           value={input}
@@ -216,7 +237,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           placeholder="Ask me anything..."
           showSubmitButton
           onSubmit={handleSubmit}
-          isLoading={isStreaming}
+          isLoading={isStreaming || isConnecting}
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}

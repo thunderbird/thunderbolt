@@ -114,6 +114,57 @@ export const createAcpSession = async ({
   return { acpClient, sessionState }
 }
 
+/**
+ * Lazily ensure an ACP connection exists for a session.
+ * If the session already has an acpClient, returns it immediately.
+ * Otherwise creates the connection, updates the session, and returns the client.
+ * Deduplicates concurrent calls for the same session.
+ */
+const pendingConnections = new Map<string, Promise<AcpClient>>()
+
+export const ensureAcpConnection = async (sessionId: string): Promise<AcpClient> => {
+  const store = useChatStore.getState()
+  const session = store.sessions.get(sessionId)
+  if (!session) throw new Error('No session found')
+
+  // Already connected
+  if (session.acpClient) return session.acpClient
+
+  // Already connecting — dedup concurrent calls
+  const pending = pendingConnections.get(sessionId)
+  if (pending) return pending
+
+  const connectPromise = (async () => {
+    store.setSessionStatus(sessionId, 'connecting')
+
+    const { acpClient, sessionState } = await createAcpSession({
+      chatId: sessionId,
+      agent: session.agentConfig,
+      modes: [],
+      models: [],
+      selectedModeId: session.currentModeId ?? session.selectedMode.id,
+      selectedModelId: session.selectedModel.id,
+      mcpClients: useChatStore.getState().mcpClients,
+    })
+
+    // Update session with live client and negotiated state.
+    // Don't change status here — the caller (e.g. sendAcpPrompt) manages status transitions.
+    store.updateSession(sessionId, {
+      acpClient,
+      availableModes: sessionState.availableModes,
+      currentModeId: sessionState.currentModeId,
+      configOptions: sessionState.configOptions,
+    })
+
+    return acpClient
+  })()
+
+  pendingConnections.set(sessionId, connectPromise)
+  connectPromise.finally(() => pendingConnections.delete(sessionId))
+
+  return connectPromise
+}
+
 const localAgentTimeoutMs = 15_000
 
 /**

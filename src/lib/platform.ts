@@ -103,6 +103,15 @@ export const isWebDesktopPlatform = (): boolean => {
   return p === 'macos' || p === 'windows' || p === 'linux'
 }
 
+/**
+ * Checks if an agent type can run on the current platform.
+ * Local agents require Tauri desktop; built-in and remote agents work everywhere.
+ */
+export const isAgentAvailableOnPlatform = (agentType: string): boolean => {
+  if (agentType === 'local') return isTauri() && isDesktop()
+  return true
+}
+
 type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
 
 /**

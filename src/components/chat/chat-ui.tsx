@@ -17,7 +17,8 @@ type ChatUIProps = {
 }
 
 export default function ChatUI({ saveMessages }: ChatUIProps) {
-  const { messages } = useCurrentChatSession()
+  const { messages, agentConfig } = useCurrentChatSession()
+  const isBuiltInAgent = agentConfig.type === 'built-in'
 
   useChatAutomation()
 
@@ -112,7 +113,7 @@ export default function ChatUI({ saveMessages }: ChatUIProps) {
               duration: 0.25,
             }}
           >
-            {!hasMessages && (
+            {!hasMessages && isBuiltInAgent && (
               <AnimatePresence>
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}

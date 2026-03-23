@@ -8,13 +8,14 @@ import type { SessionConfigOption, SessionMode } from '@agentclientprotocol/sdk'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
-export type ChatStatus = 'ready' | 'submitted' | 'streaming' | 'error'
+export type ChatStatus = 'ready' | 'submitted' | 'streaming' | 'error' | 'connecting'
 
 export type ChatSession = {
   id: string
   chatThread: ChatThread | null
-  acpClient: AcpClient
+  acpClient: AcpClient | null
   agentConfig: Agent
+  isAgentAvailable: boolean
 
   // ACP session state (from capability negotiation)
   availableModes: SessionMode[]
@@ -93,8 +94,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ mcpClients })
   },
 
-  setSelectedAgent: async (id, agentId) => {
-    const { agents, sessions } = get()
+  setSelectedAgent: async (_id, agentId) => {
+    const { agents } = get()
 
     const agent = agents.find((a) => a.id === agentId)
 
@@ -102,17 +103,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('Agent not found')
     }
 
-    const session = sessions.get(id)
-
-    if (!session) {
-      throw new Error('No session found')
-    }
-
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, agentConfig: agent })
-
-    set({ sessions: nextSessions })
-
+    // Only persist the selection for new chats — don't mutate the current session's agent.
+    // The current chat belongs to its original agent; switching agents navigates to a new chat.
     const db = getDb()
     await updateSettings(db, { selected_agent: agent.id })
 
@@ -134,8 +126,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('Mode not found in session available modes')
     }
 
-    // Update via ACP
-    await session.acpClient.setMode(mode.id)
+    // Update via ACP if connected
+    if (session.acpClient) {
+      await session.acpClient.setMode(mode.id)
+    }
 
     // Update session state
     const nextSessions = new Map(get().sessions)
@@ -170,17 +164,19 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    // Update via ACP config option — response contains updated configOptions
-    const response = await session.acpClient.setConfigOption('model', modelId ?? '')
+    // Update via ACP config option if connected
+    if (session.acpClient) {
+      const response = await session.acpClient.setConfigOption('model', modelId ?? '')
 
-    // Propagate updated configOptions back to session state so the UI reflects the change
-    if (response?.configOptions) {
-      const nextSessions = new Map(get().sessions)
-      const currentSession = nextSessions.get(id)
-      if (currentSession) {
-        nextSessions.set(id, { ...currentSession, configOptions: response.configOptions })
+      // Propagate updated configOptions back to session state so the UI reflects the change
+      if (response?.configOptions) {
+        const nextSessions = new Map(get().sessions)
+        const currentSession = nextSessions.get(id)
+        if (currentSession) {
+          nextSessions.set(id, { ...currentSession, configOptions: response.configOptions })
+        }
+        set({ sessions: nextSessions })
       }
-      set({ sessions: nextSessions })
     }
 
     const db = getDb()

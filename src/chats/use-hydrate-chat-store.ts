@@ -15,7 +15,7 @@ import {
 } from '@/dal'
 import { getAgent } from '@/dal/agents'
 import { discoverAndSeedLocalAgents } from '@/acp/discovery'
-import { isTauri, isDesktop } from '@/lib/platform'
+import { isTauri, isDesktop, isAgentAvailableOnPlatform } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
@@ -109,7 +109,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
-  const [connectingAgentName, setConnectingAgentName] = useState<string | null>(null)
 
   const { getEnabledClients } = useMCP()
 
@@ -230,24 +229,30 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       }
     }
 
-    // Show connecting indicator for non-built-in agents (built-in is instant)
-    if (agentForSession.type !== 'built-in') {
-      setConnectingAgentName(agentForSession.name)
+    const agentAvailable = isAgentAvailableOnPlatform(agentForSession.type)
+    const isBuiltIn = agentForSession.type === 'built-in'
+
+    // Only eagerly connect for built-in agents (instant, in-process).
+    // Local/remote agents connect lazily on first message send.
+    let acpClient: import('@/acp/client').AcpClient | null = null
+    let sessionState: AgentSessionState = { sessionId: '', availableModes: [], currentModeId: null, configOptions: [] }
+
+    if (isBuiltIn) {
+      const result = await createAcpSession({
+        chatId: id,
+        agent: agentForSession,
+        modes,
+        models,
+        selectedModeId: selectedMode.id,
+        selectedModelId: defaultModel.id,
+        mcpClients,
+      })
+      acpClient = result.acpClient
+      sessionState = result.sessionState
     }
 
-    // Create ACP session for this chat
-    const { acpClient, sessionState } = await createAcpSession({
-      chatId: id,
-      agent: agentForSession,
-      modes,
-      models,
-      selectedModeId: selectedMode.id,
-      selectedModelId: defaultModel.id,
-      mcpClients,
-    })
-
     // For non-built-in agents, derive mode/model from ACP session instead of DB
-    const isExternalAgent = agentForSession.type !== 'built-in'
+    const isExternalAgent = !isBuiltIn
     const sessionMode = (isExternalAgent ? modeFromAcpSession(sessionState) : null) ?? selectedMode
     const sessionModel = (isExternalAgent ? modelFromAcpSession(sessionState) : null) ?? defaultModel
 
@@ -256,6 +261,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       chatThread,
       acpClient,
       agentConfig: agentForSession,
+      isAgentAvailable: agentAvailable,
 
       // ACP session state
       availableModes: sessionState.availableModes,
@@ -284,5 +290,5 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setIsReady(true)
   }
 
-  return { hydrateChatStore, isReady, connectingAgentName, saveMessages }
+  return { hydrateChatStore, isReady, saveMessages }
 }

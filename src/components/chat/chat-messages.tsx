@@ -24,6 +24,7 @@ export const ChatMessages = ({ saveMessages }: ChatMessagesProps) => {
     messages,
     status,
     error: chatError,
+    agentConfig,
   } = useCurrentChatSession()
 
   // saveMessages is optional — when not provided, regenerate is a no-op
@@ -65,7 +66,7 @@ export const ChatMessages = ({ saveMessages }: ChatMessagesProps) => {
 
   return (
     <div>
-      {!!chatThread?.isEncrypted && <EncryptionMessage />}
+      {!!chatThread?.isEncrypted && agentConfig.type === 'built-in' && <EncryptionMessage />}
       {/* Automation trigger banner */}
       {triggerData?.wasTriggeredByAutomation && (
         <TriggerMessage

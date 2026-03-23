@@ -47,6 +47,8 @@
    Responsive Touch Target System
    =========================== */
 :root {
+  color-scheme: light;
+
   /* Heights - Touch targets */
   --touch-height-xl: 3.5rem; /* 56px mobile */
   --touch-height-lg: 3rem; /* 48px mobile */
@@ -115,6 +117,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
   --color-card: oklch(0.145 0 0);

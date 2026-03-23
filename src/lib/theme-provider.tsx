@@ -2,6 +2,20 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { M3 } from 'tauri-plugin-m3'
 import { isTauri } from './platform'
 
+/**
+ * Mirror theme to Tauri's plugin-store so native code can read it at startup.
+ * Currently the Rust side doesn't read this yet — it will once we upgrade to
+ * Tauri 2.10.3+ which supports WebView background color on macOS. At that point
+ * the Rust setup() can read theme.json and set the correct WebView background
+ * before HTML loads, eliminating the need for the hidden-window workaround.
+ */
+const persistThemeToNativeStore = async (theme: string) => {
+  if (!isTauri()) return
+  const { Store } = await import('@tauri-apps/plugin-store')
+  const store = await Store.load('theme.json')
+  await store.set('theme', theme)
+}
+
 type Theme = 'dark' | 'light' | 'system'
 
 type ThemeProviderProps = {
@@ -37,6 +51,7 @@ export const ThemeProvider = ({
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, theme)
+    persistThemeToNativeStore(theme)
   }, [storageKey, theme])
 
   useEffect(() => {

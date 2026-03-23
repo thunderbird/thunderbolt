@@ -65,6 +65,7 @@
     "haptics:allow-impact-feedback",
     "haptics:allow-notification-feedback",
     "haptics:allow-vibrate",
+    "store:default",
     "fs:default",
     "fs:allow-app-write-recursive",
     {

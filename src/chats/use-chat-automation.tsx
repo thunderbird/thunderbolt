@@ -12,8 +12,7 @@ export const useChatAutomation = ({ saveMessages }: UseChatAutomationProps = {})
 
   const hasMessages = messages.length
 
-  const dummySave: SaveMessagesFunction = async () => {}
-  const { regenerate } = useAcpChatActions(saveMessages ?? dummySave)
+  const { regenerate } = useAcpChatActions(saveMessages)
 
   const hasTriggeredRef = useRef(false)
 

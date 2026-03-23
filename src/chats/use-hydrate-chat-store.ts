@@ -15,78 +15,18 @@ import {
 } from '@/dal'
 import { getAgent } from '@/dal/agents'
 import { discoverAndSeedLocalAgents } from '@/acp/discovery'
+import { modeFromAcpSession, modelFromAcpSession } from '@/acp/session-adapters'
 import { isTauri, isDesktop, isAgentAvailableOnPlatform } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Agent, Mode, Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Agent, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { AgentSessionState } from '@/acp/types'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore, type ChatSession } from './chat-store'
 import { createAcpSession, ensureAcpConnection } from './create-acp-session'
-
-/**
- * Derive a Mode object from ACP session state for non-built-in agents.
- * Returns null if no modes are available from the agent.
- */
-const modeFromAcpSession = (sessionState: AgentSessionState): Mode | null => {
-  const currentId = sessionState.currentModeId
-  const acpMode = sessionState.availableModes.find((m) => m.id === currentId) ?? sessionState.availableModes[0]
-  if (!acpMode) {
-    return null
-  }
-  return {
-    id: acpMode.id,
-    name: acpMode.id,
-    label: acpMode.name,
-    icon: 'terminal',
-    systemPrompt: null,
-    isDefault: 0,
-    order: 0,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
-  }
-}
-
-/**
- * Derive a Model object from ACP session config options for non-built-in agents.
- * Returns null if no model config is available from the agent.
- */
-const modelFromAcpSession = (sessionState: AgentSessionState): Model | null => {
-  const modelConfig = sessionState.configOptions.find((o) => o.category === 'model')
-  if (!modelConfig || modelConfig.type !== 'select' || !Array.isArray(modelConfig.options)) {
-    return null
-  }
-  const currentValue = 'currentValue' in modelConfig ? String(modelConfig.currentValue) : null
-  const options = modelConfig.options as Array<{ value: string; name: string; description?: string | null }>
-  const opt = options.find((o) => o.value === currentValue) ?? options[0]
-  if (!opt) {
-    return null
-  }
-  return {
-    id: opt.value,
-    name: opt.name,
-    model: opt.value,
-    description: opt.description ?? null,
-    vendor: null,
-    contextWindow: null,
-    isConfidential: 0,
-    isSystem: 1,
-    enabled: 1,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
-    url: null,
-    provider: 'custom',
-    apiKey: null,
-    toolUsage: 1,
-    startWithReasoning: 0,
-    supportsParallelToolCalls: 1,
-  }
-}
 
 /**
  * Filter out local agents on non-desktop platforms.
@@ -143,7 +83,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // Fetch thread info to check if we need to generate a title
     const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, session.agentConfig.id)
 
-    // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
 
     // Generate title in background if needed
@@ -184,9 +123,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // If the session does not exist, create it below
     const settings = await getSettings(db, { selected_model: String })
 
-    // Discover local CLI agents on desktop (adds them to DB if found on PATH)
-    await discoverAndSeedLocalAgents(db)
-
     const [
       defaultModel,
       selectedMode,
@@ -206,7 +142,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       getChatMessages(db, id),
       getAllModes(db),
       getAvailableModels(db),
-      getAvailableAgents(db),
+      // Discover local CLI agents in parallel with other queries (desktop only, no-op on web)
+      discoverAndSeedLocalAgents(db).then(() => getAvailableAgents(db)),
       getTriggerPromptForThread(db, id),
       getEnabledClients(),
     ])

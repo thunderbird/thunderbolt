@@ -27,9 +27,7 @@ export const ChatMessages = ({ saveMessages }: ChatMessagesProps) => {
     agentConfig,
   } = useCurrentChatSession()
 
-  // saveMessages is optional — when not provided, regenerate is a no-op
-  const dummySave: SaveMessagesFunction = async () => {}
-  const { regenerate } = useAcpChatActions(saveMessages ?? dummySave)
+  const { regenerate } = useAcpChatActions(saveMessages)
   const { triggerNotification } = useHaptics()
 
   const isStreaming = status === 'streaming'

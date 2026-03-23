@@ -33,19 +33,20 @@ export const discoverAndSeedLocalAgents = async (db: AnyDrizzleDatabase): Promis
     return []
   }
 
+  // Check all candidates in parallel
+  const candidatesWithCommand = localAgentCandidates.filter((c) => c.command)
+  const existenceResults = await Promise.all(candidatesWithCommand.map((c) => commandExists(c.command!)))
+
   const discovered: Agent[] = []
 
-  for (const candidate of localAgentCandidates) {
-    if (!candidate.command) {
+  for (let i = 0; i < candidatesWithCommand.length; i++) {
+    if (!existenceResults[i]) {
       continue
     }
 
-    const exists = await commandExists(candidate.command)
-    if (!exists) {
-      continue
-    }
+    const candidate = candidatesWithCommand[i]
 
-    // Upsert: insert if missing, or update if defaults changed (e.g., command renamed)
+    // Upsert: insert if missing, or update if defaults changed
     const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, candidate.id))
     const candidateHash = hashAgent(candidate)
 

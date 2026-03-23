@@ -15,5 +15,14 @@ export type { WebSocketLike } from './websocket-stream'
 export { connectToLocalAgent } from './local-agent'
 export { connectToRemoteAgent } from './remote-agent'
 
+// Session Adapters
+export {
+  extractModelConfig,
+  modeFromAcpSession,
+  modeFromSessionMode,
+  modelFromAcpSession,
+  modelFromConfigOption,
+} from './session-adapters'
+
 // Types
 export type { AgentConfig, AgentSessionState, AgentTransport, AgentType } from './types'

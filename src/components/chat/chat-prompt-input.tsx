@@ -1,5 +1,6 @@
 import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
 import { useAcpChatActions } from '@/chats/use-acp-chat'
+import { extractModelConfig, modelFromConfigOption, modeFromSessionMode } from '@/acp/session-adapters'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
@@ -58,23 +59,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       agentConfig,
     } = useCurrentChatSession()
 
-    // Convert ACP SessionMode[] to Mode-like objects for the mode selector
-    const modes = availableModes.map((m) => ({
-      id: m.id,
-      name: m.id,
-      label: m.name,
-      icon: selectedMode.id === m.id ? selectedMode.icon : 'message-square',
-      systemPrompt: null,
-      isDefault: 0,
-      order: 0,
-      deletedAt: null,
-      defaultHash: null,
-      userId: null,
-    }))
+    const modes = useMemo(
+      () =>
+        availableModes.map((m) =>
+          modeFromSessionMode(m, selectedMode.id === m.id ? selectedMode.icon : 'message-square'),
+        ),
+      [availableModes, selectedMode.id, selectedMode.icon],
+    )
 
-    // Use a dummy saveMessages if not provided (it will be provided by the parent)
-    const dummySave: SaveMessagesFunction = async () => {}
-    const { sendMessage, stop } = useAcpChatActions(saveMessagesProp ?? dummySave)
+    const { sendMessage, stop } = useAcpChatActions(saveMessagesProp)
 
     const isStreaming = status === 'streaming'
     const isConnecting = status === 'connecting'
@@ -157,43 +150,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
-    // Extract model config option from ACP session and convert to Model-like objects
-    const modelConfig = configOptions.find((o) => o.category === 'model')
-    const acpModelOptions =
-      modelConfig && modelConfig.type === 'select' && Array.isArray(modelConfig.options)
-        ? (modelConfig.options as Array<{ value: string; name: string; description?: string | null }>)
-        : []
-    const currentModelValue = modelConfig && 'currentValue' in modelConfig ? String(modelConfig.currentValue) : null
+    const modelConfigResult = useMemo(() => extractModelConfig(configOptions), [configOptions])
 
-    // Convert ACP config options to Model objects for the ModelSelector
     const acpModels: Model[] = useMemo(
-      () =>
-        acpModelOptions.map((opt) => ({
-          id: opt.value,
-          name: opt.name,
-          model: opt.value,
-          description: opt.description ?? null,
-          vendor: null,
-          contextWindow: null,
-          isConfidential: 0,
-          isSystem: 1,
-          enabled: 1,
-          deletedAt: null,
-          defaultHash: null,
-          userId: null,
-          url: null,
-          provider: 'custom' as const,
-          apiKey: null,
-          toolUsage: 1,
-          startWithReasoning: 0,
-          supportsParallelToolCalls: 1,
-        })),
-      [acpModelOptions],
+      () => (modelConfigResult?.options ?? []).map(modelFromConfigOption),
+      [modelConfigResult],
     )
 
     const acpSelectedModel = useMemo(
-      () => acpModels.find((m) => m.id === currentModelValue) ?? null,
-      [acpModels, currentModelValue],
+      () => acpModels.find((m) => m.id === modelConfigResult?.currentValue) ?? null,
+      [acpModels, modelConfigResult],
     )
 
     const handleModelChange = useCallback(

@@ -27,7 +27,6 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
     throw new Error('No session found')
   }
 
-  // Create user message
   const userMessage: ThunderboltUIMessage = {
     id: uuidv7(),
     role: 'user',
@@ -38,31 +37,23 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
     },
   }
 
-  // Add user message to state
   store.appendMessage(sessionId, userMessage)
   store.setSessionStatus(sessionId, 'submitted')
 
-  // Save user message to DB
   await saveMessages({ id: sessionId, messages: [userMessage] })
 
-  // Ensure ACP connection exists (lazy connect for local/remote agents)
   const acpClient = await ensureAcpConnection(sessionId)
 
-  // Create accumulator for assistant response
   const accumulator = createMessageAccumulator()
-
-  // Add initial empty assistant message
   const initialAssistantMessage = accumulator.buildMessage()
   store.appendMessage(sessionId, initialAssistantMessage)
   store.setSessionStatus(sessionId, 'streaming')
 
   try {
-    // Store the accumulator so the update handler can use it
     activeAccumulators.set(sessionId, accumulator)
 
     const result = await acpClient.prompt(text)
 
-    // Finalize the message
     const finalMessage = accumulator.buildMessage()
     store.updateLastMessage(sessionId, finalMessage)
 
@@ -70,7 +61,6 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
       store.setSessionStatus(sessionId, 'ready')
       store.updateSession(sessionId, { retryCount: 0, retriesExhausted: false })
 
-      // Save final assistant message to DB
       await saveMessages({ id: sessionId, messages: [finalMessage] })
 
       trackEvent('chat_receive_reply', {
@@ -92,7 +82,6 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
   }
 }
 
-// Track active accumulators for streaming updates
 const activeAccumulators = new Map<string, MessageAccumulator>()
 
 /**
@@ -104,7 +93,6 @@ export const handleSessionUpdate = (sessionId: string, update: unknown) => {
     return
   }
 
-  // The update is a SessionNotification['update'] — let the accumulator handle it
   const updatedMessage = accumulator.handleUpdate(update as Parameters<MessageAccumulator['handleUpdate']>[0])
   useChatStore.getState().updateLastMessage(sessionId, updatedMessage)
 }
@@ -113,7 +101,10 @@ export const handleSessionUpdate = (sessionId: string, update: unknown) => {
  * Hook that provides chat actions for the current session.
  * Replaces useChat from @ai-sdk/react.
  */
-export const useAcpChatActions = (saveMessages: SaveMessagesFunction) => {
+const noOpSaveMessages: SaveMessagesFunction = async () => {}
+
+export const useAcpChatActions = (saveMessages?: SaveMessagesFunction) => {
+  const effectiveSaveMessages = saveMessages ?? noOpSaveMessages
   const retryCountRef = useRef(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -148,10 +139,10 @@ export const useAcpChatActions = (saveMessages: SaveMessagesFunction) => {
         sessionId: currentSessionId,
         text: message.text,
         metadata: message.metadata,
-        saveMessages,
+        saveMessages: effectiveSaveMessages,
       })
     },
-    [saveMessages],
+    [effectiveSaveMessages],
   )
 
   const regenerate = useCallback(async () => {
@@ -202,9 +193,9 @@ export const useAcpChatActions = (saveMessages: SaveMessagesFunction) => {
       sessionId: currentSessionId,
       text: userText,
       metadata: lastUserMessage.metadata,
-      saveMessages,
+      saveMessages: effectiveSaveMessages,
     })
-  }, [saveMessages])
+  }, [effectiveSaveMessages])
 
   const stop = useCallback(async () => {
     const { currentSessionId, sessions } = useChatStore.getState()

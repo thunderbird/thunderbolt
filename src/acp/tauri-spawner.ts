@@ -11,12 +11,13 @@ export const createTauriSpawner = (): SubprocessSpawner => ({
 
     const child = await cmd.spawn()
 
-    // Bridge Tauri's event-based stdout to a ReadableStream
     const stdout = new ReadableStream<Uint8Array>({
       start(controller) {
+        const encoder = new TextEncoder()
+
         cmd.stdout.on('data', (data) => {
           if (typeof data === 'string') {
-            controller.enqueue(new TextEncoder().encode(data))
+            controller.enqueue(encoder.encode(data))
           } else {
             controller.enqueue(data)
           }

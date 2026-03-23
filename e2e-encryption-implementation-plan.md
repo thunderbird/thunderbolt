@@ -241,14 +241,14 @@ Thunderbolt is moving from a passphrase-based encryption model (PR #465) to a pe
 
 ---
 
-## PR 5: FE — Integration (API client + wiring + schema update + all flows)
+## PR 5: FE — Integration (API client, service layer, UI wiring, device schema)
 
-**Goal:** Wire crypto module + API + UI together. Update FE device schema. Implement Flows C through I from the user flows doc.
+**Goal:** Wire crypto module + API + UI together. Update FE device schema. Mechanism-independent — encryption is NOT yet connected to sync. Data syncs unencrypted until PR 6.1 or 6.2.
 
 ### Update FE device schema
 - `src/db/tables.ts` — add `status` and `publicKey` columns to devicesTable
-- `src/db/powersync/schema.ts` — update if needed
-- `src/dal/devices.ts` — update Device type, add helpers: `getPendingDevices()`, `getTrustedDevices()`
+- `src/dal/devices.ts` — `DeviceStatus` type, `getPendingDevices()` query
+- `src/dal/index.ts` — updated exports
 
 ### API client
 **`src/api/encryption.ts`** — API functions using `ky`
@@ -256,7 +256,6 @@ Thunderbolt is moving from a passphrase-based encryption model (PR #465) to a pe
 - `storeEnvelope(deviceId, wrappedCK, canary?)` → POST /devices/:id/envelope
 - `fetchMyEnvelope()` → GET /devices/me/envelope
 - `fetchCanary()` → GET /encryption/canary
-- `revokeDevice(deviceId)` → existing endpoint update
 
 ### Service layer
 **`src/services/encryption.ts`** — Orchestrates crypto + API
@@ -265,51 +264,98 @@ Thunderbolt is moving from a passphrase-based encryption model (PR #465) to a pe
 - `approveDevice(pendingDeviceId)` — Flow D (trusted device side): wrap CK with pending device's public key
 - `recoverWithKey(recoveryKeyHex)` — Flow E: verify canary, create envelope
 - `recoverCKFromEnvelope()` — Flow F: fetch envelope, unwrap CK
-- `handleSignIn()` — Flow G: re-register device, unwrap envelope
+- `checkApprovalAndUnwrap()` — Flow D continue: check if approved, unwrap CK
 - `handleSignOut()` — Flow G: clear CK, keep key pair
-- `revokeDevice(deviceId)` — Flow I: API call + status update
+- `handleFullWipe()` — Flow H: clear all keys
 
 ### Wire UI to service layer
-- Replace all mock/stub calls in sync-setup components with real service calls
-- Remove test-only "Choose flow" first step from wizard (replace with real server detection)
-- Update `use-sync-setup.ts` hook to use real crypto + API
-- Update devices settings to use real `status` field from synced table (replace mock pending approvals with real data)
-- Wire `approveDevice()` / `revokeDevice()` to real service calls
-- Add PowerSync reactivity: watch device status changes for approval badge
-
-### PowerSync integration
-- React to `APPROVAL_PENDING` devices appearing in sync (badge on Settings)
-- React to own device status changing to `REVOKED` (disconnect + clear)
-- Update connector to handle 403 responses with new status model
-
-### Upload/download encryption
-- Integrate `encrypt()`/`decrypt()` into PowerSync upload/download codec
-- Ensure records are encrypted before upload and decrypted after download
+- `src/hooks/use-sync-setup.ts` — real async service calls replacing stubs, loading/error state
+- `src/components/sync-setup/sync-setup-modal.tsx` — wired to real services, loading/error in steps
+- `src/settings/devices.tsx` — real synced data via `getPendingDevices`, real approve mutation
 
 ### Files to modify
 - `src/db/tables.ts` — add status + publicKey columns
-- `src/db/powersync/connector.ts` — encryption codec integration
 - `src/dal/devices.ts` — update types + add helpers
-- `src/hooks/use-sync-enabled-toggle.ts` — trigger setup flow
+- `src/dal/index.ts` — updated exports
+- `src/api/encryption.ts` — new API client
+- `src/services/encryption.ts` — new service layer
 - `src/hooks/use-sync-setup.ts` — replace stubs with real calls
-- `src/settings/preferences.tsx` — wire to new setup
-- `src/settings/devices.tsx` — replace mocks with real synced data + service calls
-- All sync-setup components — replace mocks with real calls
-
-### Reusable from #465
-- Upload encoder/codec pattern (adapt for new CK-based encryption)
-- Watcher integration pattern
+- `src/components/sync-setup/sync-setup-modal.tsx` — wire to services
+- `src/settings/devices.tsx` — replace mocks with real synced data
 
 ### Verification
-- Full E2E flow testing:
-  - Flow C: Enable sync on first device → recovery key shown → data encrypts
-  - Flow D: Enable sync on second device → approval screen → approve from first → second syncs
-  - Flow E: Recovery key entry → canary verification → sync resumes
-  - Flow F: Clear CK from IndexedDB → reload → auto-recovers from envelope
-  - Flow G: Sign out → sign in → sync resumes
-  - Flow I: Revoke device → verify it loses access
 - `bun run typecheck` passes
-- No `any` types introduced
+- Sync setup wizard calls real API endpoints
+- First device flow: generates keys, stores envelope, shows recovery key
+- Approval flow: wraps CK, stores envelope for pending device
+- Devices page: real pending/trusted data from PowerSync
+- Encryption NOT yet connected (data syncs unencrypted until 6.1 or 6.2)
+
+---
+
+## PR 6.1: Trigger-based encryption (shadow tables + watchers)
+
+**Goal:** Connect encryption to sync using trigger-based shadow tables from PR #465.
+
+### What it contains
+- `src/db/encryption/config.ts` — table → encrypted columns mapping
+- `src/db/encryption/enabled.ts` — global toggle
+- `src/db/encryption/codec.ts` — async AES-GCM codec using CK from IndexedDB
+- `src/db/encryption/shadow-tables.ts` — auto-generated `*_decrypted` local tables
+- `src/db/encryption/watcher.ts` — trigger-based decryption into shadow tables
+- `src/db/encryption/upload-encoder.ts` — encode columns before upload
+- `src/db/encryption/dal-helpers.ts` — COALESCE queries preferring shadow values
+- `src/db/encryption/index.ts` — barrel export
+- `src/lib/base64.ts` — base64 utilities
+- `src/lib/reconcile-defaults.ts` — decode encrypted defaults
+- `src/dal/*.ts` — all DAL modules updated for `decryptedSelectFor()`
+- `src/db/powersync/schema.ts` — register shadow tables
+- `src/db/powersync/connector.ts` — call async `encodeForUpload()`
+- `src/db/powersync/database.ts` — setup decryption watchers on connect
+- `src/db/apply-schema.ts` — shadow table creation
+
+### Verification
+- Encrypted data uploads with `__enc:` prefix
+- Shadow tables auto-populated via trigger watchers
+- DAL reads COALESCE from shadow tables
+- Recovery key flow decrypts canary correctly
+
+---
+
+## PR 6.2: Middleware-based encryption (PowerSync sync middleware)
+
+**Goal:** Connect encryption to sync using PowerSync middleware from PR #429.
+
+### What it contains
+- `src/db/powersync/TransformableBucketStorage.ts` — extends SqliteBucketStorage with transform pipeline
+- `src/db/powersync/ThunderboltPowerSyncDatabase.ts` — custom database class using TransformableBucketStorage
+- `src/db/powersync/middleware/EncryptionMiddleware.ts` — decrypts incoming sync data before SQLite write (config-driven, all tables)
+- `src/db/powersync/worker/` — custom SharedWorker for transformers
+- `src/db/powersync/connector.ts` — encode columns before upload
+- `src/db/powersync/database.ts` — use ThunderboltPowerSyncDatabase + register middleware
+- Upload encoding (same approach as 6.1)
+- No shadow tables, no watchers, no DAL changes — data is decrypted before storage
+
+### Verification
+- Encrypted data uploads with `__enc:` prefix
+- Middleware decrypts before SQLite write
+- DAL reads directly (no joins needed)
+- Recovery key flow decrypts canary correctly
+
+---
+
+## Key difference between approaches
+
+| Aspect | 6.1 Trigger (shadow tables) | 6.2 Middleware (sync transform) |
+|--------|---------------------------|-------------------------------|
+| Where decryption happens | After data lands in SQLite, via triggers → shadow tables | Before data lands in SQLite, via middleware intercept |
+| Storage | Two tables per encrypted table (source + shadow) | Single table (data stored decrypted) |
+| DAL impact | All DAL queries need COALESCE joins | No DAL changes needed |
+| Upload encoding | Same (encode before upload) | Same (encode before upload) |
+| Complexity | Higher (shadow tables, triggers, DAL helpers) | Lower (single middleware, no DAL changes) |
+| Data at rest | Encrypted in source table, decrypted in shadow | Decrypted in single table |
+
+PRs 6.1 and 6.2 are **alternatives** — both branch off PR 5, only one merges.
 
 ---
 
@@ -322,10 +368,13 @@ PR 2 (backend schema) — deploy + run migration
   ↓
 PR 3 (backend API) + PR 4 (FE crypto) — can develop & merge in parallel
   ↓
-PR 5 (FE integration) — requires all previous PRs merged
+PR 5 (integration — API client, services, UI wiring, device schema)
+  ↓
+PR 6.1 (trigger approach) OR PR 6.2 (middleware approach)
 ```
 
 - **PR 1** lands first with zero risk — pure UI, no schema/crypto/API dependencies
 - **PR 2** deploys backend schema changes
 - **PRs 3 & 4** have no code dependency on each other — develop and review in parallel
-- **PR 5** ties everything together: updates FE schema, replaces mocks with real calls, wires crypto + API + UI
+- **PR 5** wires everything together (mechanism-independent) — data syncs unencrypted
+- **PR 6.1 or 6.2** connects encryption to sync — only one merges after comparing both approaches

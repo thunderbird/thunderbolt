@@ -14,6 +14,7 @@ import { SelectableCard, type DataOption } from '@/components/ui/selectable-card
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { handleFullWipe } from '@/services/encryption'
 
 type RevokedDeviceModalProps = {
   open: boolean
@@ -30,6 +31,13 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
       await setSyncEnabled(false)
     } catch (error) {
       console.error('Failed to disable sync:', error)
+    }
+
+    // Clear all encryption keys on revocation
+    try {
+      await handleFullWipe()
+    } catch (error) {
+      console.error('Failed to clear encryption keys:', error)
     }
 
     try {

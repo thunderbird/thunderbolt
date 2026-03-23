@@ -1,5 +1,5 @@
 import { useDatabase, useHttpClient } from '@/contexts'
-import { getAllDevices } from '@/dal'
+import { getAllDevices, getPendingDevices } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import dayjs from 'dayjs'
 import { SectionCard } from '@/components/ui/section-card'
-import { CheckCircle2, Smartphone, Trash2 } from 'lucide-react'
+import { CheckCircle2, Loader2, Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { approveDevice } from '@/services/encryption'
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -40,7 +41,12 @@ export default function DevicesSettingsPage() {
     queryKey: ['devices'],
     query: toCompilableQuery(getAllDevices(db)),
   })
+  const { data: pendingDevices = [] } = useQuery({
+    queryKey: ['pending-devices'],
+    query: toCompilableQuery(getPendingDevices(db)),
+  })
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
+  const [approveTarget, setApproveTarget] = useState<string | null>(null)
 
   const visibleDevices = devices.filter((d) => d.revokedAt == null || dayjs().diff(dayjs(d.revokedAt), 'hour') < 24)
 
@@ -48,6 +54,19 @@ export default function DevicesSettingsPage() {
     mutationFn: (deviceId: string) => httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`),
     onSuccess: () => {
       setRevokeTarget(null)
+    },
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: async (deviceId: string) => {
+      const device = pendingDevices.find((d) => d.id === deviceId)
+      if (!device?.publicKey) {
+        throw new Error('Device has no public key')
+      }
+      await approveDevice(httpClient, deviceId, device.publicKey)
+    },
+    onSuccess: () => {
+      setApproveTarget(null)
     },
   })
 
@@ -61,23 +80,13 @@ export default function DevicesSettingsPage() {
     }
   }
 
-  // Mock pending devices for UI review (replaced with real synced data in PR 5)
-  const mockPendingDevices = [
-    { id: 'pending-1', name: 'Chrome on Windows PC' },
-    { id: 'pending-2', name: 'Safari on iPad' },
-  ]
-
-  const [approveTarget, setApproveTarget] = useState<string | null>(null)
-
   const confirmApprove = () => {
     if (approveTarget) {
-      // Stub: In PR 5, this wraps CK with pending device's public key
-      console.log('Approve device (stub):', approveTarget)
-      setApproveTarget(null)
+      approveMutation.mutate(approveTarget)
     }
   }
 
-  const hasPendingDevices = mockPendingDevices.length > 0
+  const hasPendingDevices = pendingDevices.length > 0
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
@@ -87,7 +96,7 @@ export default function DevicesSettingsPage() {
         <>
           <SectionCard title="Pending Approvals">
             <div className="flex flex-col gap-3">
-              {mockPendingDevices.map((device) => (
+              {pendingDevices.map((device) => (
                 <Card key={device.id} className="bg-secondary/50">
                   <CardContent>
                     <div className="flex items-center justify-between gap-4">
@@ -98,8 +107,17 @@ export default function DevicesSettingsPage() {
                           <p className="text-sm text-muted-foreground">Waiting for approval</p>
                         </div>
                       </div>
-                      <Button variant="default" size="sm" onClick={() => setApproveTarget(device.id)}>
-                        <CheckCircle2 className="size-4 mr-1" />
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => setApproveTarget(device.id)}
+                        disabled={approveMutation.isPending}
+                      >
+                        {approveMutation.isPending && approveMutation.variables === device.id ? (
+                          <Loader2 className="size-4 mr-1 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="size-4 mr-1" />
+                        )}
                         Approve
                       </Button>
                     </div>
@@ -175,8 +193,10 @@ export default function DevicesSettingsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmApprove}>Approve</AlertDialogAction>
+            <AlertDialogCancel disabled={approveMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmApprove} disabled={approveMutation.isPending}>
+              {approveMutation.isPending ? 'Approving…' : 'Approve'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -5,6 +5,8 @@ import { devicesTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
@@ -12,6 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { eq } from 'drizzle-orm'
 import type { ReactNode } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+import type { ReactNode } from 'react'
 
 const deviceId1 = uuidv7()
 const deviceId2 = uuidv7()

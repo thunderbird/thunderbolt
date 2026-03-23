@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts'
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { handleSignOut, handleFullWipe } from '@/services/encryption'
 
 type LogoutModalProps = {
   open: boolean
@@ -34,6 +35,17 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
       await setSyncEnabled(false)
     } catch (error) {
       console.error('Failed to disable sync:', error)
+    }
+
+    // Clear encryption keys before signing out
+    try {
+      if (selectedOption === 'delete') {
+        await handleFullWipe()
+      } else {
+        await handleSignOut()
+      }
+    } catch (error) {
+      console.error('Failed to clear encryption keys:', error)
     }
 
     try {

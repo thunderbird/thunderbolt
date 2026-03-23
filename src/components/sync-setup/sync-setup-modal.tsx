@@ -51,23 +51,27 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     completeAndClose()
   }
 
-  const handleContinueIntro = () => {
-    setup.continueIntro()
+  const handleContinueIntro = async () => {
+    const result = await setup.continueIntro()
+    if (result === 'already-trusted') {
+      onComplete()
+      handleClose()
+    }
   }
 
-  const handleContinueFirstDeviceSetup = () => {
-    setup.continueFirstDeviceSetup()
+  const handleContinueFirstDeviceSetup = async () => {
+    await setup.continueFirstDeviceSetup()
   }
 
-  const handleApprovalContinue = () => {
-    const success = setup.confirmApproval()
+  const handleApprovalContinue = async () => {
+    const success = await setup.confirmApproval()
     if (success) {
       showSuccess()
     }
   }
 
-  const handleRecoveryKeySubmit = () => {
-    const success = setup.submitRecoveryKey()
+  const handleRecoveryKeySubmit = async () => {
+    const success = await setup.submitRecoveryKey()
     if (success) {
       showSuccess()
     }

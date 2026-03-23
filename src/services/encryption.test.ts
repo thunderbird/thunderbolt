@@ -1,0 +1,275 @@
+import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
+import type { KyInstance } from 'ky'
+
+// Mock crypto module before importing the service
+const mockKeyPair = {
+  privateKey: 'mock-private-key' as unknown as CryptoKey,
+  publicKey: 'mock-public-key' as unknown as CryptoKey,
+}
+const mockCK = 'mock-ck' as unknown as CryptoKey
+const mockExtractableCK = 'mock-extractable-ck' as unknown as CryptoKey
+
+const cryptoMocks = {
+  generateKeyPair: mock(async () => mockKeyPair),
+  generateCK: mock(async () => mockExtractableCK),
+  reimportAsNonExtractable: mock(async () => mockCK),
+  exportPublicKey: mock(async () => 'mock-public-key-base64'),
+  importPublicKey: mock(async () => 'mock-imported-public-key' as unknown as CryptoKey),
+  wrapCK: mock(async () => 'mock-wrapped-ck'),
+  unwrapCK: mock(async () => mockCK),
+  createCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' })),
+  verifyCanary: mock(async () => true),
+  encodeRecoveryKey: mock(async () => 'a'.repeat(64)),
+  decodeRecoveryKey: mock(async () => mockCK),
+  storeKeyPair: mock(async () => {}),
+  getKeyPair: mock(async () => null as { privateKey: CryptoKey; publicKey: CryptoKey } | null),
+  storeCK: mock(async () => {}),
+  getCK: mock(async () => null as CryptoKey | null),
+  clearCK: mock(async () => {}),
+  clearAllKeys: mock(async () => {}),
+}
+
+mock.module('@/crypto', () => cryptoMocks)
+
+const apiMocks = {
+  registerDevice: mock(async () => ({ status: 'APPROVAL_PENDING' as const, firstDevice: true })),
+  storeEnvelope: mock(async () => ({ status: 'TRUSTED' as const })),
+  fetchMyEnvelope: mock(async () => ({ status: 'TRUSTED', wrappedCK: 'mock-wrapped-ck' })),
+  fetchCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' })),
+}
+
+mock.module('@/api/encryption', () => apiMocks)
+
+// Import after mocking
+const {
+  registerThisDevice,
+  completeFirstDeviceSetup,
+  approveDevice,
+  checkApprovalAndUnwrap,
+  recoverWithKey,
+  handleSignOut,
+  handleFullWipe,
+} = await import('./encryption')
+
+const deviceIdKey = 'thunderbolt_device_id'
+const authTokenKey = 'thunderbolt_auth_token'
+
+const mockHttpClient = {} as KyInstance
+
+const resetAllMocks = () => {
+  Object.values(cryptoMocks).forEach((m) => m.mockClear())
+  Object.values(apiMocks).forEach((m) => m.mockClear())
+
+  // Reset default return values
+  cryptoMocks.generateKeyPair.mockImplementation(async () => mockKeyPair)
+  cryptoMocks.generateCK.mockImplementation(async () => mockExtractableCK)
+  cryptoMocks.reimportAsNonExtractable.mockImplementation(async () => mockCK)
+  cryptoMocks.exportPublicKey.mockImplementation(async () => 'mock-public-key-base64')
+  cryptoMocks.importPublicKey.mockImplementation(async () => 'mock-imported-public-key' as unknown as CryptoKey)
+  cryptoMocks.wrapCK.mockImplementation(async () => 'mock-wrapped-ck')
+  cryptoMocks.unwrapCK.mockImplementation(async () => mockCK)
+  cryptoMocks.createCanary.mockImplementation(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' }))
+  cryptoMocks.verifyCanary.mockImplementation(async () => true)
+  cryptoMocks.encodeRecoveryKey.mockImplementation(async () => 'a'.repeat(64))
+  cryptoMocks.decodeRecoveryKey.mockImplementation(async () => mockCK)
+  cryptoMocks.storeKeyPair.mockImplementation(async () => {})
+  cryptoMocks.getKeyPair.mockImplementation(async () => null)
+  cryptoMocks.storeCK.mockImplementation(async () => {})
+  cryptoMocks.getCK.mockImplementation(async () => null)
+  cryptoMocks.clearCK.mockImplementation(async () => {})
+  cryptoMocks.clearAllKeys.mockImplementation(async () => {})
+
+  apiMocks.registerDevice.mockImplementation(async () => ({ status: 'APPROVAL_PENDING' as const, firstDevice: true }))
+  apiMocks.storeEnvelope.mockImplementation(async () => ({ status: 'TRUSTED' as const }))
+  apiMocks.fetchMyEnvelope.mockImplementation(async () => ({ status: 'TRUSTED', wrappedCK: 'mock-wrapped-ck' }))
+  apiMocks.fetchCanary.mockImplementation(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' }))
+}
+
+describe('encryption service', () => {
+  beforeEach(() => {
+    localStorage.setItem(deviceIdKey, 'test-device-id')
+    localStorage.setItem(authTokenKey, 'test-token')
+    resetAllMocks()
+  })
+
+  afterEach(() => {
+    localStorage.removeItem(deviceIdKey)
+    localStorage.removeItem(authTokenKey)
+  })
+
+  describe('registerThisDevice', () => {
+    it('generates new key pair when none exists', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => null)
+
+      const result = await registerThisDevice(mockHttpClient)
+
+      expect(cryptoMocks.generateKeyPair).toHaveBeenCalledTimes(1)
+      expect(cryptoMocks.storeKeyPair).toHaveBeenCalledWith(mockKeyPair.privateKey, mockKeyPair.publicKey)
+      expect(cryptoMocks.exportPublicKey).toHaveBeenCalledWith(mockKeyPair.publicKey)
+      expect(apiMocks.registerDevice).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({ status: 'APPROVAL_PENDING', firstDevice: true })
+    })
+
+    it('reuses existing key pair', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => mockKeyPair)
+
+      await registerThisDevice(mockHttpClient)
+
+      expect(cryptoMocks.generateKeyPair).not.toHaveBeenCalled()
+      expect(cryptoMocks.storeKeyPair).not.toHaveBeenCalled()
+      expect(cryptoMocks.exportPublicKey).toHaveBeenCalledWith(mockKeyPair.publicKey)
+    })
+
+    it('passes device ID and public key to API', async () => {
+      await registerThisDevice(mockHttpClient)
+
+      expect(apiMocks.registerDevice).toHaveBeenCalledWith(mockHttpClient, {
+        deviceId: 'test-device-id',
+        publicKey: 'mock-public-key-base64',
+        name: expect.any(String),
+      })
+    })
+  })
+
+  describe('completeFirstDeviceSetup', () => {
+    it('generates CK, canary, envelope, stores keys, returns recovery key', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => mockKeyPair)
+
+      const recoveryKey = await completeFirstDeviceSetup(mockHttpClient)
+
+      // Should generate extractable CK
+      expect(cryptoMocks.generateCK).toHaveBeenCalledWith(true)
+      // Should encode recovery key
+      expect(cryptoMocks.encodeRecoveryKey).toHaveBeenCalledWith(mockExtractableCK)
+      // Should create canary
+      expect(cryptoMocks.createCanary).toHaveBeenCalledWith(mockExtractableCK)
+      // Should reimport as non-extractable
+      expect(cryptoMocks.reimportAsNonExtractable).toHaveBeenCalledWith(mockExtractableCK)
+      // Should wrap CK with own public key
+      expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockCK, mockKeyPair.publicKey)
+      // Should store envelope with canary
+      expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
+        deviceId: 'test-device-id',
+        wrappedCK: 'mock-wrapped-ck',
+        canaryIv: 'mock-iv',
+        canaryCtext: 'mock-ctext',
+      })
+      // Should store CK locally
+      expect(cryptoMocks.storeCK).toHaveBeenCalledWith(mockCK)
+      // Should return recovery key
+      expect(recoveryKey).toBe('a'.repeat(64))
+    })
+
+    it('throws if key pair is missing', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => null)
+
+      await expect(completeFirstDeviceSetup(mockHttpClient)).rejects.toThrow('Key pair not found')
+    })
+  })
+
+  describe('approveDevice', () => {
+    it('wraps CK with pending device public key and stores envelope', async () => {
+      cryptoMocks.getCK.mockImplementation(async () => mockCK)
+
+      await approveDevice(mockHttpClient, 'pending-dev', 'pending-pub-key-base64')
+
+      expect(cryptoMocks.importPublicKey).toHaveBeenCalledWith('pending-pub-key-base64')
+      expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockCK, 'mock-imported-public-key')
+      expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
+        deviceId: 'pending-dev',
+        wrappedCK: 'mock-wrapped-ck',
+      })
+    })
+
+    it('throws if CK is missing', async () => {
+      cryptoMocks.getCK.mockImplementation(async () => null)
+
+      await expect(approveDevice(mockHttpClient, 'dev', 'key')).rejects.toThrow('Content key not found')
+    })
+  })
+
+  describe('checkApprovalAndUnwrap', () => {
+    it('fetches envelope, unwraps CK, stores it, returns true', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => mockKeyPair)
+
+      const result = await checkApprovalAndUnwrap(mockHttpClient)
+
+      expect(apiMocks.fetchMyEnvelope).toHaveBeenCalledWith(mockHttpClient)
+      expect(cryptoMocks.unwrapCK).toHaveBeenCalledWith('mock-wrapped-ck', mockKeyPair.privateKey)
+      expect(cryptoMocks.storeCK).toHaveBeenCalledWith(mockCK)
+      expect(result).toBe(true)
+    })
+
+    it('returns false when envelope fetch fails', async () => {
+      apiMocks.fetchMyEnvelope.mockImplementation(async () => {
+        throw new Error('Not found')
+      })
+
+      const result = await checkApprovalAndUnwrap(mockHttpClient)
+      expect(result).toBe(false)
+    })
+
+    it('returns false when key pair is missing', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => null)
+
+      const result = await checkApprovalAndUnwrap(mockHttpClient)
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('recoverWithKey', () => {
+    it('verifies canary, registers device, stores envelope and CK', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => null)
+
+      await recoverWithKey(mockHttpClient, 'a'.repeat(64))
+
+      // Should fetch canary
+      expect(apiMocks.fetchCanary).toHaveBeenCalledWith(mockHttpClient)
+      // Should decode recovery key
+      expect(cryptoMocks.decodeRecoveryKey).toHaveBeenCalledWith('a'.repeat(64))
+      // Should verify canary
+      expect(cryptoMocks.verifyCanary).toHaveBeenCalledWith(mockCK, 'mock-iv', 'mock-ctext')
+      // Should generate new key pair (none existed)
+      expect(cryptoMocks.generateKeyPair).toHaveBeenCalledTimes(1)
+      expect(cryptoMocks.storeKeyPair).toHaveBeenCalled()
+      // Should register device
+      expect(apiMocks.registerDevice).toHaveBeenCalledTimes(1)
+      // Should store envelope
+      expect(apiMocks.storeEnvelope).toHaveBeenCalledTimes(1)
+      // Should store CK
+      expect(cryptoMocks.storeCK).toHaveBeenCalledWith(mockCK)
+    })
+
+    it('reuses existing key pair during recovery', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => mockKeyPair)
+
+      await recoverWithKey(mockHttpClient, 'a'.repeat(64))
+
+      expect(cryptoMocks.generateKeyPair).not.toHaveBeenCalled()
+    })
+
+    it('throws on invalid recovery key (canary verification fails)', async () => {
+      cryptoMocks.verifyCanary.mockImplementation(async () => false)
+
+      await expect(recoverWithKey(mockHttpClient, 'b'.repeat(64))).rejects.toThrow('Invalid recovery key')
+    })
+  })
+
+  describe('handleSignOut', () => {
+    it('clears CK only', async () => {
+      await handleSignOut()
+
+      expect(cryptoMocks.clearCK).toHaveBeenCalledTimes(1)
+      expect(cryptoMocks.clearAllKeys).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('handleFullWipe', () => {
+    it('clears all keys', async () => {
+      await handleFullWipe()
+
+      expect(cryptoMocks.clearAllKeys).toHaveBeenCalledTimes(1)
+      expect(cryptoMocks.clearCK).not.toHaveBeenCalled()
+    })
+  })
+})

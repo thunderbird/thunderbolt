@@ -1,8 +1,11 @@
 import { useReducer } from 'react'
-
-// Mock recovery phrase for UI testing (replaced with real BIP-39 mnemonic in PR 5)
-const mockRecoveryPhrase =
-  'abandon ability able about above absent absorb abstract absurd abuse access accident alcohol alien alpha already amateur amazing among amount amused analyst anchor annual'
+import { useHttpClient } from '@/contexts'
+import {
+  registerThisDevice,
+  completeFirstDeviceSetup,
+  checkApprovalAndUnwrap,
+  recoverWithKey,
+} from '@/services/encryption'
 
 type SyncSetupStep =
   | 'intro'
@@ -89,31 +92,68 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
 
 /**
  * State machine for the sync setup wizard.
- * All crypto/API calls are stubs — replaced with real implementations in PR 5.
+ * Orchestrates device registration, key generation, and encryption setup flows.
  */
 export const useSyncSetup = () => {
+  const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  // Stub: In PR 5, this will call registerThisDevice() and auto-detect first vs additional
-  const continueIntro = () => {
+  const continueIntro = async () => {
     dispatch({ type: 'CONTINUE_INTRO' })
-    // Mock auto-detection: always treats as first device
-    dispatch({ type: 'DETECTED_FIRST_DEVICE' })
+
+    try {
+      const result = await registerThisDevice(httpClient)
+
+      if (result.status === 'TRUSTED') {
+        // Device already trusted — try to unwrap CK from existing envelope
+        const unwrapped = await checkApprovalAndUnwrap(httpClient)
+        if (unwrapped) {
+          // CK recovered — signal completion via a special state
+          // The caller (modal) should detect this and call onComplete
+          dispatch({ type: 'STOP_LOADING' })
+          return 'already-trusted' as const
+        }
+        // Envelope missing — treat as first device scenario
+        dispatch({ type: 'DETECTED_FIRST_DEVICE' })
+        return 'first-device' as const
+      }
+
+      if ('firstDevice' in result && result.firstDevice) {
+        dispatch({ type: 'DETECTED_FIRST_DEVICE' })
+        return 'first-device' as const
+      }
+
+      dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+      return 'additional-device' as const
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to register device'
+      dispatch({ type: 'SET_ERROR', payload: message })
+      return 'error' as const
+    }
   }
 
   const goBack = () => dispatch({ type: 'GO_BACK' })
 
-  // Stub: In PR 5, this will call completeFirstDeviceSetup() to generate real keys
-  const continueFirstDeviceSetup = () => {
-    dispatch({ type: 'SET_RECOVERY_KEY', payload: mockRecoveryPhrase })
+  const continueFirstDeviceSetup = async () => {
+    dispatch({ type: 'START_LOADING' })
+
+    try {
+      const recoveryKey = await completeFirstDeviceSetup(httpClient)
+      dispatch({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to set up encryption'
+      dispatch({ type: 'SET_ERROR', payload: message })
+      return false
+    }
   }
 
-  const chooseAdditionalDevice = () => dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
+  const chooseAdditionalDevice = () => dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
 
   const setRecoveryKeyInput = (value: string) => dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
 
-  const submitRecoveryKey = () => {
+  const submitRecoveryKey = async () => {
     const normalized = state.recoveryKeyInput.trim().toLowerCase().replace(/\s+/g, ' ')
     const wordCount = normalized.split(' ').length
 
@@ -125,12 +165,42 @@ export const useSyncSetup = () => {
       return false
     }
 
-    // Stub: In PR 5, this will verify via canary decryption
-    return true
+    dispatch({ type: 'START_LOADING' })
+
+    try {
+      await recoverWithKey(httpClient, normalized)
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Recovery failed'
+      if (message === 'Invalid recovery key') {
+        dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: 'Invalid recovery key. Please check and try again.' })
+      } else {
+        dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
+      }
+      return false
+    }
   }
 
-  // Stub: In PR 5, this will call checkApprovalAndUnwrap()
-  const confirmApproval = () => true
+  const confirmApproval = async () => {
+    dispatch({ type: 'START_LOADING' })
+
+    try {
+      const approved = await checkApprovalAndUnwrap(httpClient)
+      if (!approved) {
+        dispatch({
+          type: 'SET_APPROVAL_ERROR',
+          payload: 'This device has not been approved yet. Please approve it from a trusted device first.',
+        })
+        return false
+      }
+      dispatch({ type: 'STOP_LOADING' })
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to check approval'
+      dispatch({ type: 'SET_APPROVAL_ERROR', payload: message })
+      return false
+    }
+  }
 
   const completeSetup = () => dispatch({ type: 'SETUP_COMPLETE' })
   const reset = () => dispatch({ type: 'RESET' })

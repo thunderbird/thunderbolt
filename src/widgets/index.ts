@@ -16,12 +16,14 @@
 import { type ComponentType } from 'react'
 import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
+import * as documentResult from './document-result'
 import * as linkPreview from './link-preview'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
 export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
+export { DocumentResultWidget } from './document-result'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
 export { WeatherForecastWidget } from './weather-forecast'
 
@@ -37,6 +39,10 @@ export const widgetRegistry = [
   {
     name: 'connect-integration' as const,
     module: connectIntegration,
+  },
+  {
+    name: 'document-result' as const,
+    module: documentResult,
   },
   {
     name: 'weather-forecast' as const,
@@ -91,6 +97,7 @@ export const widgetComponents = Object.fromEntries(
  */
 export type WidgetCacheData =
   | connectIntegration.CacheData
+  | documentResult.CacheData
   | linkPreview.CacheData
   | weatherForecast.CacheData
   | citation.CacheData

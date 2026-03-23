@@ -92,6 +92,20 @@ export type AutomationRun = {
   isAutomationDeleted: boolean
 }
 
+export type HaystackDocumentMeta = {
+  id: string
+  content: string
+  score: number
+  file: { id: string; name: string }
+}
+
+export type HaystackReferenceMeta = {
+  position: number
+  fileId: string
+  fileName: string
+  pageNumber?: number
+}
+
 export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
@@ -99,9 +113,12 @@ export type UIMessageMetadata = {
   reasoningTime?: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]
+  haystackDocuments?: HaystackDocumentMeta[]
+  haystackReferences?: HaystackReferenceMeta[]
+  isDocumentSearch?: boolean
 }
 
-export type SideviewType = 'message' | 'thread' | 'imap'
+export type SideviewType = 'message' | 'thread' | 'imap' | 'document'
 
 export type ToolConfig = {
   name: string

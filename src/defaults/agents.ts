@@ -81,3 +81,26 @@ export const defaultAgents: ReadonlyArray<Agent> = [defaultAgentBuiltIn] as cons
  * These are NOT seeded into the DB — they're added only when detected on PATH.
  */
 export const localAgentCandidates: ReadonlyArray<Agent> = [defaultAgentClaudeCode, defaultAgentCodex] as const
+
+/**
+ * Create an Agent record for a Haystack pipeline discovered from the backend.
+ */
+export const haystackAgentFromPipeline = (
+  pipeline: { slug: string; name: string; icon?: string },
+  wsBaseUrl: string,
+): Agent => ({
+  id: `agent-haystack-${pipeline.slug}`,
+  name: pipeline.name,
+  type: 'remote',
+  transport: 'websocket',
+  command: null,
+  args: null,
+  url: `${wsBaseUrl}/haystack/ws/${pipeline.slug}`,
+  authMethod: null,
+  icon: pipeline.icon ?? 'file-search',
+  isSystem: 1,
+  enabled: 1,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+})

@@ -1,6 +1,6 @@
 import { createMessageAccumulator, type MessageAccumulator } from '@/acp/message-accumulator'
 import { trackEvent } from '@/lib/posthog'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { HaystackDocumentMeta, HaystackReferenceMeta, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
 import { ensureAcpConnection } from './create-acp-session'
@@ -53,6 +53,17 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
     activeAccumulators.set(sessionId, accumulator)
 
     const result = await acpClient.prompt(text)
+
+    // Extract Haystack metadata from PromptResponse._meta
+    if (result._meta) {
+      const meta = result._meta as Record<string, unknown>
+      if (meta.haystackDocuments) {
+        accumulator.setHaystackDocuments(meta.haystackDocuments as HaystackDocumentMeta[])
+      }
+      if (meta.haystackReferences) {
+        accumulator.setHaystackReferences(meta.haystackReferences as HaystackReferenceMeta[])
+      }
+    }
 
     const finalMessage = accumulator.buildMessage()
     store.updateLastMessage(sessionId, finalMessage)

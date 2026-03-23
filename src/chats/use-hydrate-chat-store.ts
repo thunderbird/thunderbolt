@@ -14,7 +14,7 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getAgent } from '@/dal/agents'
-import { discoverAndSeedLocalAgents } from '@/acp/discovery'
+import { discoverAndSeedLocalAgents, discoverAndSeedRemoteHaystackAgents } from '@/acp/discovery'
 import { modeFromAcpSession, modelFromAcpSession } from '@/acp/session-adapters'
 import { isTauri, isDesktop, isAgentAvailableOnPlatform } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -122,7 +122,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     // If the session does not exist, create it below
-    const settings = await getSettings(db, { selected_model: String })
+    const settings = await getSettings(db, { selected_model: String, cloud_url: 'http://localhost:8000/v1' })
 
     const [
       defaultModel,
@@ -143,8 +143,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       getChatMessages(db, id),
       getAllModes(db),
       getAvailableModels(db),
-      // Discover local CLI agents in parallel with other queries (desktop only, no-op on web)
-      discoverAndSeedLocalAgents(db).then(() => getAvailableAgents(db)),
+      // Discover agents in parallel with other queries
+      Promise.all([discoverAndSeedLocalAgents(db), discoverAndSeedRemoteHaystackAgents(db, settings.cloudUrl)]).then(
+        () => getAvailableAgents(db),
+      ),
       getTriggerPromptForThread(db, id),
       getEnabledClients(),
     ])

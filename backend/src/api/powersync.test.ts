@@ -42,6 +42,12 @@ const powersyncSettings: Settings = {
   oidcClientSecret: '',
   oidcIssuer: '',
   betterAuthUrl: 'http://localhost:8000',
+  haystackApiKey: '',
+  haystackBaseUrl: 'https://api.cloud.deepset.ai',
+  haystackWorkspace: '',
+  haystackPipelineName: '',
+  haystackPipelineId: '',
+  haystackPipelines: '',
 }
 
 describe('PowerSync API', () => {

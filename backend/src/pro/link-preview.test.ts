@@ -62,6 +62,12 @@ describe('Link Preview Routes', () => {
       oidcClientSecret: '',
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
+      haystackApiKey: '',
+      haystackBaseUrl: 'https://api.cloud.deepset.ai',
+      haystackWorkspace: '',
+      haystackPipelineName: '',
+      haystackPipelineId: '',
+      haystackPipelines: '',
     })
 
     // Create mock fetch

@@ -17,6 +17,7 @@
     "email": "email dev --dir src/emails --port 3000"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.16.1",
     "@electric-sql/pglite": "^0.3.14",
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/jwt": "^1.4.0",
@@ -36,10 +37,13 @@
     "elysia": "^1.4.7",
     "exa-js": "^1.0.11",
     "jose": "6.1.2",
+    "mammoth": "^1.12.0",
     "openai": "^5.22.1",
+    "pdfjs-dist": "^5.5.207",
     "pino": "^9.11.0",
     "postgres": "^3.4.7",
     "posthog-node": "^5.8.8",
+    "react-pdf": "^10.4.1",
     "resend": "^6.5.2",
     "zod": "^3.22.4"
   },

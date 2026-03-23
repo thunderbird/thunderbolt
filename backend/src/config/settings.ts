@@ -12,6 +12,14 @@ const settingsSchema = z.object({
   thunderboltInferenceUrl: z.string().default(''),
   thunderboltInferenceApiKey: z.string().default(''),
 
+  // Haystack/Deepset settings
+  haystackApiKey: z.string().default(''),
+  haystackBaseUrl: z.string().default('https://api.cloud.deepset.ai'),
+  haystackWorkspace: z.string().default(''),
+  haystackPipelineName: z.string().default(''),
+  haystackPipelineId: z.string().default(''),
+  haystackPipelines: z.string().default(''),
+
   // Health Check Configuration
   monitoringToken: z.string().default(''),
 
@@ -75,6 +83,12 @@ const parseSettings = (): Settings => {
     exaApiKey: process.env.EXA_API_KEY || '',
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
+    haystackApiKey: process.env.HAYSTACK_API_KEY || '',
+    haystackBaseUrl: process.env.HAYSTACK_BASE_URL || 'https://api.cloud.deepset.ai',
+    haystackWorkspace: process.env.HAYSTACK_WORKSPACE_NAME || '',
+    haystackPipelineName: process.env.HAYSTACK_PIPELINE_NAME || '',
+    haystackPipelineId: process.env.HAYSTACK_PIPELINE_ID || '',
+    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
@@ -153,6 +167,41 @@ export const getCorsMethodsList = (settings: Settings): string[] => {
     .split(',')
     .map((method) => method.trim())
     .filter((method) => method.length > 0)
+}
+
+export type { HaystackPipelineConfig } from '@/haystack/types'
+
+/**
+ * Get configured Haystack pipelines. Supports either:
+ * - HAYSTACK_PIPELINES: JSON array of pipeline configs
+ * - Individual HAYSTACK_PIPELINE_NAME/ID env vars (creates single pipeline)
+ */
+export const getHaystackPipelines = (settings: Settings): import('@/haystack/types').HaystackPipelineConfig[] => {
+  if (!settings.haystackApiKey || !settings.haystackWorkspace) {
+    return []
+  }
+
+  if (settings.haystackPipelines) {
+    try {
+      return JSON.parse(settings.haystackPipelines)
+    } catch {
+      return []
+    }
+  }
+
+  if (settings.haystackPipelineName && settings.haystackPipelineId) {
+    return [
+      {
+        slug: settings.haystackPipelineName,
+        name: 'Document Search',
+        pipelineName: settings.haystackPipelineName,
+        pipelineId: settings.haystackPipelineId,
+        icon: 'file-search',
+      },
+    ]
+  }
+
+  return []
 }
 
 /** Parse comma-separated auto-approved domains into a list */

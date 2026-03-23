@@ -1,5 +1,5 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk'
-import type { ThunderboltUIMessage } from '@/types'
+import type { HaystackDocumentMeta, HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 
 type SessionUpdate = SessionNotification['update']
@@ -21,6 +21,11 @@ export const createMessageAccumulator = (messageId?: string) => {
   let textContent = ''
   let reasoningContent = ''
   const toolCalls = new Map<string, ToolCallState>()
+
+  // Haystack metadata from _meta
+  let haystackReferences: HaystackReferenceMeta[] | undefined
+  let haystackDocuments: HaystackDocumentMeta[] | undefined
+  let isDocumentSearch = false
 
   const buildMessage = (): ThunderboltUIMessage => {
     const parts: ThunderboltUIMessage['parts'] = []
@@ -67,11 +72,29 @@ export const createMessageAccumulator = (messageId?: string) => {
       parts.push({ type: 'text', text: '' })
     }
 
-    return {
+    // Build metadata
+    const metadata: UIMessageMetadata = {}
+    if (haystackReferences) {
+      metadata.haystackReferences = haystackReferences
+    }
+    if (haystackDocuments) {
+      metadata.haystackDocuments = haystackDocuments
+    }
+    if (isDocumentSearch) {
+      metadata.isDocumentSearch = true
+    }
+
+    const message: ThunderboltUIMessage = {
       id,
       role: 'assistant',
       parts,
     }
+
+    if (Object.keys(metadata).length > 0) {
+      message.metadata = metadata
+    }
+
+    return message
   }
 
   const handleUpdate = (update: SessionUpdate): ThunderboltUIMessage => {
@@ -79,6 +102,11 @@ export const createMessageAccumulator = (messageId?: string) => {
       case 'agent_message_chunk':
         if (update.content.type === 'text') {
           textContent += update.content.text
+        }
+        // Capture Haystack references from _meta on ContentChunk
+        if (update._meta?.haystackReferences) {
+          haystackReferences = update._meta.haystackReferences as HaystackReferenceMeta[]
+          isDocumentSearch = true
         }
         break
 
@@ -124,6 +152,14 @@ export const createMessageAccumulator = (messageId?: string) => {
   return {
     handleUpdate,
     buildMessage,
+    setHaystackDocuments(docs: HaystackDocumentMeta[]) {
+      haystackDocuments = docs
+      isDocumentSearch = true
+    },
+    setHaystackReferences(refs: HaystackReferenceMeta[]) {
+      haystackReferences = refs
+      isDocumentSearch = true
+    },
     get id() {
       return id
     },

@@ -1,4 +1,5 @@
 import { createMcpServer, deleteMcpServer, getAllMcpServers } from '@/dal'
+import { createCredentialStore } from '@/lib/mcp-auth'
 import { isSupportedTransport, isCorsRestricted } from '@/lib/mcp-utils'
 import { isTauri } from '@/lib/platform'
 import { useMCP } from '@/lib/mcp-provider'
@@ -50,6 +51,7 @@ export const useMcpServersPageState = () => {
   const db = useDatabase()
   const { servers: mcpServers } = useMcpSync()
   const { reconnectServer } = useMCP()
+  const credentialStoreRef = useRef(createCredentialStore(db))
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
@@ -133,12 +135,15 @@ export const useMcpServersPageState = () => {
       command?: string
       args?: string
       authType?: 'none' | 'bearer' | 'oauth'
+      bearerToken?: string
     }) => {
-      await createMcpServer(db, {
-        id: uuidv7(),
-        ...server,
-        enabled: 1,
-      })
+      const id = uuidv7()
+      const { bearerToken, ...serverData } = server
+      await createMcpServer(db, { id, ...serverData, enabled: 1 })
+
+      if (bearerToken && server.authType === 'bearer') {
+        await credentialStoreRef.current.save(id, { type: 'bearer', token: bearerToken })
+      }
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
@@ -234,6 +239,7 @@ export const useMcpServersPageState = () => {
     }
 
     const authType = formState.authType !== 'none' ? formState.authType : undefined
+    const bearerToken = formState.authType === 'bearer' ? formState.bearerToken : undefined
 
     if (formState.transportType === 'stdio') {
       const cleanArgs = formState.args.filter(Boolean)
@@ -244,13 +250,14 @@ export const useMcpServersPageState = () => {
         command: formState.command,
         args: JSON.stringify(cleanArgs),
         authType,
+        bearerToken,
       })
       return
     }
 
     const url = new URL(formState.url)
     const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
-    addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType })
+    addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType, bearerToken })
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {

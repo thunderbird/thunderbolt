@@ -28,13 +28,20 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
         serverCapabilities: [],
       }
     case 'SET_URL':
-      return { ...state, url: action.payload }
+      return { ...state, url: action.payload, connectionStatus: 'idle', connectionError: null, serverCapabilities: [] }
     case 'SET_COMMAND':
       return { ...state, command: action.payload }
     case 'SET_ARGS':
       return { ...state, args: action.payload }
     case 'SET_AUTH_TYPE':
-      return { ...state, authType: action.payload, bearerToken: '' }
+      return {
+        ...state,
+        authType: action.payload,
+        bearerToken: '',
+        connectionStatus: 'idle',
+        connectionError: null,
+        serverCapabilities: [],
+      }
     case 'SET_BEARER_TOKEN':
       return { ...state, bearerToken: action.payload }
     case 'SET_CONNECTION_STATUS':

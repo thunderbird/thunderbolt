@@ -17,7 +17,6 @@ import type { KeyboardEvent, ReactNode } from 'react'
 type AddMcpServerDialogProps = {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
-  onClose: () => void
   formState: McpServerFormState
   formDispatch: (action: McpServerFormAction) => void
   onTestConnection: () => void
@@ -33,7 +32,6 @@ type AddMcpServerDialogProps = {
 export const AddMcpServerDialog = ({
   isOpen,
   onOpenChange,
-  onClose,
   formState,
   formDispatch,
   onTestConnection,
@@ -45,13 +43,7 @@ export const AddMcpServerDialog = ({
   isValid,
   trigger,
 }: AddMcpServerDialogProps) => (
-  <Dialog
-    open={isOpen}
-    onOpenChange={(open) => {
-      onOpenChange(open)
-      if (!open) onClose()
-    }}
-  >
+  <Dialog open={isOpen} onOpenChange={onOpenChange}>
     <DialogTrigger asChild>{trigger}</DialogTrigger>
     <ResponsiveModalContentComposable className="sm:max-w-[500px]">
       <ResponsiveModalHeader>
@@ -195,7 +187,7 @@ export const AddMcpServerDialog = ({
       </div>
 
       <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
         <Button onClick={onAddServer} disabled={!canAddServer}>

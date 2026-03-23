@@ -14,6 +14,7 @@ import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
+import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
@@ -89,6 +90,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMcpProxyRoutes(auth, fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
+      .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
   )
 }

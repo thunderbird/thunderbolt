@@ -13,7 +13,7 @@ import type { CredentialStore } from '@/types/mcp'
  * Static client ID for Thunderbolt published as a Client ID Metadata Document (CIMD).
  * Authorization servers that support CIMD will fetch this to verify the client.
  */
-const thunderboltClientId = 'https://thunderbolt.io/.well-known/oauth-client/thunderbolt'
+const THUNDERBOLT_CLIENT_ID = 'https://thunderbolt.io/.well-known/oauth-client/thunderbolt'
 
 /**
  * OAuth 2.1 client provider for MCP servers.
@@ -30,6 +30,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly credentialStore: CredentialStore
   private codeVerifierValue: string | null = null
   private clientInfo: OAuthClientInformationFull | null = null
+  private boundPort: number | null = null
 
   constructor(serverId: string, credentialStore: CredentialStore) {
     this.serverId = serverId
@@ -37,7 +38,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string {
-    return 'http://localhost:17421'
+    return `http://localhost:${this.boundPort ?? 17421}`
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -51,9 +52,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   clientInformation(): OAuthClientInformation | undefined {
-    if (this.clientInfo) { return this.clientInfo }
+    if (this.clientInfo) return this.clientInfo
     // Return static client ID for CIMD-based registration
-    return { client_id: thunderboltClientId }
+    return { client_id: THUNDERBOLT_CLIENT_ID }
   }
 
   async saveClientInformation(clientInformation: OAuthClientInformationFull): Promise<void> {
@@ -62,12 +63,13 @@ class McpOAuthClientProvider implements OAuthClientProvider {
 
   async tokens(): Promise<OAuthTokens | undefined> {
     const cred = await this.credentialStore.load(this.serverId)
-    if (!cred || cred.type !== 'oauth') { return undefined }
+    if (!cred || cred.type !== 'oauth') return undefined
 
     return {
       access_token: cred.accessToken,
       refresh_token: cred.refreshToken,
       token_type: cred.tokenType,
+      scope: cred.scope,
     }
   }
 
@@ -83,7 +85,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    await invoke('start_oauth_server')
+    this.boundPort = await invoke<number>('start_oauth_server')
     await openUrl(authorizationUrl.toString())
   }
 
@@ -92,7 +94,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async codeVerifier(): Promise<string> {
-    if (!this.codeVerifierValue) { throw new Error('codeVerifier called before saveCodeVerifier') }
+    if (!this.codeVerifierValue) throw new Error('codeVerifier called before saveCodeVerifier')
     return this.codeVerifierValue
   }
 

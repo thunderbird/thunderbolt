@@ -4,10 +4,14 @@ import { devicesTable } from '@/db/tables'
 import { getShadowTable, decryptedJoin, decryptedSelectFor } from '@/db/encryption'
 import type { DrizzleQueryWithPromise } from '@/types'
 
+export type DeviceStatus = 'APPROVAL_PENDING' | 'TRUSTED' | 'REVOKED'
+
 export type Device = {
   id: string
   userId: string
   name: string
+  status: DeviceStatus | null
+  publicKey: string | null
   lastSeen: string | null
   createdAt: string | null
   revokedAt: string | null
@@ -36,6 +40,19 @@ export const getAllDevices = (db: AnyDrizzleDatabase) => {
     .select(devicesSelect)
     .from(devicesTable)
     .leftJoin(devicesShadow, decryptedJoin(devicesTable, devicesShadow))
+    .orderBy(desc(devicesTable.lastSeen))
+  return query as typeof query & DrizzleQueryWithPromise<Device>
+}
+
+/**
+ * Gets all devices with APPROVAL_PENDING status.
+ */
+export const getPendingDevices = (db: AnyDrizzleDatabase) => {
+  const query = db
+    .select(devicesSelect)
+    .from(devicesTable)
+    .leftJoin(devicesShadow, decryptedJoin(devicesTable, devicesShadow))
+    .where(eq(devicesTable.status, 'APPROVAL_PENDING'))
     .orderBy(desc(devicesTable.lastSeen))
   return query as typeof query & DrizzleQueryWithPromise<Device>
 }

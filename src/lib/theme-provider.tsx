@@ -95,11 +95,19 @@ export const ThemeProvider = ({
     const handleChange = () => {
       if (theme === 'system') {
         const root = window.document.documentElement
+        const metaThemeColor = document.querySelector('meta[name="theme-color"]')
         root.classList.remove('light', 'dark')
 
         const systemTheme = mediaQuery.matches ? 'dark' : 'light'
         root.classList.add(systemTheme)
-        root.style.backgroundColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
+
+        const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
+        root.style.backgroundColor = bgColor
+        metaThemeColor?.setAttribute('content', bgColor)
+
+        if (isTauri()) {
+          M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
+        }
       }
     }
 

@@ -65,6 +65,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               firstDevice: !envelopesExist,
             }
           }
+
+          // Revoked — device cannot re-register
+          if (existingDevice.status === 'REVOKED') {
+            set.status = 403
+            return { error: 'Device has been revoked' }
+          }
         }
 
         // New device — register with APPROVAL_PENDING

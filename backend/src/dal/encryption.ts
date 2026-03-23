@@ -20,7 +20,7 @@ export const hasEnvelopesForUser = async (database: typeof DbType, userId: strin
     .limit(1)
     .then((rows) => rows.length > 0)
 
-/** Upsert an envelope for a device. */
+/** Upsert an envelope for a device. Only updates if userId matches (defense-in-depth). */
 export const upsertEnvelope = async (
   database: typeof DbType,
   envelope: { deviceId: string; userId: string; wrappedCk: string },
@@ -35,11 +35,12 @@ export const upsertEnvelope = async (
     .onConflictDoUpdate({
       target: envelopesTable.deviceId,
       set: { wrappedCk: envelope.wrappedCk, updatedAt: new Date() },
+      setWhere: eq(envelopesTable.userId, envelope.userId),
     })
 
-/** Delete an envelope for a device. */
-export const deleteEnvelope = async (database: typeof DbType, deviceId: string) =>
-  database.delete(envelopesTable).where(eq(envelopesTable.deviceId, deviceId))
+/** Delete an envelope for a device. Scoped by userId to prevent cross-user deletion. */
+export const deleteEnvelope = async (database: typeof DbType, deviceId: string, userId: string) =>
+  database.delete(envelopesTable).where(and(eq(envelopesTable.deviceId, deviceId), eq(envelopesTable.userId, userId)))
 
 /** Get encryption metadata (canary) for a user. */
 export const getEncryptionMetadata = async (database: typeof DbType, userId: string) =>

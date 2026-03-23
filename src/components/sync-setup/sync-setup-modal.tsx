@@ -24,7 +24,7 @@ type SyncSetupModalProps = {
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
-  const [recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
+  const [_recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
 
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
   const canDismiss = !isRecoveryKeyStep

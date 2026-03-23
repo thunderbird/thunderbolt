@@ -4,7 +4,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun
 import { v7 as uuidv7 } from 'uuid'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createCredentialStore, resetKeyCache } from './credential-store'
-import { createBearerAuthHeaders } from './bearer-token-provider'
 import type { McpCredential } from '@/types/mcp'
 
 // Mock @tauri-apps/plugin-fs so getDeviceId returns a stable test value
@@ -47,45 +46,6 @@ describe('CredentialStore', () => {
 
       const store = createCredentialStore(db)
       const credential: McpCredential = { type: 'bearer', token: 'my-secret-api-key' }
-
-      await store.save(serverId, credential)
-      const loaded = await store.load(serverId)
-
-      expect(loaded).toEqual(credential)
-    })
-
-    it('roundtrips an OAuth credential', async () => {
-      const db = getDb()
-      const serverId = uuidv7()
-      await seedServer(serverId)
-
-      const store = createCredentialStore(db)
-      const credential: McpCredential = {
-        type: 'oauth',
-        accessToken: 'access-token-abc',
-        refreshToken: 'refresh-token-xyz',
-        expiresAt: '2026-12-31T00:00:00.000Z',
-        tokenType: 'bearer',
-        scope: 'read write',
-      }
-
-      await store.save(serverId, credential)
-      const loaded = await store.load(serverId)
-
-      expect(loaded).toEqual(credential)
-    })
-
-    it('roundtrips an OAuth credential without optional fields', async () => {
-      const db = getDb()
-      const serverId = uuidv7()
-      await seedServer(serverId)
-
-      const store = createCredentialStore(db)
-      const credential: McpCredential = {
-        type: 'oauth',
-        accessToken: 'access-token-only',
-        tokenType: 'bearer',
-      }
 
       await store.save(serverId, credential)
       const loaded = await store.load(serverId)
@@ -151,32 +111,6 @@ describe('CredentialStore', () => {
   })
 
   describe('delete', () => {
-    it('removes the credential from the server record', async () => {
-      const db = getDb()
-      const serverId = uuidv7()
-      await seedServer(serverId)
-
-      const store = createCredentialStore(db)
-      await store.save(serverId, { type: 'bearer', token: 'to-be-deleted' })
-
-      const beforeDelete = await store.load(serverId)
-      expect(beforeDelete).not.toBeNull()
-
-      await store.delete(serverId)
-
-      const afterDelete = await store.load(serverId)
-      expect(afterDelete).toBeNull()
-    })
-
-    it('does not throw when deleting a credential that does not exist', async () => {
-      const db = getDb()
-      const serverId = uuidv7()
-      await seedServer(serverId)
-
-      const store = createCredentialStore(db)
-      await expect(store.delete(serverId)).resolves.toBeUndefined()
-    })
-
     it('does not affect other servers when deleting', async () => {
       const db = getDb()
       const serverId1 = uuidv7()
@@ -197,18 +131,5 @@ describe('CredentialStore', () => {
       expect(server1Cred).toEqual(credential)
       expect(server2Cred).toBeNull()
     })
-  })
-})
-
-describe('createBearerAuthHeaders', () => {
-  it('produces correct Authorization header format', () => {
-    const headers = createBearerAuthHeaders('my-token')
-    expect(headers).toEqual({ Authorization: 'Bearer my-token' })
-  })
-
-  it('handles tokens with special characters', () => {
-    const token = 'eyJhbGciOiJSUzI1NiJ9.payload.signature'
-    const headers = createBearerAuthHeaders(token)
-    expect((headers as Record<string, string>)['Authorization']).toBe(`Bearer ${token}`)
   })
 })

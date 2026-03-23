@@ -10,8 +10,13 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
+import type { SaveMessagesFunction } from '@/types'
 
-export default function ChatUI() {
+type ChatUIProps = {
+  saveMessages?: SaveMessagesFunction
+}
+
+export default function ChatUI({ saveMessages }: ChatUIProps) {
   const { messages } = useCurrentChatSession()
 
   useChatAutomation()
@@ -130,7 +135,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput ref={chatPromptInputRef} />
+              <ChatPromptInput ref={chatPromptInputRef} saveMessages={saveMessages} />
             </motion.div>
           </motion.div>
         </motion.div>

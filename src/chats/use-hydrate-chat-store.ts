@@ -13,6 +13,7 @@ import {
   isChatThreadDeleted,
   saveMessagesWithContextUpdate,
 } from '@/dal'
+import { getAgent } from '@/dal/agents'
 import { discoverAndSeedLocalAgents } from '@/acp/discovery'
 import { isTauri, isDesktop } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -219,15 +220,25 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const initialUIMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
 
+    // For existing chats, use the agent stored on the thread rather than the global setting.
+    // This ensures switching chats shows the correct agent in the selector.
+    let agentForSession = selectedAgent
+    if (chatThread?.agentId && chatThread.agentId !== selectedAgent.id) {
+      const threadAgent = await getAgent(db, chatThread.agentId)
+      if (threadAgent) {
+        agentForSession = threadAgent
+      }
+    }
+
     // Show connecting indicator for non-built-in agents (built-in is instant)
-    if (selectedAgent.type !== 'built-in') {
-      setConnectingAgentName(selectedAgent.name)
+    if (agentForSession.type !== 'built-in') {
+      setConnectingAgentName(agentForSession.name)
     }
 
     // Create ACP session for this chat
     const { acpClient, sessionState } = await createAcpSession({
       chatId: id,
-      agent: selectedAgent,
+      agent: agentForSession,
       modes,
       models,
       selectedModeId: selectedMode.id,
@@ -236,7 +247,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     })
 
     // For non-built-in agents, derive mode/model from ACP session instead of DB
-    const isExternalAgent = selectedAgent.type !== 'built-in'
+    const isExternalAgent = agentForSession.type !== 'built-in'
     const sessionMode = (isExternalAgent ? modeFromAcpSession(sessionState) : null) ?? selectedMode
     const sessionModel = (isExternalAgent ? modelFromAcpSession(sessionState) : null) ?? defaultModel
 
@@ -244,7 +255,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       chatThread,
       acpClient,
-      agentConfig: selectedAgent,
+      agentConfig: agentForSession,
 
       // ACP session state
       availableModes: sessionState.availableModes,

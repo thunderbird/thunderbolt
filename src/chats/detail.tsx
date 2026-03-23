@@ -1,18 +1,18 @@
 import ChatUI from '@/components/chat/chat-ui'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { Loader2 } from 'lucide-react'
-import { type PropsWithChildren, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams, useLocation } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 
-type ChatHydrateHandlerProps = PropsWithChildren<{
+type ChatHydrateHandlerProps = {
   id: string
   isNew: boolean
-}>
+}
 
-const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
+const ChatHydrateHandler = ({ id, isNew }: ChatHydrateHandlerProps) => {
   const { hydrateChatStore, isReady, connectingAgentName, saveMessages } = useHydrateChatStore({ id, isNew })
   const [error, setError] = useState<Error | null>(null)
 
@@ -52,7 +52,9 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
   }
 
   return (
-    <SavePartialAssistantMessagesHandler saveMessages={saveMessages}>{children}</SavePartialAssistantMessagesHandler>
+    <SavePartialAssistantMessagesHandler saveMessages={saveMessages}>
+      <ChatUI saveMessages={saveMessages} />
+    </SavePartialAssistantMessagesHandler>
   )
 }
 
@@ -70,9 +72,5 @@ export default function ChatDetailPage() {
     return null
   }
 
-  return (
-    <ChatHydrateHandler key={id} id={id} isNew={isNew}>
-      <ChatUI />
-    </ChatHydrateHandler>
-  )
+  return <ChatHydrateHandler key={id} id={id} isNew={isNew} />
 }

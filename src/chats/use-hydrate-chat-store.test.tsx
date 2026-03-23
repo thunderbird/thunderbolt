@@ -108,7 +108,7 @@ const createDefaultAgent = async () => {
 /**
  * Helper function to create a test thread
  */
-const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
+const createTestThread = async (modelId: string, title: string = 'Test Thread', agentId?: string) => {
   const model = await getModel(getDb(), modelId)
   if (!model) {
     throw new Error('Test setup failed')
@@ -122,10 +122,29 @@ const createTestThread = async (modelId: string, title: string = 'Test Thread') 
       contextSize: null,
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
+      agentId: agentId ?? null,
     },
     model,
   )
   return threadId
+}
+
+/**
+ * Helper function to create a second agent
+ */
+const createSecondAgent = async () => {
+  const db = getDb()
+  const agentId = 'agent-second'
+  await db.insert(agentsTable).values({
+    id: agentId,
+    name: 'Second Agent',
+    type: 'built-in',
+    transport: 'in-process',
+    isSystem: 0,
+    enabled: 1,
+    deletedAt: null,
+  })
+  return agentId
 }
 
 /**
@@ -293,6 +312,26 @@ describe('useHydrateChatStore', () => {
       expect(session?.acpClient).toBeDefined()
       expect(session?.messages).toBeDefined()
       expect(session?.messages.length).toBe(2)
+    })
+
+    it('should use the chat thread agent instead of the global selected agent', async () => {
+      const systemModelId = await createSystemModel()
+      const secondAgentId = await createSecondAgent()
+      // Create a thread that was made with the second agent
+      const threadId = await createTestThread(systemModelId, 'Agent Thread', secondAgentId)
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      const session = getCurrentSession()
+      // The session should use the thread's agent, not the global selected agent
+      expect(session?.agentConfig.id).toBe(secondAgentId)
+      expect(session?.agentConfig.name).toBe('Second Agent')
     })
 
     it('should hydrate store with empty messages when thread has no messages', async () => {

@@ -1,7 +1,8 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { SelectorTrigger } from '@/components/ui/selector-trigger'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
-import { Globe, MessageSquare, Microscope } from 'lucide-react'
+import { Globe, MessageSquare, Microscope, Sparkles } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useMemo, type ReactNode } from 'react'
 
@@ -9,7 +10,6 @@ export type ModeSelectorProps = {
   modes: Mode[]
   selectedMode: Mode | null
   onModeChange: (modeId: string) => void
-  iconOnly?: boolean
 }
 
 const iconMap: Record<string, ReactNode> = {
@@ -39,21 +39,16 @@ const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] =>
   },
 ]
 
-export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = false }: ModeSelectorProps) => {
+export const ModeSelector = ({ modes, selectedMode, onModeChange }: ModeSelectorProps) => {
   const { isMobile } = useIsMobile()
   const groupedItems = useMemo(() => createModeGroups(modes), [modes])
 
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
-    <div
-      className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-body)] border border-border',
-        iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-2 px-3 h-[var(--touch-height-default)]',
-        isOpen ? 'bg-accent' : 'hover:bg-accent/50',
-      )}
-    >
-      {selected?.icon ?? <MessageSquare className="size-[var(--icon-size-default)]" />}
-      {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
-    </div>
+    <SelectorTrigger
+      icon={<Sparkles className="size-[var(--icon-size-default)] shrink-0" />}
+      label={selected?.label ?? 'Chat'}
+      isOpen={isOpen}
+    />
   )
 
   const renderItem = (item: SearchableMenuItem<ModeItemData>, isSelected: boolean) => {

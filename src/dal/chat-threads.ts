@@ -85,10 +85,9 @@ export const getOrCreateChatThread = async (
     return thread
   }
 
+  // Model may not exist in local DB for external ACP agents whose model IDs
+  // come from the agent's session config rather than our models table.
   const model = await getModel(db, modelId)
-  if (!model) {
-    throw new Error('No model found')
-  }
 
   await createChatThread(
     db,
@@ -100,7 +99,7 @@ export const getOrCreateChatThread = async (
       wasTriggeredByAutomation: 0,
       agentId: agentId ?? null,
     },
-    model,
+    model ?? ({ isConfidential: 0 } as Model),
   )
 
   return (await getChatThread(db, id))! // We know the thread exists because we just created it

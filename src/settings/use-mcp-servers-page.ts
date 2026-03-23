@@ -293,7 +293,8 @@ export const useMcpServersPageState = () => {
   const getServerErrorMessage = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
     if (!mcpServer) return null
-    return mcpServer.errorMessage ?? mcpServer.error?.message ?? null
+    // errorMessage field is added by provider-integration PR — safely access until then
+    return ('errorMessage' in mcpServer ? mcpServer.errorMessage as string : null) ?? mcpServer.error?.message ?? null
   }
 
   const formatServerTitle = (url: string, serverId: string) => {

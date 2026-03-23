@@ -13,7 +13,7 @@ import type { CredentialStore } from '@/types/mcp'
  * Static client ID for Thunderbolt published as a Client ID Metadata Document (CIMD).
  * Authorization servers that support CIMD will fetch this to verify the client.
  */
-const THUNDERBOLT_CLIENT_ID = 'https://thunderbolt.io/.well-known/oauth-client/thunderbolt'
+const thunderboltClientId = 'https://thunderbolt.io/.well-known/oauth-client/thunderbolt'
 
 /**
  * OAuth 2.1 client provider for MCP servers.
@@ -51,9 +51,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   clientInformation(): OAuthClientInformation | undefined {
-    if (this.clientInfo) return this.clientInfo
+    if (this.clientInfo) { return this.clientInfo }
     // Return static client ID for CIMD-based registration
-    return { client_id: THUNDERBOLT_CLIENT_ID }
+    return { client_id: thunderboltClientId }
   }
 
   async saveClientInformation(clientInformation: OAuthClientInformationFull): Promise<void> {
@@ -62,7 +62,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
 
   async tokens(): Promise<OAuthTokens | undefined> {
     const cred = await this.credentialStore.load(this.serverId)
-    if (!cred || cred.type !== 'oauth') return undefined
+    if (!cred || cred.type !== 'oauth') { return undefined }
 
     return {
       access_token: cred.accessToken,
@@ -92,7 +92,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async codeVerifier(): Promise<string> {
-    if (!this.codeVerifierValue) throw new Error('codeVerifier called before saveCodeVerifier')
+    if (!this.codeVerifierValue) { throw new Error('codeVerifier called before saveCodeVerifier') }
     return this.codeVerifierValue
   }
 

@@ -63,10 +63,10 @@ const buildRequestInit = async (
   authType: McpServerConfig['auth']['authType'],
   credentialStore: CredentialStore,
 ): Promise<RequestInit | undefined> => {
-  if (authType !== 'bearer') return undefined
+  if (authType !== 'bearer') { return undefined }
 
   const credential = await credentialStore.load(serverId)
-  if (!credential || credential.type !== 'bearer') return undefined
+  if (!credential || credential.type !== 'bearer') { return undefined }
 
   return {
     headers: { Authorization: `Bearer ${credential.token}` },
@@ -83,10 +83,10 @@ const buildStdioEnv = async (
   authType: McpServerConfig['auth']['authType'],
   credentialStore: CredentialStore,
 ): Promise<Record<string, string> | undefined> => {
-  if (authType !== 'bearer') return undefined
+  if (authType !== 'bearer') { return undefined }
 
   const credential = await credentialStore.load(serverId)
-  if (!credential || credential.type !== 'bearer') return undefined
+  if (!credential || credential.type !== 'bearer') { return undefined }
 
   return { MCP_BEARER_TOKEN: credential.token }
 }

@@ -16,8 +16,8 @@ type MCPContextType = {
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
-const RECONNECT_DELAYS = [2000, 4000, 8000, 16000, 32000, 60000]
-const MAX_ATTEMPTS = 5
+const reconnectDelays = [2000, 4000, 8000, 16000, 32000, 60000]
+const maxAttempts = 5
 
 export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const db = useDatabase()
@@ -61,8 +61,8 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
       )
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      if (attempt < MAX_ATTEMPTS) {
-        const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)]
+      if (attempt < maxAttempts) {
+        const delay = reconnectDelays[Math.min(attempt, reconnectDelays.length - 1)]
         const timeoutId = setTimeout(() => {
           retryTimeouts.current.delete(config.id)
           connectServer(config, attempt + 1)
@@ -76,7 +76,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
                   client: null,
                   isConnected: false,
                   error,
-                  errorMessage: `Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_ATTEMPTS})`,
+                  errorMessage: `Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxAttempts})`,
                   enabled: config.enabled,
                 }
               : s,
@@ -139,7 +139,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
     const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) return
+    if (!server) { return }
 
     if (enabled) {
       connectServer({ ...server, enabled })
@@ -157,7 +157,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const reconnectServer = async (serverId: string) => {
     const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) return
+    if (!server) { return }
 
     disconnectServer(serverId)
     await connectServer(server, 0)

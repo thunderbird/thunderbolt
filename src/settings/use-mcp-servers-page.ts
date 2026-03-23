@@ -1,4 +1,5 @@
 import { createMcpServer, deleteMcpServer, getAllMcpServers } from '@/dal'
+import { createCredentialStore } from '@/lib/mcp-auth'
 import { isSupportedTransport, isCorsRestricted } from '@/lib/mcp-utils'
 import { isTauri } from '@/lib/platform'
 import { useMCP } from '@/lib/mcp-provider'
@@ -50,6 +51,7 @@ export const useMcpServersPageState = () => {
   const db = useDatabase()
   const { servers: mcpServers } = useMcpSync()
   const { reconnectServer } = useMCP()
+  const credentialStoreRef = useRef(createCredentialStore(db))
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
@@ -133,12 +135,15 @@ export const useMcpServersPageState = () => {
       command?: string
       args?: string
       authType?: 'none' | 'bearer' | 'oauth'
+      bearerToken?: string
     }) => {
-      await createMcpServer(db, {
-        id: uuidv7(),
-        ...server,
-        enabled: 1,
-      })
+      const id = uuidv7()
+      const { bearerToken, ...serverData } = server
+      await createMcpServer(db, { id, ...serverData, enabled: 1 })
+
+      if (bearerToken && server.authType === 'bearer') {
+        await credentialStoreRef.current.save(id, { type: 'bearer', token: bearerToken })
+      }
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
@@ -154,7 +159,9 @@ export const useMcpServersPageState = () => {
   })
 
   const testConnection = async () => {
-    if (!isValid()) { return }
+    if (!isValid()) {
+      return
+    }
 
     testAbortRef.current?.abort()
     const abortController = new AbortController()
@@ -194,7 +201,9 @@ export const useMcpServersPageState = () => {
       const { client, tools } = await Promise.race([connectWithTimeout(), timeoutPromise])
       mcpClient = client
 
-      if (abortController.signal.aborted) { return }
+      if (abortController.signal.aborted) {
+        return
+      }
       formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
 
       if (tools && typeof tools === 'object') {
@@ -207,7 +216,9 @@ export const useMcpServersPageState = () => {
         formDispatch({ type: 'SET_CAPABILITIES', payload: ['Connection successful — no tools listed'] })
       }
     } catch {
-      if (abortController.signal.aborted) { return }
+      if (abortController.signal.aborted) {
+        return
+      }
       formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'error' })
       formDispatch({
         type: 'SET_CONNECTION_ERROR',
@@ -223,9 +234,12 @@ export const useMcpServersPageState = () => {
   }
 
   const handleAddServer = () => {
-    if (!isValid()) { return }
+    if (!isValid()) {
+      return
+    }
 
     const authType = formState.authType !== 'none' ? formState.authType : undefined
+    const bearerToken = formState.authType === 'bearer' ? formState.bearerToken : undefined
 
     if (formState.transportType === 'stdio') {
       const cleanArgs = formState.args.filter(Boolean)
@@ -236,17 +250,20 @@ export const useMcpServersPageState = () => {
         command: formState.command,
         args: JSON.stringify(cleanArgs),
         authType,
+        bearerToken,
       })
       return
     }
 
     const url = new URL(formState.url)
     const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
-    addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType })
+    addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType, bearerToken })
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter') { return }
+    if (e.key !== 'Enter') {
+      return
+    }
     e.preventDefault()
     if (formState.connectionStatus === 'idle' && isValid()) {
       testConnection()
@@ -268,8 +285,12 @@ export const useMcpServersPageState = () => {
   const getConnectionStatus = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
     if (mcpServer) {
-      if (mcpServer.error) { return 'error' }
-      if (mcpServer.isConnected) { return 'connected' }
+      if (mcpServer.error) {
+        return 'error'
+      }
+      if (mcpServer.isConnected) {
+        return 'connected'
+      }
       return mcpServer.enabled ? 'connecting' : 'disconnected'
     }
     return server.enabled ? 'connecting' : 'disconnected'
@@ -292,9 +313,11 @@ export const useMcpServersPageState = () => {
 
   const getServerErrorMessage = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
-    if (!mcpServer) { return null }
+    if (!mcpServer) {
+      return null
+    }
     // errorMessage field is added by provider-integration PR — safely access until then
-    return ('errorMessage' in mcpServer ? mcpServer.errorMessage as string : null) ?? mcpServer.error?.message ?? null
+    return ('errorMessage' in mcpServer ? (mcpServer.errorMessage as string) : null) ?? mcpServer.error?.message ?? null
   }
 
   const formatServerTitle = (url: string, serverId: string) => {

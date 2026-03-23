@@ -153,7 +153,7 @@ export const useMcpServersPageState = () => {
   })
 
   const testConnection = async () => {
-    if (!isValid()) return
+    if (!isValid()) { return }
 
     testAbortRef.current?.abort()
     const abortController = new AbortController()
@@ -169,7 +169,7 @@ export const useMcpServersPageState = () => {
       return
     }
 
-    const TEST_TIMEOUT_MS = 15000
+    const testTimeoutMs = 15000
     let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null
 
     try {
@@ -187,13 +187,13 @@ export const useMcpServersPageState = () => {
       }
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Connection timed out')), TEST_TIMEOUT_MS),
+        setTimeout(() => reject(new Error('Connection timed out')), testTimeoutMs),
       )
 
       const { client, tools } = await Promise.race([connectWithTimeout(), timeoutPromise])
       mcpClient = client
 
-      if (abortController.signal.aborted) return
+      if (abortController.signal.aborted) { return }
       formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
 
       if (tools && typeof tools === 'object') {
@@ -206,7 +206,7 @@ export const useMcpServersPageState = () => {
         formDispatch({ type: 'SET_CAPABILITIES', payload: ['Connection successful — no tools listed'] })
       }
     } catch {
-      if (abortController.signal.aborted) return
+      if (abortController.signal.aborted) { return }
       formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'error' })
       formDispatch({
         type: 'SET_CONNECTION_ERROR',
@@ -222,7 +222,7 @@ export const useMcpServersPageState = () => {
   }
 
   const handleAddServer = () => {
-    if (!isValid()) return
+    if (!isValid()) { return }
 
     if (formState.transportType === 'stdio') {
       const name = `${formState.command} ${formState.args.join(' ')}`.trim()
@@ -241,7 +241,7 @@ export const useMcpServersPageState = () => {
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter') { return }
     e.preventDefault()
     if (formState.connectionStatus === 'idle' && isValid()) {
       testConnection()
@@ -266,8 +266,8 @@ export const useMcpServersPageState = () => {
   const getConnectionStatus = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
     if (mcpServer) {
-      if (mcpServer.error) return 'error'
-      if (mcpServer.isConnected) return 'connected'
+      if (mcpServer.error) { return 'error' }
+      if (mcpServer.isConnected) { return 'connected' }
       return mcpServer.enabled ? 'connecting' : 'disconnected'
     }
     return server.enabled ? 'connecting' : 'disconnected'
@@ -290,7 +290,7 @@ export const useMcpServersPageState = () => {
 
   const getServerErrorMessage = (server: McpServer) => {
     const mcpServer = mcpServers.find((s) => s.id === server.id)
-    if (!mcpServer) return null
+    if (!mcpServer) { return null }
     return mcpServer.errorMessage ?? mcpServer.error?.message ?? null
   }
 

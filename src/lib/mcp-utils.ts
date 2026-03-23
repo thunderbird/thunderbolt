@@ -4,7 +4,7 @@ import type { McpTransportType } from '@/types/mcp'
 type PlatformCategory = 'desktop' | 'mobile' | 'web'
 
 /** Transport types supported on each platform */
-const PLATFORM_TRANSPORTS: Record<PlatformCategory, McpTransportType[]> = {
+const platformTransports: Record<PlatformCategory, McpTransportType[]> = {
   desktop: ['http', 'sse', 'stdio'],
   mobile: ['http', 'sse'],
   web: ['http', 'sse'],
@@ -12,13 +12,13 @@ const PLATFORM_TRANSPORTS: Record<PlatformCategory, McpTransportType[]> = {
 
 /** Returns the platform category for transport filtering */
 const getPlatformCategory = (): PlatformCategory => {
-  if (isDesktop()) return 'desktop'
-  if (isMobile()) return 'mobile'
+  if (isDesktop()) { return 'desktop' }
+  if (isMobile()) { return 'mobile' }
   return 'web'
 }
 
 /** Returns the transport types available on the current platform */
-export const getSupportedTransports = (): McpTransportType[] => PLATFORM_TRANSPORTS[getPlatformCategory()]
+export const getSupportedTransports = (): McpTransportType[] => platformTransports[getPlatformCategory()]
 
 /** Checks if a transport type is supported on the current platform */
 export const isSupportedTransport = (type: McpTransportType): boolean => getSupportedTransports().includes(type)
@@ -43,7 +43,7 @@ export const validateMcpUrl = (url: string): URL => {
  * Rejects shell meta-characters.
  */
 export const validateStdioCommand = (command: string): void => {
-  if (!command.trim()) throw new Error('Command is required')
+  if (!command.trim()) { throw new Error('Command is required') }
   if (!/^[a-zA-Z0-9._/-]+$/.test(command)) {
     throw new Error('Command contains invalid characters')
   }

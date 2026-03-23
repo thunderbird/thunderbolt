@@ -1,5 +1,5 @@
 // Devices
-export { getDeviceById, upsertDevice, revokeDevice } from './devices'
+export { getDeviceById, upsertDevice, revokeDevice, updateDeviceStatus, registerDevice } from './devices'
 
 // Users
 export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'

@@ -69,7 +69,6 @@ export class TauriStdioTransport implements Transport {
     const child = this.child
     this.child = null
     await child.kill()
-    this.onclose?.()
   }
 
   /** Buffers incoming stdout data, emitting complete JSON-RPC messages line by line. */

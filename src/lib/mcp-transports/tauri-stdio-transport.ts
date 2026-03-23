@@ -4,7 +4,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 
 /** Regex for validating stdio command names — no shell meta-characters */
-const COMMAND_PATTERN = /^[a-zA-Z0-9._/-]+$/
+const commandPattern = /^[a-zA-Z0-9._/-]+$/
 
 /** Options for TauriStdioTransport */
 type TauriStdioTransportOptions = {
@@ -62,12 +62,12 @@ export class TauriStdioTransport implements Transport {
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
-    if (!this.child) throw new Error('Transport not started')
+    if (!this.child) { throw new Error('Transport not started') }
     await this.child.write(JSON.stringify(message) + '\n')
   }
 
   async close(): Promise<void> {
-    if (!this.child) return
+    if (!this.child) { return }
     const child = this.child
     this.child = null
     await child.kill()
@@ -83,7 +83,7 @@ export class TauriStdioTransport implements Transport {
     // All complete lines are all but the last element (which may be incomplete)
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim()
-      if (!line) continue
+      if (!line) { continue }
       this.parseAndEmitMessage(line)
     }
 
@@ -105,7 +105,7 @@ export class TauriStdioTransport implements Transport {
  * Rejects shell meta-characters to prevent injection.
  */
 export const validateCommand = (command: string): void => {
-  if (!COMMAND_PATTERN.test(command)) {
+  if (!commandPattern.test(command)) {
     throw new Error(
       `Invalid MCP stdio command "${command}": only alphanumeric characters, dots, underscores, hyphens, and forward slashes are allowed`,
     )
@@ -117,7 +117,7 @@ export const validateCommand = (command: string): void => {
  * truncate argument strings in certain environments.
  */
 export const validateArgs = (args?: string[]): void => {
-  if (!args) return
+  if (!args) { return }
   for (const arg of args) {
     if (arg.includes('\0')) {
       throw new Error('MCP stdio arguments must not contain null bytes')

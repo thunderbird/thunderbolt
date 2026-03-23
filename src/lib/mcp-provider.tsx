@@ -17,7 +17,7 @@ type MCPContextType = {
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
 const reconnectDelays = [2000, 4000, 8000, 16000, 32000, 60000]
-const maxAttempts = 5
+const maxAttempts = reconnectDelays.length
 
 export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const db = useDatabase()
@@ -35,8 +35,10 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const createClient = async (config: McpServerConfig): Promise<McpClient> => {
     const { transport } = await createTransport(config, credentialStoreRef.current)
+    const client = await createMCPClient({ transport })
+    // Store transport only after successful connection to avoid orphaned refs on failure
     transportRefs.current.set(config.id, transport)
-    return await createMCPClient({ transport })
+    return client
   }
 
   const connectServer = async (config: McpServerConfig, attempt = 0) => {
@@ -139,7 +141,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
     const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) { return }
+    if (!server) {
+      return
+    }
 
     if (enabled) {
       connectServer({ ...server, enabled })
@@ -157,7 +161,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const reconnectServer = async (serverId: string) => {
     const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) { return }
+    if (!server) {
+      return
+    }
 
     disconnectServer(serverId)
     await connectServer(server, 0)
@@ -170,19 +176,22 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   // Cleanup on unmount
   useEffect(() => {
-    const clientsRef = clientRefs
+    const clients = clientRefs
+    const transports = transportRefs
+    const timeouts = retryTimeouts
     return () => {
-      const clients = clientsRef.current
-      clients.forEach((client, serverId) => {
+      timeouts.current.forEach((timeout) => clearTimeout(timeout))
+      timeouts.current.clear()
+
+      transports.current.forEach((transport) => transport.close())
+      transports.current.clear()
+
+      clients.current.forEach((client) => {
         if (client?.close) {
-          try {
-            client.close()
-          } catch (error) {
-            console.error('Error closing MCP client:', serverId, error)
-          }
+          client.close()
         }
       })
-      clients.clear()
+      clients.current.clear()
     }
   }, [])
 

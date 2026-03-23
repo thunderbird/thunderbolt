@@ -221,7 +221,7 @@ export const modelProfilesTable = powersyncSchema.table(
   (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_model_profiles_user_id').on(table.userId)],
 )
 
-/** Synced via PowerSync. Device list and revoke access. No token. */
+/** Synced via PowerSync. Device list, status, and public key for encryption. */
 export const devicesTable = powersyncSchema.table(
   'devices',
   {
@@ -230,6 +230,10 @@ export const devicesTable = powersyncSchema.table(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name'),
+    status: text('status', { enum: ['APPROVAL_PENDING', 'TRUSTED', 'REVOKED'] })
+      .notNull()
+      .default('TRUSTED'),
+    publicKey: text('public_key'),
     lastSeen: timestamp('last_seen').defaultNow(),
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),

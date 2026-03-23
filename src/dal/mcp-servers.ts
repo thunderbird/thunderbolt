@@ -14,15 +14,6 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
 }
 
 /**
- * Gets all MCP servers of any transport type (excluding soft-deleted).
- * Prefer this over getHttpMcpServers for features that support all transports.
- */
-export const getMcpServers = (db: AnyDrizzleDatabase) => {
-  const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
-  return query as typeof query & DrizzleQueryWithPromise<McpServer>
-}
-
-/**
  * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
  */
 export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {

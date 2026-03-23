@@ -66,7 +66,6 @@ export {
   deleteMcpServer,
   getAllMcpServers,
   getHttpMcpServers,
-  getMcpServers,
   updateMcpServerAuth,
 } from './mcp-servers'
 

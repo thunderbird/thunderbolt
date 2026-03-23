@@ -25,6 +25,7 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
         args: [],
         connectionStatus: 'idle',
         connectionError: null,
+        serverCapabilities: [],
       }
     case 'SET_URL':
       return { ...state, url: action.payload }

@@ -14,7 +14,8 @@ export const MCPStatus = () => {
   const errorServers = servers.filter((s) => s.error && s.enabled)
   const connectingServers = servers.filter((s) => !s.isConnected && !s.error && s.enabled)
 
-  const transportTypes = new Set(connectedServers.map((s) => s.transport.type))
+  // transport field is added by provider-integration PR — safely access until then
+  const transportTypes = new Set(connectedServers.map((s) => 'transport' in s ? (s.transport as { type: string }).type : 'http'))
   const showTransports = transportTypes.size > 1
 
   if (connectedServers.length > 0 && errorServers.length === 0) {
@@ -30,7 +31,7 @@ export const MCPStatus = () => {
   }
 
   if (errorServers.length > 0) {
-    const authErrors = errorServers.filter((s) => isAuthError(s.errorMessage ?? s.error?.message))
+    const authErrors = errorServers.filter((s) => isAuthError(('errorMessage' in s ? s.errorMessage as string : null) ?? s.error?.message))
     const hasAuthError = authErrors.length > 0
 
     return (

@@ -18,6 +18,7 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   microsoftClientSecret: '',
   logLevel: 'INFO',
   port: 8000,
+  appUrl: 'http://localhost:1420',
   posthogHost: 'https://us.i.posthog.com',
   posthogApiKey: '',
   corsOrigins: 'http://localhost:1420',

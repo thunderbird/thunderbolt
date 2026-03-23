@@ -22,6 +22,7 @@ const powersyncSettings: Settings = {
   microsoftClientSecret: '',
   logLevel: 'INFO',
   port: 8000,
+  appUrl: 'http://localhost:1420',
   posthogHost: '',
   posthogApiKey: '',
   corsOrigins: '',

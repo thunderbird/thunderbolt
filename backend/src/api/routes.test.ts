@@ -46,6 +46,7 @@ describe('Main Routes', () => {
       microsoftClientSecret: '',
       logLevel: 'INFO',
       port: 8000,
+      appUrl: 'http://localhost:1420',
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: 'ph_test',
       corsOrigins: 'http://localhost:1420',

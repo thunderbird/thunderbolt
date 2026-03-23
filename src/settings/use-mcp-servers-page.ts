@@ -246,7 +246,7 @@ export const useMcpServersPageState = () => {
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter') { return }
     e.preventDefault()
     if (formState.connectionStatus === 'idle' && isValid()) {
       testConnection()

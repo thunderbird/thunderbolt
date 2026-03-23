@@ -12,3 +12,13 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 
 // PowerSync
 export { applyOperation } from './powersync'
+
+// Encryption
+export {
+  getEnvelopeByDeviceId,
+  hasEnvelopesForUser,
+  upsertEnvelope,
+  deleteEnvelope,
+  getEncryptionMetadata,
+  insertEncryptionMetadataIfNotExists,
+} from './encryption'

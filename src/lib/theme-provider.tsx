@@ -53,7 +53,7 @@ export const ThemeProvider = ({
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, theme)
-    persistThemeToNativeStore(theme)
+    persistThemeToNativeStore(theme).catch(() => {})
   }, [storageKey, theme])
 
   useEffect(() => {
@@ -67,7 +67,9 @@ export const ThemeProvider = ({
 
       root.classList.add(systemTheme)
 
-      metaThemeColor?.setAttribute('content', systemTheme === 'dark' ? '#0a0a0a' : '#fff')
+      const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
+      root.style.backgroundColor = bgColor
+      metaThemeColor?.setAttribute('content', bgColor)
 
       if (isTauri()) {
         M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
@@ -78,7 +80,9 @@ export const ThemeProvider = ({
 
     root.classList.add(theme)
 
-    metaThemeColor?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#fff')
+    const bgColor = theme === 'dark' ? '#0a0a0a' : '#fff'
+    root.style.backgroundColor = bgColor
+    metaThemeColor?.setAttribute('content', bgColor)
 
     if (isTauri()) {
       M3.setBarColor(theme === 'dark' ? 'light' : 'dark')
@@ -95,6 +99,7 @@ export const ThemeProvider = ({
 
         const systemTheme = mediaQuery.matches ? 'dark' : 'light'
         root.classList.add(systemTheme)
+        root.style.backgroundColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
       }
     }
 

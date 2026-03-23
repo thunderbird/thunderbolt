@@ -144,9 +144,7 @@ export const App = () => {
   // the WebView's default white background from flashing before the theme loads.
   useEffect(() => {
     if (isTauri()) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-        getCurrentWindow().show()
-      })
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
     }
   }, [])
 

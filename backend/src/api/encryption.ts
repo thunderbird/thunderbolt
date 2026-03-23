@@ -110,6 +110,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Device not found' }
         }
 
+        if (device.status === 'REVOKED') {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+
         // Store envelope
         await upsertEnvelope(database, {
           deviceId,
@@ -153,6 +158,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       if (!device || device.userId !== userId) {
         set.status = 404
         return { error: 'Device not found' }
+      }
+
+      if (device.status === 'REVOKED') {
+        set.status = 403
+        return { error: 'Device has been revoked' }
       }
 
       const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)

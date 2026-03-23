@@ -30,6 +30,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly credentialStore: CredentialStore
   private codeVerifierValue: string | null = null
   private clientInfo: OAuthClientInformationFull | null = null
+  private boundPort: number | null = null
 
   constructor(serverId: string, credentialStore: CredentialStore) {
     this.serverId = serverId
@@ -37,7 +38,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string {
-    return 'http://localhost:17421'
+    return `http://localhost:${this.boundPort ?? 17421}`
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -68,6 +69,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
       access_token: cred.accessToken,
       refresh_token: cred.refreshToken,
       token_type: cred.tokenType,
+      scope: cred.scope,
     }
   }
 
@@ -83,7 +85,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    await invoke('start_oauth_server')
+    this.boundPort = await invoke<number>('start_oauth_server')
     await openUrl(authorizationUrl.toString())
   }
 

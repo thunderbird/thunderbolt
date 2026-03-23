@@ -44,8 +44,8 @@ export default function McpServersPage() {
         <AddMcpServerDialog
           isOpen={isAddDialogOpen}
           onOpenChange={(open) => {
-            if (open) openAddDialog()
-            else closeAddDialog()
+            if (open) { openAddDialog() }
+            else { closeAddDialog() }
           }}
           onClose={closeAddDialog}
           formState={formState}

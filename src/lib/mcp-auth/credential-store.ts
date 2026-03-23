@@ -4,10 +4,10 @@ import { mcpServersTable } from '@/db/tables'
 import type { CredentialStore, McpCredential } from '@/types/mcp'
 
 /** Application-specific salt prefix mixed with the device hostname */
-const APP_SALT_PREFIX = 'thunderbolt-mcp-v1:'
+const appSaltPrefix = 'thunderbolt-mcp-v1:'
 
 /** PBKDF2 iteration count — must be >= 100,000 per security requirements */
-const PBKDF2_ITERATIONS = 100_000
+const pbkdf2Iterations = 100_000
 
 /** Encrypts a credential using AES-GCM with a derived key */
 type EncryptedBlob = {
@@ -23,7 +23,7 @@ const deriveKey = async (hostname: string): Promise<CryptoKey> => {
   const encoder = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(APP_SALT_PREFIX + hostname),
+    encoder.encode(appSaltPrefix + hostname),
     'PBKDF2',
     false,
     ['deriveKey'],
@@ -33,7 +33,7 @@ const deriveKey = async (hostname: string): Promise<CryptoKey> => {
     {
       name: 'PBKDF2',
       salt: encoder.encode('thunderbolt-mcp-credential-salt'),
-      iterations: PBKDF2_ITERATIONS,
+      iterations: pbkdf2Iterations,
       hash: 'SHA-256',
     },
     keyMaterial,
@@ -104,7 +104,7 @@ const getEncryptionKey = (): Promise<CryptoKey> => {
  * Creates an encrypted credential store that persists credentials
  * in the `mcp_servers.encrypted_credential` column using AES-GCM encryption.
  *
- * Key derivation: PBKDF2(APP_SALT_PREFIX + hostname) -> 256-bit AES-GCM key.
+ * Key derivation: PBKDF2(appSaltPrefix + hostname) -> 256-bit AES-GCM key.
  * Storage format: `{ iv: base64, ciphertext: base64 }` serialized as JSON.
  *
  * Credentials are never stored in plaintext — only the encrypted blob reaches SQLite.
@@ -123,7 +123,7 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
       .where(eq(mcpServersTable.id, serverId))
 
     const row = rows[0]
-    if (!row?.encryptedCredential) return null
+    if (!row?.encryptedCredential) { return null }
 
     const key = await getEncryptionKey()
     const plaintext = await decrypt(key, row.encryptedCredential)

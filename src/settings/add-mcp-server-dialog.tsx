@@ -49,7 +49,7 @@ export const AddMcpServerDialog = ({
     open={isOpen}
     onOpenChange={(open) => {
       onOpenChange(open)
-      if (!open) onClose()
+      if (!open) { onClose() }
     }}
   >
     <DialogTrigger asChild>{trigger}</DialogTrigger>

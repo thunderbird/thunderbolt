@@ -22,14 +22,9 @@ use tokio::sync::Mutex;
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
     let mut builder = tauri::Builder::default();
 
-    // Conditionally include the HTTP plugin when the `native_fetch` feature is enabled
-    #[cfg(feature = "native_fetch")]
-    {
-        builder = builder.plugin(tauri_plugin_http::init());
-    }
-
     // Core plugins that are always enabled
     builder = builder
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -37,6 +32,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_m3::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             #[cfg(feature = "bridge")]

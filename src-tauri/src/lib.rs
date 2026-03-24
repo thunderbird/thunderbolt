@@ -68,6 +68,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
             commands::capabilities,
+            commands::set_interface_style,
             commands::start_oauth_server,
             #[cfg(feature = "bridge")]
             commands::init_bridge,

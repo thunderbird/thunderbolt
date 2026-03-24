@@ -100,7 +100,16 @@ export const AgentSelector = ({
   side,
   align,
 }: AgentSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeAgents(agents, disabledAgentIds), [agents, disabledAgentIds])
+  const visibleAgents = useMemo(
+    () =>
+      disabledAgentIds?.size ? agents.filter((a) => !disabledAgentIds.has(a.id) || a.id === selectedAgent?.id) : agents,
+    [agents, disabledAgentIds, selectedAgent?.id],
+  )
+
+  const groupedItems = useMemo(
+    () => categorizeAgents(visibleAgents, disabledAgentIds),
+    [visibleAgents, disabledAgentIds],
+  )
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => (
     <div
@@ -149,7 +158,7 @@ export const AgentSelector = ({
       items={groupedItems}
       value={selectedAgent?.id}
       onValueChange={handleAgentChange}
-      searchable={agents.length > 10}
+      searchable={visibleAgents.length > 10}
       searchPlaceholder="Search Agents"
       emptyMessage="No agents found"
       blurBackdrop

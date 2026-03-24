@@ -48,6 +48,7 @@ const powersyncSettings: Settings = {
   haystackPipelineName: '',
   haystackPipelineId: '',
   haystackPipelines: '',
+  enabledAgents: '',
 }
 
 describe('PowerSync API', () => {

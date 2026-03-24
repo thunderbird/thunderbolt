@@ -44,6 +44,7 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   haystackPipelineName: '',
   haystackPipelineId: '',
   haystackPipelines: '',
+  enabledAgents: '',
   ...overrides,
 })
 

@@ -62,6 +62,7 @@ describe('Authentication Routes', () => {
       haystackPipelineName: '',
       haystackPipelineId: '',
       haystackPipelines: '',
+      enabledAgents: '',
     })
 
     // Create mock fetch

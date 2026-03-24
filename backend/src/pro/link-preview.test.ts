@@ -68,6 +68,7 @@ describe('Link Preview Routes', () => {
       haystackPipelineName: '',
       haystackPipelineId: '',
       haystackPipelines: '',
+      enabledAgents: '',
     })
 
     // Create mock fetch

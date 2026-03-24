@@ -3,11 +3,18 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialogProvider } from './markdown-utils'
+import { ContentViewProvider } from '@/content-view/context'
 import { SourceList } from './source-list'
 import { type ReactElement } from 'react'
 
 const renderWithProvider = (ui: ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
+  render(ui, {
+    wrapper: ({ children }) => (
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </ContentViewProvider>
+    ),
+  })
 
 describe('SourceList', () => {
   const mockSources: CitationSource[] = [

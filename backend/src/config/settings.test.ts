@@ -134,6 +134,7 @@ describe('Config Settings', () => {
           microsoftClientSecret: '',
           logLevel: 'INFO' as const,
           port: 8000,
+          appUrl: 'http://localhost:1420',
           posthogHost: 'https://us.i.posthog.com',
           posthogApiKey: '',
           waitlistEnabled: false,

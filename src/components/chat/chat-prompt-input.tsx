@@ -58,7 +58,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Use a stable "new" key for unsaved chats so the draft persists across /chats/new navigations
     const draftKey = chatThread ? chatThreadId : 'new'
     const [showOverflowModal, setShowOverflowModal] = useState(false)
-    const [input, setInput, clearDraft] = useDraftInput(draftKey)
+    const isNewChat = !chatThread
+    const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
 

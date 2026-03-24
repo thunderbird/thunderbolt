@@ -48,9 +48,9 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
-import { isPrPreview } from './lib/platform'
+import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
-import { type ComponentProps } from 'react'
+import { type ComponentProps, useEffect } from 'react'
 
 const queryClient = new QueryClient()
 
@@ -138,6 +138,15 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
+
+  // Show the Tauri window after React mounts and CSS is applied.
+  // The window starts hidden (tauri.conf.json visible: false) to prevent
+  // the WebView's default white background from flashing before the theme loads.
+  useEffect(() => {
+    if (isTauri()) {
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+    }
+  }, [])
 
   const renderAppContent = () => {
     if (initError) {

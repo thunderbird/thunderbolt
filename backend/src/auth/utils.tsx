@@ -1,4 +1,5 @@
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
+import { MagicLinkEmail } from '@/emails/magic-link'
 
 /** Deep link base URL for mobile apps (iOS/Android) */
 const deepLinkHost = 'https://thunderbolt.io'
@@ -70,23 +71,17 @@ type SendSignInEmailParams = {
 
 /** Send sign-in email with both OTP code and a clickable link. */
 export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
-  const templateId = 'magic-link'
-
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
-    console.info(`📧 [DEV] Template: ${templateId}`)
     return
   }
 
   const data = await sendEmail({
     to: email,
-    templateId,
-    variables: {
-      otp_code: otp,
-      magic_link: verifyUrl,
-    },
+    subject: `Thunderbolt Verification Code: ${otp}`,
+    react: <MagicLinkEmail code={otp} magicLinkUrl={verifyUrl} />,
   })
 
-  console.info(`✅ Sign-in email sent successfully (${templateId}). ID: ${data?.id}`)
+  console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)
 }

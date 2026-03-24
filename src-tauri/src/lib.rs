@@ -38,6 +38,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|_app| {
             #[cfg(feature = "bridge")]
             _app.manage(Mutex::new(AppState::default()));

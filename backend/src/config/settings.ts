@@ -24,6 +24,7 @@ const settingsSchema = z.object({
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
   port: z.coerce.number().default(8000),
+  appUrl: z.string().default('http://localhost:1420'),
 
   // Analytics settings
   posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -74,6 +75,7 @@ const parseSettings = (): Settings => {
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
+    appUrl: process.env.APP_URL || 'http://localhost:1420',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',

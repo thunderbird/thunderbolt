@@ -2,15 +2,13 @@ import { createMockToolSet, createSimulatedFetch, parseEnhancedSseFile, parseSse
 import { AssistantMessage } from '@/components/chat/assistant-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Combobox } from '@/components/ui/combobox'
 import { Textarea } from '@/components/ui/textarea'
 import { useSettings } from '@/hooks/use-settings'
-import { cn } from '@/lib/utils'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, stepCountIs, streamText, wrapLanguageModel } from 'ai'
-import { Check, ChevronsUpDown, Play, RotateCcw, Square } from 'lucide-react'
+import { Play, RotateCcw, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -241,6 +239,11 @@ const SimulatorChat = ({ sseContent, onStop, stopRef }: SimulatorChatProps) => {
   )
 }
 
+const sseComboboxItems = sseLogs.map((log) => ({
+  id: log.value,
+  label: log.label,
+}))
+
 const SimulatorContent = () => {
   const { simulationSse } = useSettings({
     simulation_sse: '',
@@ -253,7 +256,6 @@ const SimulatorContent = () => {
     const selectedLog = sseLogs.find((log) => log.value === selectedSse)
     return selectedLog?.content || ''
   })
-  const [open, setOpen] = useState(false)
   const [simulationKey, setSimulationKey] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const stopFunctionRef = useRef<(() => void) | null>(null)
@@ -301,7 +303,6 @@ const SimulatorContent = () => {
     if (selectedLog) {
       setSelectedSse(value)
       setSseContent(selectedLog.content)
-      setOpen(false)
     }
   }
 
@@ -326,38 +327,15 @@ const SimulatorContent = () => {
               {/* SSE Log Selection Combobox */}
               <div className="flex flex-col space-y-2">
                 <label className="text-sm font-medium">Select SSE Log:</label>
-                <Popover open={open} onOpenChange={setOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={open}
-                      className="w-[400px] justify-between"
-                      disabled={isRunning}
-                    >
-                      {selectedSse ? sseLogs.find((log) => log.value === selectedSse)?.label : 'Select SSE log...'}
-                      <ChevronsUpDown className="opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0">
-                    <Command>
-                      <CommandInput placeholder="Search SSE logs..." className="h-9" />
-                      <CommandList>
-                        <CommandEmpty>No SSE log found.</CommandEmpty>
-                        <CommandGroup>
-                          {sseLogs.map((log) => (
-                            <CommandItem key={log.value} value={log.value} onSelect={handleSseSelection}>
-                              <span className="font-medium">{log.label}</span>
-                              <Check
-                                className={cn('ml-auto', selectedSse === log.value ? 'opacity-100' : 'opacity-0')}
-                              />
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <Combobox
+                  items={sseComboboxItems}
+                  value={selectedSse || undefined}
+                  onValueChange={handleSseSelection}
+                  placeholder="Select SSE log..."
+                  searchPlaceholder="Search SSE logs..."
+                  emptyMessage="No SSE log found."
+                  disabled={isRunning}
+                />
               </div>
 
               {/* Scenario Metadata */}
@@ -391,7 +369,7 @@ const SimulatorContent = () => {
                 placeholder="SSE content will be processed by the actual streamText function..."
                 value={sseContent}
                 onChange={(e) => setSseContent(e.target.value)}
-                className="min-h-[200px] font-mono text-xs"
+                className="min-h-[200px] font-mono text-xs rounded-lg"
                 disabled={isRunning}
               />
 

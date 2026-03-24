@@ -109,11 +109,14 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })
   const clearSearch = () => dispatch({ type: 'CLEAR_LOCATION_SEARCH' })
 
+  const isPending = searchQuery !== debouncedSearchQuery
+
   return {
     open,
     searchQuery,
     locations,
     isSearching,
+    isPending,
     setOpen,
     setSearchQuery,
     clearSearch,

@@ -2,7 +2,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
 type MobileSidebarProps = {
   open: boolean
@@ -25,7 +25,6 @@ export const MobileSidebar = ({
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
   const { triggerImpact } = useHaptics()
-  const prevOpenRef = useRef(open)
 
   const getSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * 0.8 : 300)
 
@@ -38,14 +37,6 @@ export const MobileSidebar = ({
     side === 'left' ? [-sidebarWidth, 0] : [0, sidebarWidth],
     side === 'left' ? [0, 1] : [1, 0],
   )
-
-  // Trigger haptic feedback on open/close state changes
-  useEffect(() => {
-    if (open !== prevOpenRef.current) {
-      triggerImpact('light')
-      prevOpenRef.current = open
-    }
-  }, [open, triggerImpact])
 
   // Handle external open/close requests
   useEffect(() => {
@@ -93,6 +84,7 @@ export const MobileSidebar = ({
       return
     }
 
+    triggerImpact('light')
     const width = getSidebarWidth()
     setIsAnimating(true)
     await animate(x, side === 'left' ? -width : width, {
@@ -112,7 +104,6 @@ export const MobileSidebar = ({
       side === 'left' ? info.offset.x < -50 || info.velocity.x < -500 : info.offset.x > 50 || info.velocity.x > 500
 
     if (shouldClose) {
-      triggerImpact('light')
       await handleClose()
     } else {
       // Snap back to position with animation

@@ -1,7 +1,8 @@
+import type React from 'react'
 import { Resend } from 'resend'
 
 /** Default sender address for all outgoing emails */
-const emailFrom = 'hello@auth.thunderbolt.io'
+export const emailFrom = 'hello@auth.thunderbolt.io'
 
 /**
  * Shared Resend client instance for sending emails
@@ -32,28 +33,21 @@ export const shouldSkipEmail = (): boolean => {
 export type SendEmailParams = {
   to: string
   from?: string
-  templateId: string
-  variables?: Record<string, string>
+  subject: string
+  react: React.ReactElement
 }
 
 /**
- * Send an email using Resend templates
- * Uses the default sender address unless overridden
+ * Send an email using a React Email component.
+ * Uses the default sender address unless overridden.
  * @throws Error if resend client is not configured (should call shouldSkipEmail first)
  */
-export const sendEmail = async ({ to, from = emailFrom, templateId, variables = {} }: SendEmailParams) => {
+export const sendEmail = async ({ to, from = emailFrom, subject, react }: SendEmailParams) => {
   if (!resend) {
     throw new Error('Email service not configured')
   }
 
-  const { data, error } = await resend.emails.send({
-    from,
-    to,
-    template: {
-      id: templateId,
-      variables,
-    },
-  })
+  const { data, error } = await resend.emails.send({ from, to, subject, react })
 
   if (error) {
     throw new Error(`Failed to send email: ${error.message}`)

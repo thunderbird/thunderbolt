@@ -135,6 +135,36 @@ describe('useLocalStorage', () => {
     })
   })
 
+  describe('disabled mode', () => {
+    it('returns default value and ignores localStorage', () => {
+      localStorage.setItem('test-key', 'stored')
+      const { result } = renderHook(() => useLocalStorage('test-key', 'default', { disabled: true }))
+      expect(result.current[0]).toBe('default')
+    })
+
+    it('updates state without writing to localStorage', () => {
+      const { result } = renderHook(() => useLocalStorage('test-key', '', { disabled: true }))
+      act(() => {
+        result.current[1]('hello')
+      })
+      expect(result.current[0]).toBe('hello')
+      expect(localStorage.getItem('test-key')).toBeNull()
+    })
+
+    it('does not write to localStorage even with debounce', () => {
+      const clock = getClock()
+      const { result } = renderHook(() => useLocalStorage('test-key', '', { debounceMs: 300, disabled: true }))
+      act(() => {
+        result.current[1]('hello')
+      })
+      act(() => {
+        clock.tick(300)
+      })
+      expect(result.current[0]).toBe('hello')
+      expect(localStorage.getItem('test-key')).toBeNull()
+    })
+  })
+
   describe('key changes', () => {
     it('loads new value when key changes', () => {
       localStorage.setItem('key-1', 'value one')

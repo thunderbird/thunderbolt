@@ -99,11 +99,11 @@ export default function DevicesSettingsPage() {
                           <span className="font-medium truncate">{device.name}</span>
                           {isCurrent && (
                             <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              This device
+                              This Device
                             </span>
                           )}
                           {isRevoked && (
-                            <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
                               Revoked
                             </span>
                           )}

@@ -28,6 +28,6 @@
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "test/**/*.ts", "../shared/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "test/**/*.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

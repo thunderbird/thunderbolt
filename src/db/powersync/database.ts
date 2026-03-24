@@ -19,9 +19,12 @@ export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
  * - default: Non-Safari web — PowerSync's default setup works well.
  * - safari-tauri: Safari web or Tauri — full WASQLiteOpenFactory with OPFSCoopSyncVFS required.
  */
-export const getPowerSyncDatabaseConfig = (): PowerSyncDatabaseConfig => {
-  const isWeb = getPlatform() === 'web'
-  const isSafari = getWebBrowser() === 'safari'
+export const getPowerSyncDatabaseConfig = (
+  platform: ReturnType<typeof getPlatform> = getPlatform(),
+  browser: ReturnType<typeof getWebBrowser> = getWebBrowser(),
+): PowerSyncDatabaseConfig => {
+  const isWeb = platform === 'web'
+  const isSafari = browser === 'safari'
   if (isWeb && !isSafari) {
     return 'default'
   }
@@ -95,9 +98,8 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
 }
 
 /** @internal Exported for testing */
-export const getPowerSyncOptions = (path: string) => {
+export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig()) => {
   const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
-  const config = getPowerSyncDatabaseConfig()
 
   if (config === 'default') {
     return {

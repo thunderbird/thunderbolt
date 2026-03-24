@@ -1,19 +1,8 @@
-import {
-  BadgeCheck,
-  Bell,
-  ChevronsUpDown,
-  CreditCard,
-  Download,
-  Loader2,
-  LogOut,
-  Sparkles,
-  Terminal,
-  UserRound,
-} from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { ChevronsUpDown, Loader2, LogOut, Terminal, UserRound, Download } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -27,7 +16,7 @@ import { useAuth, useSignInModal } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
@@ -85,8 +74,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
 
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
@@ -106,17 +93,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = user ? (preferredName.value as string) || user.name || null : null
   const displayEmail = user?.email
-
-  const showBlur = isMobile && menuOpen
-
-  // Capture trigger position when blur activates so we can render a clone above it
-  useEffect(() => {
-    if (showBlur && triggerRef.current) {
-      setTriggerRect(triggerRef.current.getBoundingClientRect())
-    } else {
-      setTriggerRect(null)
-    }
-  }, [showBlur])
 
   const handleMenuAction = (action: () => void) => {
     setMenuOpen(false)
@@ -199,7 +175,10 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               </PopoverTrigger>
             ) : (
               <PopoverTrigger asChild>
-                <button ref={triggerRef} type="button" className={triggerButtonClassName(menuOpen)}>
+                <button
+                  type="button"
+                  className={cn(triggerButtonClassName(menuOpen), isMobile && menuOpen && 'relative z-50')}
+                >
                   {triggerContent}
                 </button>
               </PopoverTrigger>
@@ -209,42 +188,32 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
       </ShadcnSidebarFooter>
 
-      {/* Mobile: full-screen blur portaled above sidebar (z-50) */}
-      {showBlur &&
-        createPortal(<MobileBlurBackdrop onClick={() => setMenuOpen(false)} className="z-[60]" />, document.body)}
-
-      {/* Mobile: clone of trigger portaled above blur so it appears unblurred */}
-      {showBlur &&
-        triggerRect &&
-        createPortal(
-          <button
-            type="button"
-            className={cn(triggerButtonClassName(true), 'fixed z-[65] bg-secondary')}
-            style={{
-              top: triggerRect.top,
-              left: triggerRect.left,
-              width: triggerRect.width,
-              height: triggerRect.height,
-            }}
-            onClick={() => setMenuOpen(false)}
-          >
-            {triggerContent}
-          </button>,
-          document.body,
-        )}
+      {isMobile && menuOpen && (
+        <MobileBlurBackdrop
+          onClick={() => {
+            setMenuOpen(false)
+            setOpenMobile(false)
+          }}
+        />
+      )}
 
       <PopoverContent
         side="top"
-        sideOffset={5}
+        sideOffset={isMobile ? 8 : 5}
         align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? 16 : 4}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', showBlur && 'z-[70]')}
+        collisionPadding={isMobile ? edgeSpacing.mobile : 4}
+        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
           width: isMobile
-            ? 'calc(100vw - 2rem)'
+            ? `calc(${mobileSidebarWidthRatio * 100}vw - ${edgeSpacing.mobile * 2}px)`
             : isDesktopCollapsed
               ? '16rem'
               : 'calc(var(--radix-popover-trigger-width) - 8px)',
+        }}
+        onPointerDownOutside={(e) => {
+          if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * mobileSidebarWidthRatio) {
+            setOpenMobile(false)
+          }
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -257,12 +226,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               {displayName && <span className="truncate font-semibold">{displayName}</span>}
               <span className="truncate text-xs text-muted-foreground">{displayEmail}</span>
             </div>
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton icon={<Sparkles className={iconSize} />} label="Upgrade to Pro" />
           </div>
 
           {showDownloadAppButton && (
@@ -279,30 +242,26 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             </>
           )}
 
-          <div className="h-px bg-border" />
+          {import.meta.env.DEV && (
+            <>
+              <div className="h-px bg-border" />
 
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton icon={<BadgeCheck className={iconSize} />} label="Account" />
-            <AccountMenuItemButton icon={<CreditCard className={iconSize} />} label="Billing" />
-            <AccountMenuItemButton icon={<Bell className={iconSize} />} label="Notifications" />
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <div className="flex flex-col gap-1 px-2">
-            <AccountMenuItemButton
-              icon={<Terminal className={iconSize} />}
-              label="Dev Settings"
-              to="/settings/dev-settings"
-              onNavigate={handleMenuNavigate}
-            />
-            <AccountMenuItemButton
-              icon={<Terminal className={iconSize} />}
-              label="Message Simulator"
-              to="/message-simulator"
-              onNavigate={handleMenuNavigate}
-            />
-          </div>
+              <div className="flex flex-col gap-1 px-2">
+                <AccountMenuItemButton
+                  icon={<Terminal className={iconSize} />}
+                  label="Dev Settings"
+                  to="/settings/dev-settings"
+                  onNavigate={handleMenuNavigate}
+                />
+                <AccountMenuItemButton
+                  icon={<Terminal className={iconSize} />}
+                  label="Message Simulator"
+                  to="/message-simulator"
+                  onNavigate={handleMenuNavigate}
+                />
+              </div>
+            </>
+          )}
 
           <div className="h-px bg-border" />
 

@@ -829,7 +829,6 @@ export default function ModelsPage() {
                               searchPlaceholder="Search models..."
                               emptyMessage="No models found."
                               loading={isLoadingModels}
-                              loadingMessage="Loading models..."
                             />
                           </FormControl>
                           <FormMessage />

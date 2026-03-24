@@ -14,7 +14,7 @@ type ContentViewHeaderProps = {
  */
 export const ContentViewHeader = ({ title, onClose, actions, className = '' }: ContentViewHeaderProps) => {
   return (
-    <div className={`flex h-12 w-full items-center justify-between px-4 flex-shrink-0 ${className}`.trim()}>
+    <div className={`flex h-12 w-full items-center justify-between pl-4 pr-2 flex-shrink-0 ${className}`.trim()}>
       <h2 className="text-lg font-semibold truncate">{title}</h2>
       <div className="flex items-center gap-2">
         {actions}

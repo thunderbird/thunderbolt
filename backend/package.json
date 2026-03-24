@@ -13,7 +13,8 @@
     "lint": "eslint src",
     "format": "prettier --write src",
     "db": "drizzle-kit",
-    "db:dev": "pglite-server --db=./.pglite/data"
+    "db:dev": "pglite-server --db=./.pglite/data",
+    "email": "email dev --dir src/emails --port 3000"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.14",
@@ -26,6 +27,7 @@
     "@opentelemetry/exporter-trace-otlp-proto": "^0.205.0",
     "@opentelemetry/sdk-trace-node": "^2.1.0",
     "@posthog/ai": "^6.4.1",
+    "@react-email/components": "^1.0.10",
     "@types/bun": "^1.2.22",
     "better-auth": "^1.4.2",
     "bun-types": "^1.2.22",
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite-socket": "^0.0.19",
+    "@react-email/preview-server": "5.2.10",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
     "drizzle-kit": "^0.31.7",
@@ -49,6 +52,7 @@
     "globals": "^16.4.0",
     "pino-pretty": "^13.1.1",
     "prettier": "^3.2.4",
+    "react-email": "^5.2.10",
     "tsx": "^4.20.6",
     "typescript": "^5.3.3"
   },

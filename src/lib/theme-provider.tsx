@@ -5,7 +5,9 @@ import { isTauri } from './platform'
 
 /** Sync native UI (keyboard, system controls) with the resolved theme on iOS. */
 const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
-  if (!isTauri()) return
+  if (!isTauri()) {
+    return
+  }
   invoke('set_interface_style', { style: resolvedTheme }).catch(console.error)
 }
 

@@ -54,10 +54,15 @@ describe('getPowerSyncOptions', () => {
       expect(options.database).toEqual({ dbFilename: 'thunderbolt.db' })
     })
 
-    it('does not include flags or sync', () => {
-      const options = getPowerSyncOptions('thunderbolt.db', 'default')
+    it('does not include flags', () => {
+      const options = getPowerSyncOptions('thunderbolt.db')
       expect(options).not.toHaveProperty('flags')
-      expect(options).not.toHaveProperty('sync')
+    })
+
+    it('includes custom SharedWorker for sync', () => {
+      const options = getPowerSyncOptions('thunderbolt.db')
+      expect(options).toHaveProperty('sync')
+      expect(options.sync).toHaveProperty('worker')
     })
   })
 

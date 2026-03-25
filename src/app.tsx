@@ -63,7 +63,9 @@ const OidcRedirect = () => {
   const { cloudUrl } = useSettings({ cloud_url: String })
 
   useEffect(() => {
-    if (cloudUrl.isLoading || !cloudUrl.value) return
+    if (cloudUrl.isLoading || !cloudUrl.value) {
+      return
+    }
 
     const baseUrl = cloudUrl.value.replace(/\/v1$/, '')
 
@@ -75,11 +77,16 @@ const OidcRedirect = () => {
       credentials: 'include',
       body: JSON.stringify({ providerId: 'keycloak', callbackURL: window.location.origin + '/' }),
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`OIDC sign-in request failed with status ${res.status}`)
+        }
+        return res.json()
+      })
       .then((data: { url: string }) => {
         window.location.href = data.url
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('OIDC redirect failed:', err)
       })
   }, [cloudUrl.isLoading, cloudUrl.value])

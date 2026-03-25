@@ -27,7 +27,7 @@ import { eq } from 'drizzle-orm'
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
 /** Base settings for OIDC tests — keycloak fields are overridden per-suite */
-const baseSettings: Omit<Settings, 'keycloakIssuer'> = {
+const baseSettings: Settings = {
   fireworksApiKey: '',
   mistralApiKey: '',
   anthropicApiKey: '',
@@ -247,9 +247,9 @@ describe('OIDC Integration', () => {
 
     it('can build signed JWTs directly for unit tests', async () => {
       const token = await oidcServer.issuer.buildToken({
-        scopesOrTransform: {
-          sub: 'unit-test-user',
-          email: 'test@amazon.com',
+        scopesOrTransform: (_header, payload) => {
+          payload.sub = 'unit-test-user'
+          payload.email = 'test@amazon.com'
         },
       })
 

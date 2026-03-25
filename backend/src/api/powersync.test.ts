@@ -37,6 +37,10 @@ const powersyncSettings: Settings = {
   powersyncJwtKid: 'test-kid',
   powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',
   powersyncTokenExpirySeconds: 3600,
+  authMode: 'consumer' as const,
+  keycloakClientId: '',
+  keycloakClientSecret: '',
+  keycloakIssuer: '',
 }
 
 describe('PowerSync API', () => {

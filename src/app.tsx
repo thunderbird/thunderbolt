@@ -48,11 +48,44 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
+import { isOidcMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { type ComponentProps, useEffect } from 'react'
 
 const queryClient = new QueryClient()
+
+/**
+ * In OIDC mode, redirects unauthenticated users to the backend's OIDC sign-in endpoint,
+ * which in turn redirects to Keycloak. The user never sees a login page on our app.
+ */
+const OidcRedirect = () => {
+  const { cloudUrl } = useSettings({ cloud_url: String })
+
+  useEffect(() => {
+    if (cloudUrl.isLoading || !cloudUrl.value) return
+
+    const baseUrl = cloudUrl.value.replace(/\/v1$/, '')
+
+    // Use credentials: 'include' so the browser stores Better Auth's OAuth state cookie.
+    // Without it, the state cookie is lost and the callback fails with state_mismatch.
+    fetch(`${baseUrl}/v1/api/auth/sign-in/oauth2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ providerId: 'keycloak', callbackURL: window.location.origin + '/' }),
+    })
+      .then((res) => res.json())
+      .then((data: { url: string }) => {
+        window.location.href = data.url
+      })
+      .catch((err) => {
+        console.error('OIDC redirect failed:', err)
+      })
+  }, [cloudUrl.isLoading, cloudUrl.value])
+
+  return <Loading />
+}
 
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
@@ -76,6 +109,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
+  const oidcMode = isOidcMode()
   const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
@@ -84,8 +118,11 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-      {/* Waitlist routes - unauthenticated only (skip when bypass is enabled) */}
-      {!shouldBypassWaitlist && (
+      {/* OIDC redirect route — no guard, only in OIDC mode */}
+      {oidcMode && <Route path="/oidc-redirect" element={<OidcRedirect />} />}
+
+      {/* Waitlist routes - unauthenticated only (skip when bypass or OIDC mode) */}
+      {!oidcMode && !shouldBypassWaitlist && (
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
@@ -94,7 +131,15 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       )}
 
       {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
-      <Route element={shouldBypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
+      <Route
+        element={
+          shouldBypassWaitlist ? (
+            <Outlet />
+          ) : (
+            <AuthGate require="authenticated" redirectTo={oidcMode ? '/oidc-redirect' : '/waitlist'} />
+          )
+        }
+      >
         <Route
           path="/"
           element={

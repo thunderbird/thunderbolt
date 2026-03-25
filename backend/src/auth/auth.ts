@@ -2,10 +2,12 @@ import { createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
+import { getSettings } from '@/config/settings'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
+import { genericOAuth, keycloak } from 'better-auth/plugins/generic-oauth'
 import { sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -25,6 +27,27 @@ const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
  * - Both paths (manual OTP entry, clicking link) use the same verification endpoint
  * - No separate email verification needed - signing in proves email ownership
  */
+const buildOidcPlugins = () => {
+  const settings = getSettings()
+
+  if (settings.authMode !== 'oidc' || !settings.keycloakIssuer) {
+    return []
+  }
+
+  return [
+    genericOAuth({
+      config: [
+        keycloak({
+          clientId: settings.keycloakClientId,
+          clientSecret: settings.keycloakClientSecret,
+          issuer: settings.keycloakIssuer,
+          redirectURI: `${process.env.BETTER_AUTH_URL || 'http://localhost:8000'}/v1/api/auth/oauth2/callback/keycloak`,
+        }),
+      ],
+    }),
+  ]
+}
+
 export const createAuth = (database: typeof DbType) =>
   betterAuth({
     database: drizzleAdapter(database, {
@@ -128,6 +151,7 @@ export const createAuth = (database: typeof DbType) =>
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
+      ...buildOidcPlugins(),
     ],
   })
 

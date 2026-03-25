@@ -51,6 +51,10 @@ describe('Authentication Routes', () => {
       powersyncJwtKid: '',
       powersyncJwtSecret: '',
       powersyncTokenExpirySeconds: 3600,
+      authMode: 'consumer' as const,
+      keycloakClientId: '',
+      keycloakClientSecret: '',
+      keycloakIssuer: '',
     })
 
     // Create mock fetch

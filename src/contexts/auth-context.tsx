@@ -1,5 +1,6 @@
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
 import { useSettings } from '@/hooks/use-settings'
+import { isOidcMode } from '@/lib/auth-mode'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
@@ -25,7 +26,7 @@ const createAuthClientInstance = (cloudUrl: string) => {
 }
 
 const buildFetchOptions = (platform: string) => ({
-  credentials: 'omit' as RequestCredentials,
+  credentials: (isOidcMode() ? 'include' : 'omit') as RequestCredentials,
   headers: { 'X-Client-Platform': platform },
   auth: {
     type: 'Bearer' as const,

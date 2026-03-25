@@ -21,6 +21,12 @@ const settingsSchema = z.object({
   microsoftClientId: z.string().default(''),
   microsoftClientSecret: z.string().default(''),
 
+  // OIDC Settings (enterprise self-hosted)
+  authMode: z.enum(['consumer', 'oidc']).default('consumer'),
+  keycloakClientId: z.string().default(''),
+  keycloakClientSecret: z.string().default(''),
+  keycloakIssuer: z.string().default(''),
+
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
   port: z.coerce.number().default(8000),
@@ -73,6 +79,10 @@ const parseSettings = (): Settings => {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
+    keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || '',
+    keycloakClientSecret: process.env.KEYCLOAK_CLIENT_SECRET || '',
+    keycloakIssuer: process.env.KEYCLOAK_ISSUER || '',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

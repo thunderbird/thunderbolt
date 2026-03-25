@@ -61,7 +61,7 @@ const queryClient = new QueryClient()
  * which in turn redirects to the OIDC provider. The user never sees a login page on our app.
  */
 const OidcRedirect = () => {
-  const { cloudUrl } = useSettings({ cloud_url: String })
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   useEffect(() => {
     if (cloudUrl.isLoading || !cloudUrl.value) {

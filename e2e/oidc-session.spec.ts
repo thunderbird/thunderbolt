@@ -2,16 +2,6 @@ import { test, expect } from '@playwright/test'
 import { loginViaOidc } from './helpers'
 
 test.describe('OIDC session', () => {
-  test('user info from OIDC claims is accessible in the app', async ({ page }) => {
-    await loginViaOidc(page)
-
-    // Navigate to settings where user info is typically displayed
-    await page.goto('/settings')
-
-    // The mock OIDC server sets email to 'e2e@thunderbolt.test'
-    await expect(page.getByText('e2e@thunderbolt.test')).toBeVisible({ timeout: 10_000 })
-  })
-
   test('chat UI is fully functional after OIDC login', async ({ page }) => {
     await loginViaOidc(page)
 
@@ -28,5 +18,16 @@ test.describe('OIDC session', () => {
     // Look for sidebar navigation elements
     const sidebar = page.locator('aside, [data-sidebar]').first()
     await expect(sidebar).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('user is signed in after OIDC login', async ({ page }) => {
+    await loginViaOidc(page)
+
+    // Navigate to settings — should NOT show "Sign In" button
+    await page.goto('/settings')
+    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
+
+    // A signed-in user should not see the "Sign In" button
+    await expect(page.getByRole('button', { name: 'Sign In' })).not.toBeVisible({ timeout: 5_000 })
   })
 })

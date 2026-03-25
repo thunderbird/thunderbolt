@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 const isCI = !!process.env.CI
 const MOCK_OIDC_PORT = 9876
+// Use a dedicated Vite port to avoid conflicts with dev server.
+// Backend uses the standard 8000 to match the default cloud_url setting.
+const E2E_VITE_PORT = 1421
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,7 +17,7 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: 'http://localhost:1420',
+    baseURL: `http://localhost:${E2E_VITE_PORT}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     // Fresh storage state per test to avoid stale IndexedDB/OPFS data
@@ -28,20 +31,18 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'bun run dev',
-      url: 'http://localhost:1420',
-      reuseExistingServer: !isCI,
+      command: `bun run dev -- --port ${E2E_VITE_PORT}`,
+      url: `http://localhost:${E2E_VITE_PORT}`,
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
-        VITE_BYPASS_WAITLIST: 'true',
-        VITE_SKIP_ONBOARDING: 'true',
         VITE_AUTH_MODE: 'oidc',
       },
     },
     {
       command: 'cd backend && bun run dev',
       url: 'http://localhost:8000/v1/health',
-      reuseExistingServer: !isCI,
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
         AUTH_MODE: 'oidc',
@@ -49,6 +50,10 @@ export default defineConfig({
         OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
         OIDC_ISSUER: `http://localhost:${MOCK_OIDC_PORT}`,
         BETTER_AUTH_URL: 'http://localhost:8000',
+        APP_URL: `http://localhost:${E2E_VITE_PORT}`,
+        CORS_ORIGINS: `http://localhost:${E2E_VITE_PORT}`,
+        CORS_ORIGIN_REGEX: '',
+        TRUSTED_ORIGINS: `http://localhost:${E2E_VITE_PORT}`,
       },
     },
   ],

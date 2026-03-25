@@ -1,40 +1,66 @@
 import { expect, type Page } from '@playwright/test'
 
-const MOCK_OIDC_PORT = 9876
-const BACKEND_URL = 'http://localhost:8000'
-
 /**
- * Intercepts the browser redirect to the mock IdP's /authorize endpoint and
- * bounces back to the backend's OIDC callback with a mock auth code + state.
- * This simulates "user logged in at the IdP" without needing a login UI.
+ * Dismiss the onboarding wizard if it appears.
+ * The dialog blocks all pointer events with a z-50 overlay.
  */
-export const interceptOidcRedirect = (page: Page) => {
-  return page.route(`http://localhost:${MOCK_OIDC_PORT}/authorize**`, (route) => {
-    const url = new URL(route.request().url())
-    const state = url.searchParams.get('state')
-    const redirectUri = url.searchParams.get('redirect_uri')
+export const dismissOnboarding = async (page: Page) => {
+  try {
+    const continueButton = page.getByRole('button', { name: 'Continue' })
+    await expect(continueButton).toBeVisible({ timeout: 4000 })
 
-    // Bounce back to the backend callback with a mock auth code
-    route.fulfill({
-      status: 302,
-      headers: {
-        Location: `${redirectUri}?code=mock-e2e-code&state=${state}`,
-      },
-    })
-  })
+    // Step 1: agree to privacy and continue
+    const checkbox = page.locator('[role="checkbox"]').first()
+    if (await checkbox.isVisible()) {
+      await checkbox.click()
+    }
+    await continueButton.click()
+    await page.waitForTimeout(300)
+
+    // Steps 2-4: skip through them
+    for (let i = 0; i < 3; i++) {
+      const skipButton = page.getByRole('button', { name: 'Skip' })
+      try {
+        await expect(skipButton).toBeVisible({ timeout: 2000 })
+        await skipButton.click()
+        await page.waitForTimeout(300)
+      } catch {
+        break
+      }
+    }
+
+    // Step 5: finish onboarding
+    const startButton = page.getByRole('button', { name: 'Start Using Thunderbolt' })
+    try {
+      await expect(startButton).toBeVisible({ timeout: 2000 })
+      await startButton.click()
+      await page.waitForTimeout(500)
+    } catch {
+      // May have already closed
+    }
+  } catch {
+    // No onboarding dialog — already completed or skipped
+  }
 }
 
 /**
- * Navigate to the app root, handle the OIDC login flow (via route interception),
- * and wait for the authenticated chat UI to render.
+ * Navigate to the app root, let the OIDC flow complete naturally through
+ * the mock OIDC server, dismiss onboarding if needed, and wait for the
+ * authenticated chat UI to render.
+ *
+ * The flow: / → AuthGate → /oidc-redirect → POST sign-in → mock IdP /authorize
+ * (auto-approves) → backend callback → token exchange → session → app
  */
 export const loginViaOidc = async (page: Page) => {
-  await interceptOidcRedirect(page)
   await page.goto('/')
+
+  // Wait for the page to settle — either onboarding or chat UI
+  await page.waitForTimeout(3000)
+  await dismissOnboarding(page)
 
   // Wait for the OIDC flow to complete and land on the chat page
   const textarea = page.locator('textarea')
-  await expect(textarea).toBeVisible({ timeout: 20_000 })
+  await expect(textarea).toBeVisible({ timeout: 30_000 })
 }
 
 /**

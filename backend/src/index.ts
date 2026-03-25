@@ -108,6 +108,10 @@ const startServer = async () => {
   )
 
   try {
+    // Run PGLite migrations before creating the app (no-op for Postgres)
+    const { runMigrations } = await import('@/db/client')
+    await runMigrations()
+
     const app = await createApp()
 
     const hostname = process.env.HOST

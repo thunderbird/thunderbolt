@@ -64,16 +64,6 @@ export const loginViaOidc = async (page: Page) => {
 }
 
 /**
- * Clear browser storage to ensure a fresh state.
- */
-export const clearBrowserStorage = async (page: Page) => {
-  await page.evaluate(() => {
-    localStorage.clear()
-    sessionStorage.clear()
-  })
-}
-
-/**
  * Collect uncaught JS errors, filtering Tauri-specific noise.
  */
 export const collectPageErrors = (page: Page): string[] => {

@@ -19,7 +19,7 @@ Any OIDC-compliant provider works — the implementation uses standard OIDC disc
 
 ### 1. Start Keycloak with pre-configured realm
 
-The `docs/amazon-realm.json` file contains a ready-to-go realm with a client and test users. Mount it on startup so there's zero manual setup:
+The `docs/mozilla-realm.json` file contains a ready-to-go realm with a client and test users. Mount it on startup so there's zero manual setup:
 
 ```sh
 docker run -d \
@@ -27,15 +27,15 @@ docker run -d \
   -p 8180:8080 \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
   -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
-  -v $(pwd)/docs/amazon-realm.json:/opt/keycloak/data/import/amazon-realm.json \
+  -v $(pwd)/docs/mozilla-realm.json:/opt/keycloak/data/import/mozilla-realm.json \
   quay.io/keycloak/keycloak:latest \
   start-dev --import-realm
 ```
 
 This creates:
-- **Realm**: `amazon`
+- **Realm**: `mozilla`
 - **Client**: `thunderbolt-app` (secret: `thunderbolt-dev-secret`)
-- **Users**: `jeff@amazon.com` / `password`, `andy@amazon.com` / `password`
+- **Users**: `mitchell@mozilla.org` / `password`, `laura@mozilla.org` / `password`
 
 Keycloak admin panel is at http://localhost:8180 (login: `admin` / `admin`).
 
@@ -48,7 +48,7 @@ AUTH_MODE=oidc
 WAITLIST_ENABLED=false
 OIDC_CLIENT_ID=thunderbolt-app
 OIDC_CLIENT_SECRET=thunderbolt-dev-secret
-OIDC_ISSUER=http://localhost:8180/realms/amazon
+OIDC_ISSUER=http://localhost:8180/realms/mozilla
 ```
 
 **Frontend** (`.env.local` in project root, or whatever your local `.env` file is called):
@@ -67,11 +67,11 @@ cd backend && bun dev
 bun dev
 ```
 
-Open http://localhost:1420 — you should be redirected to Keycloak's login page for the "amazon" realm. Sign in as `jeff@amazon.com` / `password`.
+Open http://localhost:1420 — you should be redirected to Keycloak's login page for the "mozilla" realm. Sign in as `mitchell@mozilla.org` / `password`.
 
 ## Pre-configured realm
 
-The realm import file at `docs/amazon-realm.json` defines everything Keycloak needs. To modify it:
+The realm import file at `docs/mozilla-realm.json` defines everything Keycloak needs. To modify it:
 
 - **Add users**: Add entries to the `users` array with `username`, `email`, `credentials`
 - **Change client secret**: Update `clients[0].secret` and your `OIDC_CLIENT_SECRET` env var
@@ -153,7 +153,7 @@ cd backend && bun test src/auth/oidc-integration.test.ts
 | `backend/src/auth/auth.ts` | Conditionally adds `genericOAuth` plugin when `AUTH_MODE=oidc` |
 | `backend/src/config/settings.ts` | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars |
 | `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests using mock OIDC server |
-| `backend/docs/amazon-realm.json` | Pre-configured Keycloak realm for local development |
+| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development |
 | `src/lib/auth-mode.ts` | `isOidcMode()` — reads `VITE_AUTH_MODE` |
 | `src/app.tsx` | `OidcRedirect` component, conditional routing for OIDC vs consumer mode |
 | `src/contexts/auth-context.tsx` | `credentials: 'include'` in OIDC mode for cookie-based session bootstrap |

@@ -141,8 +141,8 @@ describe('OIDC Integration', () => {
         // Customize token to include user claims
         oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
           token.sub = 'oidc-user-123'
-          token.email = 'jeff@amazon.com'
-          token.name = 'Jeff Bezos'
+          token.email = 'mitchell@mozilla.org'
+          token.name = 'Mitchell Baker'
           token.email_verified = true
         })
 
@@ -153,8 +153,8 @@ describe('OIDC Integration', () => {
               statusCode: 200,
               body: JSON.stringify({
                 sub: 'oidc-user-123',
-                email: 'jeff@amazon.com',
-                name: 'Jeff Bezos',
+                email: 'mitchell@mozilla.org',
+                name: 'Mitchell Baker',
                 email_verified: true,
               }),
             }
@@ -200,8 +200,8 @@ describe('OIDC Integration', () => {
     it('handles token requests with custom claims', async () => {
       oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
         token.sub = 'oidc-user-456'
-        token.email = 'andy@amazon.com'
-        token.name = 'Andy Jassy'
+        token.email = 'laura@mozilla.org'
+        token.name = 'Laura Chambers'
         token.email_verified = true
       })
 
@@ -249,7 +249,7 @@ describe('OIDC Integration', () => {
       const token = await oidcServer.issuer.buildToken({
         scopesOrTransform: (_header, payload) => {
           payload.sub = 'unit-test-user'
-          payload.email = 'test@amazon.com'
+          payload.email = 'test@mozilla.org'
         },
       })
 

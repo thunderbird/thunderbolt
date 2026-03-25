@@ -1,5 +1,5 @@
 {
-  "realm": "amazon",
+  "realm": "mozilla",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
@@ -33,10 +33,10 @@
   ],
   "users": [
     {
-      "username": "jeff",
-      "email": "jeff@amazon.com",
-      "firstName": "Jeff",
-      "lastName": "Bezos",
+      "username": "mitchell",
+      "email": "mitchell@mozilla.org",
+      "firstName": "Mitchell",
+      "lastName": "Baker",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
@@ -48,10 +48,10 @@
       ]
     },
     {
-      "username": "andy",
-      "email": "andy@amazon.com",
-      "firstName": "Andy",
-      "lastName": "Jassy",
+      "username": "laura",
+      "email": "laura@mozilla.org",
+      "firstName": "Laura",
+      "lastName": "Chambers",
       "enabled": true,
       "emailVerified": true,
       "credentials": [

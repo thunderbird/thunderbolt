@@ -143,10 +143,10 @@ describe('encryption service', () => {
       expect(cryptoMocks.encodeRecoveryKey).toHaveBeenCalledWith(mockExtractableCK)
       // Should create canary
       expect(cryptoMocks.createCanary).toHaveBeenCalledWith(mockExtractableCK)
+      // Should wrap CK with own public key
+      expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockExtractableCK, mockKeyPair.publicKey)
       // Should reimport as non-extractable
       expect(cryptoMocks.reimportAsNonExtractable).toHaveBeenCalledWith(mockExtractableCK)
-      // Should wrap CK with own public key
-      expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockCK, mockKeyPair.publicKey)
       // Should store envelope with canary
       expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
         deviceId: 'test-device-id',

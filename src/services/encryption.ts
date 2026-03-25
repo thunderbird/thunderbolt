@@ -73,11 +73,12 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
   const recoveryKey = await encodeRecoveryKey(extractableCK)
   const { canaryIv, canaryCtext } = await createCanary(extractableCK)
 
+  // Wrap CK with own public key and store on server
+  const wrappedCK = await wrapCK(extractableCK, keyPair.publicKey)
+
   // Re-import as non-extractable for storage
   const ck = await reimportAsNonExtractable(extractableCK)
 
-  // Wrap CK with own public key and store on server
-  const wrappedCK = await wrapCK(ck, keyPair.publicKey)
   const deviceId = getDeviceId()
 
   await storeEnvelope(httpClient, {

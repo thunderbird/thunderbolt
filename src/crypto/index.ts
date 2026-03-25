@@ -6,6 +6,7 @@ export {
   exportPublicKey,
   importPublicKey,
   wrapCK,
+  rewrapCK,
   unwrapCK,
   encrypt,
   decrypt,

@@ -6,6 +6,7 @@ import {
   exportPublicKey,
   importPublicKey,
   wrapCK,
+  rewrapCK,
   unwrapCK,
   encrypt,
   decrypt,
@@ -92,6 +93,39 @@ describe('wrapCK / unwrapCK', () => {
     const wrapped1 = await wrapCK(ck, keyPair1.publicKey)
     const wrapped2 = await wrapCK(ck, keyPair2.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
+  })
+})
+
+describe('rewrapCK', () => {
+  it('rewraps CK from one key pair to another', async () => {
+    const keyPair1 = await generateKeyPair()
+    const keyPair2 = await generateKeyPair()
+    const ck = await generateCK(true)
+
+    // Wrap CK with keyPair1's public key (simulates the envelope on the server)
+    const wrapped = await wrapCK(ck, keyPair1.publicKey)
+
+    // Rewrap for keyPair2 (simulates approving a new device)
+    const rewrapped = await rewrapCK(wrapped, keyPair1.privateKey, keyPair2.publicKey)
+    expect(typeof rewrapped).toBe('string')
+
+    // keyPair2 should be able to unwrap it
+    const unwrapped = await unwrapCK(rewrapped, keyPair2.privateKey)
+    expect(unwrapped.algorithm.name).toBe('AES-GCM')
+  })
+
+  it('rewrapped CK decrypts data encrypted with the original', async () => {
+    const keyPair1 = await generateKeyPair()
+    const keyPair2 = await generateKeyPair()
+    const ck = await generateCK(true)
+
+    const encrypted = await encrypt('rewrap test', ck)
+    const wrapped = await wrapCK(ck, keyPair1.publicKey)
+    const rewrapped = await rewrapCK(wrapped, keyPair1.privateKey, keyPair2.publicKey)
+    const unwrapped = await unwrapCK(rewrapped, keyPair2.privateKey)
+
+    const decrypted = await decrypt(encrypted, unwrapped)
+    expect(decrypted).toBe('rewrap test')
   })
 })
 

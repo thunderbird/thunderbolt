@@ -12,8 +12,9 @@ export const encodeRecoveryKey = async (ck: CryptoKey): Promise<string> => {
 }
 
 /**
- * Decode a 64-character hex recovery key into a non-extractable AES-256-GCM CryptoKey.
- * Validates format before importing.
+ * Decode a 64-character hex recovery key into an extractable AES-256-GCM CryptoKey.
+ * Extractable because the recovery flow needs to wrap it for the device's envelope.
+ * Caller must reimport as non-extractable before storing in IndexedDB.
  */
 export const decodeRecoveryKey = async (hex: string): Promise<CryptoKey> => {
   const cleaned = hex.replace(/\s/g, '')
@@ -27,7 +28,7 @@ export const decodeRecoveryKey = async (hex: string): Promise<CryptoKey> => {
 
   const bytes = new Uint8Array(cleaned.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)))
 
-  return crypto.subtle.importKey('raw', bytes, { name: 'AES-GCM', length: 256 }, false, [
+  return crypto.subtle.importKey('raw', bytes, { name: 'AES-GCM', length: 256 }, true, [
     'encrypt',
     'decrypt',
     'wrapKey',

@@ -71,6 +71,33 @@ export const wrapCK = async (ck: CryptoKey, publicKey: CryptoKey): Promise<strin
   }
 }
 
+/**
+ * Rewrap a wrapped CK for a different device's public key.
+ * Internally unwraps as temporarily extractable (in-memory only, never stored),
+ * then wraps with the target public key. Returns base64.
+ */
+export const rewrapCK = async (
+  wrappedCKBase64: string,
+  privateKey: CryptoKey,
+  targetPublicKey: CryptoKey,
+): Promise<string> => {
+  try {
+    const tempCK = await crypto.subtle.unwrapKey(
+      'raw',
+      base64ToUint8Array(wrappedCKBase64),
+      privateKey,
+      { name: rsaAlgorithm },
+      { name: aesAlgorithm, length: aesKeyLength },
+      true,
+      ['encrypt', 'decrypt'],
+    )
+    const wrapped = await crypto.subtle.wrapKey('raw', tempCK, targetPublicKey, { name: rsaAlgorithm })
+    return uint8ArrayToBase64(new Uint8Array(wrapped))
+  } catch (err) {
+    throw new EncryptionError('Failed to rewrap content key', { cause: err })
+  }
+}
+
 /** Unwrap CK from base64 using a device's private key. Returns non-extractable CryptoKey. */
 export const unwrapCK = async (wrappedBase64: string, privateKey: CryptoKey): Promise<CryptoKey> => {
   try {

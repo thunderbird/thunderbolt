@@ -66,6 +66,7 @@ describe('Main Routes', () => {
       oidcClientId: '',
       oidcClientSecret: '',
       oidcIssuer: '',
+      betterAuthUrl: 'http://localhost:8000',
     } satisfies Settings)
   })
 

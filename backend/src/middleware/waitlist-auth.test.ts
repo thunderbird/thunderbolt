@@ -37,6 +37,7 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
+  betterAuthUrl: 'http://localhost:8000',
   ...overrides,
 })
 

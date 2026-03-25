@@ -146,6 +146,7 @@ describe('Config Settings', () => {
           oidcClientId: '',
           oidcClientSecret: '',
           oidcIssuer: '',
+          betterAuthUrl: 'http://localhost:8000',
           corsOrigins: 'http://localhost:1420',
           corsOriginRegex: '',
           corsAllowCredentials: true,

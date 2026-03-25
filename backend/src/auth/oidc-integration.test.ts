@@ -60,6 +60,7 @@ const baseSettings: Settings = {
   oidcClientId: 'thunderbolt-app',
   oidcClientSecret: 'thunderbolt-dev-secret',
   oidcIssuer: '', // set per-suite once mock server is up
+  betterAuthUrl: 'http://localhost:8000',
 }
 
 describe('OIDC Integration', () => {

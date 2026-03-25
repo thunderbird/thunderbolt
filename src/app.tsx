@@ -89,7 +89,9 @@ const OidcRedirect = () => {
         window.location.href = data.url
       })
       .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         console.error('OIDC redirect failed:', err)
       })
 

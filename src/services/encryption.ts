@@ -6,6 +6,7 @@ import {
   exportPublicKey,
   importPublicKey,
   wrapCK,
+  rewrapCK,
   unwrapCK,
   createCanary,
   verifyCanary,
@@ -14,7 +15,6 @@ import {
   storeKeyPair,
   getKeyPair,
   storeCK,
-  getCK,
   clearCK,
   clearAllKeys,
 } from '@/crypto'
@@ -27,6 +27,7 @@ import {
   fetchCanary,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
+import { invalidateCKCache } from '@/db/encryption'
 
 // =============================================================================
 // Detecting step — register device and store key pair
@@ -99,20 +100,23 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
 // =============================================================================
 
 /**
- * Approve a pending device by wrapping the CK with its public key and storing the envelope.
+ * Approve a pending device by rewrapping the CK with its public key and storing the envelope.
+ * Fetches this device's own envelope from the server and rewraps — the locally stored
+ * non-extractable CK is never touched, preserving its security properties.
  */
 export const approveDevice = async (
   httpClient: KyInstance,
   pendingDeviceId: string,
   pendingPublicKeyBase64: string,
 ): Promise<void> => {
-  const ck = await getCK()
-  if (!ck) {
-    throw new Error('Content key not found in IndexedDB')
+  const keyPair = await getKeyPair()
+  if (!keyPair) {
+    throw new Error('Key pair not found in IndexedDB')
   }
 
+  const { wrappedCK: myWrappedCK } = await fetchMyEnvelope(httpClient)
   const pendingPublicKey = await importPublicKey(pendingPublicKeyBase64)
-  const wrappedCK = await wrapCK(ck, pendingPublicKey)
+  const wrappedCK = await rewrapCK(myWrappedCK, keyPair.privateKey, pendingPublicKey)
 
   await storeEnvelope(httpClient, {
     deviceId: pendingDeviceId,
@@ -186,7 +190,9 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryKeyHex: str
     canaryCtext,
   })
 
-  await storeCK(ck)
+  // Re-import as non-extractable for local storage
+  const nonExtractableCK = await reimportAsNonExtractable(ck)
+  await storeCK(nonExtractableCK)
 }
 
 // =============================================================================
@@ -195,6 +201,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryKeyHex: str
 
 export const handleSignOut = async (): Promise<void> => {
   await clearCK()
+  invalidateCKCache()
 }
 
 // =============================================================================
@@ -203,4 +210,5 @@ export const handleSignOut = async (): Promise<void> => {
 
 export const handleFullWipe = async (): Promise<void> => {
   await clearAllKeys()
+  invalidateCKCache()
 }

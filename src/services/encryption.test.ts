@@ -16,11 +16,14 @@ const cryptoMocks = {
   exportPublicKey: mock(async () => 'mock-public-key-base64'),
   importPublicKey: mock(async () => 'mock-imported-public-key' as unknown as CryptoKey),
   wrapCK: mock(async () => 'mock-wrapped-ck'),
+  rewrapCK: mock(async () => 'mock-rewrapped-ck'),
   unwrapCK: mock(async () => mockCK),
   createCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' })),
   verifyCanary: mock(async () => true),
   encodeRecoveryKey: mock(async () => 'a'.repeat(64)),
   decodeRecoveryKey: mock(async () => mockCK),
+  encrypt: mock(async () => ({ iv: '', ciphertext: '' })),
+  decrypt: mock(async () => ''),
   storeKeyPair: mock(async () => {}),
   getKeyPair: mock(async () => null as { privateKey: CryptoKey; publicKey: CryptoKey } | null),
   storeCK: mock(async () => {}),
@@ -67,11 +70,14 @@ const resetAllMocks = () => {
   cryptoMocks.exportPublicKey.mockImplementation(async () => 'mock-public-key-base64')
   cryptoMocks.importPublicKey.mockImplementation(async () => 'mock-imported-public-key' as unknown as CryptoKey)
   cryptoMocks.wrapCK.mockImplementation(async () => 'mock-wrapped-ck')
+  cryptoMocks.rewrapCK.mockImplementation(async () => 'mock-rewrapped-ck')
   cryptoMocks.unwrapCK.mockImplementation(async () => mockCK)
   cryptoMocks.createCanary.mockImplementation(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' }))
   cryptoMocks.verifyCanary.mockImplementation(async () => true)
   cryptoMocks.encodeRecoveryKey.mockImplementation(async () => 'a'.repeat(64))
   cryptoMocks.decodeRecoveryKey.mockImplementation(async () => mockCK)
+  cryptoMocks.encrypt.mockImplementation(async () => ({ iv: '', ciphertext: '' }))
+  cryptoMocks.decrypt.mockImplementation(async () => '')
   cryptoMocks.storeKeyPair.mockImplementation(async () => {})
   cryptoMocks.getKeyPair.mockImplementation(async () => null)
   cryptoMocks.storeCK.mockImplementation(async () => {})
@@ -168,23 +174,28 @@ describe('encryption service', () => {
   })
 
   describe('approveDevice', () => {
-    it('wraps CK with pending device public key and stores envelope', async () => {
-      cryptoMocks.getCK.mockImplementation(async () => mockCK)
+    it('fetches own envelope, rewraps CK for pending device, stores envelope', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => mockKeyPair)
 
       await approveDevice(mockHttpClient, 'pending-dev', 'pending-pub-key-base64')
 
+      expect(apiMocks.fetchMyEnvelope).toHaveBeenCalledWith(mockHttpClient)
       expect(cryptoMocks.importPublicKey).toHaveBeenCalledWith('pending-pub-key-base64')
-      expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockCK, 'mock-imported-public-key')
+      expect(cryptoMocks.rewrapCK).toHaveBeenCalledWith(
+        'mock-wrapped-ck',
+        mockKeyPair.privateKey,
+        'mock-imported-public-key',
+      )
       expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
         deviceId: 'pending-dev',
-        wrappedCK: 'mock-wrapped-ck',
+        wrappedCK: 'mock-rewrapped-ck',
       })
     })
 
-    it('throws if CK is missing', async () => {
-      cryptoMocks.getCK.mockImplementation(async () => null)
+    it('throws if key pair is missing', async () => {
+      cryptoMocks.getKeyPair.mockImplementation(async () => null)
 
-      await expect(approveDevice(mockHttpClient, 'dev', 'key')).rejects.toThrow('Content key not found')
+      await expect(approveDevice(mockHttpClient, 'dev', 'key')).rejects.toThrow('Key pair not found')
     })
   })
 
@@ -236,7 +247,9 @@ describe('encryption service', () => {
       expect(apiMocks.registerDevice).toHaveBeenCalledTimes(1)
       // Should store envelope
       expect(apiMocks.storeEnvelope).toHaveBeenCalledTimes(1)
-      // Should store CK
+      // Should reimport CK as non-extractable before storing
+      expect(cryptoMocks.reimportAsNonExtractable).toHaveBeenCalledWith(mockCK)
+      // Should store non-extractable CK
       expect(cryptoMocks.storeCK).toHaveBeenCalledWith(mockCK)
     })
 

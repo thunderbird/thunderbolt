@@ -15,7 +15,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "thunderbolt-dev-secret",
       "redirectUris": [
-        "http://localhost:8000/v1/api/auth/oauth2/callback/keycloak"
+        "http://localhost:8000/v1/api/auth/oauth2/callback/oidc"
       ],
       "webOrigins": [
         "http://localhost:1420"

@@ -7,7 +7,7 @@ import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
-import { genericOAuth, keycloak } from 'better-auth/plugins/generic-oauth'
+import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
@@ -30,19 +30,22 @@ const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 const buildOidcPlugins = () => {
   const settings = getSettings()
 
-  if (settings.authMode !== 'oidc' || !settings.keycloakIssuer) {
+  if (settings.authMode !== 'oidc' || !settings.oidcIssuer) {
     return []
   }
 
   return [
     genericOAuth({
       config: [
-        keycloak({
-          clientId: settings.keycloakClientId,
-          clientSecret: settings.keycloakClientSecret,
-          issuer: settings.keycloakIssuer,
-          redirectURI: `${process.env.BETTER_AUTH_URL || 'http://localhost:8000'}/v1/api/auth/oauth2/callback/keycloak`,
-        }),
+        {
+          providerId: 'oidc',
+          discoveryUrl: `${settings.oidcIssuer}/.well-known/openid-configuration`,
+          clientId: settings.oidcClientId,
+          clientSecret: settings.oidcClientSecret,
+          scopes: ['openid', 'profile', 'email'],
+          redirectURI: `${process.env.BETTER_AUTH_URL || 'http://localhost:8000'}/v1/api/auth/oauth2/callback/oidc`,
+          pkce: true,
+        },
       ],
     }),
   ]

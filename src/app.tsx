@@ -57,7 +57,7 @@ const queryClient = new QueryClient()
 
 /**
  * In OIDC mode, redirects unauthenticated users to the backend's OIDC sign-in endpoint,
- * which in turn redirects to Keycloak. The user never sees a login page on our app.
+ * which in turn redirects to the OIDC provider. The user never sees a login page on our app.
  */
 const OidcRedirect = () => {
   const { cloudUrl } = useSettings({ cloud_url: String })
@@ -75,7 +75,7 @@ const OidcRedirect = () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ providerId: 'keycloak', callbackURL: window.location.origin + '/' }),
+      body: JSON.stringify({ providerId: 'oidc', callbackURL: window.location.origin + '/' }),
     })
       .then((res) => {
         if (!res.ok) {

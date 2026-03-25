@@ -23,9 +23,9 @@ const settingsSchema = z.object({
 
   // OIDC Settings (enterprise self-hosted)
   authMode: z.enum(['consumer', 'oidc']).default('consumer'),
-  keycloakClientId: z.string().default(''),
-  keycloakClientSecret: z.string().default(''),
-  keycloakIssuer: z.string().default(''),
+  oidcClientId: z.string().default(''),
+  oidcClientSecret: z.string().default(''),
+  oidcIssuer: z.string().default(''),
 
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
@@ -80,9 +80,9 @@ const parseSettings = (): Settings => {
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
-    keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || '',
-    keycloakClientSecret: process.env.KEYCLOAK_CLIENT_SECRET || '',
-    keycloakIssuer: process.env.KEYCLOAK_ISSUER || '',
+    oidcClientId: process.env.OIDC_CLIENT_ID || '',
+    oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
+    oidcIssuer: process.env.OIDC_ISSUER || '',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

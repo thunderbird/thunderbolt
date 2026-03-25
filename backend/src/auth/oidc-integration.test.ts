@@ -26,7 +26,7 @@ import { eq } from 'drizzle-orm'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
-/** Base settings for OIDC tests — keycloak fields are overridden per-suite */
+/** Base settings for OIDC tests — issuer URL is overridden per-suite */
 const baseSettings: Settings = {
   fireworksApiKey: '',
   mistralApiKey: '',
@@ -57,9 +57,9 @@ const baseSettings: Settings = {
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,
   authMode: 'oidc' as const,
-  keycloakClientId: 'thunderbolt-app',
-  keycloakClientSecret: 'thunderbolt-dev-secret',
-  keycloakIssuer: '', // set per-suite once mock server is up
+  oidcClientId: 'thunderbolt-app',
+  oidcClientSecret: 'thunderbolt-dev-secret',
+  oidcIssuer: '', // set per-suite once mock server is up
 }
 
 describe('OIDC Integration', () => {
@@ -90,7 +90,7 @@ describe('OIDC Integration', () => {
       // Mock settings to point at the mock OIDC server
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
-        keycloakIssuer: oidcIssuerUrl,
+        oidcIssuer: oidcIssuerUrl,
       } as Settings)
     })
 
@@ -116,7 +116,7 @@ describe('OIDC Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'keycloak',
+              providerId: 'oidc',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -140,7 +140,7 @@ describe('OIDC Integration', () => {
       try {
         // Customize token to include user claims
         oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
-          token.sub = 'keycloak-user-123'
+          token.sub = 'oidc-user-123'
           token.email = 'jeff@amazon.com'
           token.name = 'Jeff Bezos'
           token.email_verified = true
@@ -152,7 +152,7 @@ describe('OIDC Integration', () => {
             return {
               statusCode: 200,
               body: JSON.stringify({
-                sub: 'keycloak-user-123',
+                sub: 'oidc-user-123',
                 email: 'jeff@amazon.com',
                 name: 'Jeff Bezos',
                 email_verified: true,
@@ -166,7 +166,7 @@ describe('OIDC Integration', () => {
 
         // Simulate the callback — Better Auth exchanges the code for tokens and creates the user
         // We use auth.api directly rather than going through HTTP to avoid cookie/state complexity
-        const callbackUrl = new URL(`http://localhost/api/auth/oauth2/callback/keycloak`)
+        const callbackUrl = new URL(`http://localhost/api/auth/oauth2/callback/oidc`)
         callbackUrl.searchParams.set('code', 'mock-auth-code')
         callbackUrl.searchParams.set('state', 'test-state')
 
@@ -180,7 +180,7 @@ describe('OIDC Integration', () => {
             code: 'mock-auth-code',
             client_id: 'thunderbolt-app',
             client_secret: 'thunderbolt-dev-secret',
-            redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/keycloak',
+            redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/oidc',
           }),
         })
 
@@ -199,7 +199,7 @@ describe('OIDC Integration', () => {
   describe('Mock OIDC server capabilities', () => {
     it('handles token requests with custom claims', async () => {
       oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
-        token.sub = 'keycloak-user-456'
+        token.sub = 'oidc-user-456'
         token.email = 'andy@amazon.com'
         token.name = 'Andy Jassy'
         token.email_verified = true
@@ -213,7 +213,7 @@ describe('OIDC Integration', () => {
           code: 'mock-auth-code',
           client_id: 'thunderbolt-app',
           client_secret: 'thunderbolt-dev-secret',
-          redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/keycloak',
+          redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/oidc',
         }),
       })
 

@@ -34,9 +34,9 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,
   authMode: 'consumer' as const,
-  keycloakClientId: '',
-  keycloakClientSecret: '',
-  keycloakIssuer: '',
+  oidcClientId: '',
+  oidcClientSecret: '',
+  oidcIssuer: '',
   ...overrides,
 })
 

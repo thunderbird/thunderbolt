@@ -58,9 +58,9 @@ describe('Link Preview Routes', () => {
       powersyncJwtSecret: '',
       powersyncTokenExpirySeconds: 3600,
       authMode: 'consumer' as const,
-      keycloakClientId: '',
-      keycloakClientSecret: '',
-      keycloakIssuer: '',
+      oidcClientId: '',
+      oidcClientSecret: '',
+      oidcIssuer: '',
     })
 
     // Create mock fetch

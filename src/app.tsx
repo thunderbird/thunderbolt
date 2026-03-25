@@ -67,6 +67,7 @@ const OidcRedirect = () => {
       return
     }
 
+    const abortController = new AbortController()
     const baseUrl = cloudUrl.value.replace(/\/v1$/, '')
 
     // Use credentials: 'include' so the browser stores Better Auth's OAuth state cookie.
@@ -76,6 +77,7 @@ const OidcRedirect = () => {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ providerId: 'oidc', callbackURL: window.location.origin + '/' }),
+      signal: abortController.signal,
     })
       .then((res) => {
         if (!res.ok) {
@@ -87,8 +89,11 @@ const OidcRedirect = () => {
         window.location.href = data.url
       })
       .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         console.error('OIDC redirect failed:', err)
       })
+
+    return () => abortController.abort()
   }, [cloudUrl.isLoading, cloudUrl.value])
 
   return <Loading />

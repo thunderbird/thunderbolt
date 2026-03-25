@@ -34,6 +34,13 @@ const buildOidcPlugins = () => {
     return []
   }
 
+  if (!settings.oidcClientId || !settings.oidcClientSecret) {
+    throw new Error(
+      'OIDC is enabled (AUTH_MODE=oidc) but OIDC_CLIENT_ID and/or OIDC_CLIENT_SECRET are missing. ' +
+        'Set both environment variables to configure OIDC authentication.',
+    )
+  }
+
   return [
     genericOAuth({
       config: [
@@ -43,7 +50,7 @@ const buildOidcPlugins = () => {
           clientId: settings.oidcClientId,
           clientSecret: settings.oidcClientSecret,
           scopes: ['openid', 'profile', 'email'],
-          redirectURI: `${process.env.BETTER_AUTH_URL || 'http://localhost:8000'}/v1/api/auth/oauth2/callback/oidc`,
+          redirectURI: `${settings.betterAuthUrl}/v1/api/auth/oauth2/callback/oidc`,
           pkce: true,
         },
       ],

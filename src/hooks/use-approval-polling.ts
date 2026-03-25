@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
-import { useHttpClient } from '@/contexts'
-import { checkApprovalAndUnwrap } from '@/services/encryption'
 
 type UseApprovalPollingOptions = {
   enabled: boolean
+  checkApproval: () => Promise<boolean>
   onApproved: () => void
   intervalMs?: number
 }
 
 /**
- * Polls the server to detect when this device has been approved by a trusted device.
- * Calls `checkApprovalAndUnwrap` at a regular interval; on success, fires `onApproved`.
+ * Polls to detect when this device has been approved by a trusted device.
+ * Calls `checkApproval` at a regular interval; on success, fires `onApproved`.
  * Errors are silently ignored — the manual Continue button serves as fallback.
  */
-export const useApprovalPolling = ({ enabled, onApproved, intervalMs = 3000 }: UseApprovalPollingOptions) => {
-  const httpClient = useHttpClient()
+export const useApprovalPolling = ({
+  enabled,
+  checkApproval,
+  onApproved,
+  intervalMs = 3000,
+}: UseApprovalPollingOptions) => {
   const [isPolling, setIsPolling] = useState(false)
   const isCheckingRef = useRef(false)
   const onApprovedRef = useRef(onApproved)
   onApprovedRef.current = onApproved
+  const checkApprovalRef = useRef(checkApproval)
+  checkApprovalRef.current = checkApproval
 
   useEffect(() => {
     if (!enabled) {
@@ -36,7 +41,7 @@ export const useApprovalPolling = ({ enabled, onApproved, intervalMs = 3000 }: U
       isCheckingRef.current = true
 
       try {
-        const approved = await checkApprovalAndUnwrap(httpClient)
+        const approved = await checkApprovalRef.current()
         if (approved && !cancelled) {
           clearInterval(intervalId)
           setIsPolling(false)
@@ -56,7 +61,7 @@ export const useApprovalPolling = ({ enabled, onApproved, intervalMs = 3000 }: U
       clearInterval(intervalId)
       setIsPolling(false)
     }
-  }, [enabled, httpClient, intervalMs])
+  }, [enabled, intervalMs])
 
   return { isPolling }
 }

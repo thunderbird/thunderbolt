@@ -2,6 +2,8 @@ import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/respons
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { useApprovalPolling } from '@/hooks/use-approval-polling'
+import { checkApprovalAndUnwrap } from '@/services/encryption'
+import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
@@ -22,6 +24,7 @@ type SyncSetupModalProps = {
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
+  const httpClient = useHttpClient()
   const [_recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
   const hasCompletedRef = useRef(false)
 
@@ -72,6 +75,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
   const { isPolling } = useApprovalPolling({
     enabled: setup.step === 'approval-waiting',
+    checkApproval: () => checkApprovalAndUnwrap(httpClient),
     onApproved: completeAndClose,
   })
 
